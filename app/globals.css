@@ -1,12 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
   /* Backgrounds */
-  --bg-base: #F7F8FA;
+  --bg-base: #F6F7F9;
   --bg-surface: #FFFFFF;
-  --bg-elevated: #F0F1F5;
-  --bg-hover: #EEF0FF;
+  --bg-elevated: #F0F2F5;
+  --bg-hover: #EEF2F7;
+  --bg-sidebar: #FFFFFF;
+  --bg-panel: rgba(255,255,255,0.78);
+  --bg-card: rgba(255,255,255,0.9);
+  --bg-board: rgba(255,255,255,0.52);
+  --bg-column: rgba(255,255,255,0.58);
 
   /* Borders */
   --border: #E4E6EF;
@@ -17,10 +22,10 @@
   --text-secondary: #4B5563;
   --text-muted: #9CA3AF;
 
-  /* Accent (purple) */
-  --accent: #7C3AED;
-  --accent-soft: #EDE9FE;
-  --accent-mid: #A78BFA;
+  /* Accent */
+  --accent: #4F46E5;
+  --accent-soft: #EEF2FF;
+  --accent-mid: #818CF8;
 
   /* Semantic colors */
   --green: #10B981;
@@ -43,6 +48,34 @@
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-hover: 0 4px 12px rgba(0,0,0,0.08);
+  --glow-subtle: 0 0 0 1px rgba(79,70,229,0.08), 0 12px 32px rgba(15,23,42,0.08);
+}
+
+:root[data-theme="dark"] {
+  --bg-base: #0B1020;
+  --bg-surface: #111827;
+  --bg-elevated: #162033;
+  --bg-hover: #1E293B;
+  --bg-sidebar: #0F172A;
+  --bg-panel: rgba(17, 24, 39, 0.78);
+  --bg-card: rgba(17, 24, 39, 0.68);
+  --bg-board: rgba(15, 23, 42, 0.52);
+  --bg-column: rgba(17, 24, 39, 0.46);
+  --border: rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #64748B;
+  --accent: #8B8CFF;
+  --accent-soft: rgba(139, 140, 255, 0.16);
+  --accent-mid: #A6A7FF;
+  --green-soft: #113A2B;
+  --amber-soft: #3C2B10;
+  --red-soft: #3A171A;
+  --blue-soft: #132B4A;
+  --shadow-card: 0 1px 0 rgba(255,255,255,0.03), 0 12px 36px rgba(0,0,0,0.18);
+  --shadow-hover: 0 18px 54px rgba(0,0,0,0.28);
+  --glow-subtle: 0 0 0 1px rgba(139,140,255,0.10), 0 16px 44px rgba(0,0,0,0.22);
 }
 
 * {
@@ -52,13 +85,101 @@
 }
 
 body {
-  background: var(--bg-base);
+  background:
+    radial-gradient(circle at top left, rgba(79,70,229,0.08), transparent 34rem),
+    var(--bg-base);
   color: var(--text-primary);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter Tight', Inter, system-ui, sans-serif;
   font-size: 14px;
-  line-height: 1.4286; /* 20px / 14px */
+  line-height: 1.38;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+a,
+button {
+  transition-duration: 140ms;
+  transition-timing-function: ease-out;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+input,
+select,
+textarea {
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.10);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.58;
+  }
+}
+
+@keyframes feedIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drawerPanelIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.modal-overlay-enter {
+  animation: modalOverlayIn 140ms ease-out both;
+}
+
+.modal-panel-enter {
+  animation: modalPanelIn 180ms ease-out both;
+}
+
+.drawer-panel-enter {
+  animation: drawerPanelIn 190ms ease-out both;
 }
 
 ::-webkit-scrollbar {

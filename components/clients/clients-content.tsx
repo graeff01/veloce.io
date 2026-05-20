@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Plus, Search, Users, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Search, Users, AlertTriangle, ChevronRight } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { ClientStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export function ClientsContent() {
     setLoading(false);
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadClients(); }, []);
 
   const filtered = clients.filter((c) =>
@@ -46,13 +47,15 @@ export function ClientsContent() {
   );
 
   const isAdmin = session?.user.role === "ADMIN";
+  const activeCount = clients.filter((c) => c.status === "ACTIVE").length;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
-      {/* Header */}
+
+      {/* ── Header ──────────────────────────────────── */}
       <div
         style={{
-          padding: "28px 32px 20px",
+          padding: "24px 32px 20px",
           borderBottom: "1px solid var(--border)",
           background: "var(--bg-surface)",
           display: "flex",
@@ -61,11 +64,11 @@ export function ClientsContent() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)" }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>
             Clientes
           </h1>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-            {clients.filter((c) => c.status === "ACTIVE").length} clientes ativos
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            {activeCount} cliente{activeCount !== 1 ? "s" : ""} ativo{activeCount !== 1 ? "s" : ""}
           </p>
         </div>
         {isAdmin && (
@@ -76,12 +79,19 @@ export function ClientsContent() {
       </div>
 
       <div style={{ padding: "24px 32px" }}>
-        {/* Search */}
+
+        {/* ── Search bar ──────────────────────────── */}
         <div style={{ position: "relative", maxWidth: 300, marginBottom: 20 }}>
           <Search
             size={13}
-            color="var(--text-muted)"
-            style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}
+            style={{
+              color: "var(--text-muted)",
+              position: "absolute",
+              left: 11,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+            }}
           />
           <input
             value={search}
@@ -89,7 +99,7 @@ export function ClientsContent() {
             placeholder="Buscar cliente..."
             style={{
               width: "100%",
-              paddingLeft: 34,
+              paddingLeft: 32,
               paddingRight: 12,
               paddingTop: 8,
               paddingBottom: 8,
@@ -99,19 +109,22 @@ export function ClientsContent() {
               background: "var(--bg-surface)",
               color: "var(--text-primary)",
               outline: "none",
+              transition: "border-color 150ms ease-out",
+              boxSizing: "border-box",
             }}
             onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
             onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border-strong)")}
           />
         </div>
 
+        {/* ── Content ─────────────────────────────── */}
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
                 style={{
-                  height: 60,
+                  height: 64,
                   borderRadius: 10,
                   background: "var(--bg-surface)",
                   animation: "pulse 1.5s infinite",
@@ -120,29 +133,50 @@ export function ClientsContent() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <Users size={40} color="var(--text-muted)" style={{ margin: "0 auto 12px", opacity: 0.2 }} />
-            <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>
+          /* Empty state */
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "72px 20px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                background: "var(--bg-elevated)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <Users size={24} style={{ color: "var(--text-muted)", opacity: 0.5 }} />
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>
               {search ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
             </p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              {search
+                ? `Nenhum resultado para "${search}"`
+                : "Adicione seu primeiro cliente para começar"}
+            </p>
             {!search && isAdmin && (
-              <button
-                onClick={() => setShowNewModal(true)}
-                style={{
-                  fontSize: 13,
-                  color: "var(--accent)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  marginTop: 8,
-                  textDecoration: "underline",
-                }}
-              >
-                Adicionar primeiro cliente →
-              </button>
+              <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
+                <Plus size={12} /> Adicionar cliente
+              </Button>
             )}
           </div>
         ) : (
+          /* Client table */
           <div
             style={{
               background: "var(--bg-surface)",
@@ -156,13 +190,15 @@ export function ClientsContent() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 100px",
+                gridTemplateColumns: "2fr 120px 160px 80px 80px 32px",
+                alignItems: "center",
                 padding: "10px 20px",
                 borderBottom: "1px solid var(--border)",
                 background: "var(--bg-elevated)",
+                gap: 12,
               }}
             >
-              {["Cliente", "Status", "Progresso", "Em atraso", "Tarefas"].map((h) => (
+              {["Cliente", "Status", "Progresso", "Atraso", "Tarefas", ""].map((h) => (
                 <span
                   key={h}
                   style={{
@@ -205,6 +241,7 @@ export function ClientsContent() {
   );
 }
 
+/* ─── Client Row ─────────────────────────────────────── */
 function ClientRow({ client, last }: { client: Client; last: boolean }) {
   const health =
     client.stats.overdueTasks > 2 ? "critical"
@@ -213,8 +250,8 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
 
   const healthColor = {
     critical: "var(--red)",
-    warning: "var(--amber)",
-    good: "var(--green)",
+    warning:  "var(--amber)",
+    good:     "var(--green)",
   }[health];
 
   return (
@@ -222,9 +259,10 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "2fr 1fr 1fr 1fr 100px",
+          gridTemplateColumns: "2fr 120px 160px 80px 80px 32px",
           alignItems: "center",
-          padding: "14px 20px",
+          gap: 12,
+          padding: "12px 20px",
           borderBottom: last ? "none" : "1px solid var(--border)",
           transition: "background 150ms ease-out",
           cursor: "pointer",
@@ -236,22 +274,32 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
           ((e.currentTarget as HTMLDivElement).style.background = "transparent")
         }
       >
-        {/* Client name */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Client name + email */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <Avatar name={client.name} size="sm" />
-          <div>
-            <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-primary)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                lineHeight: "18px",
+              }}
+            >
               {client.name}
             </p>
             {client.email && (
               <p
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   color: "var(--text-muted)",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: 180,
+                  lineHeight: "15px",
                 }}
               >
                 {client.email}
@@ -265,32 +313,31 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
           <ClientStatusBadge status={client.status} />
         </div>
 
-        {/* Progress bar */}
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Progress bar + % */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              flex: 1,
+              height: 4,
+              borderRadius: 2,
+              background: "var(--bg-elevated)",
+              overflow: "hidden",
+              maxWidth: 100,
+            }}
+          >
             <div
               style={{
-                flex: 1,
-                height: 4,
+                width: `${client.stats.completionRate}%`,
+                height: "100%",
+                background: healthColor,
                 borderRadius: 2,
-                background: "var(--bg-elevated)",
-                overflow: "hidden",
-                maxWidth: 80,
+                transition: "width 400ms ease-out",
               }}
-            >
-              <div
-                style={{
-                  width: `${client.stats.completionRate}%`,
-                  height: "100%",
-                  background: healthColor,
-                  borderRadius: 2,
-                }}
-              />
-            </div>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
-              {client.stats.completionRate}%
-            </span>
+            />
           </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+            {client.stats.completionRate}%
+          </span>
         </div>
 
         {/* Overdue */}
@@ -301,15 +348,16 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 500,
                 color: "var(--red)",
                 background: "var(--red-soft)",
                 padding: "2px 8px",
                 borderRadius: 20,
+                whiteSpace: "nowrap",
               }}
             >
-              <AlertTriangle size={10} />
+              <AlertTriangle size={9} />
               {client.stats.overdueTasks}
             </span>
           ) : (
@@ -322,6 +370,11 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {client.stats.doneTasks}/{client.stats.monthTasks}
           </span>
+        </div>
+
+        {/* Arrow */}
+        <div>
+          <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
         </div>
       </div>
     </Link>

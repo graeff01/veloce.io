@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface ModalProps {
   open: boolean;
@@ -10,17 +9,18 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  variant?: "center" | "drawer";
   footer?: React.ReactNode;
 }
 
-const sizeClasses = {
-  sm: "max-w-sm",
-  md: "max-w-lg",
-  lg: "max-w-2xl",
-  xl: "max-w-4xl",
+const sizeMap = {
+  sm: 460,
+  md: 640,
+  lg: 760,
+  xl: 960,
 };
 
-export function Modal({ open, onClose, title, children, size = "md", footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = "md", variant = "center", footer }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,36 +42,88 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      className="modal-overlay-enter"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 90,
+        display: "flex",
+        alignItems: variant === "drawer" ? "stretch" : "center",
+        justifyContent: variant === "drawer" ? "flex-end" : "center",
+        padding: variant === "drawer" ? "12px" : 20,
+        background: "rgba(15, 23, 42, 0.46)",
+        backdropFilter: "blur(10px)",
+      }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={cn("w-full rounded-2xl border flex flex-col", sizeClasses[size])}
-        style={{ background: "var(--bg-surface)", borderColor: "var(--border)", maxHeight: "90vh", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}
+        className={variant === "drawer" ? "drawer-panel-enter" : "modal-panel-enter"}
+        style={{
+          width: "100%",
+          maxWidth: sizeMap[size],
+          height: variant === "drawer" ? "100%" : undefined,
+          maxHeight: variant === "drawer" ? "none" : "88vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          background: "var(--bg-surface)",
+          border: "1px solid rgba(148, 163, 184, 0.28)",
+          borderRadius: 14,
+          boxShadow: "0 26px 80px rgba(15, 23, 42, 0.24)",
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            padding: "18px 20px 14px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <h2 style={{ color: "var(--text-primary)", fontSize: 15, fontWeight: 650, lineHeight: "20px" }}>
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
-            style={{ color: "var(--text-muted)" }}
+            title="Fechar"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              border: "1px solid transparent",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
           >
             <X size={14} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="px-6 py-4 border-t flex items-center justify-end gap-3" style={{ borderColor: "var(--border)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 10,
+              padding: "14px 20px",
+              borderTop: "1px solid var(--border)",
+              background: "var(--bg-base)",
+            }}
+          >
             {footer}
           </div>
         )}

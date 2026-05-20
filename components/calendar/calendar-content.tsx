@@ -38,6 +38,7 @@ export function CalendarContent({ clientId }: { clientId: string }) {
   const [clientName, setClientName] = useState("");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all([
       fetch(`/api/clients/${clientId}/tasks?month=${month}&year=${year}`).then((r) => r.json()),

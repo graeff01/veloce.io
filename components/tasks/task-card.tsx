@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckSquare, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckSquare, CirclePause, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate, isOverdue } from "@/lib/utils";
@@ -30,6 +30,13 @@ const statusBorderColor: Record<string, string> = {
   DONE:        "var(--green)",
 };
 
+const priorityConfig: Record<string, { label: string; color: string }> = {
+  CRITICAL: { label: "Critica", color: "var(--red)" },
+  HIGH: { label: "Alta", color: "var(--amber)" },
+  NORMAL: { label: "Normal", color: "var(--text-muted)" },
+  LOW: { label: "Baixa", color: "var(--text-muted)" },
+};
+
 export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -37,56 +44,67 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
   const doneChecks = task.checklists.filter((c) => c.done).length;
   const totalChecks = task.checklists.length;
   const typeCfg = typeConfig[task.type ?? ""] ?? { bg: "var(--bg-elevated)", color: "var(--text-muted)" };
-  const leftBorderColor = overdue ? "var(--red)" : statusBorderColor[task.status] ?? "var(--border-strong)";
+  const priorityCfg = priorityConfig[task.priority ?? "NORMAL"];
+  const leftBorderColor = task.priority === "CRITICAL"
+    ? "var(--red)"
+    : overdue ? "var(--red)" : statusBorderColor[task.status] ?? "var(--border-strong)";
 
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "9px 12px",
-        borderLeft: `3px solid ${hovered ? "var(--accent)" : leftBorderColor}`,
-        background: hovered ? "var(--bg-elevated)" : "transparent",
-        borderRadius: "0 6px 6px 0",
+        alignItems: "flex-start",
+        gap: 8,
+        padding: "9px 10px",
+        border: `1px solid ${hovered ? "var(--border-strong)" : "var(--border)"}`,
+        borderLeft: `2px solid ${hovered ? "var(--accent)" : leftBorderColor}`,
+        background: hovered ? "var(--bg-card)" : "rgba(255,255,255,0.018)",
+        borderRadius: 7,
         cursor: "pointer",
         position: "relative",
-        transition: "background 150ms ease-out, border-color 150ms ease-out",
-        marginBottom: 2,
+        transition: "background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out",
+        marginBottom: 4,
+        minHeight: 66,
+        boxShadow: hovered ? "var(--glow-subtle)" : "0 1px 0 rgba(255,255,255,0.025)",
+        transform: hovered ? "translateX(1px)" : "translateX(0)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onEdit}
     >
-      {/* Task title */}
+      {/* Task title + meta */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            whiteSpace: "nowrap",
+            fontSize: 12,
+            fontWeight: 620,
+            color: hovered ? "var(--text-primary)" : "var(--text-secondary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            lineHeight: "18px",
+            lineHeight: "16px",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            whiteSpace: "normal",
           }}
         >
           {task.title}
         </p>
 
         {/* Meta row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
-          {/* Type badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, flexWrap: "wrap" }}>
+          {/* Type badge — small pill */}
           {task.type && (
             <span
               style={{
                 fontSize: 10,
                 fontWeight: 500,
-                background: typeCfg.bg,
+                background: hovered ? typeCfg.bg : "transparent",
                 color: typeCfg.color,
-                padding: "1px 6px",
-                borderRadius: 20,
+                padding: "1px 5px",
+                borderRadius: 5,
                 flexShrink: 0,
+                lineHeight: "15px",
               }}
             >
               {task.type}
@@ -109,28 +127,65 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
               {formatDate(task.dueDate)}
             </span>
           ) : (
-            <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-              {formatDate(task.dueDate)}
-            </span>
+            task.dueDate && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+                {formatDate(task.dueDate)}
+              </span>
+            )
           )}
 
           {/* Checklist indicator */}
           {totalChecks > 0 && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 3 }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                flexShrink: 0,
+              }}
+            >
               <CheckSquare
                 size={10}
-                color={doneChecks === totalChecks ? "var(--green)" : "var(--text-muted)"}
+                style={{ color: doneChecks === totalChecks ? "var(--green)" : "var(--text-muted)" }}
               />
               {doneChecks}/{totalChecks}
+            </span>
+          )}
+
+          {task.priority && task.priority !== "NORMAL" && (
+            <span style={{ fontSize: 10, color: priorityCfg.color, fontWeight: 650, lineHeight: "15px" }}>
+              {priorityCfg.label}
+            </span>
+          )}
+
+          {task.blocker && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                fontSize: 10,
+                color: "var(--text-secondary)",
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border)",
+                padding: "1px 6px",
+                borderRadius: 6,
+                lineHeight: "15px",
+              }}
+            >
+              <CirclePause size={9} style={{ color: "var(--amber)" }} />
+              {task.blocker}
             </span>
           )}
         </div>
       </div>
 
       {/* Assignee avatar */}
-      {task.assignee && (
-        <Avatar name={task.assignee.name} size="xs" />
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 1 }}>
+        {task.assignee && <Avatar name={task.assignee.name} size="xs" />}
+      </div>
 
       {/* More menu */}
       {onDelete && (
@@ -151,7 +206,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
               border: "none",
               cursor: "pointer",
               color: "var(--text-muted)",
-              opacity: hovered ? 1 : 0,
+              opacity: hovered || menuOpen ? 1 : 0,
               transition: "opacity 150ms ease-out",
             }}
           >
@@ -191,6 +246,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                     border: "none",
                     cursor: "pointer",
                     textAlign: "left",
+                    transition: "background 150ms ease-out",
                   }}
                   onMouseEnter={(e) =>
                     ((e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)")
@@ -215,6 +271,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                     border: "none",
                     cursor: "pointer",
                     textAlign: "left",
+                    transition: "background 150ms ease-out",
                   }}
                   onMouseEnter={(e) =>
                     ((e.currentTarget as HTMLButtonElement).style.background = "var(--red-soft)")

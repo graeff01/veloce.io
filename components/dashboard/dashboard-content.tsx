@@ -5,10 +5,10 @@ import Link from "next/link";
 import {
   Users, AlertTriangle, CheckCircle2, Clock,
   TrendingDown, Activity, Zap, ArrowRight,
-  BellRing, ChevronRight
+  BellRing, ChevronRight,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
-import { formatDate, isOverdue } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 interface DashboardData {
   summary: {
@@ -82,10 +82,10 @@ export function DashboardContent({ userName }: { userName: string }) {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
-      {/* Page header */}
+      {/* ── Page header ────────────────────────────────── */}
       <div
         style={{
-          padding: "28px 32px 20px",
+          padding: "24px 32px 20px",
           borderBottom: "1px solid var(--border)",
           background: "var(--bg-surface)",
         }}
@@ -95,7 +95,7 @@ export function DashboardContent({ userName }: { userName: string }) {
             fontSize: 20,
             fontWeight: 600,
             color: "var(--text-primary)",
-            marginBottom: 4,
+            marginBottom: 3,
           }}
         >
           {greeting}, {firstName}
@@ -106,19 +106,22 @@ export function DashboardContent({ userName }: { userName: string }) {
       </div>
 
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
-        {/* Metric blocks */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+
+        {/* ── Metric blocks ──────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
           <MetricBlock
             label="Clientes ativos"
             value={data.summary.activeClients}
             icon={Users}
             accentColor="var(--blue)"
+            softColor="var(--blue-soft)"
           />
           <MetricBlock
             label="Entregam hoje"
             value={data.summary.dueTodayTasks}
             icon={Clock}
             accentColor="var(--amber)"
+            softColor="var(--amber-soft)"
             alert={data.summary.dueTodayTasks > 0}
           />
           <MetricBlock
@@ -126,6 +129,7 @@ export function DashboardContent({ userName }: { userName: string }) {
             value={data.summary.overdueTasks}
             icon={AlertTriangle}
             accentColor="var(--red)"
+            softColor="var(--red-soft)"
             alert={data.summary.overdueTasks > 0}
           />
           <MetricBlock
@@ -133,12 +137,14 @@ export function DashboardContent({ userName }: { userName: string }) {
             value={data.summary.completedThisMonth}
             icon={CheckCircle2}
             accentColor="var(--green)"
+            softColor="var(--green-soft)"
           />
         </div>
 
-        {/* Two-column layout */}
+        {/* ── Two-column layout ──────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}>
-          {/* Left — Client health rows */}
+
+          {/* LEFT — Client health */}
           <div>
             <div
               style={{
@@ -148,9 +154,7 @@ export function DashboardContent({ userName }: { userName: string }) {
                 marginBottom: 12,
               }}
             >
-              <h2
-                style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}
-              >
+              <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                 Saúde dos Clientes
               </h2>
               <Link
@@ -185,10 +189,10 @@ export function DashboardContent({ userName }: { userName: string }) {
                     color: "var(--text-muted)",
                   }}
                 >
-                  <Users size={32} style={{ margin: "0 auto 8px", opacity: 0.25 }} />
-                  <p style={{ fontSize: 13 }}>Nenhum cliente cadastrado ainda</p>
+                  <Users size={32} style={{ margin: "0 auto 8px", opacity: 0.2 }} />
+                  <p style={{ fontSize: 13, marginBottom: 6 }}>Nenhum cliente cadastrado ainda</p>
                   <Link
-                    href="/clients/new"
+                    href="/clients"
                     style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
                   >
                     Adicionar cliente →
@@ -206,12 +210,12 @@ export function DashboardContent({ userName }: { userName: string }) {
             </div>
           </div>
 
-          {/* Right — Alerts panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* RIGHT — Alerts panel */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {data.suggestions.length > 0 && (
               <AlertsPanel
                 title="Sugestões Operacionais"
-                icon={<Zap size={13} color="var(--accent)" />}
+                icon={<Zap size={13} style={{ color: "var(--accent)" }} />}
               >
                 {data.suggestions.slice(0, 4).map((s, i) => (
                   <SuggestionRow key={i} suggestion={s} />
@@ -222,7 +226,7 @@ export function DashboardContent({ userName }: { userName: string }) {
             {data.overdueDetails.length > 0 && (
               <AlertsPanel
                 title="Tarefas em Atraso"
-                icon={<BellRing size={13} color="var(--red)" />}
+                icon={<BellRing size={13} style={{ color: "var(--red)" }} />}
                 count={data.overdueDetails.length}
               >
                 {data.overdueDetails.slice(0, 6).map((task) => (
@@ -246,7 +250,7 @@ export function DashboardContent({ userName }: { userName: string }) {
                   textAlign: "center",
                 }}
               >
-                <Activity size={24} color="var(--green)" style={{ opacity: 0.4 }} />
+                <Activity size={24} style={{ color: "var(--green)", opacity: 0.4 }} />
                 <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
                   Operação saudável
                 </p>
@@ -262,17 +266,20 @@ export function DashboardContent({ userName }: { userName: string }) {
   );
 }
 
+/* ─── Metric Block ───────────────────────────────────── */
 function MetricBlock({
   label,
   value,
   icon: Icon,
   accentColor,
+  softColor,
   alert,
 }: {
   label: string;
   value: number;
   icon: React.ElementType;
   accentColor: string;
+  softColor: string;
   alert?: boolean;
 }) {
   return (
@@ -280,8 +287,9 @@ function MetricBlock({
       style={{
         background: "var(--bg-surface)",
         border: `1px solid ${alert && value > 0 ? accentColor + "55" : "var(--border)"}`,
+        borderLeft: alert && value > 0 ? `3px solid ${accentColor}` : `3px solid transparent`,
         borderRadius: 10,
-        padding: "18px 20px",
+        padding: "16px 18px",
         boxShadow: "var(--shadow-card)",
         display: "flex",
         flexDirection: "column",
@@ -289,26 +297,28 @@ function MetricBlock({
         transition: "box-shadow 150ms ease-out",
       }}
     >
+      {/* Icon */}
       <div
         style={{
           width: 32,
           height: 32,
           borderRadius: 8,
-          background: accentColor + "18",
+          background: softColor,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Icon size={15} color={accentColor} />
+        <Icon size={15} style={{ color: accentColor }} />
       </div>
+      {/* Number + label */}
       <div>
         <p
           style={{
-            fontSize: 26,
+            fontSize: 28,
             fontWeight: 700,
             letterSpacing: "-0.03em",
-            color: "var(--text-primary)",
+            color: alert && value > 0 ? accentColor : "var(--text-primary)",
             lineHeight: 1,
             marginBottom: 4,
           }}
@@ -321,6 +331,7 @@ function MetricBlock({
   );
 }
 
+/* ─── Client Health Row ──────────────────────────────── */
 function ClientHealthRow({
   client,
   last,
@@ -330,11 +341,13 @@ function ClientHealthRow({
 }) {
   const { stats } = client;
   const health =
-    stats.overdue > 2 ? "critical" : stats.overdue > 0 || stats.inactive ? "warning" : "good";
+    stats.overdue > 2 ? "critical"
+    : stats.overdue > 0 || stats.inactive ? "warning"
+    : "good";
   const healthColor = {
     critical: "var(--red)",
-    warning: "var(--amber)",
-    good: "var(--green)",
+    warning:  "var(--amber)",
+    good:     "var(--green)",
   }[health];
 
   return (
@@ -359,7 +372,7 @@ function ClientHealthRow({
         {/* Avatar */}
         <Avatar name={client.name} size="sm" />
 
-        {/* Name */}
+        {/* Name + inactivity note */}
         <div style={{ width: 140, flexShrink: 0 }}>
           <p
             style={{
@@ -369,12 +382,13 @@ function ClientHealthRow({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              lineHeight: "18px",
             }}
           >
             {client.name}
           </p>
           {stats.inactive && (
-            <p style={{ fontSize: 11, color: "var(--amber)" }}>
+            <p style={{ fontSize: 11, color: "var(--amber)", lineHeight: "15px" }}>
               {stats.daysSinceActivity}d sem atividade
             </p>
           )}
@@ -396,11 +410,11 @@ function ClientHealthRow({
                 height: "100%",
                 background: healthColor,
                 borderRadius: 2,
-                transition: "width 300ms ease-out",
+                transition: "width 400ms ease-out",
               }}
             />
           </div>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, lineHeight: "14px" }}>
             {stats.doneTasks}/{stats.monthTasks} concluídas
           </p>
         </div>
@@ -439,7 +453,7 @@ function ClientHealthRow({
           )}
         </div>
 
-        {/* Status dot */}
+        {/* Health dot */}
         <div
           style={{
             width: 8,
@@ -454,6 +468,7 @@ function ClientHealthRow({
   );
 }
 
+/* ─── Alerts Panel ───────────────────────────────────── */
 function AlertsPanel({
   title,
   icon,
@@ -480,8 +495,9 @@ function AlertsPanel({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "12px 16px",
+          padding: "11px 16px",
           borderBottom: "1px solid var(--border)",
+          background: "var(--bg-elevated)",
         }}
       >
         {icon}
@@ -503,19 +519,20 @@ function AlertsPanel({
           </span>
         )}
       </div>
-      <div style={{ padding: "8px 0" }}>{children}</div>
+      <div style={{ padding: "6px 0" }}>{children}</div>
     </div>
   );
 }
 
+/* ─── Suggestion Row ─────────────────────────────────── */
 function SuggestionRow({ suggestion }: { suggestion: DashboardData["suggestions"][0] }) {
-  const typeConfig = {
-    overdue: { color: "var(--red)", icon: AlertTriangle },
+  const typeConfig: Record<string, { color: string; icon: React.ElementType }> = {
+    overdue:  { color: "var(--red)",   icon: AlertTriangle },
     inactive: { color: "var(--amber)", icon: Clock },
-    behind: { color: "var(--amber)", icon: TrendingDown },
-  }[suggestion.type] ?? { color: "var(--blue)", icon: Activity };
-
-  const Icon = typeConfig.icon;
+    behind:   { color: "var(--amber)", icon: TrendingDown },
+  };
+  const cfg = typeConfig[suggestion.type] ?? { color: "var(--blue)", icon: Activity };
+  const Icon = cfg.icon;
 
   return (
     <div
@@ -523,24 +540,26 @@ function SuggestionRow({ suggestion }: { suggestion: DashboardData["suggestions"
         display: "flex",
         alignItems: "flex-start",
         gap: 10,
-        padding: "8px 16px",
-        borderLeft: `3px solid ${typeConfig.color}`,
-        marginBottom: 4,
+        padding: "7px 16px",
+        borderLeft: `3px solid ${cfg.color}`,
+        marginLeft: 0,
+        marginBottom: 2,
       }}
     >
-      <Icon size={11} color={typeConfig.color} style={{ marginTop: 2, flexShrink: 0 }} />
+      <Icon size={11} style={{ color: cfg.color, marginTop: 3, flexShrink: 0 }} />
       <p style={{ fontSize: 12, color: "var(--text-secondary)", flex: 1, lineHeight: "18px" }}>
         {suggestion.message}
       </p>
       {suggestion.clientId && (
         <Link href={`/clients/${suggestion.clientId}`} style={{ flexShrink: 0 }}>
-          <ChevronRight size={11} color="var(--text-muted)" />
+          <ChevronRight size={11} style={{ color: "var(--text-muted)" }} />
         </Link>
       )}
     </div>
   );
 }
 
+/* ─── Overdue Row ────────────────────────────────────── */
 function OverdueRow({ task }: { task: DashboardData["overdueDetails"][0] }) {
   return (
     <Link href={`/clients/${task.client.id}/tasks`} style={{ textDecoration: "none", display: "block" }}>
@@ -577,11 +596,12 @@ function OverdueRow({ task }: { task: DashboardData["overdueDetails"][0] }) {
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              lineHeight: "17px",
             }}
           >
             {task.title}
           </p>
-          <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: "15px" }}>
             {task.client.name} · {formatDate(task.dueDate)}
           </p>
         </div>
@@ -590,20 +610,16 @@ function OverdueRow({ task }: { task: DashboardData["overdueDetails"][0] }) {
   );
 }
 
+/* ─── Loading Skeleton ───────────────────────────────── */
 function LoadingSkeleton() {
   return (
-    <div style={{ flex: 1, padding: "28px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ height: 48, borderRadius: 8, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+    <div style={{ flex: 1, padding: "24px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ height: 60, borderRadius: 8, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            style={{
-              height: 100,
-              borderRadius: 10,
-              background: "var(--bg-surface)",
-              animation: "pulse 1.5s infinite",
-            }}
+            style={{ height: 108, borderRadius: 10, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }}
           />
         ))}
       </div>

@@ -22,6 +22,20 @@ interface Plan {
   _count: { clientPlans: number };
 }
 
+const typeColors: Record<string, { bg: string; color: string }> = {
+  "Post Feed": { bg: "var(--blue-soft)",   color: "var(--blue)" },
+  "Story":     { bg: "var(--accent-soft)", color: "var(--accent)" },
+  "Campanha":  { bg: "var(--amber-soft)",  color: "var(--amber)" },
+  "Criativo":  { bg: "var(--green-soft)",  color: "var(--green)" },
+  "Reels":     { bg: "#FFF3E0",            color: "#F97316" },
+  "Copy":      { bg: "var(--blue-soft)",   color: "var(--blue)" },
+  "Relatório": { bg: "var(--bg-elevated)", color: "var(--text-secondary)" },
+};
+
+function getTypeStyle(type: string) {
+  return typeColors[type] ?? { bg: "var(--bg-elevated)", color: "var(--text-secondary)" };
+}
+
 export function PlansContent() {
   const { data: session } = useSession();
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -35,6 +49,7 @@ export function PlansContent() {
     setLoading(false);
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, []);
 
   const isAdmin = session?.user.role === "ADMIN";
@@ -46,11 +61,24 @@ export function PlansContent() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="px-7 pt-7 pb-5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
+
+      {/* ── Header ──────────────────────────────────── */}
+      <div
+        style={{
+          padding: "24px 32px 20px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-surface)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>Planos</h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>
+            Planos
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Templates de entrega reutilizáveis
           </p>
         </div>
@@ -61,25 +89,63 @@ export function PlansContent() {
         )}
       </div>
 
-      <div className="px-7 py-6">
+      <div style={{ padding: "24px 32px" }}>
         {loading ? (
-          <div className="grid grid-cols-3 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-48 rounded-xl animate-pulse" style={{ background: "var(--bg-surface)" }} />
+              <div
+                key={i}
+                style={{
+                  height: 200,
+                  borderRadius: 10,
+                  background: "var(--bg-surface)",
+                  animation: "pulse 1.5s infinite",
+                }}
+              />
             ))}
           </div>
         ) : plans.length === 0 ? (
-          <div className="text-center py-20">
-            <BookOpen size={40} className="mx-auto mb-3 opacity-20" style={{ color: "var(--text-muted)" }} />
-            <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Nenhum plano cadastrado</p>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "72px 20px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                background: "var(--accent-soft)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <BookOpen size={24} style={{ color: "var(--accent)", opacity: 0.7 }} />
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>
+              Nenhum plano cadastrado
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+              Crie templates de entrega para aplicar nos clientes
+            </p>
             {isAdmin && (
-              <button onClick={() => setNewOpen(true)} className="text-xs mt-2" style={{ color: "var(--accent-blue)" }}>
-                Criar primeiro plano →
-              </button>
+              <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+                <Plus size={12} /> Criar primeiro plano
+              </Button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {plans.map((plan) => (
               <PlanCard
                 key={plan.id}
@@ -113,44 +179,144 @@ export function PlansContent() {
   );
 }
 
-function PlanCard({ plan, isAdmin, onEdit, onDelete }: {
+/* ─── Plan Card ──────────────────────────────────────── */
+function PlanCard({
+  plan,
+  isAdmin,
+  onEdit,
+  onDelete,
+}: {
   plan: Plan;
   isAdmin: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const totalMonthly = plan.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div
-      className="rounded-xl border p-5 group"
-      style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "18px 20px",
+        boxShadow: hovered ? "var(--shadow-hover)" : "var(--shadow-card)",
+        transition: "box-shadow 150ms ease-out, border-color 150ms ease-out",
+        borderColor: hovered ? "var(--border-strong)" : "var(--border)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+      }}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.12)" }}>
-            <BookOpen size={16} style={{ color: "var(--accent-purple)" }} />
+      {/* Card header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              background: "var(--accent-soft)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <BookOpen size={16} style={{ color: "var(--accent)" }} />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{plan.name}</h3>
+          <div style={{ minWidth: 0 }}>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                lineHeight: "19px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {plan.name}
+            </h3>
             {plan.description && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{plan.description}</p>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  marginTop: 2,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {plan.description}
+              </p>
             )}
           </div>
         </div>
+
+        {/* Admin actions (visible on hover) */}
         {isAdmin && (
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              opacity: hovered ? 1 : 0,
+              transition: "opacity 150ms ease-out",
+              flexShrink: 0,
+            }}
+          >
             <button
               onClick={onEdit}
-              className="w-6 h-6 rounded flex items-center justify-center hover:bg-[var(--bg-hover)]"
-              style={{ color: "var(--text-muted)" }}
+              title="Editar"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                transition: "background 150ms ease-out",
+              }}
+              onMouseEnter={(e) =>
+                ((e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)")
+              }
+              onMouseLeave={(e) =>
+                ((e.currentTarget as HTMLButtonElement).style.background = "none")
+              }
             >
               <Pencil size={11} />
             </button>
             <button
               onClick={onDelete}
-              className="w-6 h-6 rounded flex items-center justify-center hover:bg-[var(--bg-hover)]"
-              style={{ color: "var(--accent-red)" }}
+              title="Excluir"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--red)",
+                transition: "background 150ms ease-out",
+              }}
+              onMouseEnter={(e) =>
+                ((e.currentTarget as HTMLButtonElement).style.background = "var(--red-soft)")
+              }
+              onMouseLeave={(e) =>
+                ((e.currentTarget as HTMLButtonElement).style.background = "none")
+              }
             >
               <Trash2 size={11} />
             </button>
@@ -158,30 +324,79 @@ function PlanCard({ plan, isAdmin, onEdit, onDelete }: {
         )}
       </div>
 
-      {/* Stats */}
-      <div className="flex items-center gap-4 mb-4">
-        <div className="flex items-center gap-1.5">
+      {/* Stats row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: "8px 10px",
+          background: "var(--bg-elevated)",
+          borderRadius: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Package size={11} style={{ color: "var(--text-muted)" }} />
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {totalMonthly} entregas/mês
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Users size={11} style={{ color: "var(--text-muted)" }} />
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {plan._count.clientPlans} aplicações
           </span>
         </div>
       </div>
 
-      {/* Items */}
-      <div className="flex flex-col gap-1.5">
-        {plan.items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg" style={{ background: "var(--bg-elevated)" }}>
-            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{item.type}</span>
-            <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{item.quantity}x</span>
-          </div>
-        ))}
+      {/* Plan items breakdown */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {plan.items.map((item) => {
+          const sty = getTypeStyle(item.type);
+          return (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "7px 10px",
+                borderRadius: 7,
+                borderLeft: `3px solid ${sty.color}`,
+                background: sty.bg,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: sty.color,
+                  }}
+                >
+                  {item.type}
+                </span>
+                {item.description && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {item.description}
+                  </span>
+                )}
+              </div>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: sty.color,
+                  background: "rgba(255,255,255,0.5)",
+                  padding: "1px 7px",
+                  borderRadius: 20,
+                }}
+              >
+                {item.quantity}×
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

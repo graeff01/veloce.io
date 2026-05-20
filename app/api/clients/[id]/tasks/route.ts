@@ -7,6 +7,8 @@ const createTaskSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   type: z.string().optional(),
+  priority: z.enum(["CRITICAL", "HIGH", "NORMAL", "LOW"]).optional(),
+  blocker: z.string().optional().nullable(),
   assignedTo: z.string().optional(),
   dueDate: z.string().min(1, "Data de entrega é obrigatória"),
   planMonth: z.number().optional(),
@@ -70,6 +72,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       title: parsed.data.title,
       description: parsed.data.description,
       type: parsed.data.type,
+      priority: parsed.data.priority ?? "NORMAL",
+      blocker: parsed.data.blocker || null,
       assignedTo: parsed.data.assignedTo || null,
       dueDate: new Date(parsed.data.dueDate),
       planMonth: parsed.data.planMonth,
@@ -87,6 +91,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   await logAction(session!.user.id, "CREATE_TASK", id, task.id, {
     title: task.title,
     dueDate: task.dueDate,
+    priority: task.priority,
+    blocker: task.blocker,
   });
 
   return NextResponse.json(task, { status: 201 });

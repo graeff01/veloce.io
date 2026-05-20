@@ -13,16 +13,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary:   "text-white border-transparent",
-  secondary: "border hover:bg-[var(--bg-hover)] text-[var(--text-primary)]",
+  primary:   "text-white border-transparent shadow-sm hover:brightness-[0.98]",
+  secondary: "border hover:bg-[var(--bg-hover)] text-[var(--text-primary)] bg-[var(--bg-surface)]",
   ghost:     "border-transparent hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
   danger:    "border-transparent text-[var(--red)]",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 text-xs rounded-lg",
-  md: "px-4 py-2 text-sm rounded-lg",
-  lg: "px-5 py-2.5 text-sm rounded-xl",
+  sm: "px-3 text-xs rounded-lg min-h-8",
+  md: "px-4 text-sm rounded-lg min-h-10",
+  lg: "px-5 text-sm rounded-lg min-h-11",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -32,8 +32,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={cn(
-          "inline-flex items-center gap-2 font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
-          "border-[var(--border-strong)]",
+          "inline-flex items-center justify-center gap-2 font-medium border leading-none transition-[background,color,border-color,filter] disabled:opacity-50 disabled:cursor-not-allowed",
+          "border-[var(--border)]",
           variantClasses[variant],
           sizeClasses[size],
           className

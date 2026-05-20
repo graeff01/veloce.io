@@ -31,17 +31,41 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-  const [monthTasks, doneTasks, overdueTasks, recentLogs] = await Promise.all([
+  const [monthTasks, doneTasks, overdueTasks, openTasks, recentLogs, lastLog, nextTask, blockedTask] = await Promise.all([
     prisma.task.count({ where: { clientId: id, deletedAt: null, dueDate: { gte: startOfMonth, lte: endOfMonth } } }),
     prisma.task.count({ where: { clientId: id, deletedAt: null, status: "DONE", dueDate: { gte: startOfMonth, lte: endOfMonth } } }),
     prisma.task.count({ where: { clientId: id, deletedAt: null, dueDate: { lt: now }, status: { not: "DONE" } } }),
+    prisma.task.count({ where: { clientId: id, deletedAt: null, status: { not: "DONE" } } }),
     prisma.executionLog.findMany({
       where: { clientId: id },
       orderBy: { createdAt: "desc" },
-      take: 15,
+      take: 50,
       include: { user: { select: { name: true } } },
     }),
+    prisma.executionLog.findFirst({
+      where: { clientId: id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+    prisma.task.findFirst({
+      where: { clientId: id, deletedAt: null, status: { not: "DONE" }, dueDate: { gte: now } },
+      orderBy: { dueDate: "asc" },
+      select: { id: true, title: true, dueDate: true },
+    }),
+    prisma.task.findFirst({
+      where: { clientId: id, deletedAt: null, status: { not: "DONE" }, blocker: { not: null } },
+      orderBy: [{ priority: "asc" }, { dueDate: "asc" }],
+      select: { id: true, title: true, blocker: true },
+    }),
   ]);
+
+  const daysSinceActivity = lastLog
+    ? Math.floor((now.getTime() - lastLog.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+    : 999;
+  const health =
+    overdueTasks >= 4 || daysSinceActivity >= 10 ? "CRITICAL"
+    : overdueTasks > 0 || daysSinceActivity >= 4 ? "ATTENTION"
+    : "HEALTHY";
 
   return NextResponse.json({
     ...client,
@@ -49,9 +73,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       monthTasks,
       doneTasks,
       overdueTasks,
+      openTasks,
+      daysSinceActivity,
+      health,
       completionRate: monthTasks > 0 ? Math.round((doneTasks / monthTasks) * 100) : 0,
     },
+    operationalContext: {
+      lastActivityAt: lastLog?.createdAt ?? null,
+      nextTask,
+      currentBlocker: blockedTask,
+    },
     recentLogs,
+    notes: recentLogs.filter((log) => log.action === "ADD_NOTE"),
   });
 }
 

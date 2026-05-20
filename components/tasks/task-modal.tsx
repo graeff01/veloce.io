@@ -15,6 +15,7 @@ interface TaskModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  presentation?: "modal" | "drawer";
 }
 
 interface ChecklistItem {
@@ -30,10 +31,40 @@ interface User {
   name: string;
 }
 
-export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModalProps) {
+const TASK_PRIORITIES = [
+  { value: "CRITICAL", label: "Critica" },
+  { value: "HIGH", label: "Alta" },
+  { value: "NORMAL", label: "Normal" },
+  { value: "LOW", label: "Baixa" },
+] as const;
+const BLOCKERS = ["", "Aguardando cliente", "Aguardando criativo", "Aguardando aprovacao"];
+const SMART_TEMPLATES = [
+  {
+    label: "Campanha imobiliaria",
+    title: "Campanha imobiliaria",
+    type: "Campanha",
+    checklists: ["Briefing e oferta", "Criativo aprovado", "Copy revisada", "Campanha configurada", "Publicar e monitorar"],
+  },
+  {
+    label: "Lancamento",
+    title: "Lancamento",
+    type: "Campanha",
+    checklists: ["Mensagem principal", "Sequencia de criativos", "Pagina ou destino validado", "Aprovacao final", "Go live"],
+  },
+  {
+    label: "Sequencia de conteudo",
+    title: "Sequencia de conteudo",
+    type: "Post Feed",
+    checklists: ["Pautas definidas", "Copies aprovadas", "Criativos prontos", "Agendamento", "Revisao pos-publicacao"],
+  },
+];
+
+export function TaskModal({ clientId, task, open, onClose, onSuccess, presentation = "modal" }: TaskModalProps) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [type, setType] = useState(task?.type ?? "");
+  const [priority, setPriority] = useState(task?.priority ?? "NORMAL");
+  const [blocker, setBlocker] = useState(task?.blocker ?? "");
   const [assignedTo, setAssignedTo] = useState(task?.assignedTo ?? "");
   const [dueDate, setDueDate] = useState(
     task?.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : ""
@@ -68,6 +99,12 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
     setNewCheckText("");
   }
 
+  function applyTemplate(template: typeof SMART_TEMPLATES[number]) {
+    setTitle((current) => current || template.title);
+    setType(template.type);
+    setChecklists(template.checklists.map((text, order) => ({ text, done: false, order, isNew: true })));
+  }
+
   async function deleteChecklist(item: ChecklistItem, idx: number) {
     if (item.id && task?.id) {
       await fetch(`/api/tasks/${task.id}/checklist/${item.id}`, { method: "DELETE" });
@@ -88,7 +125,7 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
       await fetch(`/api/tasks/${task.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, type: type || null, assignedTo: assignedTo || null, dueDate }),
+        body: JSON.stringify({ title, description, type: type || null, priority, blocker: blocker || null, assignedTo: assignedTo || null, dueDate }),
       });
 
       // Add new checklist items
@@ -108,6 +145,8 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
           title,
           description,
           type: type || null,
+          priority,
+          blocker: blocker || null,
           assignedTo: assignedTo || null,
           dueDate,
           checklists: checklists.map((c, i) => ({ text: c.text, order: i })),
@@ -131,7 +170,8 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
       open={open}
       onClose={onClose}
       title={task ? "Editar Tarefa" : "Nova Tarefa"}
-      size="md"
+      size={presentation === "drawer" ? "lg" : "md"}
+      variant={presentation === "drawer" ? "drawer" : "center"}
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
@@ -142,6 +182,48 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {task && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 8,
+              padding: 10,
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              background: "var(--bg-base)",
+            }}
+          >
+            <TaskContext label="Status" value={statusLabel(task.status)} />
+            <TaskContext label="Prioridade" value={priorityLabel(priority)} />
+            <TaskContext label="Bloqueio" value={blocker || "Sem bloqueio"} />
+            <TaskContext label="Checklist" value={`${checklists.filter((item) => item.done).length}/${checklists.length}`} />
+            <TaskContext label="Entrega" value={dueDate || "Sem prazo"} />
+            <TaskContext label="Fluxo" value="Painel lateral" />
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {SMART_TEMPLATES.map((template) => (
+            <button
+              key={template.label}
+              type="button"
+              onClick={() => applyTemplate(template)}
+              style={{
+                height: 30,
+                border: "1px solid var(--border)",
+                borderRadius: 7,
+                background: "var(--bg-base)",
+                color: "var(--text-secondary)",
+                padding: "0 10px",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {template.label}
+            </button>
+          ))}
+        </div>
         <Input
           label="Título *"
           value={title}
@@ -181,6 +263,28 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
             <option key={u.id} value={u.id}>{u.name}</option>
           ))}
         </Select>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Select
+            label="Prioridade"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as typeof priority)}
+          >
+            {TASK_PRIORITIES.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </Select>
+
+          <Select
+            label="Bloqueio"
+            value={blocker}
+            onChange={(e) => setBlocker(e.target.value)}
+          >
+            {BLOCKERS.map((item) => (
+              <option key={item} value={item}>{item || "Sem bloqueio"}</option>
+            ))}
+          </Select>
+        </div>
 
         <Textarea
           label="Descrição"
@@ -246,4 +350,37 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess }: TaskModa
       </form>
     </Modal>
   );
+}
+
+function TaskContext({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+        {label}
+      </p>
+      <p style={{ marginTop: 3, fontSize: 12, fontWeight: 620, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    TODO: "A fazer",
+    IN_PROGRESS: "Em andamento",
+    REVIEW: "Revisao",
+    DONE: "Concluido",
+  };
+  return labels[status] ?? status;
+}
+
+function priorityLabel(priority: string) {
+  const labels: Record<string, string> = {
+    CRITICAL: "Critica",
+    HIGH: "Alta",
+    NORMAL: "Normal",
+    LOW: "Baixa",
+  };
+  return labels[priority] ?? priority;
 }

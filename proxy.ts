@@ -4,9 +4,12 @@ import { getToken } from "next-auth/jwt";
 
 const adminOnlyRoutes = ["/settings"];
 
+// Set DISABLE_AUTH=true in .env to bypass auth locally (no database needed)
+// Remove this variable before deploying to Railway
+const DISABLE_AUTH = process.env.DISABLE_AUTH === "true";
+
 export async function proxy(req: NextRequest) {
-  // BYPASS_AUTH exposed via next.config env — remove from .env before deploying to Railway
-  if (process.env.BYPASS_AUTH === "true") return NextResponse.next();
+  if (DISABLE_AUTH) return NextResponse.next();
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 

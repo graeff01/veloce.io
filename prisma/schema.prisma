@@ -24,6 +24,13 @@ enum TaskStatus {
   DONE
 }
 
+enum TaskPriority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
 model User {
   id        String    @id @default(cuid())
   name      String
@@ -98,6 +105,8 @@ model Task {
   description String?
   type        String?
   status      TaskStatus @default(TODO)
+  priority    TaskPriority @default(NORMAL)
+  blocker     String?
   assignedTo  String?
   dueDate     DateTime
   planMonth   Int?

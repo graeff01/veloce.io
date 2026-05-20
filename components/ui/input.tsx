@@ -6,18 +6,20 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-const inputBase = "w-full px-3 py-2.5 rounded-lg text-sm border focus:outline-none transition-colors";
+const inputBase = "w-full rounded-lg text-sm border focus:outline-none transition-[border-color,box-shadow,background] placeholder:text-[var(--text-muted)]";
 const inputStyle = {
   background: "var(--bg-surface)",
-  borderColor: "var(--border-strong)",
+  borderColor: "var(--border)",
   color: "var(--text-primary)",
+  minHeight: 40,
+  padding: "9px 11px",
 };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, className, ...props }, ref) => (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" style={{ minWidth: 0 }}>
       {label && (
-        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)", lineHeight: "16px" }}>
           {label}
         </label>
       )}
@@ -40,9 +42,9 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ label, error, className, ...props }, ref) => (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" style={{ minWidth: 0 }}>
       {label && (
-        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)", lineHeight: "16px" }}>
           {label}
         </label>
       )}
@@ -66,9 +68,9 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ label, error, className, children, ...props }, ref) => (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" style={{ minWidth: 0 }}>
       {label && (
-        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        <label className="text-xs font-medium" style={{ color: "var(--text-secondary)", lineHeight: "16px" }}>
           {label}
         </label>
       )}

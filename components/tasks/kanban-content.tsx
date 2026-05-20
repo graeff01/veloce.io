@@ -15,6 +15,7 @@ import { TaskModal } from "@/components/tasks/task-modal";
 import { Button } from "@/components/ui/button";
 
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+export type TaskPriority = "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
 
 export interface Task {
   id: string;
@@ -23,6 +24,8 @@ export interface Task {
   description?: string;
   type?: string;
   status: TaskStatus;
+  priority: TaskPriority;
+  blocker?: string | null;
   assignedTo?: string;
   dueDate: string;
   order: number;
@@ -30,12 +33,14 @@ export interface Task {
   checklists: Array<{ id: string; text: string; done: boolean; order: number }>;
 }
 
-const COLUMNS: { id: TaskStatus; label: string; color: string; softColor: string }[] = [
-  { id: "TODO",        label: "A Fazer",      color: "var(--blue)",   softColor: "var(--blue-soft)" },
-  { id: "IN_PROGRESS", label: "Em Andamento", color: "var(--amber)",  softColor: "var(--amber-soft)" },
-  { id: "REVIEW",      label: "Revisão",      color: "var(--accent)", softColor: "var(--accent-soft)" },
-  { id: "DONE",        label: "Concluído",    color: "var(--green)",  softColor: "var(--green-soft)" },
+const COLUMNS: { id: TaskStatus; label: string; labelShort: string; color: string; softColor: string }[] = [
+  { id: "TODO",        label: "A Fazer",      labelShort: "A FAZER",      color: "var(--blue)",   softColor: "var(--blue-soft)" },
+  { id: "IN_PROGRESS", label: "Em Andamento", labelShort: "ANDAMENTO",    color: "var(--amber)",  softColor: "var(--amber-soft)" },
+  { id: "REVIEW",      label: "Revisão",      labelShort: "REVISÃO",      color: "var(--accent)", softColor: "var(--accent-soft)" },
+  { id: "DONE",        label: "Concluído",    labelShort: "CONCLUÍDO",    color: "var(--green)",  softColor: "var(--green-soft)" },
 ];
+
+const HEADER_HEIGHT = 57; // matches the top-level layout header
 
 export function KanbanContent({ clientId }: { clientId: string }) {
   const { data: session } = useSession();
@@ -64,6 +69,7 @@ export function KanbanContent({ clientId }: { clientId: string }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTasks();
     loadClientName();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,8 +81,7 @@ export function KanbanContent({ clientId }: { clientId: string }) {
     if (
       source.droppableId === destination.droppableId &&
       source.index === destination.index
-    )
-      return;
+    ) return;
 
     const newStatus = destination.droppableId as TaskStatus;
     setTasks((prev) =>
@@ -104,19 +109,28 @@ export function KanbanContent({ clientId }: { clientId: string }) {
   const isAdmin = session?.user.role === "ADMIN";
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* Header */}
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        height: `calc(100vh - ${HEADER_HEIGHT}px)`,
+        overflow: "hidden",
+      }}
+    >
+      {/* ── Kanban header ─────────────────────────────── */}
       <div
         style={{
-          padding: "16px 24px",
+          padding: "14px 24px",
           borderBottom: "1px solid var(--border)",
-          background: "var(--bg-surface)",
+          background: "var(--bg-panel)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexShrink: 0,
         }}
       >
+        {/* Back + title */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link
             href={`/clients/${clientId}`}
@@ -127,30 +141,41 @@ export function KanbanContent({ clientId }: { clientId: string }) {
               alignItems: "center",
               transition: "color 150ms ease-out",
             }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)")}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)")
+            }
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)")
+            }
           >
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-              Kanban {clientName ? `— ${clientName}` : ""}
+            <h1
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                lineHeight: "20px",
+              }}
+            >
+              Kanban{clientName ? ` — ${clientName}` : ""}
             </h1>
-            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {tasks.length} tarefas
+            <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: "15px" }}>
+              {tasks.length} tarefa{tasks.length !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Month/year selectors */}
-          <div style={{ display: "flex", gap: 8 }}>
+        {/* Filters + new task */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", gap: 6 }}>
             <select
               value={filterMonth}
               onChange={(e) => setFilterMonth(parseInt(e.target.value))}
               style={{
-                padding: "6px 10px",
-                borderRadius: 8,
+                padding: "5px 10px",
+                borderRadius: 7,
                 fontSize: 12,
                 border: "1px solid var(--border-strong)",
                 background: "var(--bg-surface)",
@@ -167,8 +192,8 @@ export function KanbanContent({ clientId }: { clientId: string }) {
               value={filterYear}
               onChange={(e) => setFilterYear(parseInt(e.target.value))}
               style={{
-                padding: "6px 10px",
-                borderRadius: 8,
+                padding: "5px 10px",
+                borderRadius: 7,
                 fontSize: 12,
                 border: "1px solid var(--border-strong)",
                 background: "var(--bg-surface)",
@@ -189,17 +214,26 @@ export function KanbanContent({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {/* Kanban board */}
-      <div style={{ flex: 1, overflowX: "auto", padding: "20px 24px" }}>
+      {/* ── Kanban board ──────────────────────────────── */}
+      <div
+        style={{
+          flex: 1,
+          overflowX: "auto",
+          overflowY: "hidden",
+          padding: "18px 20px",
+          background:
+            "radial-gradient(circle at 18% 0%, rgba(139,140,255,0.10), transparent 32rem), var(--bg-base)",
+        }}
+      >
         {loading ? (
-          <div style={{ display: "flex", gap: 16 }}>
+          <div style={{ display: "flex", gap: 14 }}>
             {COLUMNS.map((col) => (
               <div
                 key={col.id}
                 style={{
                   flexShrink: 0,
-                  width: 300,
-                  height: 200,
+                  width: 290,
+                  height: 240,
                   borderRadius: 10,
                   background: "var(--bg-surface)",
                   animation: "pulse 1.5s infinite",
@@ -212,9 +246,16 @@ export function KanbanContent({ clientId }: { clientId: string }) {
             <div
               style={{
                 display: "flex",
-                gap: 16,
-                minHeight: "calc(100vh - 160px)",
+                gap: 14,
+                height: "100%",
                 alignItems: "flex-start",
+                padding: 10,
+                border: "1px solid var(--border)",
+                borderRadius: 18,
+                background: "var(--bg-board)",
+                boxShadow: "var(--shadow-card)",
+                backdropFilter: "blur(14px)",
+                minWidth: "max-content",
               }}
             >
               {COLUMNS.map((col) => {
@@ -224,19 +265,25 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                     key={col.id}
                     style={{
                       flexShrink: 0,
-                      width: 300,
+                      width: 286,
                       display: "flex",
                       flexDirection: "column",
+                      height: "100%",
+                      padding: 10,
+                      borderRadius: 14,
+                      background: "var(--bg-column)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
                     }}
                   >
-                    {/* Column header */}
+                    {/* Column header chip: "A FAZER · 3" */}
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
+                        gap: 6,
                         marginBottom: 10,
-                        padding: "0 4px",
+                        padding: "0 2px",
                       }}
                     >
                       <span
@@ -244,29 +291,27 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                           fontSize: 11,
                           fontWeight: 700,
                           letterSpacing: "0.06em",
-                          textTransform: "uppercase",
                           color: col.color,
                           background: col.softColor,
                           padding: "3px 10px",
                           borderRadius: 20,
                         }}
                       >
-                        {col.label}
+                        {col.labelShort}
                       </span>
                       <span
                         style={{
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: 600,
-                          color: "var(--text-muted)",
-                          background: "var(--bg-elevated)",
-                          padding: "2px 8px",
-                          borderRadius: 20,
+                          color: col.color,
+                          opacity: 0.7,
                         }}
                       >
-                        {colTasks.length}
+                        · {colTasks.length}
                       </span>
                     </div>
 
+                    {/* Droppable area */}
                     <Droppable droppableId={col.id}>
                       {(provided, snapshot) => (
                         <div
@@ -278,16 +323,26 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                             flexDirection: "column",
                             background: snapshot.isDraggingOver
                               ? col.softColor
-                              : "var(--bg-surface)",
-                            border: `1px solid ${snapshot.isDraggingOver ? col.color + "40" : "var(--border)"}`,
-                            borderRadius: 10,
-                            padding: "8px 4px",
+                              : "rgba(255,255,255,0.015)",
+                            border: `1px solid ${
+                              snapshot.isDraggingOver
+                                ? col.color + "50"
+                                : "var(--border)"
+                            }`,
+                            borderRadius: 12,
+                            padding: "5px",
+                            overflowY: "auto",
                             minHeight: 80,
-                            transition: "background 150ms ease-out, border-color 150ms ease-out",
+                            transition:
+                              "background 150ms ease-out, border-color 150ms ease-out",
                           }}
                         >
                           {colTasks.map((task, index) => (
-                            <Draggable key={task.id} draggableId={task.id} index={index}>
+                            <Draggable
+                              key={task.id}
+                              draggableId={task.id}
+                              index={index}
+                            >
                               {(provided, snapshot) => (
                                 <div
                                   ref={provided.innerRef}
@@ -295,13 +350,17 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                                   {...provided.dragHandleProps}
                                   style={{
                                     ...provided.draggableProps.style,
-                                    opacity: snapshot.isDragging ? 0.8 : 1,
+                                    opacity: snapshot.isDragging ? 0.85 : 1,
                                   }}
                                 >
                                   <TaskCard
                                     task={task}
                                     onEdit={() => setEditTask(task)}
-                                    onDelete={isAdmin ? () => handleDeleteTask(task.id) : undefined}
+                                    onDelete={
+                                      isAdmin
+                                        ? () => handleDeleteTask(task.id)
+                                        : undefined
+                                    }
                                   />
                                 </div>
                               )}
@@ -309,21 +368,23 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                           ))}
                           {provided.placeholder}
 
-                          {colTasks.length === 0 && !snapshot.isDraggingOver && (
-                            <div
-                              style={{
-                                flex: 1,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: 12,
-                                color: "var(--text-muted)",
-                                minHeight: 60,
-                              }}
-                            >
-                              Arraste tarefas aqui
-                            </div>
-                          )}
+                          {colTasks.length === 0 &&
+                            !snapshot.isDraggingOver && (
+                              <div
+                                style={{
+                                  flex: 1,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: 12,
+                                  color: "var(--text-muted)",
+                                  minHeight: 60,
+                                  opacity: 0.6,
+                                }}
+                              >
+                                Arraste tarefas aqui
+                              </div>
+                            )}
                         </div>
                       )}
                     </Droppable>
@@ -335,7 +396,7 @@ export function KanbanContent({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {/* New task modal */}
+      {/* ── Modals ────────────────────────────────────── */}
       {newTaskModal && (
         <TaskModal
           clientId={clientId}
@@ -345,12 +406,12 @@ export function KanbanContent({ clientId }: { clientId: string }) {
         />
       )}
 
-      {/* Edit task modal */}
       {editTask && (
         <TaskModal
           clientId={clientId}
           task={editTask}
           open={!!editTask}
+          presentation="drawer"
           onClose={() => setEditTask(null)}
           onSuccess={() => { setEditTask(null); loadTasks(); }}
         />
