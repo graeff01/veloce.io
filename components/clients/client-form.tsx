@@ -197,33 +197,34 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
-      <div className="mb-7 px-1">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
-              Setup operacional
-            </p>
-            <h2 className="mt-3 text-[20px] font-semibold leading-7" style={{ color: "var(--text-primary)" }}>
-              {operationName}
-            </h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-              Configure como a operacao realmente funciona antes de criar demandas.
-            </p>
-          </div>
-          <span className="rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--bg-elevated)" }}>
-            {progress}% pronto
-          </span>
-        </div>
-        <div className="mt-6 h-px w-full" style={{ background: "rgba(148,163,184,0.14)" }}>
-          <div style={{ width: `${progress}%`, height: 1, background: "var(--accent)", transition: "width 240ms var(--ease-enter)" }} />
-        </div>
-      </div>
+      <div className="flex min-h-0 flex-1 gap-6">
+        <div className="min-w-0 flex-1">
+          <div style={{ maxWidth: 860, paddingInline: 28, paddingTop: 20, width: "100%" }}>
+            <div className="mb-8">
+              <div className="flex items-start justify-between gap-6">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+                    Setup operacional
+                  </p>
+                  <h2 className="mt-3 text-[20px] font-semibold leading-7" style={{ color: "var(--text-primary)" }}>
+                    {operationName}
+                  </h2>
+                  <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+                    Configure como a operacao realmente funciona antes de criar demandas.
+                  </p>
+                </div>
+                <span className="rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--bg-elevated)" }}>
+                  {progress}% pronto
+                </span>
+              </div>
+              <div className="mt-6 h-px w-full" style={{ background: "rgba(148,163,184,0.14)" }}>
+                <div style={{ width: `${progress}%`, height: 1, background: "var(--accent)", transition: "width 240ms var(--ease-enter)" }} />
+              </div>
+            </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 justify-center gap-6 xl:grid-cols-[minmax(0,780px)_320px]">
-        <main className="min-w-0 rounded-2xl border px-7 py-6" style={{ borderColor: "rgba(148,163,184,0.16)", background: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
-          <StepRail steps={steps} current={step} onSelect={setStep} />
+            <StepRail steps={steps} current={step} onSelect={setStep} />
 
-          <div className="mt-7 px-1">
+            <div className="mt-6">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
                 <FieldGroup title="Identidade">
@@ -265,7 +266,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
             {step === 2 && (
               <SetupSection title="Ritmo operacional" description="Cadencia esperada para revisao, reuniao e aprovacao.">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-[18px] gap-y-5 md:grid-cols-2">
                   <SelectField label="Dia de revisao" value={reviewDay} onChange={setReviewDay} options={["Segunda", "Terca", "Quarta", "Quinta", "Sexta"]} />
                   <SelectField label="SLA esperado" value={expectedSla} onChange={setExpectedSla} options={["24h", "48h", "72h", "Sob demanda"]} />
                   <SelectField label="Frequencia de reunioes" value={meetingFrequency} onChange={setMeetingFrequency} options={["Semanal", "Quinzenal", "Mensal", "Sem ritual fixo"]} />
@@ -278,7 +279,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             {step === 3 && (
               <SetupSection title="Contexto interno" description="Memoria curta para reduzir atrito e retrabalho.">
                 <TextAreaField label="Observacoes" value={strategicNotes} onChange={setStrategicNotes} placeholder="Contexto que muda a execucao" rows={3} />
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-[18px] gap-y-5 md:grid-cols-2">
                   <TextAreaField label="Comportamento do cliente" value={clientBehavior} onChange={setClientBehavior} placeholder="Como aprova, responde e decide" rows={3} />
                   <TextAreaField label="Restricoes e pontos de atencao" value={restrictions} onChange={setRestrictions} placeholder="O que evitar ou monitorar" rows={3} />
                 </div>
@@ -301,13 +302,14 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
                 </div>
               </SetupSection>
             )}
+            </div>
           </div>
-        </main>
+        </div>
 
-        <aside className="min-w-0 rounded-2xl border p-4 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.16)", background: "linear-gradient(180deg, rgba(15,23,42,0.90), rgba(17,24,39,0.86))", boxShadow: "0 18px 38px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.035)" }}>
+        <aside className="w-80 shrink-0 rounded-2xl border p-5 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.12)", background: "rgba(15,23,42,0.55)", boxShadow: "0 4px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.03)" }}>
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-              <Gauge size={15} />
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+              <Gauge size={14} />
             </span>
             <div>
               <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Operacao prevista</p>
@@ -315,7 +317,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             </div>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 space-y-3">
             <SummaryBlock title="Frentes ativas" empty="Nenhuma frente ativada">
               {activeModules.map((module) => (
                 <SummaryLine key={module.key} dot={module.tone} label={module.label} value={operationalScope[module.key].volume || "sem volume definido"} />
@@ -330,9 +332,9 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
               {operationalUrgency && <SummaryLine label="Urgencia" value={operationalUrgency} />}
             </SummaryBlock>
 
-            <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-base)" }}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>Leitura operacional</p>
-              <p className="mt-2 text-sm leading-5" style={{ color: "var(--text-secondary)" }}>
+            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>Leitura operacional</p>
+              <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-secondary)" }}>
                 {configuredModules.length > 0
                   ? `${operationName} nasce com ${configuredModules.length} frente${configuredModules.length === 1 ? "" : "s"} configurada${configuredModules.length === 1 ? "" : "s"}.`
                   : "Defina o escopo para o sistema entender o ritmo desta conta."}
@@ -344,7 +346,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
       {error && <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--accent-red)", background: "rgba(239,68,68,0.1)" }}>{error}</p>}
 
-      <div className="mt-6 flex justify-end gap-3 border-t px-1 pt-5" style={{ borderColor: "rgba(148,163,184,0.12)" }}>
+      <div className="mt-6 flex justify-end gap-3 border-t px-7 pt-5" style={{ borderColor: "rgba(148,163,184,0.12)" }}>
         {step === 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         ) : (
@@ -402,20 +404,20 @@ function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; 
 function SetupSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <section className="op-enter">
-      <div className="mb-6">
+      <div className="mb-7">
         <h3 className="text-[18px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
-        <p className="mt-1.5 text-sm leading-5" style={{ color: "var(--text-muted)" }}>{description}</p>
+        <p className="mt-2 text-sm leading-5" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
-      <div className="flex max-w-[740px] flex-col gap-6">{children}</div>
+      <div className="flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl px-6 py-5" style={{ background: "rgba(255,255,255,0.022)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.12)" }}>
-      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.10em]" style={{ color: "rgba(148,163,184,0.72)" }}>{title}</p>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
+    <div className="rounded-2xl px-6 py-5" style={{ background: "rgba(255,255,255,0.018)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
+      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.10em]" style={{ color: "rgba(148,163,184,0.56)" }}>{title}</p>
+      <div className="grid grid-cols-1 gap-x-[18px] gap-y-5 md:grid-cols-2">{children}</div>
     </div>
   );
 }
