@@ -1,37 +1,42 @@
 -- CreateEnum
-CREATE TYPE "TaskPriority" AS ENUM ('CRITICAL', 'HIGH', 'NORMAL', 'LOW');
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TaskPriority') THEN
+        CREATE TYPE "TaskPriority" AS ENUM ('CRITICAL', 'HIGH', 'NORMAL', 'LOW');
+    END IF;
+END $$;
 
 -- AlterTable
-ALTER TABLE "User" ADD COLUMN "operationalRole" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "operationalRole" TEXT;
 
 -- AlterTable
 ALTER TABLE "Client"
-ADD COLUMN "brand" TEXT,
-ADD COLUMN "primaryContact" TEXT,
-ADD COLUMN "website" TEXT,
-ADD COLUMN "instagram" TEXT,
-ADD COLUMN "city" TEXT,
-ADD COLUMN "operationType" TEXT,
-ADD COLUMN "niche" TEXT,
-ADD COLUMN "mainGoal" TEXT,
-ADD COLUMN "contractStart" TIMESTAMP(3),
-ADD COLUMN "operationalFrequency" TEXT,
-ADD COLUMN "strategicNotes" TEXT,
-ADD COLUMN "communicationTone" TEXT,
-ADD COLUMN "restrictions" TEXT,
-ADD COLUMN "preferences" TEXT,
-ADD COLUMN "clientBehavior" TEXT;
+ADD COLUMN IF NOT EXISTS "brand" TEXT,
+ADD COLUMN IF NOT EXISTS "primaryContact" TEXT,
+ADD COLUMN IF NOT EXISTS "website" TEXT,
+ADD COLUMN IF NOT EXISTS "instagram" TEXT,
+ADD COLUMN IF NOT EXISTS "city" TEXT,
+ADD COLUMN IF NOT EXISTS "operationType" TEXT,
+ADD COLUMN IF NOT EXISTS "niche" TEXT,
+ADD COLUMN IF NOT EXISTS "mainGoal" TEXT,
+ADD COLUMN IF NOT EXISTS "contractStart" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "operationalFrequency" TEXT,
+ADD COLUMN IF NOT EXISTS "strategicNotes" TEXT,
+ADD COLUMN IF NOT EXISTS "communicationTone" TEXT,
+ADD COLUMN IF NOT EXISTS "restrictions" TEXT,
+ADD COLUMN IF NOT EXISTS "preferences" TEXT,
+ADD COLUMN IF NOT EXISTS "clientBehavior" TEXT;
 
 -- AlterTable
 ALTER TABLE "Plan"
-ADD COLUMN "category" TEXT,
-ADD COLUMN "frequency" TEXT,
-ADD COLUMN "intensity" TEXT,
-ADD COLUMN "averageDeadlineDays" INTEGER,
-ADD COLUMN "reviewDays" INTEGER,
-ADD COLUMN "demandLimit" INTEGER;
+ADD COLUMN IF NOT EXISTS "category" TEXT,
+ADD COLUMN IF NOT EXISTS "frequency" TEXT,
+ADD COLUMN IF NOT EXISTS "intensity" TEXT,
+ADD COLUMN IF NOT EXISTS "averageDeadlineDays" INTEGER,
+ADD COLUMN IF NOT EXISTS "reviewDays" INTEGER,
+ADD COLUMN IF NOT EXISTS "demandLimit" INTEGER;
 
 -- AlterTable
 ALTER TABLE "Task"
-ADD COLUMN "priority" "TaskPriority" NOT NULL DEFAULT 'NORMAL',
-ADD COLUMN "blocker" TEXT;
+ADD COLUMN IF NOT EXISTS "priority" "TaskPriority" NOT NULL DEFAULT 'NORMAL',
+ADD COLUMN IF NOT EXISTS "blocker" TEXT;
