@@ -6,6 +6,12 @@ import { z } from "zod";
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
+  category: z.string().optional(),
+  frequency: z.string().optional(),
+  intensity: z.string().optional(),
+  averageDeadlineDays: z.number().min(0).optional(),
+  reviewDays: z.number().min(0).optional(),
+  demandLimit: z.number().min(0).optional(),
   items: z.array(
     z.object({
       id: z.string().optional(),
@@ -57,6 +63,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     data: {
       ...(parsed.data.name && { name: parsed.data.name }),
       ...(parsed.data.description !== undefined && { description: parsed.data.description }),
+      ...(parsed.data.category !== undefined && { category: parsed.data.category || null }),
+      ...(parsed.data.frequency !== undefined && { frequency: parsed.data.frequency || null }),
+      ...(parsed.data.intensity !== undefined && { intensity: parsed.data.intensity || null }),
+      ...(parsed.data.averageDeadlineDays !== undefined && { averageDeadlineDays: parsed.data.averageDeadlineDays ?? null }),
+      ...(parsed.data.reviewDays !== undefined && { reviewDays: parsed.data.reviewDays ?? null }),
+      ...(parsed.data.demandLimit !== undefined && { demandLimit: parsed.data.demandLimit ?? null }),
       ...(parsed.data.items && {
         items: { create: parsed.data.items.map(({ id: _, ...item }) => item) },
       }),

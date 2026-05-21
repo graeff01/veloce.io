@@ -23,8 +23,8 @@ export function Badge({ children, variant = "gray", className }: BadgeProps) {
   const s = variantStyles[variant];
   return (
     <span
-      className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border", className)}
-      style={{ background: s.bg, color: s.color, borderColor: s.border }}
+      className={cn("inline-flex items-center px-2 py-0.5 text-xs font-medium border", className)}
+      style={{ background: s.bg, color: s.color, borderColor: s.border, borderRadius: "var(--radius-pill)" }}
     >
       {children}
     </span>

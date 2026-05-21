@@ -190,7 +190,7 @@ export function DashboardContent({ userName }: { userName: string }) {
                   }}
                 >
                   <Users size={32} style={{ margin: "0 auto 8px", opacity: 0.2 }} />
-                  <p style={{ fontSize: 13, marginBottom: 6 }}>Nenhum cliente cadastrado ainda</p>
+                  <p style={{ fontSize: 13, marginBottom: 6 }}>Carteira pronta para a primeira conta</p>
                   <Link
                     href="/clients"
                     style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
@@ -255,7 +255,7 @@ export function DashboardContent({ userName }: { userName: string }) {
                   Operação saudável
                 </p>
                 <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Nenhum alerta no momento
+                  Operacao sem alertas agora
                 </p>
               </div>
             )}

@@ -211,13 +211,13 @@ export function CommandCenter() {
       }}
     >
       <div
-        className="w-full overflow-hidden border"
+        className="op-enter w-full overflow-hidden border"
         style={{
           background: "var(--bg-surface)",
           maxWidth: 720,
           borderColor: "rgba(148, 163, 184, 0.32)",
-          borderRadius: 14,
-          boxShadow: "0 30px 90px rgba(15, 23, 42, 0.30)",
+          borderRadius: "var(--radius-modal)",
+          boxShadow: "var(--shadow-modal), 0 0 0 1px rgba(139,140,255,0.10)",
         }}
         onKeyDown={handleCommandKey}
       >
@@ -231,7 +231,7 @@ export function CommandCenter() {
                 setLoading(true);
                 setQuery(event.target.value);
               }}
-              placeholder="Buscar clientes, tarefas, campanhas ou responsaveis..."
+              placeholder="Comandar operacao: cliente, tarefa, campanha, responsavel..."
               className="h-full flex-1 bg-transparent text-[15px] outline-none"
               style={{ color: "var(--text-primary)" }}
             />
@@ -275,8 +275,8 @@ export function CommandCenter() {
         </div>
 
         <div className="flex items-center justify-between border-t px-5 py-3 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--bg-base)" }}>
-          <span>/ ou Ctrl K para abrir</span>
-          <span>Enter para selecionar / Esc para fechar</span>
+          <span>Ctrl K abre de qualquer lugar</span>
+          <span>Enter executa / Esc fecha</span>
         </div>
       </div>
     </div>
@@ -296,7 +296,7 @@ function SearchResults({
     return (
       <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
         <Search size={22} style={{ color: "var(--text-muted)", opacity: 0.5 }} />
-        <p className="mt-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Nada encontrado</p>
+        <p className="mt-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Nenhum rastro operacional encontrado</p>
         <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>Tente cliente, tarefa, bloqueio, nota ou responsavel.</p>
       </div>
     );
@@ -308,8 +308,14 @@ function SearchResults({
         <button
           key={`${item.type}-${item.id}`}
           onClick={() => onSelect(item)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 text-left transition-colors"
-          style={{ minHeight: 58, background: selected === index ? "var(--bg-elevated)" : "transparent" }}
+          className="flex w-full items-center gap-3 px-3 text-left"
+          style={{
+            minHeight: 58,
+            borderRadius: "var(--radius-card)",
+            background: selected === index ? "var(--bg-elevated)" : "transparent",
+            boxShadow: selected === index ? "inset 3px 0 0 var(--accent)" : "none",
+            transition: "background var(--motion-hover) var(--ease-enter), box-shadow var(--motion-hover) var(--ease-enter)",
+          }}
         >
           <ResultIcon type={item.type} />
           <span className="min-w-0 flex-1">

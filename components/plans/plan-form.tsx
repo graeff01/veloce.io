@@ -13,7 +13,18 @@ interface PlanItem {
 }
 
 interface PlanFormProps {
-  plan?: { id: string; name: string; description?: string; items: PlanItem[] };
+  plan?: {
+    id: string;
+    name: string;
+    description?: string;
+    category?: string;
+    frequency?: string;
+    intensity?: string;
+    averageDeadlineDays?: number | null;
+    reviewDays?: number | null;
+    demandLimit?: number | null;
+    items: PlanItem[];
+  };
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -21,6 +32,12 @@ interface PlanFormProps {
 export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
   const [name, setName] = useState(plan?.name ?? "");
   const [description, setDescription] = useState(plan?.description ?? "");
+  const [category, setCategory] = useState(plan?.category ?? "");
+  const [frequency, setFrequency] = useState(plan?.frequency ?? "");
+  const [intensity, setIntensity] = useState(plan?.intensity ?? "");
+  const [averageDeadlineDays, setAverageDeadlineDays] = useState(plan?.averageDeadlineDays?.toString() ?? "");
+  const [reviewDays, setReviewDays] = useState(plan?.reviewDays?.toString() ?? "");
+  const [demandLimit, setDemandLimit] = useState(plan?.demandLimit?.toString() ?? "");
   const [items, setItems] = useState<PlanItem[]>(
     plan?.items ?? [{ type: "", quantity: 1 }]
   );
@@ -53,7 +70,17 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, items }),
+      body: JSON.stringify({
+        name,
+        description,
+        category,
+        frequency,
+        intensity,
+        averageDeadlineDays: averageDeadlineDays ? Number(averageDeadlineDays) : undefined,
+        reviewDays: reviewDays ? Number(reviewDays) : undefined,
+        demandLimit: demandLimit ? Number(demandLimit) : undefined,
+        items,
+      }),
     });
 
     setLoading(false);
@@ -84,6 +111,44 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
         placeholder="Descreva o plano..."
         rows={2}
       />
+
+      <div className="grid grid-cols-3 gap-3">
+        <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Categoria operacional
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
+            <option value="">Selecionar</option>
+            <option value="Performance">Performance</option>
+            <option value="Conteudo">Conteudo</option>
+            <option value="Social">Social</option>
+            <option value="Institucional">Institucional</option>
+            <option value="Lancamento">Lancamento</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Frequencia
+          <select value={frequency} onChange={(e) => setFrequency(e.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
+            <option value="">Selecionar</option>
+            <option value="Semanal">Semanal</option>
+            <option value="Mensal">Mensal</option>
+            <option value="Continuo">Continuo</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Intensidade
+          <select value={intensity} onChange={(e) => setIntensity(e.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
+            <option value="">Selecionar</option>
+            <option value="Baixa">Baixa</option>
+            <option value="Media">Media</option>
+            <option value="Alta">Alta</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Input label="Prazo medio" type="number" min={0} value={averageDeadlineDays} onChange={(e) => setAverageDeadlineDays(e.target.value)} placeholder="dias" />
+        <Input label="Dias de revisao" type="number" min={0} value={reviewDays} onChange={(e) => setReviewDays(e.target.value)} placeholder="dias" />
+        <Input label="Limite de demandas" type="number" min={0} value={demandLimit} onChange={(e) => setDemandLimit(e.target.value)} placeholder="mensal" />
+      </div>
 
       {/* Items */}
       <div>

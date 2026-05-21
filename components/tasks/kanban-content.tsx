@@ -42,6 +42,27 @@ const COLUMNS: { id: TaskStatus; label: string; labelShort: string; color: strin
 
 const HEADER_HEIGHT = 57; // matches the top-level layout header
 
+function getColumnPulse(status: TaskStatus, count: number) {
+  if (count === 0) return getEmptyColumnCopy(status);
+  const labels: Record<TaskStatus, string> = {
+    TODO: "fila pronta para priorizar",
+    IN_PROGRESS: "execucao em movimento",
+    REVIEW: "aguardando olhar final",
+    DONE: "entregas fechadas",
+  };
+  return labels[status];
+}
+
+function getEmptyColumnCopy(status: TaskStatus) {
+  const labels: Record<TaskStatus, string> = {
+    TODO: "Sem novas entradas.",
+    IN_PROGRESS: "Nada em execucao agora.",
+    REVIEW: "Nenhuma aprovacao pendente.",
+    DONE: "Feche o que foi entregue.",
+  };
+  return labels[status];
+}
+
 export function KanbanContent({ clientId }: { clientId: string }) {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -84,13 +105,32 @@ export function KanbanContent({ clientId }: { clientId: string }) {
     ) return;
 
     const newStatus = destination.droppableId as TaskStatus;
-    setTasks((prev) =>
-      prev.map((t) => (t.id === draggableId ? { ...t, status: newStatus } : t))
+    const moving = tasks.find((task) => task.id === draggableId);
+    if (!moving) return;
+
+    const byStatus = COLUMNS.reduce((acc, column) => {
+      acc[column.id] = tasks
+        .filter((task) => task.status === column.id && task.id !== draggableId)
+        .sort((a, b) => a.order - b.order || new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      return acc;
+    }, {} as Record<TaskStatus, Task[]>);
+
+    byStatus[newStatus].splice(destination.index, 0, { ...moving, status: newStatus });
+    const orderedIds = byStatus[newStatus].map((task) => task.id);
+    const nextTasks = COLUMNS.flatMap((column) =>
+      byStatus[column.id].map((task, index) => ({
+        ...task,
+        status: column.id,
+        order: index,
+      }))
     );
+
+    setTasks(nextTasks);
+
     await fetch(`/api/tasks/${draggableId}/status`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ status: newStatus, order: destination.index, orderedIds }),
     });
   }
 
@@ -159,10 +199,10 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                 lineHeight: "20px",
               }}
             >
-              Kanban{clientName ? ` — ${clientName}` : ""}
+              Execucao{clientName ? ` / ${clientName}` : ""}
             </h1>
             <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: "15px" }}>
-              {tasks.length} tarefa{tasks.length !== 1 ? "s" : ""}
+              {tasks.length} tarefa{tasks.length !== 1 ? "s" : ""} no fluxo
             </p>
           </div>
         </div>
@@ -222,7 +262,7 @@ export function KanbanContent({ clientId }: { clientId: string }) {
           overflowY: "hidden",
           padding: "18px 20px",
           background:
-            "radial-gradient(circle at 18% 0%, rgba(139,140,255,0.10), transparent 32rem), var(--bg-base)",
+            "radial-gradient(circle at 18% 0%, rgba(139,140,255,0.08), transparent 30rem), var(--bg-base)",
         }}
       >
         {loading ? (
@@ -249,12 +289,11 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                 gap: 14,
                 height: "100%",
                 alignItems: "flex-start",
-                padding: 10,
-                border: "1px solid var(--border)",
-                borderRadius: 18,
-                background: "var(--bg-board)",
-                boxShadow: "var(--shadow-card)",
-                backdropFilter: "blur(14px)",
+                padding: 8,
+                border: "1px solid rgba(255,255,255,0.035)",
+                borderRadius: 22,
+                background: "linear-gradient(180deg, rgba(255,255,255,0.020), rgba(255,255,255,0.010))",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025)",
                 minWidth: "max-content",
               }}
             >
@@ -265,54 +304,67 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                     key={col.id}
                     style={{
                       flexShrink: 0,
-                      width: 286,
+                      width: 282,
                       display: "flex",
                       flexDirection: "column",
                       height: "100%",
-                      padding: 10,
-                      borderRadius: 14,
-                      background: "var(--bg-column)",
+                      padding: 0,
+                      borderRadius: "var(--radius-panel)",
+                      background: "linear-gradient(180deg, rgba(17,24,39,0.62), rgba(15,23,42,0.34))",
                       border: "1px solid var(--border)",
-                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.026)",
+                      overflow: "visible",
                     }}
                   >
-                    {/* Column header chip: "A FAZER · 3" */}
+                    {/* Column header chip */}
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        marginBottom: 10,
-                        padding: "0 2px",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        padding: "10px 11px",
+                        borderBottom: "1px solid var(--border)",
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.034), transparent)",
                       }}
                     >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: "0.06em",
+                            color: col.color,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {col.labelShort}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.72 }}>
+                          {getColumnPulse(col.id, colTasks.length)}
+                        </span>
+                      </div>
                       <span
                         style={{
+                          minWidth: 24,
+                          height: 22,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                           fontSize: 11,
                           fontWeight: 700,
-                          letterSpacing: "0.06em",
                           color: col.color,
                           background: col.softColor,
-                          padding: "3px 10px",
-                          borderRadius: 20,
+                          border: `1px solid ${col.color}40`,
+                          borderRadius: "var(--radius-pill)",
                         }}
                       >
-                        {col.labelShort}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: col.color,
-                          opacity: 0.7,
-                        }}
-                      >
-                        · {colTasks.length}
+                        {colTasks.length}
                       </span>
                     </div>
 
                     {/* Droppable area */}
-                    <Droppable droppableId={col.id}>
+                    <Droppable droppableId={col.id} ignoreContainerClipping>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}
@@ -321,20 +373,13 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                             flex: 1,
                             display: "flex",
                             flexDirection: "column",
-                            background: snapshot.isDraggingOver
-                              ? col.softColor
-                              : "rgba(255,255,255,0.015)",
-                            border: `1px solid ${
-                              snapshot.isDraggingOver
-                                ? col.color + "50"
-                                : "var(--border)"
-                            }`,
-                            borderRadius: 12,
-                            padding: "5px",
+                            background: snapshot.isDraggingOver ? `${col.color}10` : "transparent",
+                            border: "1px solid transparent",
+                            borderRadius: 14,
+                            padding: "9px 8px",
                             overflowY: "auto",
                             minHeight: 80,
-                            transition:
-                              "background 150ms ease-out, border-color 150ms ease-out",
+                            transition: "background 90ms linear",
                           }}
                         >
                           {colTasks.map((task, index) => (
@@ -350,11 +395,15 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                                   {...provided.dragHandleProps}
                                   style={{
                                     ...provided.draggableProps.style,
-                                    opacity: snapshot.isDragging ? 0.85 : 1,
+                                    marginBottom: 8,
+                                    opacity: snapshot.isDragging ? 0.96 : 1,
+                                    zIndex: snapshot.isDragging ? 70 : "auto",
+                                    pointerEvents: snapshot.isDragging ? "none" : "auto",
                                   }}
                                 >
                                   <TaskCard
                                     task={task}
+                                    dragging={snapshot.isDragging}
                                     onEdit={() => setEditTask(task)}
                                     onDelete={
                                       isAdmin
@@ -379,10 +428,12 @@ export function KanbanContent({ clientId }: { clientId: string }) {
                                   fontSize: 12,
                                   color: "var(--text-muted)",
                                   minHeight: 60,
-                                  opacity: 0.6,
+                                  opacity: 0.72,
+                                  textAlign: "center",
+                                  padding: "0 16px",
                                 }}
                               >
-                                Arraste tarefas aqui
+                                {getEmptyColumnCopy(col.id)}
                               </div>
                             )}
                         </div>
@@ -401,6 +452,7 @@ export function KanbanContent({ clientId }: { clientId: string }) {
         <TaskModal
           clientId={clientId}
           open={newTaskModal}
+          presentation="drawer"
           onClose={() => setNewTaskModal(false)}
           onSuccess={() => { setNewTaskModal(false); loadTasks(); }}
         />

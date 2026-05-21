@@ -76,7 +76,7 @@ export function PendingContent() {
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", boxShadow: "var(--shadow-card)", minHeight: 180 }}>
                   {group.tasks.length === 0 ? (
                     <div style={{ minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
-                      Sem bloqueios.
+                      Nenhum gargalo operacional.
                     </div>
                   ) : group.tasks.map((task) => <PendingRow key={task.id} task={task} />)}
                 </div>

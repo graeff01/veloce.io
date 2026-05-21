@@ -37,6 +37,7 @@ model User {
   email     String    @unique
   password  String
   role      Role      @default(OPERATIONAL)
+  operationalRole String?
   active    Boolean   @default(true)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -49,11 +50,26 @@ model User {
 model Client {
   id           String       @id @default(cuid())
   name         String
+  brand        String?
   slug         String       @unique
   email        String?
   phone        String?
+  primaryContact String?
+  website      String?
+  instagram    String?
+  city         String?
   status       ClientStatus @default(ACTIVE)
   activePlanId String?
+  operationType String?
+  niche        String?
+  mainGoal     String?
+  contractStart DateTime?
+  operationalFrequency String?
+  strategicNotes String?
+  communicationTone String?
+  restrictions String?
+  preferences  String?
+  clientBehavior String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
@@ -67,6 +83,12 @@ model Plan {
   id          String    @id @default(cuid())
   name        String
   description String?
+  category    String?
+  frequency   String?
+  intensity   String?
+  averageDeadlineDays Int?
+  reviewDays  Int?
+  demandLimit Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?

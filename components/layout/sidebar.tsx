@@ -257,7 +257,7 @@ export function Sidebar() {
 
         {clients.length === 0 && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 16px" }}>
-            Nenhum cliente
+            Carteira vazia
           </p>
         )}
       </div>

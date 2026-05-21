@@ -12,7 +12,7 @@ export function Card({ children, className, onClick, hoverable }: CardProps) {
     <div
       onClick={onClick}
       className={cn(
-        "rounded-xl border p-5",
+        "border",
         hoverable && "cursor-pointer hover:border-[var(--border-strong)]",
         onClick && "cursor-pointer",
         className
@@ -20,8 +20,10 @@ export function Card({ children, className, onClick, hoverable }: CardProps) {
       style={{
         background: "var(--bg-surface)",
         borderColor: "var(--border)",
+        borderRadius: "var(--radius-card)",
+        padding: "var(--space-16)",
         boxShadow: "var(--shadow-card)",
-        transition: "box-shadow 150ms ease-out",
+        transition: "box-shadow var(--motion-hover) var(--ease-enter), border-color var(--motion-hover) var(--ease-enter)",
       }}
     >
       {children}

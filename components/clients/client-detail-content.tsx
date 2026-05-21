@@ -19,10 +19,25 @@ import { formatDate } from "@/lib/utils";
 interface ClientDetail {
   id: string;
   name: string;
+  brand?: string;
   email?: string;
   phone?: string;
+  primaryContact?: string;
+  website?: string;
+  instagram?: string;
+  city?: string;
   status: "ACTIVE" | "INACTIVE" | "PAUSED";
   activePlanId?: string;
+  operationType?: string;
+  niche?: string;
+  mainGoal?: string;
+  contractStart?: string | null;
+  operationalFrequency?: string;
+  strategicNotes?: string;
+  communicationTone?: string;
+  restrictions?: string;
+  preferences?: string;
+  clientBehavior?: string;
   stats: {
     monthTasks: number;
     doneTasks: number;
@@ -177,6 +192,41 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     </div>
   );
 
+  const latestNote = client.notes.find((log) => typeof log.details?.note === "string");
+  const operationalMemory = [
+    {
+      label: "Ultima decisao registrada",
+      value: latestNote && typeof latestNote.details?.note === "string" ? latestNote.details.note : "Nenhuma nota operacional ainda",
+      tone: latestNote ? "var(--accent)" : "var(--text-muted)",
+    },
+    {
+      label: "Ritmo do cliente",
+      value: client.stats.daysSinceActivity === 999
+        ? "Sem historico suficiente"
+        : client.stats.daysSinceActivity >= 5
+          ? `Sem movimento ha ${client.stats.daysSinceActivity} dias`
+          : "Contato recente e operacao ativa",
+      tone: client.stats.daysSinceActivity >= 5 || client.stats.daysSinceActivity === 999 ? "var(--amber)" : "var(--green)",
+    },
+    {
+      label: "Proxima acao natural",
+      value: client.operationalContext.currentBlocker?.blocker
+        ? `Destravar: ${client.operationalContext.currentBlocker.blocker}`
+        : client.operationalContext.nextTask
+          ? `Preparar ${client.operationalContext.nextTask.title}`
+          : "Planejar nova entrega",
+      tone: client.operationalContext.currentBlocker ? "var(--red)" : "var(--blue)",
+    },
+  ];
+  const clientAreas = [
+    { label: "Operacao", value: client.operationType ?? "Nao definido", tone: "var(--accent)" },
+    { label: "Calendario", value: client.operationalFrequency ?? "Sem ritual", tone: "var(--blue)" },
+    { label: "Timeline", value: `${client.recentLogs.length} registros`, tone: "var(--green)" },
+    { label: "Pendencias", value: client.operationalContext.currentBlocker?.blocker ?? "Sem bloqueio", tone: client.operationalContext.currentBlocker ? "var(--amber)" : "var(--green)" },
+    { label: "Contexto", value: client.niche ?? "Nicho aberto", tone: "var(--accent)" },
+    { label: "Planejamento", value: currentPlan?.plan.name ?? "Sem plano ativo", tone: "var(--blue)" },
+  ];
+
   async function saveNote() {
     if (!note.trim()) return;
     setSavingNote(true);
@@ -197,6 +247,12 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     ATTENTION: { label: "Atencao", color: "var(--amber)", bg: "var(--amber-soft)" },
     CRITICAL: { label: "Critico", color: "var(--red)", bg: "var(--red-soft)" },
   }[client.stats.health];
+  const nextAction = client.operationalContext.currentBlocker?.blocker
+    ? `Destravar ${client.operationalContext.currentBlocker.blocker}`
+    : client.operationalContext.nextTask?.title ?? "Planejar proxima entrega";
+  const lastActivity = client.operationalContext.lastActivityAt ? timeAgo(client.operationalContext.lastActivityAt) : "sem registro";
+  const currentPending = client.operationalContext.currentBlocker?.title
+    ?? (client.stats.overdueTasks > 0 ? `${client.stats.overdueTasks} entrega${client.stats.overdueTasks === 1 ? "" : "s"} em atraso` : "sem pendencia critica");
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
@@ -258,6 +314,9 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 {client.phone && (
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{client.phone}</span>
                 )}
+                {client.primaryContact && (
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Resp. {client.primaryContact}</span>
+                )}
               </div>
             </div>
           </div>
@@ -285,10 +344,26 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
           </div>
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.3fr 0.75fr 1fr 0.8fr",
+            gap: 18,
+            marginTop: 18,
+            paddingTop: 14,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <SummaryLine label="Proxima acao" value={nextAction} tone={client.operationalContext.currentBlocker ? "var(--amber)" : "var(--accent)"} primary />
+          <SummaryLine label="Ultima atividade" value={lastActivity} tone={client.stats.daysSinceActivity >= 4 ? "var(--amber)" : "var(--green)"} />
+          <SummaryLine label="Pendencia" value={currentPending} tone={client.operationalContext.currentBlocker || client.stats.overdueTasks > 0 ? "var(--red)" : "var(--green)"} />
+          <SummaryLine label="Plano" value={currentPlan?.plan.name ?? "sem plano ativo"} tone="var(--blue)" />
+        </div>
+
         {/* Stat chips row */}
         <div
           style={{
-            display: "flex",
+            display: "none",
             gap: 8,
             marginTop: 16,
             paddingTop: 16,
@@ -354,6 +429,46 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 detail={client.operationalContext.currentBlocker?.title}
                 tone={client.operationalContext.currentBlocker ? "var(--amber)" : "var(--green)"}
               />
+            </div>
+          </section>
+
+          <section>
+            <h2
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+                marginBottom: 12,
+              }}
+            >
+              Memoria Operacional
+            </h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {operationalMemory.map((item) => (
+                <MemoryTile key={item.label} label={item.label} value={item.value} tone={item.tone} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+                marginBottom: 12,
+              }}
+            >
+              Areas do Cliente
+            </h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {clientAreas.map((area) => (
+                <AreaTile key={area.label} label={area.label} value={area.value} tone={area.tone} />
+              ))}
             </div>
           </section>
 
@@ -641,10 +756,29 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Modals ──────────────────────────────────────── */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar Cliente" size="sm">
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar perfil operacional" size="xl" variant="drawer">
         <ClientForm
           clientId={clientId}
-          initial={{ name: client.name, email: client.email, phone: client.phone }}
+          initial={{
+            name: client.name,
+            brand: client.brand,
+            email: client.email,
+            phone: client.phone,
+            primaryContact: client.primaryContact,
+            website: client.website,
+            instagram: client.instagram,
+            city: client.city,
+            operationType: client.operationType,
+            niche: client.niche,
+            mainGoal: client.mainGoal,
+            contractStart: client.contractStart,
+            operationalFrequency: client.operationalFrequency,
+            strategicNotes: client.strategicNotes,
+            communicationTone: client.communicationTone,
+            restrictions: client.restrictions,
+            preferences: client.preferences,
+            clientBehavior: client.clientBehavior,
+          }}
           onSuccess={() => { setEditOpen(false); load(); }}
           onCancel={() => setEditOpen(false)}
         />
@@ -675,12 +809,9 @@ function ContextTile({
   return (
     <div
       style={{
-        minHeight: 86,
-        padding: "12px 13px",
-        border: "1px solid var(--border)",
-        borderRadius: 9,
-        background: "var(--bg-surface)",
-        boxShadow: "var(--shadow-card)",
+        minHeight: 64,
+        padding: "0 0 12px",
+        borderBottom: "1px solid var(--border)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
@@ -697,6 +828,98 @@ function ContextTile({
           {detail}
         </p>
       )}
+    </div>
+  );
+}
+
+function SummaryLine({ label, value, tone, primary }: { label: string; value: string; tone: string; primary?: boolean }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, boxShadow: `0 0 0 4px ${tone}14`, flexShrink: 0 }} />
+        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          {label}
+        </p>
+      </div>
+      <p
+        style={{
+          fontSize: primary ? 15 : 13,
+          fontWeight: primary ? 700 : 600,
+          color: primary ? "var(--text-primary)" : "var(--text-secondary)",
+          lineHeight: primary ? "20px" : "18px",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MemoryTile({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div
+      className="op-enter"
+      style={{
+        minHeight: 82,
+        padding: "0 0 12px",
+        borderBottom: "1px solid var(--border)",
+        background: "transparent",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: tone,
+            boxShadow: `0 0 0 4px ${tone}16`,
+            flexShrink: 0,
+          }}
+        />
+        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          {label}
+        </p>
+      </div>
+      <p
+        style={{
+          fontSize: 12,
+          fontWeight: 560,
+          color: "var(--text-primary)",
+          lineHeight: "18px",
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function AreaTile({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div
+      style={{
+        minHeight: 58,
+        padding: "0 0 10px",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          {label}
+        </p>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, boxShadow: `0 0 0 4px ${tone}14` }} />
+      </div>
+      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {value}
+      </p>
     </div>
   );
 }

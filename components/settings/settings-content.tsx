@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   CheckCircle2,
+  Pencil,
   Plus,
   Search,
   Shield,
@@ -22,6 +23,7 @@ interface UserData {
   name: string;
   email: string;
   role: "ADMIN" | "OPERATIONAL";
+  operationalRole?: string | null;
   active: boolean;
   createdAt: string;
 }
@@ -31,6 +33,7 @@ export function SettingsContent() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [newUserOpen, setNewUserOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [query, setQuery] = useState("");
 
   async function load() {
@@ -54,6 +57,7 @@ export function SettingsContent() {
 
   const activeUsers = users.filter((user) => user.active).length;
   const adminUsers = users.filter((user) => user.role === "ADMIN").length;
+  const openTasksLabel = "Prioridades, status, blockers e templates";
 
   async function toggleActive(user: UserData) {
     await fetch(`/api/users/${user.id}`, {
@@ -69,6 +73,15 @@ export function SettingsContent() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
+    });
+    load();
+  }
+
+  async function changeOperationalRole(user: UserData, operationalRole: string) {
+    await fetch(`/api/users/${user.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationalRole }),
     });
     load();
   }
@@ -131,6 +144,13 @@ export function SettingsContent() {
           <Metric label="Usuarios" value={users.length} />
           <Metric label="Ativos" value={activeUsers} tone="green" />
           <Metric label="Administradores" value={adminUsers} tone="accent" />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 18 }}>
+          <WorkspaceTile title="Workspace" value="Veloce OPS" detail="Ambiente operacional da agencia" />
+          <WorkspaceTile title="Equipe" value={`${activeUsers} ativos`} detail="Perfis e acessos leves" />
+          <WorkspaceTile title="Operacao" value="Fluxo padrao" detail={openTasksLabel} />
+          <WorkspaceTile title="Aparencia" value="Dark premium" detail="Densidade alta, motion discreto" />
         </div>
 
         <div
@@ -196,7 +216,7 @@ export function SettingsContent() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(280px, 1.6fr) 180px 140px 108px",
+              gridTemplateColumns: "minmax(280px, 1.4fr) 180px 180px 140px 108px",
               gap: 16,
               alignItems: "center",
               padding: "10px 16px",
@@ -204,7 +224,7 @@ export function SettingsContent() {
               borderBottom: "1px solid var(--border)",
             }}
           >
-            {["Usuario", "Funcao", "Status", "Acoes"].map((header) => (
+            {["Usuario", "Perfil", "Permissao", "Status", "Acoes"].map((header) => (
               <span
                 key={header}
                 style={{
@@ -229,7 +249,7 @@ export function SettingsContent() {
             </div>
           ) : filteredUsers.length === 0 ? (
             <div style={{ padding: "54px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-              Nenhum usuario encontrado.
+              Nenhum operador encontrado.
             </div>
           ) : (
             <div>
@@ -240,7 +260,9 @@ export function SettingsContent() {
                   currentUserId={session?.user.id}
                   last={index === filteredUsers.length - 1}
                   onRoleChange={changeRole}
+                  onOperationalRoleChange={changeOperationalRole}
                   onToggleActive={toggleActive}
+                  onEdit={setEditingUser}
                   onDelete={deleteUser}
                 />
               ))}
@@ -250,11 +272,21 @@ export function SettingsContent() {
       </div>
 
       <Modal open={newUserOpen} onClose={() => setNewUserOpen(false)} title="Novo usuario" size="sm">
-        <NewUserForm
+        <UserForm
           onSuccess={() => { setNewUserOpen(false); load(); }}
           onCancel={() => setNewUserOpen(false)}
         />
       </Modal>
+
+      {editingUser && (
+        <Modal open={!!editingUser} onClose={() => setEditingUser(null)} title="Editar usuario" size="sm" variant="drawer">
+          <UserForm
+            user={editingUser}
+            onSuccess={() => { setEditingUser(null); load(); }}
+            onCancel={() => setEditingUser(null)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -278,19 +310,42 @@ function Metric({ label, value, tone }: { label: string; value: number; tone?: "
   );
 }
 
+function WorkspaceTile({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div
+      style={{
+        minHeight: 88,
+        padding: "13px 14px",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-card)",
+        background: "linear-gradient(180deg, var(--bg-surface), var(--bg-panel))",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>{title}</p>
+      <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{value}</p>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, lineHeight: "15px" }}>{detail}</p>
+    </div>
+  );
+}
+
 function UserRow({
   user,
   currentUserId,
   last,
   onRoleChange,
+  onOperationalRoleChange,
   onToggleActive,
+  onEdit,
   onDelete,
 }: {
   user: UserData;
   currentUserId?: string;
   last: boolean;
   onRoleChange: (user: UserData, role: "ADMIN" | "OPERATIONAL") => void;
+  onOperationalRoleChange: (user: UserData, operationalRole: string) => void;
   onToggleActive: (user: UserData) => void;
+  onEdit: (user: UserData) => void;
   onDelete: (user: UserData) => void;
 }) {
   const isCurrent = user.id === currentUserId;
@@ -299,7 +354,7 @@ function UserRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(280px, 1.6fr) 180px 140px 108px",
+        gridTemplateColumns: "minmax(280px, 1.4fr) 180px 180px 140px 108px",
         gap: 16,
         alignItems: "center",
         minHeight: 70,
@@ -339,6 +394,31 @@ function UserRow({
       </div>
 
       <div>
+        <select
+          value={user.operationalRole ?? "Operacoes"}
+          onChange={(event) => onOperationalRoleChange(user, event.target.value)}
+          style={{
+            width: 160,
+            height: 34,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "var(--bg-surface)",
+            color: "var(--text-secondary)",
+            padding: "0 10px",
+            fontSize: 12,
+            outline: "none",
+          }}
+        >
+          <option value="Founder">Founder</option>
+          <option value="Operacoes">Operacoes</option>
+          <option value="Design">Design</option>
+          <option value="Trafego">Trafego</option>
+          <option value="Social">Social</option>
+          <option value="Atendimento">Atendimento</option>
+        </select>
+      </div>
+
+      <div>
         {isCurrent ? (
           <Badge variant={user.role === "ADMIN" ? "purple" : "blue"}>
             {user.role === "ADMIN" ? <Shield size={10} /> : <UserRound size={10} />}
@@ -375,6 +455,24 @@ function UserRow({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
         {!isCurrent && (
           <>
+            <button
+              onClick={() => onEdit(user)}
+              title="Editar usuario"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--bg-surface)",
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <Pencil size={14} />
+            </button>
             <button
               onClick={() => onToggleActive(user)}
               title={user.active ? "Desativar" : "Ativar"}
@@ -418,11 +516,13 @@ function UserRow({
   );
 }
 
-function NewUserForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: () => void; onCancel: () => void }) {
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "OPERATIONAL">("OPERATIONAL");
+  const [role, setRole] = useState<"ADMIN" | "OPERATIONAL">(user?.role ?? "OPERATIONAL");
+  const [operationalRole, setOperationalRole] = useState(user?.operationalRole ?? "Operacoes");
+  const [active, setActive] = useState(user?.active ?? true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -431,10 +531,17 @@ function NewUserForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
     setError("");
     setLoading(true);
 
-    const res = await fetch("/api/users", {
-      method: "POST",
+    const res = await fetch(user ? `/api/users/${user.id}` : "/api/users", {
+      method: user ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password, role }),
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        role,
+        operationalRole,
+        ...(user ? { active } : null),
+      }),
     });
 
     setLoading(false);
@@ -452,11 +559,32 @@ function NewUserForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
       <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      <Input label="Senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimo 6 caracteres" required />
+      <Input
+        label={user ? "Nova senha" : "Senha"}
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={user ? "Deixe em branco para manter" : "Minimo 6 caracteres"}
+        required={!user}
+      />
+      <Select label="Perfil operacional" value={operationalRole} onChange={(e) => setOperationalRole(e.target.value)}>
+        <option value="Founder">Founder</option>
+        <option value="Operacoes">Operacoes</option>
+        <option value="Design">Design</option>
+        <option value="Trafego">Trafego</option>
+        <option value="Social">Social</option>
+        <option value="Atendimento">Atendimento</option>
+      </Select>
       <Select label="Funcao" value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "OPERATIONAL")}>
         <option value="OPERATIONAL">Operacional</option>
         <option value="ADMIN">Administrador</option>
       </Select>
+      {user && (
+        <Select label="Status" value={active ? "active" : "inactive"} onChange={(e) => setActive(e.target.value === "active")}>
+          <option value="active">Ativo</option>
+          <option value="inactive">Inativo</option>
+        </Select>
+      )}
 
       {error && (
         <p style={{ color: "var(--red)", background: "var(--red-soft)", borderRadius: 8, padding: "9px 11px", fontSize: 12 }}>
@@ -466,7 +594,9 @@ function NewUserForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" variant="primary" size="sm" loading={loading}>Criar usuario</Button>
+        <Button type="submit" variant="primary" size="sm" loading={loading}>
+          {user ? "Salvar usuario" : "Criar usuario"}
+        </Button>
       </div>
     </form>
   );

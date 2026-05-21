@@ -6,6 +6,12 @@ import { z } from "zod";
 const createPlanSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
+  category: z.string().optional(),
+  frequency: z.string().optional(),
+  intensity: z.string().optional(),
+  averageDeadlineDays: z.number().min(0).optional(),
+  reviewDays: z.number().min(0).optional(),
+  demandLimit: z.number().min(0).optional(),
   items: z.array(
     z.object({
       type: z.string().min(1),
@@ -45,6 +51,12 @@ export async function POST(req: Request) {
     data: {
       name: parsed.data.name,
       description: parsed.data.description,
+      category: parsed.data.category || null,
+      frequency: parsed.data.frequency || null,
+      intensity: parsed.data.intensity || null,
+      averageDeadlineDays: parsed.data.averageDeadlineDays ?? null,
+      reviewDays: parsed.data.reviewDays ?? null,
+      demandLimit: parsed.data.demandLimit ?? null,
       items: { create: parsed.data.items },
     },
     include: { items: true },

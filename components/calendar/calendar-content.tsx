@@ -214,7 +214,7 @@ export function CalendarContent({ clientId }: { clientId: string }) {
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4">
               {selectedTasks.length === 0 ? (
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Nenhuma tarefa neste dia</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Dia sem entregas programadas</p>
               ) : (
                 <div className="flex flex-col gap-3">
                   {selectedTasks.map((task) => (

@@ -169,14 +169,14 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess, presentati
     <Modal
       open={open}
       onClose={onClose}
-      title={task ? "Editar Tarefa" : "Nova Tarefa"}
+      title={task ? "Ajustar execucao" : "Nova demanda operacional"}
       size={presentation === "drawer" ? "lg" : "md"}
       variant={presentation === "drawer" ? "drawer" : "center"}
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
           <Button variant="primary" size="sm" loading={loading} onClick={handleSubmit}>
-            {task ? "Salvar" : "Criar Tarefa"}
+            {task ? "Salvar ajuste" : "Criar demanda"}
           </Button>
         </>
       }
@@ -199,7 +199,7 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess, presentati
             <TaskContext label="Bloqueio" value={blocker || "Sem bloqueio"} />
             <TaskContext label="Checklist" value={`${checklists.filter((item) => item.done).length}/${checklists.length}`} />
             <TaskContext label="Entrega" value={dueDate || "Sem prazo"} />
-            <TaskContext label="Fluxo" value="Painel lateral" />
+            <TaskContext label="Fluxo" value="Sem perder contexto" />
           </div>
         )}
 
@@ -212,12 +212,23 @@ export function TaskModal({ clientId, task, open, onClose, onSuccess, presentati
               style={{
                 height: 30,
                 border: "1px solid var(--border)",
-                borderRadius: 7,
+                borderRadius: "var(--radius-pill)",
                 background: "var(--bg-base)",
                 color: "var(--text-secondary)",
                 padding: "0 10px",
                 fontSize: 12,
                 cursor: "pointer",
+                transition: "background var(--motion-hover) var(--ease-enter), color var(--motion-hover) var(--ease-enter), border-color var(--motion-hover) var(--ease-enter)",
+              }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = "var(--accent-soft)";
+                event.currentTarget.style.color = "var(--accent)";
+                event.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = "var(--bg-base)";
+                event.currentTarget.style.color = "var(--text-secondary)";
+                event.currentTarget.style.borderColor = "var(--border)";
               }}
             >
               {template.label}

@@ -6,13 +6,16 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-const inputBase = "w-full rounded-lg text-sm border focus:outline-none transition-[border-color,box-shadow,background] placeholder:text-[var(--text-muted)]";
+const inputBase = "w-full text-sm border focus:outline-none transition-[border-color,box-shadow,background] placeholder:text-[var(--text-muted)]";
 const inputStyle = {
   background: "var(--bg-surface)",
   borderColor: "var(--border)",
+  borderRadius: "var(--radius-input)",
   color: "var(--text-primary)",
   minHeight: 40,
-  padding: "9px 11px",
+  padding: "9px var(--space-12)",
+  transitionDuration: "var(--motion-hover)",
+  transitionTimingFunction: "var(--ease-enter)",
 };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(

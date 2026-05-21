@@ -18,6 +18,12 @@ interface Plan {
   id: string;
   name: string;
   description?: string;
+  category?: string;
+  frequency?: string;
+  intensity?: string;
+  averageDeadlineDays?: number | null;
+  reviewDays?: number | null;
+  demandLimit?: number | null;
   items: PlanItem[];
   _count: { clientPlans: number };
 }
@@ -133,7 +139,7 @@ export function PlansContent() {
               <BookOpen size={24} style={{ color: "var(--accent)", opacity: 0.7 }} />
             </div>
             <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>
-              Nenhum plano cadastrado
+              Nenhum ritual de entrega criado
             </p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
               Crie templates de entrega para aplicar nos clientes
@@ -159,7 +165,7 @@ export function PlansContent() {
         )}
       </div>
 
-      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="Novo Plano" size="md">
+      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="Novo ritual operacional" size="lg" variant="drawer">
         <PlanForm
           onSuccess={() => { setNewOpen(false); load(); }}
           onCancel={() => setNewOpen(false)}
@@ -167,7 +173,7 @@ export function PlansContent() {
       </Modal>
 
       {editPlan && (
-        <Modal open={!!editPlan} onClose={() => setEditPlan(null)} title="Editar Plano" size="md">
+        <Modal open={!!editPlan} onClose={() => setEditPlan(null)} title="Editar ritual operacional" size="lg" variant="drawer">
           <PlanForm
             plan={editPlan}
             onSuccess={() => { setEditPlan(null); load(); }}
@@ -256,6 +262,13 @@ function PlanCard({
                 {plan.description}
               </p>
             )}
+            <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+              {[plan.category, plan.frequency, plan.intensity].filter(Boolean).map((item) => (
+                <span key={item} style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--radius-pill)", padding: "2px 7px", fontWeight: 650 }}>
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -347,6 +360,13 @@ function PlanCard({
             {plan._count.clientPlans} aplicações
           </span>
         </div>
+        {(plan.averageDeadlineDays || plan.reviewDays || plan.demandLimit) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              SLA {plan.averageDeadlineDays ?? "?"}d / revisao {plan.reviewDays ?? "?"}d / limite {plan.demandLimit ?? "livre"}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Plan items breakdown */}

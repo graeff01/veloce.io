@@ -5,9 +5,24 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  brand: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
+  primaryContact: z.string().optional(),
+  website: z.string().optional(),
+  instagram: z.string().optional(),
+  city: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE", "PAUSED"]).optional(),
+  operationType: z.string().optional(),
+  niche: z.string().optional(),
+  mainGoal: z.string().optional(),
+  contractStart: z.string().optional(),
+  operationalFrequency: z.string().optional(),
+  strategicNotes: z.string().optional(),
+  communicationTone: z.string().optional(),
+  restrictions: z.string().optional(),
+  preferences: z.string().optional(),
+  clientBehavior: z.string().optional(),
 });
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -104,9 +119,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     where: { id },
     data: {
       ...(parsed.data.name && { name: parsed.data.name }),
+      ...(parsed.data.brand !== undefined && { brand: parsed.data.brand || null }),
       ...(parsed.data.email !== undefined && { email: parsed.data.email || null }),
       ...(parsed.data.phone !== undefined && { phone: parsed.data.phone || null }),
+      ...(parsed.data.primaryContact !== undefined && { primaryContact: parsed.data.primaryContact || null }),
+      ...(parsed.data.website !== undefined && { website: parsed.data.website || null }),
+      ...(parsed.data.instagram !== undefined && { instagram: parsed.data.instagram || null }),
+      ...(parsed.data.city !== undefined && { city: parsed.data.city || null }),
       ...(parsed.data.status && { status: parsed.data.status }),
+      ...(parsed.data.operationType !== undefined && { operationType: parsed.data.operationType || null }),
+      ...(parsed.data.niche !== undefined && { niche: parsed.data.niche || null }),
+      ...(parsed.data.mainGoal !== undefined && { mainGoal: parsed.data.mainGoal || null }),
+      ...(parsed.data.contractStart !== undefined && { contractStart: parsed.data.contractStart ? new Date(parsed.data.contractStart) : null }),
+      ...(parsed.data.operationalFrequency !== undefined && { operationalFrequency: parsed.data.operationalFrequency || null }),
+      ...(parsed.data.strategicNotes !== undefined && { strategicNotes: parsed.data.strategicNotes || null }),
+      ...(parsed.data.communicationTone !== undefined && { communicationTone: parsed.data.communicationTone || null }),
+      ...(parsed.data.restrictions !== undefined && { restrictions: parsed.data.restrictions || null }),
+      ...(parsed.data.preferences !== undefined && { preferences: parsed.data.preferences || null }),
+      ...(parsed.data.clientBehavior !== undefined && { clientBehavior: parsed.data.clientBehavior || null }),
     },
   });
 

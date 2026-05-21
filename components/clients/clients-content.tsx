@@ -162,12 +162,12 @@ export function ClientsContent() {
               <Users size={24} style={{ color: "var(--text-muted)", opacity: 0.5 }} />
             </div>
             <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>
-              {search ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
+              {search ? "Nenhum sinal encontrado" : "Carteira ainda sem clientes"}
             </p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
               {search
-                ? `Nenhum resultado para "${search}"`
-                : "Adicione seu primeiro cliente para começar"}
+                ? `Nada na operacao corresponde a "${search}"`
+                : "Adicione a primeira conta para criar ritmo operacional"}
             </p>
             {!search && isAdmin && (
               <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
@@ -229,8 +229,9 @@ export function ClientsContent() {
       <Modal
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
-        title="Novo Cliente"
-        size="sm"
+        title="Novo perfil operacional"
+        size="xl"
+        variant="drawer"
       >
         <ClientForm
           onSuccess={() => { setShowNewModal(false); loadClients(); }}

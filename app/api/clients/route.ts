@@ -6,8 +6,23 @@ import { z } from "zod";
 
 const createClientSchema = z.object({
   name: z.string().min(1),
+  brand: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
+  primaryContact: z.string().optional(),
+  website: z.string().optional(),
+  instagram: z.string().optional(),
+  city: z.string().optional(),
+  operationType: z.string().optional(),
+  niche: z.string().optional(),
+  mainGoal: z.string().optional(),
+  contractStart: z.string().optional(),
+  operationalFrequency: z.string().optional(),
+  strategicNotes: z.string().optional(),
+  communicationTone: z.string().optional(),
+  restrictions: z.string().optional(),
+  preferences: z.string().optional(),
+  clientBehavior: z.string().optional(),
 });
 
 export async function GET() {
@@ -103,8 +118,23 @@ export async function POST(req: Request) {
     data: {
       name: parsed.data.name,
       slug,
+      brand: parsed.data.brand || null,
       email: parsed.data.email || null,
       phone: parsed.data.phone || null,
+      primaryContact: parsed.data.primaryContact || null,
+      website: parsed.data.website || null,
+      instagram: parsed.data.instagram || null,
+      city: parsed.data.city || null,
+      operationType: parsed.data.operationType || null,
+      niche: parsed.data.niche || null,
+      mainGoal: parsed.data.mainGoal || null,
+      contractStart: parsed.data.contractStart ? new Date(parsed.data.contractStart) : null,
+      operationalFrequency: parsed.data.operationalFrequency || null,
+      strategicNotes: parsed.data.strategicNotes || null,
+      communicationTone: parsed.data.communicationTone || null,
+      restrictions: parsed.data.restrictions || null,
+      preferences: parsed.data.preferences || null,
+      clientBehavior: parsed.data.clientBehavior || null,
     },
   });
 

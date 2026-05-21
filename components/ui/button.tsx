@@ -13,20 +13,20 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary:   "text-white border-transparent shadow-sm hover:brightness-[0.98]",
+  primary:   "text-white border-transparent hover:brightness-[0.98]",
   secondary: "border hover:bg-[var(--bg-hover)] text-[var(--text-primary)] bg-[var(--bg-surface)]",
   ghost:     "border-transparent hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
   danger:    "border-transparent text-[var(--red)]",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: "px-3 text-xs rounded-lg min-h-8",
-  md: "px-4 text-sm rounded-lg min-h-10",
-  lg: "px-5 text-sm rounded-lg min-h-11",
+  sm: "px-3 text-xs min-h-8",
+  md: "px-4 text-sm min-h-10",
+  lg: "px-5 text-sm min-h-11",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "secondary", size = "md", loading, className, children, disabled, ...props }, ref) => {
+  ({ variant = "secondary", size = "md", loading, className, children, disabled, style, ...props }, ref) => {
     return (
       <button
         ref={ref}
@@ -38,7 +38,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           sizeClasses[size],
           className
         )}
-        style={variant === "primary" ? { background: "var(--accent)", borderColor: "var(--accent)" } : undefined}
+        style={{
+          borderRadius: "var(--radius-button)",
+          transitionDuration: "var(--motion-hover)",
+          transitionTimingFunction: "var(--ease-enter)",
+          boxShadow: variant === "primary" ? "var(--shadow-surface-subtle)" : undefined,
+          ...(variant === "primary" ? { background: "var(--accent)", borderColor: "var(--accent)" } : null),
+          ...style,
+        }}
         {...props}
       >
         {loading && (

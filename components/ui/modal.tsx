@@ -50,7 +50,7 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
         display: "flex",
         alignItems: variant === "drawer" ? "stretch" : "center",
         justifyContent: variant === "drawer" ? "flex-end" : "center",
-        padding: variant === "drawer" ? "12px" : 20,
+        padding: variant === "drawer" ? "var(--space-12)" : "var(--space-24)",
         background: "rgba(15, 23, 42, 0.46)",
         backdropFilter: "blur(10px)",
       }}
@@ -68,8 +68,8 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
           overflow: "hidden",
           background: "var(--bg-surface)",
           border: "1px solid rgba(148, 163, 184, 0.28)",
-          borderRadius: 14,
-          boxShadow: "0 26px 80px rgba(15, 23, 42, 0.24)",
+          borderRadius: "var(--radius-modal)",
+          boxShadow: "var(--shadow-modal)",
         }}
       >
         {/* Header */}
@@ -78,12 +78,12 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 16,
-            padding: "18px 20px 14px",
+            gap: "var(--space-16)",
+            padding: "18px var(--space-24) 14px",
             borderBottom: "1px solid var(--border)",
           }}
         >
-          <h2 style={{ color: "var(--text-primary)", fontSize: 15, fontWeight: 650, lineHeight: "20px" }}>
+          <h2 style={{ color: "var(--text-primary)", fontSize: "var(--type-body-large-size)", fontWeight: "var(--font-semibold)", lineHeight: "var(--type-body-large-line)" }}>
             {title}
           </h2>
           <button
@@ -92,7 +92,7 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
             style={{
               width: 30,
               height: 30,
-              borderRadius: 8,
+              borderRadius: "var(--radius-button)",
               border: "1px solid transparent",
               display: "flex",
               alignItems: "center",
@@ -107,7 +107,7 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-24)" }}>
           {children}
         </div>
 
@@ -118,8 +118,8 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-end",
-              gap: 10,
-              padding: "14px 20px",
+              gap: "var(--space-12)",
+              padding: "14px var(--space-24)",
               borderTop: "1px solid var(--border)",
               background: "var(--bg-base)",
             }}

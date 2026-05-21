@@ -60,6 +60,39 @@ const fallback: TodayData = {
   generatedAt: new Date().toISOString(),
 };
 
+function getOperationalBrief(data: TodayData) {
+  if (data.summary.overdue > 0) {
+    return {
+      title: `${data.summary.overdue} entrega${data.summary.overdue === 1 ? "" : "s"} em atraso`,
+      detail: "comece pelo que trava qualidade",
+      color: "var(--red)",
+      pulse: true,
+    };
+  }
+  if (data.summary.blocked > 0) {
+    return {
+      title: `${data.summary.blocked} bloqueio${data.summary.blocked === 1 ? "" : "s"} pedindo decisao`,
+      detail: "remova atrito antes de criar mais fila",
+      color: "var(--amber)",
+      pulse: true,
+    };
+  }
+  if (data.summary.dueToday > 0) {
+    return {
+      title: `${data.summary.dueToday} entrega${data.summary.dueToday === 1 ? "" : "s"} para concluir hoje`,
+      detail: "execucao clara, sem ruido",
+      color: "var(--accent)",
+      pulse: false,
+    };
+  }
+  return {
+    title: "Operacao tranquila hoje",
+    detail: "sem urgencias abertas",
+    color: "var(--green)",
+    pulse: false,
+  };
+}
+
 export function TodayContent() {
   const [data, setData] = useState<TodayData>(fallback);
   const [loading, setLoading] = useState(true);
@@ -97,14 +130,21 @@ export function TodayContent() {
     { label: "Validar entregas de hoje", active: data.dueToday.length > 0 },
     { label: "Destravar pendencias", active: data.blocked.length > 0 },
   ];
+  const brief = getOperationalBrief(data);
+  const liveSignals = [
+    `${data.summary.dueToday} entrega${data.summary.dueToday === 1 ? "" : "s"} hoje`,
+    `${data.summary.blocked} bloqueio${data.summary.blocked === 1 ? "" : "s"} aberto${data.summary.blocked === 1 ? "" : "s"}`,
+    `${data.summary.inactiveClients + data.summary.noFutureClients} cliente${data.summary.inactiveClients + data.summary.noFutureClients === 1 ? "" : "s"} pedindo contexto`,
+  ];
 
   if (loading) return <TodaySkeleton />;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
       <div
+        className="op-enter"
         style={{
-          background: "var(--bg-surface)",
+          background: "linear-gradient(180deg, var(--bg-surface), var(--bg-panel))",
           borderBottom: "1px solid var(--border)",
           padding: "22px 32px 18px",
         }}
@@ -120,6 +160,21 @@ export function TodayContent() {
             <p style={{ fontSize: 13, color: "var(--text-muted)", textTransform: "capitalize" }}>
               {today}
             </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: brief.color }}>
+              <span
+                className={brief.pulse ? "live-dot" : undefined}
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: brief.color,
+                  boxShadow: `0 0 0 4px ${brief.color}18`,
+                  flexShrink: 0,
+                }}
+              />
+              <p style={{ fontSize: 13, fontWeight: 600, lineHeight: "18px" }}>{brief.title}</p>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{brief.detail}</span>
+            </div>
           </div>
           <button
             type="button"
@@ -143,7 +198,31 @@ export function TodayContent() {
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
+          {liveSignals.map((signal, index) => (
+            <span
+              key={signal}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                height: 28,
+                padding: "0 10px",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-pill)",
+                background: index === 0 ? "var(--accent-soft)" : "var(--bg-base)",
+                color: index === 0 ? "var(--accent)" : "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 560,
+              }}
+            >
+              <span style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor", opacity: 0.72 }} />
+              {signal}
+            </span>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 14 }}>
           <PulseMetric label="Urgente" value={data.urgentTasks.length} color="var(--red)" alert={data.urgentTasks.length > 0} />
           <PulseMetric label="Hoje" value={data.summary.dueToday} color="var(--amber)" />
           <PulseMetric label="Bloqueado" value={data.summary.blocked} color="var(--accent)" alert={data.summary.blocked > 0} />
@@ -182,20 +261,20 @@ export function TodayContent() {
           </section>
 
           <SectionHeader title="Urgente" count={data.urgentTasks.length} />
-          <OperationalList empty="Nenhuma prioridade pendente.">
+          <OperationalList empty="Operacao tranquila agora.">
             {data.urgentTasks.map((task) => <TaskRow key={task.id} task={task} />)}
           </OperationalList>
 
           {!focusMode && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <div>
               <SectionHeader title="Vencendo hoje" count={data.dueToday.length} />
-              <OperationalList compact empty="Nada vencendo hoje.">
+              <OperationalList compact empty="Agenda do dia respirando.">
                 {data.dueToday.slice(0, 8).map((task) => <TaskRow key={task.id} task={task} compact />)}
               </OperationalList>
             </div>
             <div>
               <SectionHeader title="Bloqueado" count={data.blocked.length} />
-              <OperationalList compact empty="Nada bloqueado agora.">
+              <OperationalList compact empty="Nenhum gargalo ativo.">
                 {data.blocked.slice(0, 8).map((task) => <TaskRow key={task.id} task={task} compact overdue />)}
               </OperationalList>
             </div>
@@ -206,12 +285,12 @@ export function TodayContent() {
           {!focusMode && (
             <>
           <SectionHeader title="Pendencias criticas" count={data.criticals.length} />
-          <OperationalList empty="Operacao sem pendencias criticas.">
+          <OperationalList empty="Nenhuma pendencia critica.">
             {data.criticals.map((item) => <CriticalRow key={item.id} item={item} />)}
           </OperationalList>
 
           <SectionHeader title="Clientes precisando atencao" count={riskClients.length} />
-          <OperationalList compact empty="Nenhum cliente em risco agora.">
+          <OperationalList compact empty="Carteira sob controle.">
             {riskClients.map((client) => <RiskClientRow key={client.id} client={client} />)}
           </OperationalList>
             </>
@@ -225,12 +304,15 @@ export function TodayContent() {
 function PulseMetric({ label, value, color, alert }: { label: string; value: number; color: string; alert?: boolean }) {
   return (
     <div
+      className="op-enter"
       style={{
         background: alert ? `${color}10` : "var(--bg-base)",
         border: `1px solid ${alert ? `${color}45` : "var(--border)"}`,
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         padding: "11px 12px",
         minHeight: 66,
+        boxShadow: alert ? `0 0 0 1px ${color}12, var(--shadow-card)` : "var(--shadow-card)",
+        transition: "transform var(--motion-hover) var(--ease-enter), border-color var(--motion-hover) var(--ease-enter)",
       }}
     >
       <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>{label}</p>
@@ -263,7 +345,7 @@ function OperationalList({ children, empty, compact }: { children: React.ReactNo
       style={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         overflow: "hidden",
         boxShadow: "var(--shadow-card)",
         minHeight: compact ? 92 : 132,
@@ -291,10 +373,16 @@ function TaskRow({ task, compact, overdue }: { task: Task; compact?: boolean; ov
           minHeight: compact ? 54 : 62,
           padding: compact ? "9px 12px" : "10px 14px",
           borderBottom: "1px solid var(--border)",
-          transition: "background 140ms ease-out",
+          transition: "background var(--motion-hover) var(--ease-enter), transform var(--motion-hover) var(--ease-enter)",
         }}
-        onMouseEnter={(event) => (event.currentTarget.style.background = "var(--bg-elevated)")}
-        onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = "var(--bg-elevated)";
+          event.currentTarget.style.transform = "translateX(2px)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent";
+          event.currentTarget.style.transform = "translateX(0)";
+        }}
       >
         <div style={{ minWidth: 0 }}>
           <p style={{ fontSize: 13, fontWeight: 540, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -358,10 +446,10 @@ function RiskClientRow({ client }: { client: { id: string; name: string; reason:
 function TodaySkeleton() {
   return (
     <div style={{ flex: 1, padding: 32, background: "var(--bg-base)", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ height: 128, borderRadius: 8, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
+      <div className="skeleton-surface" style={{ height: 128, borderRadius: "var(--radius-panel)" }} />
       <div style={{ display: "grid", gridTemplateColumns: "1.45fr 0.8fr", gap: 22 }}>
-        <div style={{ height: 360, borderRadius: 8, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
-        <div style={{ height: 360, borderRadius: 8, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
+        <div className="skeleton-surface" style={{ height: 360, borderRadius: "var(--radius-panel)" }} />
+        <div className="skeleton-surface" style={{ height: 360, borderRadius: "var(--radius-panel)" }} />
       </div>
     </div>
   );

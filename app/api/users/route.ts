@@ -9,6 +9,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.enum(["ADMIN", "OPERATIONAL"]).default("OPERATIONAL"),
+  operationalRole: z.string().optional(),
 });
 
 export async function GET() {
@@ -22,6 +23,7 @@ export async function GET() {
       name: true,
       email: true,
       role: true,
+      operationalRole: true,
       active: true,
       createdAt: true,
     },
@@ -54,8 +56,9 @@ export async function POST(req: Request) {
       email: parsed.data.email,
       password: hashedPassword,
       role: parsed.data.role,
+      operationalRole: parsed.data.operationalRole || null,
     },
-    select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, operationalRole: true, active: true, createdAt: true },
   });
 
   await logAction(session!.user.id, "CREATE_USER", undefined, undefined, { email: user.email, role: user.role });

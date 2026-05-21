@@ -1,8 +1,7 @@
 "use client";
 
-import { AlertTriangle, CheckSquare, CirclePause, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckSquare, CirclePause, MoreHorizontal, Pencil, Trash2, UserRound } from "lucide-react";
 import { useState } from "react";
-import { Avatar } from "@/components/ui/avatar";
 import { formatDate, isOverdue } from "@/lib/utils";
 import type { Task } from "./kanban-content";
 
@@ -10,6 +9,7 @@ interface TaskCardProps {
   task: Task;
   onEdit: () => void;
   onDelete?: () => void;
+  dragging?: boolean;
 }
 
 const typeConfig: Record<string, { bg: string; color: string }> = {
@@ -37,7 +37,7 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   LOW: { label: "Baixa", color: "var(--text-muted)" },
 };
 
-export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
+export function TaskCard({ task, onEdit, onDelete, dragging }: TaskCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const overdue = isOverdue(task.dueDate) && task.status !== "DONE";
@@ -45,35 +45,61 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
   const totalChecks = task.checklists.length;
   const typeCfg = typeConfig[task.type ?? ""] ?? { bg: "var(--bg-elevated)", color: "var(--text-muted)" };
   const priorityCfg = priorityConfig[task.priority ?? "NORMAL"];
-  const leftBorderColor = task.priority === "CRITICAL"
+  const signalColor = task.priority === "CRITICAL"
     ? "var(--red)"
     : overdue ? "var(--red)" : statusBorderColor[task.status] ?? "var(--border-strong)";
+  const operationalMeta = [
+    task.type,
+    overdue ? "Atrasada" : task.dueDate ? formatDate(task.dueDate) : null,
+    totalChecks > 0 ? `${doneChecks}/${totalChecks}` : null,
+  ].filter(Boolean).join(" / ");
 
   return (
     <div
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: 8,
+        gap: 9,
         padding: "9px 10px",
-        border: `1px solid ${hovered ? "var(--border-strong)" : "var(--border)"}`,
-        borderLeft: `2px solid ${hovered ? "var(--accent)" : leftBorderColor}`,
-        background: hovered ? "var(--bg-card)" : "rgba(255,255,255,0.018)",
-        borderRadius: 7,
+        border: `1px solid ${hovered || dragging ? "var(--border-strong)" : "var(--border)"}`,
+        background: hovered || dragging
+          ? "linear-gradient(180deg, var(--bg-card), rgba(17,24,39,0.82))"
+          : "linear-gradient(180deg, rgba(255,255,255,0.040), rgba(255,255,255,0.018))",
+        borderRadius: 12,
         cursor: "pointer",
         position: "relative",
-        transition: "background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out",
-        marginBottom: 4,
+        transition: dragging ? "none" : "background var(--motion-hover) var(--ease-enter), border-color var(--motion-hover) var(--ease-enter), box-shadow var(--motion-hover) var(--ease-enter), transform var(--motion-hover) var(--ease-enter), opacity var(--motion-hover) var(--ease-enter)",
+        marginBottom: 0,
         minHeight: 66,
-        boxShadow: hovered ? "var(--glow-subtle)" : "0 1px 0 rgba(255,255,255,0.025)",
-        transform: hovered ? "translateX(1px)" : "translateX(0)",
+        boxShadow: dragging
+          ? "0 14px 34px rgba(0,0,0,0.30), 0 0 0 1px var(--border-strong)"
+          : hovered
+            ? `0 10px 28px rgba(0,0,0,0.22), 0 0 0 1px ${signalColor}16`
+            : "0 1px 2px rgba(0,0,0,0.16)",
+        transform: dragging ? "translateY(0)" : hovered ? "translateY(-1px)" : "translateY(0)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onEdit}
     >
+      <span
+        style={{
+          width: 3,
+          alignSelf: "stretch",
+          minHeight: 40,
+          borderRadius: "var(--radius-pill)",
+          background: signalColor,
+          opacity: hovered || dragging ? 1 : 0.68,
+          boxShadow: hovered || dragging ? `0 0 18px ${signalColor}44` : "none",
+          transition: dragging ? "none" : "opacity var(--motion-hover) var(--ease-enter), box-shadow var(--motion-hover) var(--ease-enter)",
+        }}
+      />
+
       {/* Task title + meta */}
       <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 10, color: overdue ? "var(--red)" : "var(--text-muted)", lineHeight: "14px", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {operationalMeta || "Tarefa operacional"}
+        </p>
         <p
           style={{
             fontSize: 12,
@@ -92,7 +118,13 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
         </p>
 
         {/* Meta row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
+          {task.assignee && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--text-muted)", lineHeight: "15px" }}>
+              <UserRound size={9} />
+              {task.assignee.name.split(" ")[0]}
+            </span>
+          )}
           {/* Type badge — small pill */}
           {task.type && (
             <span
@@ -101,8 +133,8 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                 fontWeight: 500,
                 background: hovered ? typeCfg.bg : "transparent",
                 color: typeCfg.color,
-                padding: "1px 5px",
-                borderRadius: 5,
+                padding: "1px 6px",
+                borderRadius: "var(--radius-pill)",
                 flexShrink: 0,
                 lineHeight: "15px",
               }}
@@ -171,7 +203,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--border)",
                 padding: "1px 6px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-pill)",
                 lineHeight: "15px",
               }}
             >
@@ -180,11 +212,6 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
             </span>
           )}
         </div>
-      </div>
-
-      {/* Assignee avatar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 1 }}>
-        {task.assignee && <Avatar name={task.assignee.name} size="xs" />}
       </div>
 
       {/* More menu */}
@@ -198,7 +225,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
             style={{
               width: 22,
               height: 22,
-              borderRadius: 5,
+              borderRadius: "var(--radius-button)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
