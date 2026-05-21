@@ -220,10 +220,10 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="min-w-0 rounded-2xl border p-6" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
+        <main className="min-w-0 rounded-2xl border p-7" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
           <StepRail steps={steps} current={step} onSelect={setStep} />
 
-          <div className="mt-8">
+          <div className="mt-9">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
                 <FieldGroup title="Identidade">
@@ -413,9 +413,9 @@ function SetupSection({ title, description, children }: { title: string; descrip
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
-      <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
+    <div className="rounded-2xl border px-6 py-5" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
+      <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -491,18 +491,18 @@ function OperationalModule({
 
 function Field({ label, value, onChange, placeholder, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: string; required?: boolean }) {
   return (
-    <label className="group rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
+    <label className="group block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
+      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="block h-8 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return (
-    <label className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
+    <label className="block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
+      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="block h-8 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
         <option value="">Selecionar</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
@@ -512,8 +512,8 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 
 function TextAreaField({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
   return (
-    <label className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+    <label className="block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
+      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
       <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
