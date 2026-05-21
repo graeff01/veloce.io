@@ -197,13 +197,13 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
-      <div className="mb-5">
+      <div className="mb-7 px-1">
         <div className="flex items-start justify-between gap-6">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
               Setup operacional
             </p>
-            <h2 className="mt-2 text-[20px] font-semibold leading-7" style={{ color: "var(--text-primary)" }}>
+            <h2 className="mt-3 text-[20px] font-semibold leading-7" style={{ color: "var(--text-primary)" }}>
               {operationName}
             </h2>
             <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
@@ -214,16 +214,16 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             {progress}% pronto
           </span>
         </div>
-        <div className="mt-5 h-px w-full" style={{ background: "var(--border)" }}>
+        <div className="mt-6 h-px w-full" style={{ background: "rgba(148,163,184,0.14)" }}>
           <div style={{ width: `${progress}%`, height: 1, background: "var(--accent)", transition: "width 240ms var(--ease-enter)" }} />
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="min-w-0 rounded-2xl border p-7" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
+      <div className="grid min-h-0 flex-1 grid-cols-1 justify-center gap-6 xl:grid-cols-[minmax(0,780px)_320px]">
+        <main className="min-w-0 rounded-2xl border px-7 py-6" style={{ borderColor: "rgba(148,163,184,0.16)", background: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
           <StepRail steps={steps} current={step} onSelect={setStep} />
 
-          <div className="mt-9">
+          <div className="mt-7 px-1">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
                 <FieldGroup title="Identidade">
@@ -304,7 +304,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
           </div>
         </main>
 
-        <aside className="min-w-0 rounded-2xl border p-5 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.20)", background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.94))", boxShadow: "0 22px 48px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+        <aside className="min-w-0 rounded-2xl border p-4 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.16)", background: "linear-gradient(180deg, rgba(15,23,42,0.90), rgba(17,24,39,0.86))", boxShadow: "0 18px 38px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.035)" }}>
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
               <Gauge size={15} />
@@ -315,7 +315,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             </div>
           </div>
 
-          <div className="mt-6 space-y-5">
+          <div className="mt-5 space-y-4">
             <SummaryBlock title="Frentes ativas" empty="Nenhuma frente ativada">
               {activeModules.map((module) => (
                 <SummaryLine key={module.key} dot={module.tone} label={module.label} value={operationalScope[module.key].volume || "sem volume definido"} />
@@ -344,7 +344,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
       {error && <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--accent-red)", background: "rgba(239,68,68,0.1)" }}>{error}</p>}
 
-      <div className="mt-6 flex justify-end gap-3 border-t pt-5" style={{ borderColor: "rgba(148,163,184,0.18)" }}>
+      <div className="mt-6 flex justify-end gap-3 border-t px-1 pt-5" style={{ borderColor: "rgba(148,163,184,0.12)" }}>
         {step === 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         ) : (
@@ -369,7 +369,7 @@ const fieldStyle = {
 
 function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; icon: React.ElementType; done: boolean }>; current: number; onSelect: (index: number) => void }) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
       {steps.map((step, index) => {
         const Icon = step.icon;
         const active = index === current;
@@ -378,7 +378,7 @@ function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; 
             key={step.label}
             type="button"
             onClick={() => onSelect(index)}
-            className="relative flex h-12 items-center gap-2 rounded-xl border px-3 text-left transition-all"
+            className="relative flex h-11 items-center gap-2 rounded-xl border px-3 text-left transition-all"
             style={{
               borderColor: active ? "rgba(124,58,237,0.38)" : "var(--border)",
               background: active ? "linear-gradient(180deg, var(--accent-soft), var(--bg-surface))" : "var(--bg-elevated)",
@@ -404,18 +404,18 @@ function SetupSection({ title, description, children }: { title: string; descrip
     <section className="op-enter">
       <div className="mb-6">
         <h3 className="text-[18px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{description}</p>
+        <p className="mt-1.5 text-sm leading-5" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
-      <div className="flex flex-col gap-5">{children}</div>
+      <div className="flex max-w-[740px] flex-col gap-6">{children}</div>
     </section>
   );
 }
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border px-6 py-5" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
-      <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">{children}</div>
+    <div className="rounded-2xl px-6 py-5" style={{ background: "rgba(255,255,255,0.022)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.12)" }}>
+      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.10em]" style={{ color: "rgba(148,163,184,0.72)" }}>{title}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -491,17 +491,17 @@ function OperationalModule({
 
 function Field({ label, value, onChange, placeholder, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: string; required?: boolean }) {
   return (
-    <label className="group block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
-      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="block h-8 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
+    <label className="group block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
+      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="block h-8 w-full bg-transparent text-sm leading-5 outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return (
-    <label className="block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
-      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+    <label className="block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
+      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)} className="block h-8 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
         <option value="">Selecionar</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -512,8 +512,8 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 
 function TextAreaField({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
   return (
-    <label className="block rounded-xl border px-4 py-3.5" style={{ borderColor: "rgba(148,163,184,0.20)", background: "rgba(15,23,42,0.38)" }}>
-      <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+    <label className="block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
+      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
       <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
@@ -523,8 +523,8 @@ function SummaryBlock({ title, empty, children }: { title: string; empty: string
   const hasContent = Array.isArray(children) ? children.some(Boolean) : Boolean(children);
   return (
     <div>
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="rounded-xl border p-4" style={{ borderColor: "rgba(148,163,184,0.18)", background: "rgba(255,255,255,0.035)" }}>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: "rgba(148,163,184,0.68)" }}>{title}</p>
+      <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.12)" }}>
         {hasContent ? <div className="space-y-2">{children}</div> : <p className="text-xs" style={{ color: "var(--text-muted)" }}>{empty}</p>}
       </div>
     </div>
