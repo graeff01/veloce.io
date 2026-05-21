@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -11,7 +12,6 @@ import {
   BookOpen,
   Settings,
   LogOut,
-  Zap,
   AlertTriangle,
   ArrowRight,
   Search,
@@ -119,20 +119,30 @@ export function Sidebar() {
           flexShrink: 0,
         }}
       >
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
           <div
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-            background: "linear-gradient(135deg, var(--accent), var(--accent-mid))",
+              width: 30,
+              height: 30,
+              borderRadius: 9,
+              background: "var(--bg-base)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
+              overflow: "hidden",
+              border: "1px solid var(--border)",
+              boxShadow: "0 8px 20px rgba(124,58,237,0.16)",
             }}
           >
-            <Zap size={13} color="white" fill="white" />
+            <Image
+              src="/veloce-logo.png"
+              alt="Veloce.io"
+              width={30}
+              height={30}
+              priority
+              style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
           <span
             style={{

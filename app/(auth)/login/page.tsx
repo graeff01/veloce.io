@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Zap, Mail, Lock, ArrowRight } from "lucide-react";
+import { Mail, Lock, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -76,17 +77,26 @@ export default function LoginPage() {
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "var(--accent)",
+              width: 58,
+              height: 58,
+              borderRadius: 16,
+              background: "var(--bg-surface)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 8px 24px rgba(124,58,237,0.3)",
+              overflow: "hidden",
+              border: "1px solid var(--border)",
+              boxShadow: "0 18px 42px rgba(124,58,237,0.18), 0 8px 24px rgba(0,0,0,0.08)",
             }}
           >
-            <Zap size={20} color="white" fill="white" />
+            <Image
+              src="/veloce-logo.png"
+              alt="Veloce.io"
+              width={58}
+              height={58}
+              priority
+              style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
           <div style={{ textAlign: "center" }}>
             <h1

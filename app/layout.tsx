@@ -5,6 +5,13 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "Veloce.io — Operações",
   description: "Plataforma interna de gestão operacional",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/veloce-logo.png", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
