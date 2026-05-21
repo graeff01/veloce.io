@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npm run db:migrate && npm run start"
+startCommand = "npx prisma migrate resolve --rolled-back 20260521104500_operational_profiles || true && npm run db:migrate && npm run start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
