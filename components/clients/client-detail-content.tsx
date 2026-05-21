@@ -817,7 +817,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Modals ──────────────────────────────────────── */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar perfil operacional" size="xl" variant="drawer">
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar perfil operacional" size="2xl" variant="drawer">
         <ClientForm
           clientId={clientId}
           initial={{

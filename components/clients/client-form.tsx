@@ -196,8 +196,8 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   ];
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-[680px] flex-col">
-      <div className="mb-6">
+    <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+      <div className="mb-5">
         <div className="flex items-start justify-between gap-6">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
@@ -219,28 +219,32 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-[minmax(0,1fr)_310px] gap-5">
-        <main className="rounded-2xl border p-5" style={{ borderColor: "var(--border)", background: "linear-gradient(180deg, var(--bg-surface), var(--bg-base))", boxShadow: "var(--shadow-card)" }}>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <main className="min-w-0 rounded-2xl border p-5" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
           <StepRail steps={steps} current={step} onSelect={setStep} />
 
           <div className="mt-6">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
-                <div className="grid grid-cols-2 gap-3">
+                <FieldGroup title="Identidade">
                   <Field label="Nome do cliente" value={name} onChange={setName} placeholder="Nome operacional" required />
                   <Field label="Marca" value={brand} onChange={setBrand} placeholder="Nome publico da marca" />
+                </FieldGroup>
+                <FieldGroup title="Contato">
                   <Field label="Responsavel" value={primaryContact} onChange={setPrimaryContact} placeholder="Contato principal" />
                   <Field label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 99999-0000" />
+                  <Field label="Email interno" type="email" value={email} onChange={setEmail} placeholder="contato@cliente.com" />
+                </FieldGroup>
+                <FieldGroup title="Canais">
                   <Field label="Instagram" value={instagram} onChange={setInstagram} placeholder="@cliente" />
                   <Field label="Site" value={website} onChange={setWebsite} placeholder="https://..." />
-                  <Field label="Email interno" type="email" value={email} onChange={setEmail} placeholder="contato@cliente.com" />
-                </div>
+                </FieldGroup>
               </SetupSection>
             )}
 
             {step === 1 && (
               <SetupSection title="Estrutura operacional" description="Ative somente as frentes que existem para este cliente.">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   {scopeModules.map((module) => (
                     <OperationalModule
                       key={module.key}
@@ -252,7 +256,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
                     />
                   ))}
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <SelectField label="Frequencia operacional" value={operationalFrequency} onChange={setOperationalFrequency} options={["Semanal", "Quinzenal", "Mensal", "Continuo"]} />
                   <Field label="Resumo do escopo" value={operationType} onChange={setOperationType} placeholder="Ex: Social + trafego" />
                 </div>
@@ -261,7 +265,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
             {step === 2 && (
               <SetupSection title="Ritmo operacional" description="Cadencia esperada para revisao, reuniao e aprovacao.">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <SelectField label="Dia de revisao" value={reviewDay} onChange={setReviewDay} options={["Segunda", "Terca", "Quarta", "Quinta", "Sexta"]} />
                   <SelectField label="SLA esperado" value={expectedSla} onChange={setExpectedSla} options={["24h", "48h", "72h", "Sob demanda"]} />
                   <SelectField label="Frequencia de reunioes" value={meetingFrequency} onChange={setMeetingFrequency} options={["Semanal", "Quinzenal", "Mensal", "Sem ritual fixo"]} />
@@ -274,7 +278,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             {step === 3 && (
               <SetupSection title="Contexto interno" description="Memoria curta para reduzir atrito e retrabalho.">
                 <TextAreaField label="Observacoes" value={strategicNotes} onChange={setStrategicNotes} placeholder="Contexto que muda a execucao" rows={3} />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <TextAreaField label="Comportamento do cliente" value={clientBehavior} onChange={setClientBehavior} placeholder="Como aprova, responde e decide" rows={3} />
                   <TextAreaField label="Restricoes e pontos de atencao" value={restrictions} onChange={setRestrictions} placeholder="O que evitar ou monitorar" rows={3} />
                 </div>
@@ -300,7 +304,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
           </div>
         </main>
 
-        <aside className="rounded-2xl border p-4" style={{ borderColor: "var(--border)", background: "rgba(255,255,255,0.72)", boxShadow: "var(--shadow-card)", backdropFilter: "blur(12px)" }}>
+        <aside className="min-w-0 rounded-2xl border p-4 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.20)", background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.94))", boxShadow: "0 22px 48px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04)" }}>
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
               <Gauge size={15} />
@@ -340,7 +344,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
       {error && <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--accent-red)", background: "rgba(239,68,68,0.1)" }}>{error}</p>}
 
-      <div className="mt-5 flex justify-end gap-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+      <div className="mt-5 flex justify-end gap-3 border-t pt-4" style={{ borderColor: "rgba(148,163,184,0.18)" }}>
         {step === 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         ) : (
@@ -365,7 +369,7 @@ const fieldStyle = {
 
 function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; icon: React.ElementType; done: boolean }>; current: number; onSelect: (index: number) => void }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
       {steps.map((step, index) => {
         const Icon = step.icon;
         const active = index === current;
@@ -374,14 +378,14 @@ function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; 
             key={step.label}
             type="button"
             onClick={() => onSelect(index)}
-            className="relative flex h-16 items-center gap-3 rounded-xl border px-3 text-left transition-all"
+            className="relative flex h-12 items-center gap-2 rounded-xl border px-3 text-left transition-all"
             style={{
               borderColor: active ? "rgba(124,58,237,0.38)" : "var(--border)",
               background: active ? "linear-gradient(180deg, var(--accent-soft), var(--bg-surface))" : "var(--bg-elevated)",
               boxShadow: active ? "0 14px 30px rgba(124,58,237,0.10)" : "none",
             }}
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: active ? "var(--accent)" : "var(--bg-base)", color: active ? "white" : "var(--text-muted)" }}>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: active ? "var(--accent)" : "var(--bg-base)", color: active ? "white" : "var(--text-muted)" }}>
               {step.done && !active ? <Check size={14} /> : <Icon size={14} />}
             </span>
             <span>
@@ -404,6 +408,15 @@ function SetupSection({ title, description, children }: { title: string; descrip
       </div>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
+  );
+}
+
+function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border p-3" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+    </div>
   );
 }
 
@@ -511,7 +524,7 @@ function SummaryBlock({ title, empty, children }: { title: string; empty: string
   return (
     <div>
       <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-base)" }}>
+      <div className="rounded-xl border p-3" style={{ borderColor: "rgba(148,163,184,0.18)", background: "rgba(255,255,255,0.035)" }}>
         {hasContent ? <div className="space-y-2">{children}</div> : <p className="text-xs" style={{ color: "var(--text-muted)" }}>{empty}</p>}
       </div>
     </div>

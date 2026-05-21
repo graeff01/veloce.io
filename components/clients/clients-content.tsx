@@ -230,7 +230,7 @@ export function ClientsContent() {
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
         title="Setup operacional do cliente"
-        size="xl"
+        size="2xl"
         variant="drawer"
       >
         <ClientForm

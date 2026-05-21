@@ -8,7 +8,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl";
   variant?: "center" | "drawer";
   footer?: React.ReactNode;
 }
@@ -18,6 +18,7 @@ const sizeMap = {
   md: 640,
   lg: 760,
   xl: 960,
+  "2xl": 1200,
 };
 
 export function Modal({ open, onClose, title, children, size = "md", variant = "center", footer }: ModalProps) {
@@ -48,9 +49,9 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
         inset: 0,
         zIndex: 90,
         display: "flex",
-        alignItems: variant === "drawer" ? "stretch" : "center",
-        justifyContent: variant === "drawer" ? "flex-end" : "center",
-        padding: variant === "drawer" ? "var(--space-12)" : "var(--space-24)",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: variant === "drawer" ? "clamp(12px, 2vw, 24px)" : "var(--space-24)",
         background: "rgba(15, 23, 42, 0.46)",
         backdropFilter: "blur(10px)",
       }}
@@ -61,12 +62,12 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
         style={{
           width: "100%",
           maxWidth: sizeMap[size],
-          height: variant === "drawer" ? "100%" : undefined,
-          maxHeight: variant === "drawer" ? "none" : "88vh",
+          height: variant === "drawer" ? "min(900px, calc(100vh - 32px))" : undefined,
+          maxHeight: variant === "drawer" ? "calc(100vh - 32px)" : "88vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          background: "var(--bg-surface)",
+          background: variant === "drawer" ? "linear-gradient(180deg, var(--bg-surface), var(--bg-base))" : "var(--bg-surface)",
           border: "1px solid rgba(148, 163, 184, 0.28)",
           borderRadius: "var(--radius-modal)",
           boxShadow: "var(--shadow-modal)",
@@ -107,7 +108,7 @@ export function Modal({ open, onClose, title, children, size = "md", variant = "
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-24)" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: variant === "drawer" ? "20px" : "var(--space-24)" }}>
           {children}
         </div>
 
