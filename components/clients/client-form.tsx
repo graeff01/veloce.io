@@ -219,11 +219,11 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="min-w-0 rounded-2xl border p-5" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <main className="min-w-0 rounded-2xl border p-6" style={{ borderColor: "rgba(148,163,184,0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))", boxShadow: "var(--shadow-card)" }}>
           <StepRail steps={steps} current={step} onSelect={setStep} />
 
-          <div className="mt-6">
+          <div className="mt-8">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
                 <FieldGroup title="Identidade">
@@ -304,7 +304,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
           </div>
         </main>
 
-        <aside className="min-w-0 rounded-2xl border p-4 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.20)", background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.94))", boxShadow: "0 22px 48px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+        <aside className="min-w-0 rounded-2xl border p-5 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.20)", background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.94))", boxShadow: "0 22px 48px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04)" }}>
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
               <Gauge size={15} />
@@ -315,7 +315,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             </div>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-6 space-y-5">
             <SummaryBlock title="Frentes ativas" empty="Nenhuma frente ativada">
               {activeModules.map((module) => (
                 <SummaryLine key={module.key} dot={module.tone} label={module.label} value={operationalScope[module.key].volume || "sem volume definido"} />
@@ -344,7 +344,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
       {error && <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--accent-red)", background: "rgba(239,68,68,0.1)" }}>{error}</p>}
 
-      <div className="mt-5 flex justify-end gap-3 border-t pt-4" style={{ borderColor: "rgba(148,163,184,0.18)" }}>
+      <div className="mt-6 flex justify-end gap-3 border-t pt-5" style={{ borderColor: "rgba(148,163,184,0.18)" }}>
         {step === 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         ) : (
@@ -369,7 +369,7 @@ const fieldStyle = {
 
 function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; icon: React.ElementType; done: boolean }>; current: number; onSelect: (index: number) => void }) {
   return (
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {steps.map((step, index) => {
         const Icon = step.icon;
         const active = index === current;
@@ -402,20 +402,20 @@ function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; 
 function SetupSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <section className="op-enter">
-      <div className="mb-5">
+      <div className="mb-6">
         <h3 className="text-[18px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
         <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="flex flex-col gap-5">{children}</div>
     </section>
   );
 }
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border p-3" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+    <div className="rounded-2xl border p-5" style={{ borderColor: "rgba(148,163,184,0.16)", background: "rgba(255,255,255,0.025)" }}>
+      <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -436,14 +436,14 @@ function OperationalModule({
   const Icon = module.icon;
   return (
     <div
-      className="rounded-2xl border p-4 transition-all"
+      className="rounded-2xl border p-5 transition-all"
       style={{
         borderColor: active ? `${module.tone}66` : "var(--border)",
         background: active ? `linear-gradient(180deg, ${module.tone}10, var(--bg-surface))` : "var(--bg-elevated)",
         boxShadow: active ? `0 16px 32px ${module.tone}12` : "none",
       }}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-4">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${module.tone}18`, color: module.tone }}>
           <Icon size={18} />
         </span>
@@ -479,7 +479,7 @@ function OperationalModule({
               onChange={(event) => onChange(event.target.value)}
               placeholder={module.placeholder}
               rows={2}
-              className="mt-4 w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
+              className="mt-5 w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none"
               style={fieldStyle}
             />
           </div>
@@ -491,18 +491,18 @@ function OperationalModule({
 
 function Field({ label, value, onChange, placeholder, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: string; required?: boolean }) {
   return (
-    <label className="group rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
+    <label className="group rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return (
-    <label className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
+    <label className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
         <option value="">Selecionar</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
@@ -512,8 +512,8 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 
 function TextAreaField({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
   return (
-    <label className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+    <label className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
       <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
     </label>
   );
@@ -524,7 +524,7 @@ function SummaryBlock({ title, empty, children }: { title: string; empty: string
   return (
     <div>
       <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
-      <div className="rounded-xl border p-3" style={{ borderColor: "rgba(148,163,184,0.18)", background: "rgba(255,255,255,0.035)" }}>
+      <div className="rounded-xl border p-4" style={{ borderColor: "rgba(148,163,184,0.18)", background: "rgba(255,255,255,0.035)" }}>
         {hasContent ? <div className="space-y-2">{children}</div> : <p className="text-xs" style={{ color: "var(--text-muted)" }}>{empty}</p>}
       </div>
     </div>
