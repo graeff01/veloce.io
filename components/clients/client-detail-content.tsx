@@ -123,12 +123,15 @@ function getLogTitle(log: ClientDetail["recentLogs"][0]) {
   const details = log.details ?? {};
   const title = typeof details.title === "string" ? details.title : undefined;
   const note = typeof details.note === "string" ? details.note : undefined;
+  const planName = typeof details.planName === "string" ? details.planName : undefined;
+  const to = typeof details.to === "string" ? details.to : undefined;
 
-  if (log.action === "CREATE_TASK" && title) return title;
-  if (log.action === "ADD_NOTE" && note) return "Observacao interna";
-  if (log.action === "UPDATE_STATUS") return "Status alterado";
-  if (log.action === "APPLY_PLAN") return "Plano aplicado";
-  if (log.action === "DELETE_TASK") return "Tarefa removida";
+  if (log.action === "CREATE_TASK" && title) return `${title} entrou na operacao.`;
+  if (log.action === "ADD_NOTE" && note) return "Nova decisao registrada.";
+  if (log.action === "UPDATE_STATUS" && title && to) return `${title} avancou para ${formatStatus(to)}.`;
+  if (log.action === "UPDATE_STATUS" && to) return `Entrega avancou para ${formatStatus(to)}.`;
+  if (log.action === "APPLY_PLAN") return planName ? `${planName} virou o ritmo ativo.` : "Plano operacional aplicado.";
+  if (log.action === "DELETE_TASK") return title ? `${title} saiu da operacao.` : "Entrega removida da operacao.";
   return actionLabels[log.action] ?? "Atividade registrada";
 }
 
@@ -139,9 +142,19 @@ function getLogMeta(log: ClientDetail["recentLogs"][0]) {
   const dueDate = typeof details.dueDate === "string" ? details.dueDate : undefined;
 
   if (note) return note;
-  if (to) return `Status alterado para ${to}`;
+  if (to) return `Movimento registrado por ${log.user.name}.`;
   if (dueDate) return `Prazo ${formatDate(dueDate)}`;
   return actionLabels[log.action] ?? log.action;
+}
+
+function formatStatus(status: string) {
+  const labels: Record<string, string> = {
+    TODO: "fila",
+    IN_PROGRESS: "execucao",
+    REVIEW: "revisao",
+    DONE: "concluido",
+  };
+  return labels[status] ?? status.toLowerCase();
 }
 
 function timeAgo(date: string) {
@@ -219,13 +232,26 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     },
   ];
   const clientAreas = [
-    { label: "Operacao", value: client.operationType ?? "Nao definido", tone: "var(--accent)" },
-    { label: "Calendario", value: client.operationalFrequency ?? "Sem ritual", tone: "var(--blue)" },
-    { label: "Timeline", value: `${client.recentLogs.length} registros`, tone: "var(--green)" },
-    { label: "Pendencias", value: client.operationalContext.currentBlocker?.blocker ?? "Sem bloqueio", tone: client.operationalContext.currentBlocker ? "var(--amber)" : "var(--green)" },
-    { label: "Contexto", value: client.niche ?? "Nicho aberto", tone: "var(--accent)" },
-    { label: "Planejamento", value: currentPlan?.plan.name ?? "Sem plano ativo", tone: "var(--blue)" },
+    { label: "Operacao", href: "#operacao" },
+    { label: "Pendencias", href: "#pendencias" },
+    { label: "Calendario", href: `/clients/${clientId}/calendar` },
+    { label: "Timeline", href: "#timeline" },
+    { label: "Planejamento", href: "#planejamento" },
+    { label: "Contexto", href: "#contexto" },
   ];
+  const timelineLogs = client.recentLogs
+    .filter((log) => log.action !== "UPDATE_CLIENT")
+    .slice(0, 5);
+  const rhythm =
+    client.stats.overdueTasks > 0 ? "Operacao atrasada"
+    : client.stats.openTasks === 0 ? "Operacao tranquila"
+    : client.stats.doneTasks > 0 ? "Ritmo saudavel"
+    : "Ritmo em formacao";
+  const rhythmTone =
+    client.stats.overdueTasks > 0 ? "var(--red)"
+    : client.stats.openTasks === 0 ? "var(--green)"
+    : client.stats.doneTasks > 0 ? "var(--green)"
+    : "var(--amber)";
 
   async function saveNote() {
     if (!note.trim()) return;
@@ -465,15 +491,15 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
             >
               Areas do Cliente
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {clientAreas.map((area) => (
-                <AreaTile key={area.label} label={area.label} value={area.value} tone={area.tone} />
+                <AreaPill key={area.label} label={area.label} href={area.href} />
               ))}
             </div>
           </section>
 
           {/* Acesso Rápido */}
-          <section>
+          <section style={{ display: "none" }}>
             <h2
               style={{
                 fontSize: 12,
@@ -517,7 +543,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                     color: "var(--text-muted)",
                   }}
                 >
-                  Progresso do Plano
+                  Ritmo Operacional
                 </h2>
                 <span
                   style={{
@@ -545,6 +571,17 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                   boxShadow: "var(--shadow-card)",
                 }}
               >
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: rhythmTone, lineHeight: "20px" }}>{rhythm}</p>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                      {client.stats.doneTasks} entregas recentes / {client.stats.openTasks} em aberto
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    {currentPlan.plan.items.length} frentes ativas
+                  </span>
+                </div>
                 {currentPlan.plan.items.map((item) => {
                   const done = Math.min(client.stats.doneTasks, item.quantity);
                   const pct = item.quantity > 0
@@ -579,10 +616,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                         {/* Count + percentage */}
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {done}/{item.quantity}
+                            {item.quantity}x planejado
                           </span>
                           <span
                             style={{
+                              display: "none",
                               fontSize: 11,
                               fontWeight: 600,
                               color: barColor,
@@ -597,6 +635,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                       {/* Progress bar */}
                       <div
                         style={{
+                          display: "none",
                           height: 4,
                           borderRadius: 2,
                           background: "var(--bg-elevated)",
@@ -683,14 +722,14 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
               boxShadow: "var(--shadow-card)",
             }}
           >
-            {client.recentLogs.length === 0 ? (
+            {timelineLogs.length === 0 ? (
               <div style={{ textAlign: "center", padding: "24px 0" }}>
                 <Activity size={24} style={{ color: "var(--text-muted)", opacity: 0.3, margin: "0 auto 8px" }} />
                 <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhuma atividade registrada</p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column" }}>
-                {client.recentLogs.map((log, i) => {
+                {timelineLogs.map((log, i) => {
                   const dotColor = actionColors[log.action] ?? "var(--blue)";
                   return (
                     <div
@@ -750,6 +789,24 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                   );
                 })}
               </div>
+            )}
+            {client.recentLogs.length > timelineLogs.length && (
+              <button
+                type="button"
+                style={{
+                  width: "100%",
+                  padding: "10px 13px 4px",
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Ver historico completo
+              </button>
             )}
           </div>
         </div>
@@ -902,25 +959,36 @@ function MemoryTile({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-function AreaTile({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div
+function AreaPill({ label, href }: { label: string; href: string }) {
+  const internal = href.startsWith("#");
+  const content = (
+    <span
       style={{
-        minHeight: 58,
-        padding: "0 0 10px",
-        borderBottom: "1px solid var(--border)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        height: 30,
+        padding: "0 11px",
+        borderRadius: 999,
+        border: "1px solid var(--border)",
+        background: "var(--bg-surface)",
+        color: "var(--text-secondary)",
+        fontSize: 12,
+        fontWeight: 650,
+        boxShadow: "0 8px 20px rgba(15,23,42,0.04)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-          {label}
-        </p>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, boxShadow: `0 0 0 4px ${tone}14` }} />
-      </div>
-      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {value}
-      </p>
-    </div>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)" }} />
+      {label}
+    </span>
+  );
+
+  if (internal) {
+    return <a href={href} style={{ textDecoration: "none" }}>{content}</a>;
+  }
+
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>{content}</Link>
   );
 }
 

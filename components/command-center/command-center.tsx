@@ -42,6 +42,7 @@ type SearchResponse = {
 type ClientOption = { id: string; name: string; status: string };
 type UserOption = { id: string; title: string };
 type ActionMode = "task" | "client" | "campaign" | "note" | "calendar" | null;
+type CommandOpenEvent = CustomEvent<{ mode?: Exclude<ActionMode, null> }>;
 
 const quickActions = [
   { id: "task" as const, label: "Criar tarefa", hint: "Nova demanda operacional", icon: ClipboardList },
@@ -108,6 +109,12 @@ export function CommandCenter() {
   );
 
   useEffect(() => {
+    function onCommandOpen(event: Event) {
+      const custom = event as CommandOpenEvent;
+      setOpen(true);
+      setMode(custom.detail?.mode ?? null);
+    }
+
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       const isTyping = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT";
@@ -120,8 +127,12 @@ export function CommandCenter() {
       }
     }
 
+    window.addEventListener("veloce-command-open", onCommandOpen);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("veloce-command-open", onCommandOpen);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   useEffect(() => {

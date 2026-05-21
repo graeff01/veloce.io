@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Search,
+  Plus,
   Moon,
   Sun,
 } from "lucide-react";
@@ -166,32 +167,51 @@ export function Sidebar() {
           minHeight: 0,
         }}
       >
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true }))}
-          title="Abrir busca global"
-          style={{
-            width: "calc(100% - 24px)",
-            height: 34,
-            margin: "0 12px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            background: "var(--bg-base)",
-            color: "var(--text-muted)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 10px",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <Search size={13} />
-            Buscar ou criar
-          </span>
-          <span style={{ fontSize: 10 }}>/</span>
-        </button>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 34px", gap: 6, margin: "0 12px 12px" }}>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("veloce-command-open"))}
+            title="Abrir Command Palette"
+            style={{
+              height: 34,
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              background: "var(--bg-base)",
+              color: "var(--text-muted)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 10px",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <Search size={13} />
+              Buscar ou criar
+            </span>
+            <span style={{ fontSize: 10 }}>K</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("veloce-command-open", { detail: { mode: "task" } }))}
+            title="Criar rapido"
+            style={{
+              height: 34,
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              background: "var(--accent)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 10px 24px rgba(124,58,237,0.18)",
+            }}
+          >
+            <Plus size={14} />
+          </button>
+        </div>
 
         {/* Section label + Ver todos */}
         <div
