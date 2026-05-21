@@ -87,7 +87,7 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
 
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error ?? "Erro ao salvar plano");
+      setError(data.error ?? "Erro ao salvar template");
       return;
     }
 
@@ -97,10 +97,10 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <Input
-        label="Nome do plano *"
+        label="Nome do template *"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Ex: Plano Essencial"
+        placeholder="Ex: Social + trafego"
         required
       />
 
@@ -108,7 +108,7 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
         label="Descrição"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="Descreva o plano..."
+        placeholder="Quando este template deve ser usado..."
         rows={2}
       />
 
@@ -154,7 +154,7 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-            Tipos de entrega *
+            Frentes operacionais *
           </label>
           <button
             type="button"
@@ -209,7 +209,7 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
       <div className="flex justify-end gap-3 pt-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         <Button type="submit" variant="primary" size="sm" loading={loading}>
-          {plan ? "Salvar alterações" : "Criar Plano"}
+          {plan ? "Salvar alterações" : "Criar template"}
         </Button>
       </div>
     </form>

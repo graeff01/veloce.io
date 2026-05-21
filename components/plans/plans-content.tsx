@@ -82,7 +82,7 @@ export function PlansContent() {
       >
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>
-            Planos
+            Templates operacionais
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Templates de entrega reutilizáveis
@@ -90,7 +90,7 @@ export function PlansContent() {
         </div>
         {isAdmin && (
           <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
-            <Plus size={13} /> Novo Plano
+            <Plus size={13} /> Novo template
           </Button>
         )}
       </div>
@@ -139,14 +139,14 @@ export function PlansContent() {
               <BookOpen size={24} style={{ color: "var(--accent)", opacity: 0.7 }} />
             </div>
             <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>
-              Nenhum ritual de entrega criado
+              Nenhum template operacional criado
             </p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
               Crie templates de entrega para aplicar nos clientes
             </p>
             {isAdmin && (
               <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
-                <Plus size={12} /> Criar primeiro plano
+                <Plus size={12} /> Criar primeiro template
               </Button>
             )}
           </div>

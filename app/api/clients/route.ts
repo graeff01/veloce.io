@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
 import { slugify } from "@/lib/utils";
 import { z } from "zod";
@@ -14,6 +15,13 @@ const createClientSchema = z.object({
   instagram: z.string().optional(),
   city: z.string().optional(),
   operationType: z.string().optional(),
+  operationalScope: z.record(z.string(), z.unknown()).optional(),
+  reviewDay: z.string().optional(),
+  expectedSla: z.string().optional(),
+  meetingFrequency: z.string().optional(),
+  approvalRoutine: z.string().optional(),
+  operationalUrgency: z.string().optional(),
+  importantLinks: z.string().optional(),
   niche: z.string().optional(),
   mainGoal: z.string().optional(),
   contractStart: z.string().optional(),
@@ -126,6 +134,13 @@ export async function POST(req: Request) {
       instagram: parsed.data.instagram || null,
       city: parsed.data.city || null,
       operationType: parsed.data.operationType || null,
+      operationalScope: parsed.data.operationalScope as Prisma.InputJsonValue | undefined,
+      reviewDay: parsed.data.reviewDay || null,
+      expectedSla: parsed.data.expectedSla || null,
+      meetingFrequency: parsed.data.meetingFrequency || null,
+      approvalRoutine: parsed.data.approvalRoutine || null,
+      operationalUrgency: parsed.data.operationalUrgency || null,
+      importantLinks: parsed.data.importantLinks || null,
       niche: parsed.data.niche || null,
       mainGoal: parsed.data.mainGoal || null,
       contractStart: parsed.data.contractStart ? new Date(parsed.data.contractStart) : null,

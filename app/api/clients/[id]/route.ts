@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
 import { z } from "zod";
 
@@ -14,6 +15,13 @@ const updateSchema = z.object({
   city: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE", "PAUSED"]).optional(),
   operationType: z.string().optional(),
+  operationalScope: z.record(z.string(), z.unknown()).optional(),
+  reviewDay: z.string().optional(),
+  expectedSla: z.string().optional(),
+  meetingFrequency: z.string().optional(),
+  approvalRoutine: z.string().optional(),
+  operationalUrgency: z.string().optional(),
+  importantLinks: z.string().optional(),
   niche: z.string().optional(),
   mainGoal: z.string().optional(),
   contractStart: z.string().optional(),
@@ -128,6 +136,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.city !== undefined && { city: parsed.data.city || null }),
       ...(parsed.data.status && { status: parsed.data.status }),
       ...(parsed.data.operationType !== undefined && { operationType: parsed.data.operationType || null }),
+      ...(parsed.data.operationalScope !== undefined && { operationalScope: parsed.data.operationalScope as Prisma.InputJsonValue }),
+      ...(parsed.data.reviewDay !== undefined && { reviewDay: parsed.data.reviewDay || null }),
+      ...(parsed.data.expectedSla !== undefined && { expectedSla: parsed.data.expectedSla || null }),
+      ...(parsed.data.meetingFrequency !== undefined && { meetingFrequency: parsed.data.meetingFrequency || null }),
+      ...(parsed.data.approvalRoutine !== undefined && { approvalRoutine: parsed.data.approvalRoutine || null }),
+      ...(parsed.data.operationalUrgency !== undefined && { operationalUrgency: parsed.data.operationalUrgency || null }),
+      ...(parsed.data.importantLinks !== undefined && { importantLinks: parsed.data.importantLinks || null }),
       ...(parsed.data.niche !== undefined && { niche: parsed.data.niche || null }),
       ...(parsed.data.mainGoal !== undefined && { mainGoal: parsed.data.mainGoal || null }),
       ...(parsed.data.contractStart !== undefined && { contractStart: parsed.data.contractStart ? new Date(parsed.data.contractStart) : null }),

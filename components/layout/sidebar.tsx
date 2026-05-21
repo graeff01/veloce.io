@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   CalendarCheck2,
   PauseCircle,
-  BookOpen,
   Settings,
   LogOut,
   AlertTriangle,
@@ -32,7 +31,6 @@ const bottomNavItems = [
   { href: "/",      icon: LayoutDashboard, label: "Visao geral" },
   { href: "/today", icon: CalendarCheck2,  label: "Hoje" },
   { href: "/pending", icon: PauseCircle,    label: "Pendencias" },
-  { href: "/plans", icon: BookOpen,        label: "Planos" },
 ];
 
 const adminNavItems = [

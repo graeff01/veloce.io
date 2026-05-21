@@ -29,6 +29,13 @@ interface ClientDetail {
   status: "ACTIVE" | "INACTIVE" | "PAUSED";
   activePlanId?: string;
   operationType?: string;
+  operationalScope?: unknown;
+  reviewDay?: string;
+  expectedSla?: string;
+  meetingFrequency?: string;
+  approvalRoutine?: string;
+  operationalUrgency?: string;
+  importantLinks?: string;
   niche?: string;
   mainGoal?: string;
   contractStart?: string | null;
@@ -364,9 +371,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 <CalendarDays size={12} /> Calendário
               </Button>
             </Link>
-            <Button variant="primary" size="sm" onClick={() => setPlanWizardOpen(true)}>
-              <BookOpen size={12} /> Aplicar Plano
-            </Button>
           </div>
         </div>
 
@@ -826,6 +830,13 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
             instagram: client.instagram,
             city: client.city,
             operationType: client.operationType,
+            operationalScope: client.operationalScope,
+            reviewDay: client.reviewDay,
+            expectedSla: client.expectedSla,
+            meetingFrequency: client.meetingFrequency,
+            approvalRoutine: client.approvalRoutine,
+            operationalUrgency: client.operationalUrgency,
+            importantLinks: client.importantLinks,
             niche: client.niche,
             mainGoal: client.mainGoal,
             contractStart: client.contractStart,

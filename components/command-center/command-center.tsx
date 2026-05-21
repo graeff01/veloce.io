@@ -56,7 +56,7 @@ const navigationItems: SearchItem[] = [
   { id: "nav-today", type: "nav", title: "Hoje", subtitle: "Central operacional do dia", href: "/today", meta: "Navegar" },
   { id: "nav-pending", type: "nav", title: "Pendencias", subtitle: "Bloqueios e aprovacoes", href: "/pending", meta: "Navegar" },
   { id: "nav-clients", type: "nav", title: "Clientes", subtitle: "Contas ativas e contexto", href: "/clients", meta: "Navegar" },
-  { id: "nav-plans", type: "nav", title: "Planos", subtitle: "Templates de entrega", href: "/plans", meta: "Navegar" },
+  { id: "nav-plans", type: "nav", title: "Templates operacionais", subtitle: "Modelos iniciais reutilizaveis", href: "/plans", meta: "Opcional" },
 ];
 
 const emptySearch: SearchResponse = { clients: [], tasks: [], campaigns: [], users: [], activities: [] };

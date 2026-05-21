@@ -229,7 +229,7 @@ export function ClientsContent() {
       <Modal
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
-        title="Novo perfil operacional"
+        title="Setup operacional do cliente"
         size="xl"
         variant="drawer"
       >

@@ -61,6 +61,13 @@ model Client {
   status       ClientStatus @default(ACTIVE)
   activePlanId String?
   operationType String?
+  operationalScope Json?
+  reviewDay String?
+  expectedSla String?
+  meetingFrequency String?
+  approvalRoutine String?
+  operationalUrgency String?
+  importantLinks String?
   niche        String?
   mainGoal     String?
   contractStart DateTime?
