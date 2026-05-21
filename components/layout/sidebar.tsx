@@ -137,7 +137,7 @@ export function Sidebar() {
             }}
           >
             <Image
-              src="/veloce-logo.png"
+              src="/logo.png"
               alt="Veloce.io"
               width={30}
               height={30}

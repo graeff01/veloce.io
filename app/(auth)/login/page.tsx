@@ -90,7 +90,7 @@ export default function LoginPage() {
             }}
           >
             <Image
-              src="/veloce-logo.png"
+              src="/logo.png"
               alt="Veloce.io"
               width={58}
               height={58}
