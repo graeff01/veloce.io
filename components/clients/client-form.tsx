@@ -196,7 +196,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   ];
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+    <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 gap-6">
         <div className="min-w-0 flex-1">
           <div style={{ maxWidth: 860, paddingInline: 28, paddingTop: 20, width: "100%" }}>
@@ -306,7 +306,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
           </div>
         </div>
 
-        <aside className="w-80 shrink-0 rounded-2xl border p-5 xl:sticky xl:top-0 xl:self-start" style={{ borderColor: "rgba(148,163,184,0.12)", background: "rgba(15,23,42,0.55)", boxShadow: "0 4px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.03)" }}>
+        <aside className="w-80 shrink-0 self-start rounded-2xl border p-5 sticky top-0" style={{ borderColor: "rgba(148,163,184,0.12)", background: "rgba(15,23,42,0.55)", boxShadow: "0 4px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.03)" }}>
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
               <Gauge size={14} />
