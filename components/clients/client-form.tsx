@@ -1,8 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Plus, Trash2 } from "lucide-react";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  Brush,
+  Check,
+  FileText,
+  Gauge,
+  Globe2,
+  Layers3,
+  Megaphone,
+  MessageCircle,
+  Plus,
+  RadioTower,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type ScopeKey = "content" | "traffic" | "design" | "social" | "campaigns" | "landingPages";
@@ -20,6 +35,7 @@ interface ClientFormProps {
     city?: string;
     operationType?: string;
     operationalScope?: unknown;
+    operationalFrequency?: string;
     reviewDay?: string;
     expectedSla?: string;
     meetingFrequency?: string;
@@ -29,25 +45,31 @@ interface ClientFormProps {
     niche?: string;
     mainGoal?: string;
     contractStart?: string | Date | null;
-    operationalFrequency?: string;
-    strategicNotes?: string;
     communicationTone?: string;
-    restrictions?: string;
     preferences?: string;
+    strategicNotes?: string;
     clientBehavior?: string;
+    restrictions?: string;
   };
   onSuccess: () => void;
   onCancel: () => void;
   clientId?: string;
 }
 
-const scopeLabels: Array<{ key: ScopeKey; label: string; hint: string }> = [
-  { key: "content", label: "Conteudo", hint: "posts, reels, copys" },
-  { key: "traffic", label: "Trafego", hint: "campanhas e otimizacao" },
-  { key: "design", label: "Design", hint: "criativos e pecas" },
-  { key: "social", label: "Social", hint: "rotina de redes" },
-  { key: "campaigns", label: "Campanhas", hint: "acoes pontuais" },
-  { key: "landingPages", label: "Landing pages", hint: "paginas e captacao" },
+const scopeModules: Array<{
+  key: ScopeKey;
+  label: string;
+  hint: string;
+  placeholder: string;
+  icon: React.ElementType;
+  tone: string;
+}> = [
+  { key: "content", label: "Conteudo", hint: "posts, reels, copys e rotinas editoriais", placeholder: "12 posts/mes, 4 reels/mes, stories diarios", icon: FileText, tone: "#3B82F6" },
+  { key: "traffic", label: "Trafego", hint: "campanhas, verba, otimizacoes e leads", placeholder: "4 campanhas ativas, otimizacao semanal", icon: RadioTower, tone: "#7C3AED" },
+  { key: "design", label: "Design", hint: "criativos, pecas, identidade e adaptacoes", placeholder: "8 criativos/mes, demandas sob SLA", icon: Brush, tone: "#F59E0B" },
+  { key: "social", label: "Social", hint: "presenca, interacoes e rotina de canais", placeholder: "respostas diarias, monitoramento semanal", icon: MessageCircle, tone: "#10B981" },
+  { key: "campaigns", label: "Campanhas", hint: "acoes pontuais, lancamentos e ofertas", placeholder: "1 campanha mensal + desdobramentos", icon: Megaphone, tone: "#EC4899" },
+  { key: "landingPages", label: "Landing pages", hint: "paginas de captacao, eventos e conversao", placeholder: "1 landing por campanha principal", icon: Globe2, tone: "#06B6D4" },
 ];
 
 const emptyScope: OperationalScope = {
@@ -62,7 +84,7 @@ const emptyScope: OperationalScope = {
 function normalizeScope(value: unknown): OperationalScope {
   if (!value || typeof value !== "object") return emptyScope;
   const source = value as Partial<Record<ScopeKey, Partial<{ enabled: boolean; volume: string }>>>;
-  return scopeLabels.reduce((acc, item) => {
+  return scopeModules.reduce((acc, item) => {
     acc[item.key] = {
       enabled: Boolean(source[item.key]?.enabled),
       volume: source[item.key]?.volume ?? "",
@@ -97,6 +119,10 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   const [error, setError] = useState("");
 
   const links = useMemo(() => importantLinks.split("\n").map((link) => link.trim()).filter(Boolean), [importantLinks]);
+  const activeModules = scopeModules.filter((module) => operationalScope[module.key].enabled);
+  const configuredModules = activeModules.filter((module) => operationalScope[module.key].volume.trim());
+  const progress = Math.round(((step + 1) / 4) * 100);
+  const operationName = brand || name || "Nova operacao";
 
   function updateScope(key: ScopeKey, patch: Partial<{ enabled: boolean; volume: string }>) {
     setOperationalScope((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -162,153 +188,159 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
     onSuccess();
   }
 
-  const steps = ["Dados", "Escopo", "Ritmo", "Contexto"];
+  const steps = [
+    { label: "Dados", icon: BadgeCheck, done: Boolean(name && (brand || primaryContact || phone)) },
+    { label: "Escopo", icon: Layers3, done: activeModules.length > 0 },
+    { label: "Ritmo", icon: Gauge, done: Boolean(reviewDay || expectedSla || meetingFrequency || operationalFrequency) },
+    { label: "Contexto", icon: Sparkles, done: Boolean(strategicNotes || clientBehavior || restrictions || links.length) },
+  ];
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-[620px] flex-col">
+    <form onSubmit={handleSubmit} className="flex min-h-[680px] flex-col">
       <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>
-          Setup operacional
-        </p>
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          {steps.map((label, index) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => setStep(index)}
-              className="h-9 rounded-lg border text-xs font-semibold"
-              style={{
-                borderColor: index <= step ? "rgba(124,58,237,0.45)" : "var(--border)",
-                background: index === step ? "var(--accent-soft)" : "var(--bg-elevated)",
-                color: index <= step ? "var(--accent)" : "var(--text-muted)",
-              }}
-            >
-              {index < step ? <Check size={13} style={{ display: "inline", marginRight: 5 }} /> : null}
-              {label}
-            </button>
-          ))}
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--accent)" }}>
+              Setup operacional
+            </p>
+            <h2 className="mt-2 text-[20px] font-semibold leading-7" style={{ color: "var(--text-primary)" }}>
+              {operationName}
+            </h2>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+              Configure como a operacao realmente funciona antes de criar demandas.
+            </p>
+          </div>
+          <span className="rounded-full border px-3 py-1 text-xs font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--bg-elevated)" }}>
+            {progress}% pronto
+          </span>
+        </div>
+        <div className="mt-5 h-px w-full" style={{ background: "var(--border)" }}>
+          <div style={{ width: `${progress}%`, height: 1, background: "var(--accent)", transition: "width 240ms var(--ease-enter)" }} />
         </div>
       </div>
 
-      <div className="flex-1">
-        {step === 0 && (
-          <FormSection title="Dados basicos" description="Somente o que identifica a conta e os canais principais.">
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Nome do cliente *" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome operacional" required />
-              <Input label="Marca" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Nome publico da marca" />
-              <Input label="Responsavel" value={primaryContact} onChange={(e) => setPrimaryContact(e.target.value)} placeholder="Contato principal" />
-              <Input label="WhatsApp" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" />
-              <Input label="Instagram" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@cliente" />
-              <Input label="Site" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..." />
-              <Input label="Email interno" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contato@cliente.com" />
-            </div>
-          </FormSection>
-        )}
+      <div className="grid flex-1 grid-cols-[minmax(0,1fr)_310px] gap-5">
+        <main className="rounded-2xl border p-5" style={{ borderColor: "var(--border)", background: "linear-gradient(180deg, var(--bg-surface), var(--bg-base))", boxShadow: "var(--shadow-card)" }}>
+          <StepRail steps={steps} current={step} onSelect={setStep} />
 
-        {step === 1 && (
-          <FormSection title="Estrutura operacional" description="Defina o escopo vivo do cliente. Depois ele pode ser ajustado livremente.">
-            <div className="grid grid-cols-2 gap-3">
-              {scopeLabels.map((item) => (
-                <div key={item.key} className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={operationalScope[item.key].enabled}
-                      onChange={(event) => updateScope(item.key, { enabled: event.target.checked })}
-                      className="mt-1"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{item.label}</span>
-                      <span className="block text-xs" style={{ color: "var(--text-muted)" }}>{item.hint}</span>
-                    </span>
-                  </label>
-                  <input
-                    value={operationalScope[item.key].volume}
-                    onChange={(event) => updateScope(item.key, { volume: event.target.value })}
-                    placeholder="Volume mensal ou regra"
-                    className="mt-3 h-9 w-full rounded-lg border px-3 text-xs outline-none"
-                    style={{ borderColor: "var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)" }}
-                  />
+          <div className="mt-6">
+            {step === 0 && (
+              <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Nome do cliente" value={name} onChange={setName} placeholder="Nome operacional" required />
+                  <Field label="Marca" value={brand} onChange={setBrand} placeholder="Nome publico da marca" />
+                  <Field label="Responsavel" value={primaryContact} onChange={setPrimaryContact} placeholder="Contato principal" />
+                  <Field label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 99999-0000" />
+                  <Field label="Instagram" value={instagram} onChange={setInstagram} placeholder="@cliente" />
+                  <Field label="Site" value={website} onChange={setWebsite} placeholder="https://..." />
+                  <Field label="Email interno" type="email" value={email} onChange={setEmail} placeholder="contato@cliente.com" />
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Select label="Frequencia operacional" value={operationalFrequency} onChange={(e) => setOperationalFrequency(e.target.value)}>
-                <option value="">Selecionar</option>
-                <option value="Semanal">Semanal</option>
-                <option value="Quinzenal">Quinzenal</option>
-                <option value="Mensal">Mensal</option>
-                <option value="Continuo">Continuo</option>
-              </Select>
-              <Input label="Resumo do escopo" value={operationType} onChange={(e) => setOperationType(e.target.value)} placeholder="Ex: Social + trafego" />
-            </div>
-          </FormSection>
-        )}
+              </SetupSection>
+            )}
 
-        {step === 2 && (
-          <FormSection title="Ritmo operacional" description="Como a conta se move durante a semana.">
-            <div className="grid grid-cols-2 gap-3">
-              <Select label="Dia de revisao" value={reviewDay} onChange={(e) => setReviewDay(e.target.value)}>
-                <option value="">Selecionar</option>
-                {["Segunda", "Terca", "Quarta", "Quinta", "Sexta"].map((day) => <option key={day} value={day}>{day}</option>)}
-              </Select>
-              <Select label="SLA esperado" value={expectedSla} onChange={(e) => setExpectedSla(e.target.value)}>
-                <option value="">Selecionar</option>
-                <option value="24h">24h</option>
-                <option value="48h">48h</option>
-                <option value="72h">72h</option>
-                <option value="Sob demanda">Sob demanda</option>
-              </Select>
-              <Select label="Frequencia de reunioes" value={meetingFrequency} onChange={(e) => setMeetingFrequency(e.target.value)}>
-                <option value="">Selecionar</option>
-                <option value="Semanal">Semanal</option>
-                <option value="Quinzenal">Quinzenal</option>
-                <option value="Mensal">Mensal</option>
-                <option value="Sem ritual fixo">Sem ritual fixo</option>
-              </Select>
-              <Select label="Urgencia operacional" value={operationalUrgency} onChange={(e) => setOperationalUrgency(e.target.value)}>
-                <option value="">Selecionar</option>
-                <option value="Baixa">Baixa</option>
-                <option value="Media">Media</option>
-                <option value="Alta">Alta</option>
-                <option value="Critica">Critica</option>
-              </Select>
-            </div>
-            <Textarea label="Rotina de aprovacao" value={approvalRoutine} onChange={(e) => setApprovalRoutine(e.target.value)} placeholder="Ex: cliente revisa quinta, aprova no WhatsApp" rows={3} />
-          </FormSection>
-        )}
+            {step === 1 && (
+              <SetupSection title="Estrutura operacional" description="Ative somente as frentes que existem para este cliente.">
+                <div className="grid grid-cols-2 gap-3">
+                  {scopeModules.map((module) => (
+                    <OperationalModule
+                      key={module.key}
+                      module={module}
+                      active={operationalScope[module.key].enabled}
+                      value={operationalScope[module.key].volume}
+                      onToggle={(enabled) => updateScope(module.key, { enabled })}
+                      onChange={(value) => updateScope(module.key, { volume: value })}
+                    />
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <SelectField label="Frequencia operacional" value={operationalFrequency} onChange={setOperationalFrequency} options={["Semanal", "Quinzenal", "Mensal", "Continuo"]} />
+                  <Field label="Resumo do escopo" value={operationType} onChange={setOperationType} placeholder="Ex: Social + trafego" />
+                </div>
+              </SetupSection>
+            )}
 
-        {step === 3 && (
-          <FormSection title="Contexto interno" description="Memoria operacional curta para evitar retrabalho.">
-            <Textarea label="Observacoes" value={strategicNotes} onChange={(e) => setStrategicNotes(e.target.value)} placeholder="Contexto que muda a execucao" rows={2} />
-            <div className="grid grid-cols-2 gap-3">
-              <Textarea label="Comportamento do cliente" value={clientBehavior} onChange={(e) => setClientBehavior(e.target.value)} placeholder="Como aprova, responde e decide" rows={2} />
-              <Textarea label="Restricoes e pontos de atencao" value={restrictions} onChange={(e) => setRestrictions(e.target.value)} placeholder="O que evitar ou monitorar" rows={2} />
-            </div>
+            {step === 2 && (
+              <SetupSection title="Ritmo operacional" description="Cadencia esperada para revisao, reuniao e aprovacao.">
+                <div className="grid grid-cols-2 gap-3">
+                  <SelectField label="Dia de revisao" value={reviewDay} onChange={setReviewDay} options={["Segunda", "Terca", "Quarta", "Quinta", "Sexta"]} />
+                  <SelectField label="SLA esperado" value={expectedSla} onChange={setExpectedSla} options={["24h", "48h", "72h", "Sob demanda"]} />
+                  <SelectField label="Frequencia de reunioes" value={meetingFrequency} onChange={setMeetingFrequency} options={["Semanal", "Quinzenal", "Mensal", "Sem ritual fixo"]} />
+                  <SelectField label="Urgencia operacional" value={operationalUrgency} onChange={setOperationalUrgency} options={["Baixa", "Media", "Alta", "Critica"]} />
+                </div>
+                <TextAreaField label="Rotina de aprovacao" value={approvalRoutine} onChange={setApprovalRoutine} placeholder="Ex: cliente revisa quinta, aprova no WhatsApp" rows={4} />
+              </SetupSection>
+            )}
+
+            {step === 3 && (
+              <SetupSection title="Contexto interno" description="Memoria curta para reduzir atrito e retrabalho.">
+                <TextAreaField label="Observacoes" value={strategicNotes} onChange={setStrategicNotes} placeholder="Contexto que muda a execucao" rows={3} />
+                <div className="grid grid-cols-2 gap-3">
+                  <TextAreaField label="Comportamento do cliente" value={clientBehavior} onChange={setClientBehavior} placeholder="Como aprova, responde e decide" rows={3} />
+                  <TextAreaField label="Restricoes e pontos de atencao" value={restrictions} onChange={setRestrictions} placeholder="O que evitar ou monitorar" rows={3} />
+                </div>
+                <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+                  <label className="mb-2 block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>Links importantes</label>
+                  <div className="flex gap-2">
+                    <input value={linkDraft} onChange={(event) => setLinkDraft(event.target.value)} placeholder="https://..." className="h-11 flex-1 rounded-lg border px-3 text-sm outline-none" style={fieldStyle} />
+                    <button type="button" onClick={addLink} className="inline-flex h-11 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
+                      <Plus size={13} /> Adicionar
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-col gap-1">
+                    {links.map((link) => (
+                      <button key={link} type="button" onClick={() => removeLink(link)} className="flex items-center justify-between rounded-lg border px-3 py-2 text-left text-xs" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
+                        <span className="truncate">{link}</span>
+                        <Trash2 size={12} style={{ color: "var(--red)" }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </SetupSection>
+            )}
+          </div>
+        </main>
+
+        <aside className="rounded-2xl border p-4" style={{ borderColor: "var(--border)", background: "rgba(255,255,255,0.72)", boxShadow: "var(--shadow-card)", backdropFilter: "blur(12px)" }}>
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+              <Gauge size={15} />
+            </span>
             <div>
-              <label className="mb-1.5 block text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Links importantes</label>
-              <div className="flex gap-2">
-                <input value={linkDraft} onChange={(event) => setLinkDraft(event.target.value)} placeholder="https://..." className="h-10 flex-1 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)" }} />
-                <button type="button" onClick={addLink} className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
-                  <Plus size={13} /> Adicionar
-                </button>
-              </div>
-              <div className="mt-2 flex flex-col gap-1">
-                {links.map((link) => (
-                  <button key={link} type="button" onClick={() => removeLink(link)} className="flex items-center justify-between rounded-lg border px-3 py-2 text-left text-xs" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
-                    <span className="truncate">{link}</span>
-                    <Trash2 size={12} style={{ color: "var(--red)" }} />
-                  </button>
-                ))}
-              </div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Operacao prevista</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Resumo vivo do setup</p>
             </div>
-          </FormSection>
-        )}
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <SummaryBlock title="Frentes ativas" empty="Nenhuma frente ativada">
+              {activeModules.map((module) => (
+                <SummaryLine key={module.key} dot={module.tone} label={module.label} value={operationalScope[module.key].volume || "sem volume definido"} />
+              ))}
+            </SummaryBlock>
+
+            <SummaryBlock title="Ritmo" empty="Ritmo ainda aberto">
+              {operationalFrequency && <SummaryLine label="Frequencia" value={operationalFrequency} />}
+              {reviewDay && <SummaryLine label="Revisao" value={reviewDay} />}
+              {expectedSla && <SummaryLine label="SLA" value={expectedSla} />}
+              {meetingFrequency && <SummaryLine label="Reuniao" value={meetingFrequency} />}
+              {operationalUrgency && <SummaryLine label="Urgencia" value={operationalUrgency} />}
+            </SummaryBlock>
+
+            <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-base)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>Leitura operacional</p>
+              <p className="mt-2 text-sm leading-5" style={{ color: "var(--text-secondary)" }}>
+                {configuredModules.length > 0
+                  ? `${operationName} nasce com ${configuredModules.length} frente${configuredModules.length === 1 ? "" : "s"} configurada${configuredModules.length === 1 ? "" : "s"}.`
+                  : "Defina o escopo para o sistema entender o ritmo desta conta."}
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
 
       {error && <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--accent-red)", background: "rgba(239,68,68,0.1)" }}>{error}</p>}
 
-      <div className="mt-6 flex justify-end gap-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+      <div className="mt-5 flex justify-end gap-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
         {step === 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
         ) : (
@@ -324,14 +356,176 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   );
 }
 
-function FormSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+const fieldStyle = {
+  borderColor: "var(--border-strong)",
+  background: "var(--bg-base)",
+  color: "var(--text-primary)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45)",
+};
+
+function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; icon: React.ElementType; done: boolean }>; current: number; onSelect: (index: number) => void }) {
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div>
-        <h3 style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>{title}</h3>
-        <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-secondary)" }}>{description}</p>
+    <div className="grid grid-cols-4 gap-2">
+      {steps.map((step, index) => {
+        const Icon = step.icon;
+        const active = index === current;
+        return (
+          <button
+            key={step.label}
+            type="button"
+            onClick={() => onSelect(index)}
+            className="relative flex h-16 items-center gap-3 rounded-xl border px-3 text-left transition-all"
+            style={{
+              borderColor: active ? "rgba(124,58,237,0.38)" : "var(--border)",
+              background: active ? "linear-gradient(180deg, var(--accent-soft), var(--bg-surface))" : "var(--bg-elevated)",
+              boxShadow: active ? "0 14px 30px rgba(124,58,237,0.10)" : "none",
+            }}
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: active ? "var(--accent)" : "var(--bg-base)", color: active ? "white" : "var(--text-muted)" }}>
+              {step.done && !active ? <Check size={14} /> : <Icon size={14} />}
+            </span>
+            <span>
+              <span className="block text-xs font-bold" style={{ color: active ? "var(--accent)" : "var(--text-primary)" }}>{step.label}</span>
+              <span className="block text-[10px]" style={{ color: "var(--text-muted)" }}>{step.done ? "configurado" : "pendente"}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SetupSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section className="op-enter">
+      <div className="mb-5">
+        <h3 className="text-[18px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
+        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
-      {children}
+      <div className="flex flex-col gap-3">{children}</div>
     </section>
+  );
+}
+
+function OperationalModule({
+  module,
+  active,
+  value,
+  onToggle,
+  onChange,
+}: {
+  module: (typeof scopeModules)[number];
+  active: boolean;
+  value: string;
+  onToggle: (enabled: boolean) => void;
+  onChange: (value: string) => void;
+}) {
+  const Icon = module.icon;
+  return (
+    <div
+      className="rounded-2xl border p-4 transition-all"
+      style={{
+        borderColor: active ? `${module.tone}66` : "var(--border)",
+        background: active ? `linear-gradient(180deg, ${module.tone}10, var(--bg-surface))` : "var(--bg-elevated)",
+        boxShadow: active ? `0 16px 32px ${module.tone}12` : "none",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${module.tone}18`, color: module.tone }}>
+          <Icon size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{module.label}</p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>{module.hint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onToggle(!active)}
+              className="relative h-6 w-11 rounded-full transition-colors"
+              style={{ background: active ? module.tone : "var(--border-strong)" }}
+              aria-label={`Alternar ${module.label}`}
+            >
+              <span
+                className="absolute top-1 h-4 w-4 rounded-full bg-white transition-transform"
+                style={{ left: 4, transform: active ? "translateX(20px)" : "translateX(0)" }}
+              />
+            </button>
+          </div>
+          <div
+            style={{
+              maxHeight: active ? 82 : 0,
+              opacity: active ? 1 : 0,
+              overflow: "hidden",
+              transition: "max-height 220ms var(--ease-enter), opacity 180ms var(--ease-enter)",
+            }}
+          >
+            <textarea
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={module.placeholder}
+              rows={2}
+              className="mt-4 w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
+              style={fieldStyle}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, placeholder, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: string; required?: boolean }) {
+  return (
+    <label className="group rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
+    </label>
+  );
+}
+
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
+  return (
+    <label className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
+        <option value="">Selecionar</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function TextAreaField({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
+  return (
+    <label className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
+    </label>
+  );
+}
+
+function SummaryBlock({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) {
+  const hasContent = Array.isArray(children) ? children.some(Boolean) : Boolean(children);
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>{title}</p>
+      <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-base)" }}>
+        {hasContent ? <div className="space-y-2">{children}</div> : <p className="text-xs" style={{ color: "var(--text-muted)" }}>{empty}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SummaryLine({ label, value, dot = "var(--accent)" }: { label: string; value: string; dot?: string }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-1.5 h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{label}</p>
+        <p className="truncate text-xs" style={{ color: "var(--text-muted)" }}>{value}</p>
+      </div>
+    </div>
   );
 }
