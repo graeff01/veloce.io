@@ -224,7 +224,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
             <StepRail steps={steps} current={step} onSelect={setStep} />
 
-            <div className="mt-6">
+            <div className="mt-8">
             {step === 0 && (
               <SetupSection title="Dados basicos" description="Identidade e canais essenciais da conta.">
                 <FieldGroup title="Identidade">
@@ -321,7 +321,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
             </div>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-5 space-y-5">
             <SummaryBlock title="Frentes ativas" empty="Nenhuma frente ativada">
               {activeModules.map((module) => (
                 <SummaryLine key={module.key} dot={module.tone} label={module.label} value={operationalScope[module.key].volume || "sem volume definido"} />
@@ -336,9 +336,9 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
               {operationalUrgency && <SummaryLine label="Urgencia" value={operationalUrgency} />}
             </SummaryBlock>
 
-            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
-              <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>Leitura operacional</p>
-              <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-secondary)" }}>
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: "rgba(148,163,184,0.56)" }}>Leitura operacional</p>
+              <p className="mt-2.5 text-xs leading-5" style={{ color: "var(--text-secondary)" }}>
                 {configuredModules.length > 0
                   ? `${operationName} nasce com ${configuredModules.length} frente${configuredModules.length === 1 ? "" : "s"} configurada${configuredModules.length === 1 ? "" : "s"}.`
                   : "Defina o escopo para o sistema entender o ritmo desta conta."}
@@ -531,9 +531,9 @@ function SummaryBlock({ title, empty, children }: { title: string; empty: string
   const hasContent = Array.isArray(children) ? children.some(Boolean) : Boolean(children);
   return (
     <div>
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: "rgba(148,163,184,0.68)" }}>{title}</p>
-      <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.12)" }}>
-        {hasContent ? <div className="space-y-2">{children}</div> : <p className="text-xs" style={{ color: "var(--text-muted)" }}>{empty}</p>}
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: "rgba(148,163,184,0.56)" }}>{title}</p>
+      <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.028)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
+        {hasContent ? <div className="space-y-3">{children}</div> : <p className="text-xs leading-5" style={{ color: "var(--text-muted)" }}>{empty}</p>}
       </div>
     </div>
   );
