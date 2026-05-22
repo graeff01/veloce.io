@@ -67,7 +67,7 @@ interface ClientDetail {
     plan: {
       id: string;
       name: string;
-      items: Array<{ id: string; type: string; quantity: number }>;
+      items: Array<{ id: string; type: string; quantity: number; deadlineDayOfMonth?: number | null }>;
     };
   }>;
   operationalContext: {
@@ -433,6 +433,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
             restrictions: client.restrictions,
             preferences: client.preferences,
             clientBehavior: client.clientBehavior,
+            deliverables: currentPlan?.plan.items.map((item) => ({
+              type: item.type,
+              quantity: item.quantity,
+              deadlineDayOfMonth: item.deadlineDayOfMonth ?? null,
+            })) ?? [],
           }}
           onSuccess={() => { setEditOpen(false); load(); }}
           onCancel={() => setEditOpen(false)}

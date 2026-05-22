@@ -5,26 +5,26 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
-  Brush,
   Check,
   ChevronDown,
-  FileText,
   Gauge,
-  Globe2,
   Layers3,
   Link2,
-  Megaphone,
-  MessageCircle,
+  Minus,
   Plus,
-  RadioTower,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DELIVERABLE_DEFAULTS } from "@/lib/deliverable-defaults";
 
 /* ─── Types ─────────────────────────────────────────────── */
-type ScopeKey = "content" | "traffic" | "design" | "social" | "campaigns" | "landingPages";
-type OperationalScope = Record<ScopeKey, { enabled: boolean; volume: string }>;
+
+interface DeliverableItem {
+  type: string;
+  quantity: number;
+  deadlineDayOfMonth: number | null; // null = último dia do mês
+}
 
 interface ClientFormProps {
   initial?: {
@@ -53,46 +53,17 @@ interface ClientFormProps {
     strategicNotes?: string;
     clientBehavior?: string;
     restrictions?: string;
+    deliverables?: DeliverableItem[];
   };
   onSuccess: () => void;
   onCancel: () => void;
   clientId?: string;
 }
 
-/* ─── Scope modules config ───────────────────────────────── */
-const scopeModules: Array<{
-  key: ScopeKey;
-  label: string;
-  hint: string;
-  placeholder: string;
-  icon: React.ElementType;
-  tone: string;
-}> = [
-  { key: "content",      label: "Conteúdo",      hint: "Posts, reels, copys e rotinas editoriais",  placeholder: "12 posts/mês, 4 reels/mês, stories diários",    icon: FileText,    tone: "#3B82F6" },
-  { key: "traffic",      label: "Tráfego",        hint: "Campanhas, verba, otimizações e leads",      placeholder: "4 campanhas ativas, otimização semanal",         icon: RadioTower,  tone: "#7C3AED" },
-  { key: "design",       label: "Design",         hint: "Criativos, peças, identidade e adaptações",  placeholder: "8 criativos/mês, demandas sob SLA",              icon: Brush,       tone: "#F59E0B" },
-  { key: "social",       label: "Social",         hint: "Presença, interações e rotina de canais",    placeholder: "Respostas diárias, monitoramento semanal",       icon: MessageCircle, tone: "#10B981" },
-  { key: "campaigns",    label: "Campanhas",      hint: "Ações pontuais, lançamentos e ofertas",      placeholder: "1 campanha mensal + desdobramentos",             icon: Megaphone,   tone: "#EC4899" },
-  { key: "landingPages", label: "Landing pages",  hint: "Páginas de captação, eventos e conversão",   placeholder: "1 landing por campanha principal",               icon: Globe2,      tone: "#06B6D4" },
-];
-
-const emptyScope: OperationalScope = {
-  content:      { enabled: false, volume: "" },
-  traffic:      { enabled: false, volume: "" },
-  design:       { enabled: false, volume: "" },
-  social:       { enabled: false, volume: "" },
-  campaigns:    { enabled: false, volume: "" },
-  landingPages: { enabled: false, volume: "" },
-};
-
-function normalizeScope(value: unknown): OperationalScope {
-  if (!value || typeof value !== "object") return emptyScope;
-  const src = value as Partial<Record<ScopeKey, Partial<{ enabled: boolean; volume: string }>>>;
-  return scopeModules.reduce((acc, m) => {
-    acc[m.key] = { enabled: Boolean(src[m.key]?.enabled), volume: src[m.key]?.volume ?? "" };
-    return acc;
-  }, { ...emptyScope } as OperationalScope);
-}
+/* ─── Deliverable presets ────────────────────────────────── */
+const DELIVERABLE_PRESETS = Object.keys(DELIVERABLE_DEFAULTS);
+const CUSTOM_TYPES = ["Google Ads", "TikTok Ads", "Email Marketing", "SEO", "Apresentação", "Landing Page"];
+const ALL_TYPES = [...DELIVERABLE_PRESETS, ...CUSTOM_TYPES.filter((t) => !DELIVERABLE_PRESETS.includes(t))];
 
 /* ─── Main component ─────────────────────────────────────── */
 export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFormProps) {
@@ -107,7 +78,6 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   const [website, setWebsite]                 = useState(initial?.website ?? "");
   const [instagram, setInstagram]             = useState(initial?.instagram ?? "");
   const [operationType, setOperationType]     = useState(initial?.operationType ?? "");
-  const [operationalScope, setOperationalScope] = useState<OperationalScope>(() => normalizeScope(initial?.operationalScope));
   const [operationalFrequency, setOperationalFrequency] = useState(initial?.operationalFrequency ?? "");
   const [reviewDay, setReviewDay]             = useState(initial?.reviewDay ?? "");
   const [expectedSla, setExpectedSla]         = useState(initial?.expectedSla ?? "");
@@ -122,20 +92,47 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState("");
 
+  /* Deliverables state */
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>(() => {
+    if (initial?.deliverables?.length) return initial.deliverables;
+    return [];
+  });
+  const [customTypeDraft, setCustomTypeDraft] = useState("");
+
   /* Derived */
   const links = useMemo(() =>
     importantLinks.split("\n").map((l) => l.trim()).filter(Boolean),
     [importantLinks],
   );
-  const activeModules     = scopeModules.filter((m) => operationalScope[m.key].enabled);
-  const configuredModules = activeModules.filter((m) => operationalScope[m.key].volume.trim());
-  const operationName     = brand || name || "Nova operação";
+  const operationName = brand || name || "Nova operação";
 
-  /* Handlers */
-  function updateScope(key: ScopeKey, patch: Partial<{ enabled: boolean; volume: string }>) {
-    setOperationalScope((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  /* Deliverable handlers */
+  function addDeliverable(type: string) {
+    if (deliverables.some((d) => d.type === type)) return;
+    const defaults = DELIVERABLE_DEFAULTS[type];
+    setDeliverables((prev) => [...prev, {
+      type,
+      quantity: 1,
+      deadlineDayOfMonth: defaults?.deadlineDayOfMonth ?? 20,
+    }]);
   }
 
+  function removeDeliverable(type: string) {
+    setDeliverables((prev) => prev.filter((d) => d.type !== type));
+  }
+
+  function updateDeliverable(type: string, patch: Partial<DeliverableItem>) {
+    setDeliverables((prev) => prev.map((d) => d.type === type ? { ...d, ...patch } : d));
+  }
+
+  function addCustomType() {
+    const t = customTypeDraft.trim();
+    if (!t) return;
+    addDeliverable(t);
+    setCustomTypeDraft("");
+  }
+
+  /* Link handlers */
   function addLink() {
     if (!linkDraft.trim()) return;
     setImportantLinks((prev) => [prev, linkDraft.trim()].filter(Boolean).join("\n"));
@@ -158,9 +155,10 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name, brand, email, phone, primaryContact, website, instagram,
-        operationType, operationalScope, operationalFrequency,
+        operationType, operationalFrequency,
         reviewDay, expectedSla, meetingFrequency, approvalRoutine,
         operationalUrgency, strategicNotes, clientBehavior, restrictions, importantLinks,
+        deliverables,
       }),
     });
     setLoading(false);
@@ -170,10 +168,10 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 
   /* Step definitions */
   const steps = [
-    { label: "Identidade", icon: BadgeCheck, done: Boolean(name && (brand || primaryContact || phone)) },
-    { label: "Escopo",     icon: Layers3,    done: activeModules.length > 0 },
-    { label: "Ritmo",      icon: Gauge,      done: Boolean(reviewDay || expectedSla || meetingFrequency || operationalFrequency) },
-    { label: "Contexto",   icon: Sparkles,   done: Boolean(strategicNotes || clientBehavior || restrictions || links.length) },
+    { label: "Identidade",    icon: BadgeCheck, done: Boolean(name && (brand || primaryContact || phone)) },
+    { label: "Entregáveis",   icon: Layers3,    done: deliverables.length > 0 },
+    { label: "Ritmo",         icon: Gauge,      done: Boolean(reviewDay || expectedSla || meetingFrequency || operationalFrequency) },
+    { label: "Contexto",      icon: Sparkles,   done: Boolean(strategicNotes || clientBehavior || restrictions || links.length) },
   ];
 
   /* ── Render ────────────────────────────────────────────── */
@@ -209,29 +207,94 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
               </FormSection>
             )}
 
-            {/* Step 1 — Escopo */}
+            {/* Step 1 — Entregáveis */}
             {step === 1 && (
-              <FormSection title="Estrutura operacional" description="Ative somente as frentes que existem para este cliente.">
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  {scopeModules.map((module) => (
-                    <ModuleCard
-                      key={module.key}
-                      module={module}
-                      active={operationalScope[module.key].enabled}
-                      value={operationalScope[module.key].volume}
-                      onToggle={(enabled) => updateScope(module.key, { enabled })}
-                      onChange={(value) => updateScope(module.key, { volume: value })}
-                    />
-                  ))}
+              <FormSection title="Entregáveis mensais" description="O que este cliente recebe por mês. Você vai marcar como concluído conforme o mês avança.">
+
+                {/* Type picker */}
+                <div>
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)", opacity: 0.65 }}>Adicionar entregável</span>
+                    <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_TYPES.map((type) => {
+                      const active = deliverables.some((d) => d.type === type);
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => active ? removeDeliverable(type) : addDeliverable(type)}
+                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all"
+                          style={{
+                            borderColor: active ? "var(--accent)" : "var(--border)",
+                            background:  active ? "var(--accent-soft)" : "var(--bg-surface)",
+                            color:       active ? "var(--accent)" : "var(--text-muted)",
+                          }}
+                        >
+                          {active ? <Check size={10} strokeWidth={2.5} /> : <Plus size={10} />}
+                          {type}
+                        </button>
+                      );
+                    })}
+                    {/* Custom type input */}
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={customTypeDraft}
+                        onChange={(e) => setCustomTypeDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomType(); } }}
+                        placeholder="Outro tipo..."
+                        className="h-8 rounded-full border px-3 text-xs outline-none placeholder:opacity-40"
+                        style={{ borderColor: "var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", width: 130 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomType}
+                        className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-semibold text-white"
+                        style={{ background: "var(--accent)" }}
+                      >
+                        <Plus size={10} /> Adicionar
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <FieldGroup title="Frequência e resumo">
+
+                {/* Deliverables table */}
+                {deliverables.length > 0 && (
+                  <div>
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)", opacity: 0.65 }}>Configurar quantidades</span>
+                      <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {deliverables.map((d) => (
+                        <DeliverableRow
+                          key={d.type}
+                          item={d}
+                          onChange={(patch) => updateDeliverable(d.type, patch)}
+                          onRemove={() => removeDeliverable(d.type)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {deliverables.length === 0 && (
+                  <div className="rounded-2xl border border-dashed py-10 text-center" style={{ borderColor: "var(--border)" }}>
+                    <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                      Selecione ao menos um entregável acima.
+                    </p>
+                  </div>
+                )}
+
+                <FieldGroup title="Resumo e frequência">
                   <SelectField
                     label="Frequência operacional"
                     value={operationalFrequency}
                     onChange={setOperationalFrequency}
                     options={["Semanal", "Quinzenal", "Mensal", "Contínuo"]}
                   />
-                  <Field label="Resumo do escopo" value={operationType} onChange={setOperationType} placeholder="Ex: Social + tráfego" />
+                  <Field label="Resumo do escopo" value={operationType} onChange={setOperationType} placeholder="Ex: Social + tráfego pago" />
                 </FieldGroup>
               </FormSection>
             )}
@@ -280,9 +343,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
         <Sidebar
           operationName={operationName}
           operationType={operationType}
-          activeModules={activeModules}
-          configuredModules={configuredModules}
-          operationalScope={operationalScope}
+          deliverables={deliverables}
           operationalFrequency={operationalFrequency}
           reviewDay={reviewDay}
           expectedSla={expectedSla}
@@ -555,108 +616,81 @@ function TextAreaField({
   );
 }
 
-/* ─── ModuleCard ─────────────────────────────────────────── */
-function ModuleCard({
-  module,
-  active,
-  value,
-  onToggle,
+/* ─── DeliverableRow ─────────────────────────────────────── */
+function DeliverableRow({
+  item,
   onChange,
+  onRemove,
 }: {
-  module: (typeof scopeModules)[number];
-  active: boolean;
-  value: string;
-  onToggle: (enabled: boolean) => void;
-  onChange: (value: string) => void;
+  item: DeliverableItem;
+  onChange: (patch: Partial<DeliverableItem>) => void;
+  onRemove: () => void;
 }) {
-  const Icon = module.icon;
+  const defaults = DELIVERABLE_DEFAULTS[item.type];
+  const defaultDeadline = defaults?.deadlineDayOfMonth ?? 20;
 
   return (
     <div
-      className="rounded-2xl border p-4 transition-all"
-      style={{
-        borderColor: active ? `${module.tone}50` : "var(--border)",
-        background:  active ? `${module.tone}08` : "var(--bg-surface)",
-        boxShadow:   active ? `0 0 0 1px ${module.tone}20` : "none",
-      }}
+      className="flex items-center gap-3 rounded-2xl border px-4 py-3"
+      style={{ borderColor: "var(--accent-soft)", background: "var(--bg-surface)" }}
     >
-      <div className="flex items-start gap-3">
-        {/* Icon */}
-        <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all"
-          style={{
-            background: active ? `${module.tone}18` : "var(--bg-elevated)",
-            color:      active ? module.tone : "var(--text-muted)",
-          }}
-        >
-          <Icon size={16} />
-        </span>
-
-        {/* Content */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-none" style={{ color: "var(--text-primary)" }}>
-                {module.label}
-              </p>
-              <p className="mt-1 text-[11px] leading-4" style={{ color: "var(--text-muted)" }}>
-                {module.hint}
-              </p>
-            </div>
-            <Toggle active={active} color={module.tone} onToggle={onToggle} label={module.label} />
-          </div>
-
-          {/* Expandable volume input */}
-          <div
-            style={{
-              maxHeight: active ? 90 : 0,
-              opacity:   active ? 1 : 0,
-              overflow:  "hidden",
-              transition: "max-height 240ms ease-out, opacity 200ms ease-out",
-            }}
-          >
-            <textarea
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder={module.placeholder}
-              rows={2}
-              className="mt-3.5 w-full resize-none rounded-xl border px-3.5 py-2.5 text-xs leading-5 outline-none placeholder:opacity-40"
-              style={fieldStyle}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Toggle ─────────────────────────────────────────────── */
-function Toggle({
-  active,
-  color,
-  onToggle,
-  label,
-}: {
-  active: boolean;
-  color: string;
-  onToggle: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={active}
-      aria-label={`Alternar ${label}`}
-      onClick={() => onToggle(!active)}
-      className="relative h-5 w-9 shrink-0 rounded-full transition-colors"
-      style={{ background: active ? color : "var(--border-strong)" }}
-    >
+      {/* Type label */}
       <span
-        className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
-        style={{ left: 2, transform: active ? "translateX(16px)" : "translateX(0)" }}
-      />
-    </button>
+        className="min-w-0 flex-1 text-sm font-semibold"
+        style={{ color: "var(--text-primary)" }}
+      >
+        {item.type}
+      </span>
+
+      {/* Quantity stepper */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          onClick={() => onChange({ quantity: Math.max(1, item.quantity - 1) })}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors"
+          style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}
+        >
+          <Minus size={11} />
+        </button>
+        <span className="w-8 text-center text-sm font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
+          {item.quantity}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange({ quantity: item.quantity + 1 })}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors"
+          style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}
+        >
+          <Plus size={11} />
+        </button>
+        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>×/mês</span>
+      </div>
+
+      {/* Deadline day */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>até dia</span>
+        <input
+          type="number"
+          min={0}
+          max={31}
+          value={item.deadlineDayOfMonth ?? defaultDeadline}
+          onChange={(e) => onChange({ deadlineDayOfMonth: parseInt(e.target.value) || null })}
+          className="h-7 w-12 rounded-lg border px-2 text-center text-xs font-semibold outline-none"
+          style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+          placeholder="—"
+          title="0 = último dia do mês"
+        />
+      </div>
+
+      {/* Remove */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 opacity-30 transition-opacity hover:opacity-80"
+      >
+        <Trash2 size={13} style={{ color: "var(--red)" }} />
+      </button>
+    </div>
   );
 }
 
@@ -728,9 +762,7 @@ function LinkManager({
 function Sidebar({
   operationName,
   operationType,
-  activeModules,
-  configuredModules,
-  operationalScope,
+  deliverables,
   operationalFrequency,
   reviewDay,
   expectedSla,
@@ -739,9 +771,7 @@ function Sidebar({
 }: {
   operationName: string;
   operationType: string;
-  activeModules: typeof scopeModules;
-  configuredModules: typeof scopeModules;
-  operationalScope: OperationalScope;
+  deliverables: DeliverableItem[];
   operationalFrequency: string;
   reviewDay: string;
   expectedSla: string;
@@ -749,6 +779,7 @@ function Sidebar({
   operationalUrgency: string;
 }) {
   const hasRhythm = Boolean(operationalFrequency || reviewDay || expectedSla || meetingFrequency || operationalUrgency);
+  const totalDeliverables = deliverables.reduce((sum, d) => sum + d.quantity, 0);
 
   return (
     <aside
@@ -775,35 +806,30 @@ function Sidebar({
           )}
         </SidebarCard>
 
-        {/* Active modules */}
+        {/* Deliverables summary */}
         <div className="mb-4">
-          <SidebarLabel>Frentes ativas</SidebarLabel>
-          {activeModules.length === 0 ? (
-            <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>Nenhuma frente ativada ainda.</p>
+          <SidebarLabel>Entregáveis/mês</SidebarLabel>
+          {deliverables.length === 0 ? (
+            <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>Nenhum entregável definido ainda.</p>
           ) : (
-            <div className="mt-2 flex flex-col gap-2">
-              {activeModules.map((m) => {
-                const Icon = m.icon;
-                const vol  = operationalScope[m.key].volume;
-                return (
-                  <div key={m.key} className="flex items-start gap-2">
-                    <span
-                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
-                      style={{ background: `${m.tone}18`, color: m.tone }}
-                    >
-                      <Icon size={10} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold leading-none" style={{ color: "var(--text-primary)" }}>
-                        {m.label}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--text-muted)" }}>
-                        {vol || "volume a definir"}
-                      </p>
-                    </div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {deliverables.map((d) => (
+                <div key={d.type} className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{d.type}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-bold tabular-nums" style={{ color: "var(--accent)" }}>{d.quantity}×</span>
+                    {d.deadlineDayOfMonth != null && (
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>até {d.deadlineDayOfMonth === 0 ? "fim" : `dia ${d.deadlineDayOfMonth}`}</span>
+                    )}
                   </div>
-                );
-              })}
+                </div>
+              ))}
+              {totalDeliverables > 0 && (
+                <div className="mt-1 pt-1.5 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Total mensal</span>
+                  <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{totalDeliverables} entregas</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -826,9 +852,9 @@ function Sidebar({
         <SidebarCard>
           <SidebarLabel>Leitura operacional</SidebarLabel>
           <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-secondary)" }}>
-            {configuredModules.length > 0
-              ? `${operationName} nasce com ${configuredModules.length} frente${configuredModules.length === 1 ? "" : "s"} configurada${configuredModules.length === 1 ? "" : "s"}.`
-              : "Defina o escopo para o sistema entender o ritmo desta conta."}
+            {deliverables.length > 0
+              ? `${operationName} tem ${deliverables.length} tipo${deliverables.length === 1 ? "" : "s"} de entregável — ${totalDeliverables} entrega${totalDeliverables === 1 ? "" : "s"} por mês.`
+              : "Defina os entregáveis para o sistema gerar as tasks automaticamente cada mês."}
           </p>
         </SidebarCard>
 

@@ -5,6 +5,12 @@ import { requireAuth, logAction } from "@/lib/api-helpers";
 import { maybeAutoRenew } from "@/lib/plan-generator";
 import { z } from "zod";
 
+const deliverableItemSchema = z.object({
+  type: z.string().min(1),
+  quantity: z.number().int().min(1),
+  deadlineDayOfMonth: z.number().int().min(0).max(31).nullable(),
+});
+
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   brand: z.string().optional(),
@@ -32,6 +38,7 @@ const updateSchema = z.object({
   restrictions: z.string().optional(),
   preferences: z.string().optional(),
   clientBehavior: z.string().optional(),
+  deliverables: z.array(deliverableItemSchema).optional(),
 });
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -187,6 +194,59 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.clientBehavior !== undefined && { clientBehavior: parsed.data.clientBehavior || null }),
     },
   });
+
+  // If deliverables provided, sync PlanItems on the active custom plan
+  if (parsed.data.deliverables && parsed.data.deliverables.length > 0) {
+    const activePlan = await prisma.clientPlan.findFirst({
+      where: { clientId: id, active: true },
+      include: { plan: true },
+      orderBy: { appliedAt: "desc" },
+    });
+
+    if (activePlan) {
+      // Replace all plan items
+      await prisma.planItem.deleteMany({ where: { planId: activePlan.planId } });
+      await prisma.planItem.createMany({
+        data: parsed.data.deliverables.map((d) => ({
+          planId: activePlan.planId,
+          type: d.type,
+          quantity: d.quantity,
+          deadlineDayOfMonth: d.deadlineDayOfMonth,
+          defaultPriority: "NORMAL",
+          checklistItems: [],
+        })),
+      });
+    } else {
+      // No active plan yet — create one (e.g. edited before plan was created)
+      const now = new Date();
+      const plan = await prisma.plan.create({
+        data: {
+          name: `Plano — ${parsed.data.brand || client.name}`,
+          category: "custom",
+          items: {
+            create: parsed.data.deliverables.map((d) => ({
+              type: d.type,
+              quantity: d.quantity,
+              deadlineDayOfMonth: d.deadlineDayOfMonth,
+              defaultPriority: "NORMAL",
+              checklistItems: [],
+            })),
+          },
+        },
+      });
+      await prisma.clientPlan.create({
+        data: {
+          clientId: id,
+          planId: plan.id,
+          month: now.getMonth() + 1,
+          year: now.getFullYear(),
+          appliedBy: session!.user.id,
+          autoRenew: true,
+          active: true,
+        },
+      });
+    }
+  }
 
   await logAction(session!.user.id, "UPDATE_CLIENT", id, undefined, { before: client, after: parsed.data });
 
