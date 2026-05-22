@@ -196,27 +196,53 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   });
 
   // If deliverables provided, sync PlanItems on the active custom plan
-  if (parsed.data.deliverables && parsed.data.deliverables.length > 0) {
+  if (parsed.data.deliverables !== undefined) {
+    const deliverables = parsed.data.deliverables ?? [];
     const activePlan = await prisma.clientPlan.findFirst({
       where: { clientId: id, active: true },
-      include: { plan: true },
+      include: { plan: { include: { items: true } } },
       orderBy: { appliedAt: "desc" },
     });
 
     if (activePlan) {
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      // Find types that were removed
+      const previousTypes = activePlan.plan.items.map((i) => i.type);
+      const newTypes = deliverables.map((d) => d.type);
+      const removedTypes = previousTypes.filter((t) => !newTypes.includes(t));
+
+      // Soft-delete tasks of removed types for the current month
+      if (removedTypes.length > 0) {
+        await prisma.task.updateMany({
+          where: {
+            clientId: id,
+            type: { in: removedTypes },
+            planMonth: currentMonth,
+            planYear: currentYear,
+            deletedAt: null,
+          },
+          data: { deletedAt: now },
+        });
+      }
+
       // Replace all plan items
       await prisma.planItem.deleteMany({ where: { planId: activePlan.planId } });
-      await prisma.planItem.createMany({
-        data: parsed.data.deliverables.map((d) => ({
-          planId: activePlan.planId,
-          type: d.type,
-          quantity: d.quantity,
-          deadlineDayOfMonth: d.deadlineDayOfMonth,
-          defaultPriority: "NORMAL",
-          checklistItems: [],
-        })),
-      });
-    } else {
+      if (deliverables.length > 0) {
+        await prisma.planItem.createMany({
+          data: deliverables.map((d) => ({
+            planId: activePlan.planId,
+            type: d.type,
+            quantity: d.quantity,
+            deadlineDayOfMonth: d.deadlineDayOfMonth,
+            defaultPriority: "NORMAL",
+            checklistItems: [],
+          })),
+        });
+      }
+    } else if (deliverables.length > 0) {
       // No active plan yet — create one (e.g. edited before plan was created)
       const now = new Date();
       const plan = await prisma.plan.create({
@@ -224,7 +250,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           name: `Plano — ${parsed.data.brand || client.name}`,
           category: "custom",
           items: {
-            create: parsed.data.deliverables.map((d) => ({
+            create: deliverables.map((d) => ({
               type: d.type,
               quantity: d.quantity,
               deadlineDayOfMonth: d.deadlineDayOfMonth,
