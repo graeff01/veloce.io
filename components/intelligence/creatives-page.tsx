@@ -12,6 +12,9 @@ interface Creative {
   format: string;
   angle?: string | null;
   style?: string | null;
+  niche?: string | null;
+  vehicleType?: string | null;
+  platform?: string | null;
   retention?: number | null;
   ctr?: number | null;
   cpl?: number | null;
@@ -19,7 +22,7 @@ interface Creative {
   starred: boolean;
   notes?: string | null;
   tags: string[];
-  campaign: { id: string; name: string; client: { name: string } };
+  campaign?: { id: string; name: string; client: { name: string } } | null;
 }
 
 const FORMATS = ["Video", "Carrossel", "Imagem", "Reels", "Stories"];
@@ -37,7 +40,8 @@ export function CreativesPage() {
 
   const form = useRef({
     campaignId: "", name: "", hook: "", format: "",
-    angle: "", style: "", ctr: "", cpl: "", retention: "", notes: "", tags: "",
+    angle: "", style: "", niche: "", vehicleType: "", platform: "",
+    ctr: "", cpl: "", retention: "", notes: "", tags: "",
   });
 
   useEffect(() => {
@@ -61,18 +65,21 @@ export function CreativesPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     const f = form.current;
-    if (!f.campaignId || !f.name || !f.hook || !f.format) return;
+    if (!f.name || !f.hook || !f.format) return;
     setSaving(true);
     const res = await fetch("/api/creatives", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        campaignId: f.campaignId,
+        campaignId: f.campaignId || undefined,
         name: f.name,
         hook: f.hook,
         format: f.format,
         angle: f.angle || undefined,
         style: f.style || undefined,
+        niche: f.niche || undefined,
+        vehicleType: f.vehicleType || undefined,
+        platform: f.platform || undefined,
         ctr: f.ctr ? parseFloat(f.ctr) : undefined,
         cpl: f.cpl ? parseFloat(f.cpl) : undefined,
         retention: f.retention ? parseFloat(f.retention) : undefined,
@@ -224,9 +231,9 @@ export function CreativesPage() {
               </button>
             </div>
             <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <Field label="Campanha *">
-                <select required onChange={(e) => { form.current.campaignId = e.target.value; }} style={inputStyle}>
-                  <option value="">Selecionar campanha</option>
+              <Field label="Campanha (opcional)">
+                <select onChange={(e) => { form.current.campaignId = e.target.value; }} style={inputStyle}>
+                  <option value="">Sem campanha vinculada</option>
                   {campaigns.map((c) => (
                     <option key={c.id} value={c.id}>{c.client.name} — {c.name}</option>
                   ))}
@@ -238,7 +245,7 @@ export function CreativesPage() {
               <Field label="Hook *">
                 <input required placeholder="Ex: Voce ainda dirige o carro errado?" onChange={(e) => { form.current.hook = e.target.value; }} style={inputStyle} />
               </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <Field label="Formato *">
                   <select required onChange={(e) => { form.current.format = e.target.value; }} style={inputStyle}>
                     <option value="">Selecionar</option>
@@ -251,18 +258,30 @@ export function CreativesPage() {
                     {ANGLES.map((a) => <option key={a}>{a}</option>)}
                   </select>
                 </Field>
+                <Field label="Plataforma">
+                  <select onChange={(e) => { form.current.platform = e.target.value; }} style={inputStyle}>
+                    <option value="">Selecionar</option>
+                    {["Meta Ads", "Google Ads", "TikTok Ads", "YouTube Ads"].map((p) => <option key={p}>{p}</option>)}
+                  </select>
+                </Field>
+                <Field label="Nicho">
+                  <input placeholder="Ex: Automotivo" onChange={(e) => { form.current.niche = e.target.value; }} style={inputStyle} />
+                </Field>
+                <Field label="Veiculo">
+                  <input placeholder="Ex: SUV, Sedan" onChange={(e) => { form.current.vehicleType = e.target.value; }} style={inputStyle} />
+                </Field>
+                <Field label="Retencao (%)">
+                  <input type="number" step="0.1" placeholder="65" onChange={(e) => { form.current.retention = e.target.value; }} style={inputStyle} />
+                </Field>
                 <Field label="CTR (%)">
                   <input type="number" step="0.01" placeholder="2.1" onChange={(e) => { form.current.ctr = e.target.value; }} style={inputStyle} />
                 </Field>
-                <Field label="Retencao media (%)">
-                  <input type="number" step="0.1" placeholder="65" onChange={(e) => { form.current.retention = e.target.value; }} style={inputStyle} />
+                <Field label="CPL (R$)">
+                  <input type="number" step="0.01" placeholder="18.50" onChange={(e) => { form.current.cpl = e.target.value; }} style={inputStyle} />
                 </Field>
               </div>
-              <Field label="Estilo">
-                <input placeholder="Ex: emocional, racional, comparativo" onChange={(e) => { form.current.style = e.target.value; }} style={inputStyle} />
-              </Field>
               <Field label="Observacoes">
-                <textarea rows={2} placeholder="O que funcionou, o que nao funcionou..." onChange={(e) => { form.current.notes = e.target.value; }} style={{ ...inputStyle, resize: "none" }} />
+                <textarea rows={2} placeholder="O que funcionou, contexto..." onChange={(e) => { form.current.notes = e.target.value; }} style={{ ...inputStyle, resize: "none" }} />
               </Field>
               <Field label="Tags">
                 <input placeholder="Ex: pov, suv, emocional" onChange={(e) => { form.current.tags = e.target.value; }} style={inputStyle} />
@@ -310,6 +329,16 @@ function CreativeCard({
               {cr.angle}
             </span>
           )}
+          {cr.vehicleType && (
+            <span style={{ fontSize: 10, background: "var(--bg-elevated)", color: "var(--text-muted)", borderRadius: 5, padding: "2px 7px" }}>
+              {cr.vehicleType}
+            </span>
+          )}
+          {cr.platform && (
+            <span style={{ fontSize: 10, background: "var(--bg-elevated)", color: "var(--text-muted)", borderRadius: 5, padding: "2px 7px" }}>
+              {cr.platform}
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", gap: 3 }}>
           <button onClick={onStar} style={{ background: "none", border: "none", cursor: "pointer", color: cr.starred ? "#3B82F6" : "var(--text-muted)", padding: 3 }}>
@@ -349,9 +378,11 @@ function CreativeCard({
         </p>
       )}
 
-      <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8 }}>
-        {cr.campaign.client.name} · {cr.campaign.name}
-      </p>
+      {cr.campaign && (
+        <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8 }}>
+          {cr.campaign.client.name} · {cr.campaign.name}
+        </p>
+      )}
     </div>
   );
 }

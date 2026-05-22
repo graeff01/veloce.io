@@ -5,12 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const createSchema = z.object({
-  campaignId: z.string(),
+  campaignId: z.string().optional(),
   name: z.string().min(1),
   hook: z.string().min(1),
   format: z.string().min(1),
   angle: z.string().optional(),
   style: z.string().optional(),
+  niche: z.string().optional(),
+  vehicleType: z.string().optional(),
+  platform: z.string().optional(),
   retention: z.number().optional(),
   ctr: z.number().optional(),
   cpl: z.number().optional(),
@@ -32,6 +35,10 @@ export async function GET(req: NextRequest) {
   const format = searchParams.get("format");
   const angle = searchParams.get("angle");
 
+  const niche = searchParams.get("niche");
+  const vehicle = searchParams.get("vehicle");
+  const platform = searchParams.get("platform");
+
   const creatives = await prisma.creative.findMany({
     where: {
       ...(campaignId ? { campaignId } : {}),
@@ -39,6 +46,9 @@ export async function GET(req: NextRequest) {
       ...(starred === "true" ? { starred: true } : {}),
       ...(format ? { format } : {}),
       ...(angle ? { angle } : {}),
+      ...(niche ? { niche: { contains: niche, mode: "insensitive" } } : {}),
+      ...(vehicle ? { vehicleType: { contains: vehicle, mode: "insensitive" } } : {}),
+      ...(platform ? { platform: { contains: platform, mode: "insensitive" } } : {}),
     },
     include: {
       campaign: {
@@ -60,7 +70,11 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const creative = await prisma.creative.create({
-    data: { ...parsed.data, tags: parsed.data.tags ?? [] },
+    data: {
+      ...parsed.data,
+      campaignId: parsed.data.campaignId || null,
+      tags: parsed.data.tags ?? [],
+    },
     include: {
       campaign: { select: { id: true, name: true } },
     },

@@ -230,39 +230,45 @@ model CampaignMetric {
 }
 
 model Creative {
-  id         String   @id @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  id          String    @id @default(cuid())
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
 
-  name       String
-  hook       String
-  format     String
-  angle      String?
-  style      String?
-  retention  Float?
-  ctr        Float?
-  cpl        Float?
-  winner     Boolean  @default(false)
-  starred    Boolean  @default(false)
-  notes      String?
-  mediaUrl   String?
-  tags       String[]
+  name        String
+  hook        String
+  format      String
+  angle       String?
+  style       String?
+  niche       String?
+  vehicleType String?
+  platform    String?
+  retention   Float?
+  ctr         Float?
+  cpl         Float?
+  winner      Boolean   @default(false)
+  starred     Boolean   @default(false)
+  notes       String?
+  mediaUrl    String?
+  tags        String[]
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model CampaignInsight {
-  id         String      @id @default(cuid())
-  campaignId String
-  campaign   Campaign    @relation(fields: [campaignId], references: [id])
+  id          String      @id @default(cuid())
+  campaignId  String?
+  campaign    Campaign?   @relation(fields: [campaignId], references: [id])
 
-  content    String
-  type       InsightType @default(OBSERVATION)
-  starred    Boolean     @default(false)
-  tags       String[]
+  content     String
+  type        InsightType @default(OBSERVATION)
+  niche       String?
+  vehicleType String?
+  platform    String?
+  starred     Boolean     @default(false)
+  tags        String[]
 
-  createdAt  DateTime    @default(now())
+  createdAt   DateTime    @default(now())
 }
 
 model Playbook {
