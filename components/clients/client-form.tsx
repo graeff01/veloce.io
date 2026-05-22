@@ -628,6 +628,7 @@ function DeliverableRow({
 }) {
   const defaults = DELIVERABLE_DEFAULTS[item.type];
   const defaultDeadline = defaults?.deadlineDayOfMonth ?? 20;
+  const isFimDoMes = item.deadlineDayOfMonth === 0;
 
   return (
     <div
@@ -666,20 +667,42 @@ function DeliverableRow({
         <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>×/mês</span>
       </div>
 
-      {/* Deadline day */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>até dia</span>
-        <input
-          type="number"
-          min={0}
-          max={31}
-          value={item.deadlineDayOfMonth ?? defaultDeadline}
-          onChange={(e) => onChange({ deadlineDayOfMonth: parseInt(e.target.value) || null })}
-          className="h-7 w-12 rounded-lg border px-2 text-center text-xs font-semibold outline-none"
-          style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}
-          placeholder="—"
-          title="0 = último dia do mês"
-        />
+      {/* Deadline: "Dia X" or "Fim do mês" */}
+      <div className="flex items-center gap-1 shrink-0">
+        {/* Toggle fim do mês */}
+        <button
+          type="button"
+          onClick={() => onChange({ deadlineDayOfMonth: isFimDoMes ? defaultDeadline : 0 })}
+          className="h-7 rounded-lg border px-2 text-[11px] font-semibold transition-all"
+          style={{
+            borderColor: isFimDoMes ? "var(--accent)" : "var(--border)",
+            background:  isFimDoMes ? "var(--accent-soft)" : "var(--bg-elevated)",
+            color:       isFimDoMes ? "var(--accent)" : "var(--text-muted)",
+            whiteSpace: "nowrap",
+          }}
+          title={isFimDoMes ? "Clique para definir um dia fixo" : "Clique para sem data fixa (conclui no fim do mês)"}
+        >
+          {isFimDoMes ? "Fim do mês" : "Sem data"}
+        </button>
+
+        {/* Day input — só mostra quando tem dia definido */}
+        {!isFimDoMes && (
+          <>
+            <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>dia</span>
+            <input
+              type="number"
+              min={1}
+              max={31}
+              value={item.deadlineDayOfMonth ?? defaultDeadline}
+              onChange={(e) => {
+                const v = parseInt(e.target.value);
+                onChange({ deadlineDayOfMonth: v > 0 ? v : defaultDeadline });
+              }}
+              className="h-7 w-12 rounded-lg border px-2 text-center text-xs font-semibold outline-none"
+              style={{ borderColor: "var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+            />
+          </>
+        )}
       </div>
 
       {/* Remove */}

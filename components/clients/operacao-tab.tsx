@@ -62,6 +62,8 @@ function dot(type: string) { return TYPE_DOT[type] ?? "#6366F1"; }
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  if (d.getDate() === lastDay) return "fim do mês";
   return `${d.getDate().toString().padStart(2,"0")}/${(d.getMonth()+1).toString().padStart(2,"0")}`;
 }
 
