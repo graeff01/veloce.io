@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, AlertTriangle, Zap, Plus, Loader2, CheckCircle2, BarChart3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Zap, Plus, Loader2, CheckCircle2, BarChart3, RotateCcw, Trash2 } from "lucide-react";
 import { ApplyPlanWizard } from "@/components/plans/apply-plan-wizard";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ export function OperacaoTab({
   const [loading, setLoading]   = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renewing, setRenewing] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -163,6 +165,39 @@ export function OperacaoTab({
       const d = await res.json().catch(() => ({}));
       if (d.error) alert(d.error);
     }
+    load();
+  }
+
+  async function handleRestart() {
+    if (!confirm(`Reiniciar ${MONTHS[month - 1]} ${year}? Todas as tarefas do mês serão apagadas e geradas novamente do plano ativo.`)) return;
+    setRestarting(true);
+    const res = await fetch(`/api/clients/${clientId}/restart-month`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month, year }),
+    });
+    setRestarting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (d.error) alert(d.error);
+    }
+    load();
+  }
+
+  async function handleReset() {
+    if (!confirm(`Resetar cliente? Todas as tarefas de TODOS os meses serão apagadas e o mês atual será gerado novamente do plano ativo. Essa ação não pode ser desfeita.`)) return;
+    setResetting(true);
+    const res = await fetch(`/api/clients/${clientId}/reset`, { method: "POST" });
+    setResetting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (d.error) alert(d.error);
+      return;
+    }
+    // After reset, navigate to current month
+    const nowDate = new Date();
+    setMonth(nowDate.getMonth() + 1);
+    setYear(nowDate.getFullYear());
     load();
   }
 
@@ -393,12 +428,25 @@ export function OperacaoTab({
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {data?.summary.hasPlan && (
-                <ActionBtn onClick={handleGenerate} disabled={renewing} icon={renewing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}>
+                <ActionBtn onClick={handleGenerate} disabled={renewing || restarting || resetting} icon={renewing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}>
                   {renewing ? "Gerando…" : "Gerar entregas"}
+                </ActionBtn>
+              )}
+              {data?.summary.hasPlan && (
+                <ActionBtn onClick={handleRestart} disabled={restarting || renewing || resetting} icon={restarting ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <RotateCcw size={12} />}>
+                  {restarting ? "Reiniciando…" : "Reiniciar mês"}
                 </ActionBtn>
               )}
               <ActionBtn onClick={() => setWizardOpen(true)} icon={<Plus size={12} />}>
                 Trocar plano
+              </ActionBtn>
+              <ActionBtn
+                onClick={handleReset}
+                disabled={resetting || renewing || restarting}
+                icon={resetting ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={12} />}
+                danger
+              >
+                {resetting ? "Resetando…" : "Resetar cliente"}
               </ActionBtn>
             </div>
           </div>
@@ -685,11 +733,12 @@ function EmptyState({ title, sub, cta, onCta, ctaDisabled }: {
 
 // ── Shared components ──────────────────────────────────────────────────────────
 
-function ActionBtn({ children, onClick, disabled, icon }: {
+function ActionBtn({ children, onClick, disabled, icon, danger }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   icon?: React.ReactNode;
+  danger?: boolean;
 }) {
   return (
     <button
@@ -699,8 +748,10 @@ function ActionBtn({ children, onClick, disabled, icon }: {
         display: "flex", alignItems: "center", gap: 7,
         width: "100%",
         padding: "9px 12px",
-        border: "1px solid var(--border)", borderRadius: 9,
-        background: "var(--bg-surface)", color: "var(--text-secondary)",
+        border: `1px solid ${danger ? "var(--red-soft, #fee2e2)" : "var(--border)"}`,
+        borderRadius: 9,
+        background: danger ? "var(--red-soft, #fff1f2)" : "var(--bg-surface)",
+        color: danger ? "var(--red, #DC2626)" : "var(--text-secondary)",
         fontSize: 12, fontWeight: 500, textAlign: "left",
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.6 : 1,

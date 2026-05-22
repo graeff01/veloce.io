@@ -71,6 +71,7 @@ export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [autoRenew, setAutoRenew] = useState(true);
+  const [clearExistingTasks, setClearExistingTasks] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
@@ -97,6 +98,7 @@ export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess
         month,
         year,
         autoRenew,
+        clearExistingTasks,
       }),
     });
 
@@ -305,6 +307,39 @@ export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess
               ))}
             </div>
           </div>
+
+          {/* Opção de substituir tarefas existentes */}
+          <button
+            type="button"
+            onClick={() => setClearExistingTasks((v) => !v)}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              padding: "12px 16px", borderRadius: 10,
+              border: `1px solid ${clearExistingTasks ? "var(--amber)" : "var(--border)"}`,
+              background: clearExistingTasks ? "var(--amber-soft)" : "var(--bg-elevated)",
+              cursor: "pointer", textAlign: "left", width: "100%",
+              transition: "border-color 150ms, background 150ms",
+            }}
+          >
+            <div
+              style={{
+                width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 1,
+                border: `2px solid ${clearExistingTasks ? "var(--amber)" : "var(--border)"}`,
+                background: clearExistingTasks ? "var(--amber)" : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              {clearExistingTasks && <CheckCircle2 size={10} color="#fff" />}
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>
+                Substituir tarefas do mês selecionado
+              </p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                Remove as tarefas existentes de {MONTHS[month - 1]}/{year} antes de gerar as novas. Recomendado ao trocar de plano.
+              </p>
+            </div>
+          </button>
 
           {/* Opção de auto-renovação */}
           <button

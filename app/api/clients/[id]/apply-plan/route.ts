@@ -10,6 +10,7 @@ const applyPlanSchema = z.object({
   year: z.number().min(2020),
   autoRenew: z.boolean().default(false),
   renewDay: z.number().min(1).max(28).default(1),
+  clearExistingTasks: z.boolean().default(false),
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +56,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     where: { id },
     data: { activePlanId: parsed.data.planId },
   });
+
+  // If requested, soft-delete existing tasks for the target month before generating
+  if (parsed.data.clearExistingTasks) {
+    await prisma.task.updateMany({
+      where: {
+        clientId: id,
+        planMonth: parsed.data.month,
+        planYear: parsed.data.year,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
 
   // Build and create tasks automatically — no manual dates
   const rawTasks = buildTasksFromPlanItems(
