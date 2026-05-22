@@ -190,6 +190,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const [note, setNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [renewing, setRenewing] = useState(false);
+  const [operacaoKey, setOperacaoKey] = useState(0);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}`);
@@ -379,7 +380,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {/* ── Tab content ─────────────────────────────────── */}
       {tab === "operacao" && (
-        <OperacaoTab clientId={clientId} clientName={client.name} />
+        <OperacaoTab key={operacaoKey} clientId={clientId} clientName={client.name} />
       )}
 
       {tab === "overview" && (
@@ -439,7 +440,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
               deadlineDayOfMonth: item.deadlineDayOfMonth ?? null,
             })) ?? [],
           }}
-          onSuccess={() => { setEditOpen(false); load(); }}
+          onSuccess={() => { setEditOpen(false); load(); setOperacaoKey(k => k + 1); }}
           onCancel={() => setEditOpen(false)}
         />
       </Modal>
@@ -449,7 +450,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         onClose={() => setPlanWizardOpen(false)}
         clientId={clientId}
         clientName={client.name}
-        onSuccess={() => { setPlanWizardOpen(false); load(); }}
+        onSuccess={() => { setPlanWizardOpen(false); load(); setOperacaoKey(k => k + 1); }}
       />
     </div>
   );
