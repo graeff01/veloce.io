@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, AlertTriangle, Zap, Plus, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Zap, Plus, Loader2, CheckCircle2, BarChart3 } from "lucide-react";
 import { ApplyPlanWizard } from "@/components/plans/apply-plan-wizard";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -58,9 +58,7 @@ const TYPE_DOT: Record<string, string> = {
   "TikTok Ads": "#7E22CE",
 };
 
-function dot(type: string) {
-  return TYPE_DOT[type] ?? "#6366F1";
-}
+function dot(type: string) { return TYPE_DOT[type] ?? "#6366F1"; }
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -75,9 +73,9 @@ function isOverdue(task: Task) {
 
 export function OperacaoTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const now = new Date();
-  const [month, setMonth]   = useState(now.getMonth() + 1);
-  const [year, setYear]     = useState(now.getFullYear());
-  const [data, setData]     = useState<DeliverableData | null>(null);
+  const [month, setMonth]       = useState(now.getMonth() + 1);
+  const [year, setYear]         = useState(now.getFullYear());
+  const [data, setData]         = useState<DeliverableData | null>(null);
   const [loading, setLoading]   = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renewing, setRenewing] = useState(false);
@@ -108,10 +106,10 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
 
     setData(prev => {
       if (!prev) return prev;
-      let summaryDelta = next === "DONE" ? 1 : -1;
+      const delta = next === "DONE" ? 1 : -1;
       return {
         ...prev,
-        summary: { ...prev.summary, done: prev.summary.done + summaryDelta },
+        summary: { ...prev.summary, done: prev.summary.done + delta },
         groups: prev.groups.map(g => {
           const tasks = g.tasks.map(t => t.id === task.id ? { ...t, status: next as Task["status"] } : t);
           const done  = tasks.filter(t => t.status === "DONE").length;
@@ -155,52 +153,41 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const pct = data && data.summary.total > 0
     ? Math.round((data.summary.done / data.summary.total) * 100) : 0;
+  const progressColor = pct >= 80 ? "#16A34A" : pct >= 40 ? "#D97706" : data?.summary.overdue && data.summary.overdue > 0 ? "#DC2626" : "var(--accent)";
 
   return (
-    <div style={{ flex: 1, overflowY: "auto" }}>
-      <div style={{ maxWidth: 760, padding: "28px 32px" }}>
+    <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
 
-        {/* ── Header ────────────────────────────────────────── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+      {/* ── Left: task list ───────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: "auto", minWidth: 0, padding: "20px 24px 32px" }}>
+
+        {/* Month navigator */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+          <button onClick={prevMonth} style={navBtn}><ChevronLeft size={14} /></button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={prevMonth} style={navBtn}>
-              <ChevronLeft size={15} />
-            </button>
-            <div style={{ textAlign: "center", minWidth: 156 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.03em" }}>
-                {MONTHS[month - 1]} {year}
+            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
+              {MONTHS[month - 1]} {year}
+            </span>
+            {isCurrentMonth && (
+              <span style={{
+                fontSize: 10, fontWeight: 600, color: "var(--accent)",
+                background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 20,
+              }}>
+                hoje
               </span>
-              {isCurrentMonth && (
-                <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 20 }}>
-                  hoje
-                </span>
-              )}
-            </div>
-            <button onClick={nextMonth} style={navBtn}>
-              <ChevronRight size={15} />
-            </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            {data?.summary.hasPlan && (
-              <Btn onClick={handleGenerate} disabled={renewing} icon={<Zap size={12} />}>
-                {renewing ? "Gerando…" : "Gerar entregas"}
-              </Btn>
             )}
-            <Btn onClick={() => setWizardOpen(true)} icon={<Plus size={12} />}>
-              Trocar plano
-            </Btn>
           </div>
+          <button onClick={nextMonth} style={navBtn}><ChevronRight size={14} /></button>
         </div>
 
-        {/* ── Loading ───────────────────────────────────────── */}
+        {/* Loading */}
         {loading && (
           <div style={{ display: "flex", justifyContent: "center", padding: "80px 0", color: "var(--text-muted)" }}>
             <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} />
           </div>
         )}
 
-        {/* ── No plan ───────────────────────────────────────── */}
+        {/* No plan */}
         {!loading && data && !data.summary.hasPlan && data.summary.total === 0 && (
           <EmptyState
             title="Nenhum plano ativo"
@@ -210,7 +197,7 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
           />
         )}
 
-        {/* ── Has plan, no tasks ────────────────────────────── */}
+        {/* Has plan, no tasks */}
         {!loading && data && data.summary.hasPlan && data.summary.total === 0 && (
           <EmptyState
             title={`Sem entregas em ${MONTHS[month - 1]}`}
@@ -221,28 +208,187 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
           />
         )}
 
-        {/* ── Content ───────────────────────────────────────── */}
+        {/* Content */}
         {!loading && data && data.summary.total > 0 && (
-          <>
-            {/* Progress summary */}
-            <ProgressBar done={data.summary.done} total={data.summary.total} pct={pct} overdue={data.summary.overdue} />
-
-            {/* Groups */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 20 }}>
-              {data.groups.map((group, gi) => (
-                <GroupSection
-                  key={group.type}
-                  group={group}
-                  togglingId={togglingId}
-                  onToggle={toggleTask}
-                  isFirst={gi === 0}
-                  isLast={gi === data.groups.length - 1}
-                />
-              ))}
-            </div>
-          </>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            {data.groups.map((group, gi) => (
+              <GroupSection
+                key={group.type}
+                group={group}
+                togglingId={togglingId}
+                onToggle={toggleTask}
+                isFirst={gi === 0}
+                isLast={gi === data.groups.length - 1}
+              />
+            ))}
+          </div>
         )}
       </div>
+
+      {/* ── Right: metrics panel ──────────────────────────────────────── */}
+      <aside style={{
+        width: 252,
+        flexShrink: 0,
+        borderLeft: "1px solid var(--border)",
+        background: "var(--bg-elevated)",
+        overflowY: "auto",
+      }}>
+        <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+          {/* Panel label */}
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <BarChart3 size={13} style={{ color: "var(--text-muted)" }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.04em" }}>
+              Visão do mês
+            </span>
+          </div>
+
+          {/* ── Progress card ── */}
+          {!loading && data && data.summary.total > 0 && (
+            <div style={{
+              padding: "14px 15px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+            }}>
+              {/* Big number */}
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 5, marginBottom: 11 }}>
+                <span style={{
+                  fontSize: 34, fontWeight: 800, letterSpacing: "-0.05em",
+                  lineHeight: 1, color: progressColor,
+                }}>
+                  {data.summary.done}
+                </span>
+                <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 500, paddingBottom: 3 }}>
+                  / {data.summary.total}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{
+                height: 6, borderRadius: 4,
+                background: "var(--bg-elevated)",
+                overflow: "hidden", marginBottom: 9,
+              }}>
+                <div style={{
+                  height: "100%", borderRadius: 4,
+                  width: `${pct}%`, background: progressColor,
+                  transition: "width 600ms cubic-bezier(.4,0,.2,1)",
+                }} />
+              </div>
+
+              {/* Footer row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: progressColor }}>
+                  {pct}% concluído
+                </span>
+                {data.summary.overdue > 0 ? (
+                  <span style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    fontSize: 10, fontWeight: 600, color: "#DC2626",
+                    background: "rgba(220,38,38,0.07)",
+                    border: "1px solid rgba(220,38,38,0.14)",
+                    padding: "2px 7px", borderRadius: 20,
+                  }}>
+                    <AlertTriangle size={9} /> {data.summary.overdue} atraso
+                  </span>
+                ) : pct >= 100 ? (
+                  <span style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    fontSize: 10, fontWeight: 600, color: "#16A34A",
+                    background: "rgba(22,163,74,0.08)",
+                    border: "1px solid rgba(22,163,74,0.18)",
+                    padding: "2px 7px", borderRadius: 20,
+                  }}>
+                    <CheckCircle2 size={9} /> Completo
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* ── Por tipo ── */}
+          {!loading && data && data.groups.length > 0 && (
+            <div>
+              <p style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+                textTransform: "uppercase", color: "var(--text-muted)",
+                marginBottom: 12,
+              }}>
+                Por tipo
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                {data.groups.map(group => {
+                  const typePct = group.planned > 0
+                    ? Math.round((group.done / group.planned) * 100)
+                    : group.total > 0 ? Math.round((group.done / group.total) * 100) : 0;
+                  const allDone  = group.done >= (group.planned || group.total);
+                  const typeColor = allDone ? "#16A34A" : group.overdue > 0 ? "#DC2626" : dot(group.type);
+
+                  return (
+                    <div key={group.type}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span style={{
+                            width: 7, height: 7, borderRadius: "50%",
+                            background: dot(group.type), flexShrink: 0,
+                          }} />
+                          <span style={{
+                            fontSize: 12, fontWeight: 500,
+                            color: "var(--text-primary)",
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                          }}>
+                            {group.type}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: 11, color: "var(--text-muted)",
+                          flexShrink: 0, marginLeft: 8,
+                        }}>
+                          {group.done}/{group.planned || group.total}
+                        </span>
+                      </div>
+                      <div style={{ height: 3, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%", borderRadius: 2,
+                          width: `${Math.min(100, typePct)}%`,
+                          background: typeColor,
+                          transition: "width 400ms ease",
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Divider */}
+          {!loading && <div style={{ height: 1, background: "var(--border)" }} />}
+
+          {/* ── Ações ── */}
+          <div>
+            <p style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+              textTransform: "uppercase", color: "var(--text-muted)",
+              marginBottom: 10,
+            }}>
+              Ações rápidas
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {data?.summary.hasPlan && (
+                <ActionBtn onClick={handleGenerate} disabled={renewing} icon={renewing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}>
+                  {renewing ? "Gerando…" : "Gerar entregas"}
+                </ActionBtn>
+              )}
+              <ActionBtn onClick={() => setWizardOpen(true)} icon={<Plus size={12} />}>
+                Trocar plano
+              </ActionBtn>
+            </div>
+          </div>
+
+        </div>
+      </aside>
 
       <ApplyPlanWizard
         open={wizardOpen}
@@ -251,48 +397,6 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
         clientName={clientName}
         onSuccess={() => { setWizardOpen(false); load(); }}
       />
-    </div>
-  );
-}
-
-// ── Progress bar ───────────────────────────────────────────────────────────────
-
-function ProgressBar({ done, total, pct, overdue }: { done: number; total: number; pct: number; overdue: number }) {
-  const color = pct >= 80 ? "#16A34A" : pct >= 40 ? "#D97706" : overdue > 0 ? "#DC2626" : "var(--accent)";
-
-  return (
-    <div style={{
-      padding: "16px 20px",
-      background: "var(--bg-surface)",
-      border: "1px solid var(--border)",
-      borderRadius: 12,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{done}</span>
-          <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>/ {total} entregues</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {overdue > 0 && (
-            <span style={{
-              display: "flex", alignItems: "center", gap: 5,
-              fontSize: 11, fontWeight: 600, color: "#DC2626",
-              background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.15)",
-              padding: "3px 10px", borderRadius: 20,
-            }}>
-              <AlertTriangle size={10} /> {overdue} em atraso
-            </span>
-          )}
-          <span style={{ fontSize: 13, fontWeight: 700, color, minWidth: 36, textAlign: "right" }}>{pct}%</span>
-        </div>
-      </div>
-      <div style={{ height: 6, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
-        <div style={{
-          height: "100%", borderRadius: 4,
-          width: `${pct}%`, background: color,
-          transition: "width 600ms cubic-bezier(.4,0,.2,1)",
-        }} />
-      </div>
     </div>
   );
 }
@@ -335,15 +439,18 @@ function GroupSection({
         style={{
           width: "100%", border: "none", cursor: "pointer",
           background: "transparent",
-          padding: "12px 20px",
-          display: "flex", alignItems: "center", gap: 14,
+          padding: "11px 18px",
+          display: "flex", alignItems: "center", gap: 12,
           textAlign: "left",
         }}
       >
         {/* Dot + label */}
         <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 650, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+          <span style={{
+            fontSize: 12.5, fontWeight: 650, color: "var(--text-primary)",
+            letterSpacing: "-0.01em",
+          }}>
             {group.type}
           </span>
         </span>
@@ -358,22 +465,28 @@ function GroupSection({
           }} />
         </div>
 
-        {/* Count + chevron */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        {/* Count + status + chevron */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
             {group.done}/{group.planned || group.total}
           </span>
           {allDone && (
-            <span style={{ fontSize: 10, fontWeight: 600, color: "#16A34A", background: "rgba(22,163,74,0.1)", padding: "1px 7px", borderRadius: 20 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: "#16A34A",
+              background: "rgba(22,163,74,0.1)", padding: "1px 7px", borderRadius: 20,
+            }}>
               ✓
             </span>
           )}
           {group.overdue > 0 && !allDone && (
-            <span style={{ fontSize: 10, fontWeight: 600, color: "#DC2626", background: "rgba(220,38,38,0.07)", padding: "1px 7px", borderRadius: 20 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: "#DC2626",
+              background: "rgba(220,38,38,0.07)", padding: "1px 7px", borderRadius: 20,
+            }}>
               {group.overdue}↑
             </span>
           )}
-          <span style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 10, lineHeight: 1 }}>
             {open ? "▴" : "▾"}
           </span>
         </div>
@@ -418,10 +531,10 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 14,
-        padding: "9px 20px",
+        display: "flex", alignItems: "center", gap: 13,
+        padding: "9px 18px",
         borderBottom: isLast ? "none" : "1px solid var(--border)",
-        background: hover && !done ? "rgba(0,0,0,0.015)" : "transparent",
+        background: hover && !done ? "var(--bg-hover)" : "transparent",
         transition: "background 100ms",
       }}
     >
@@ -432,7 +545,7 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
         disabled={toggling}
         style={{
           flexShrink: 0,
-          width: 18, height: 18,
+          width: 17, height: 17,
           borderRadius: 5,
           border: `1.5px solid ${done ? dotColor : overdue ? "#DC2626" : hover ? dotColor : "var(--border-strong)"}`,
           background: done ? dotColor : "transparent",
@@ -443,9 +556,9 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
         }}
       >
         {toggling ? (
-          <Loader2 size={10} color={done ? "#fff" : "var(--text-muted)"} style={{ animation: "spin 0.7s linear infinite" }} />
+          <Loader2 size={9} color={done ? "#fff" : "var(--text-muted)"} style={{ animation: "spin 0.7s linear infinite" }} />
         ) : done ? (
-          <svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+          <svg width={9} height={9} viewBox="0 0 10 10" fill="none">
             <path d="M2 5l2.5 2.5 3.5-5" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : null}
@@ -457,7 +570,7 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
         color: done ? "var(--text-muted)" : "var(--text-primary)",
         textDecoration: done ? "line-through" : "none",
         textDecorationColor: "var(--border-strong)",
-        opacity: done ? 0.55 : 1,
+        opacity: done ? 0.5 : 1,
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         transition: "opacity 200ms",
       }}>
@@ -465,7 +578,7 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
       </span>
 
       {/* Right metadata */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
 
         {/* Checklist dots */}
         {clTotal > 0 && !done && (
@@ -495,7 +608,7 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
         {/* Blocker */}
         {task.blocker && !done && (
           <span title={task.blocker} style={{ display: "flex" }}>
-            <AlertTriangle size={12} color="#D97706" />
+            <AlertTriangle size={11} color="#D97706" />
           </span>
         )}
 
@@ -508,13 +621,14 @@ function TaskRow({ task, isLast, toggling, onToggle, dotColor }: {
           {fmtDate(task.dueDate)}
         </span>
 
-        {/* Avatar */}
+        {/* Assignee avatar */}
         {task.assignee && (
           <span title={task.assignee.name} style={{
             width: 20, height: 20, borderRadius: "50%",
             background: "var(--accent-soft)", color: "var(--accent)",
             fontSize: 8, fontWeight: 700,
             display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
           }}>
             {task.assignee.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
           </span>
@@ -555,7 +669,7 @@ function EmptyState({ title, sub, cta, onCta, ctaDisabled }: {
 
 // ── Shared components ──────────────────────────────────────────────────────────
 
-function Btn({ children, onClick, disabled, icon }: {
+function ActionBtn({ children, onClick, disabled, icon }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
@@ -566,12 +680,15 @@ function Btn({ children, onClick, disabled, icon }: {
       onClick={onClick}
       disabled={disabled}
       style={{
-        display: "flex", alignItems: "center", gap: 5,
-        border: "1px solid var(--border)", borderRadius: 8,
+        display: "flex", alignItems: "center", gap: 7,
+        width: "100%",
+        padding: "9px 12px",
+        border: "1px solid var(--border)", borderRadius: 9,
         background: "var(--bg-surface)", color: "var(--text-secondary)",
-        padding: "6px 13px", fontSize: 12, fontWeight: 500,
+        fontSize: 12, fontWeight: 500, textAlign: "left",
         cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.6 : 1, transition: "opacity 150ms",
+        opacity: disabled ? 0.6 : 1,
+        transition: "opacity 150ms, background 150ms",
       }}
     >
       {icon}{children}
@@ -580,8 +697,9 @@ function Btn({ children, onClick, disabled, icon }: {
 }
 
 const navBtn: React.CSSProperties = {
-  width: 30, height: 30, borderRadius: 8,
+  width: 28, height: 28, borderRadius: 7,
   border: "1px solid var(--border)", background: "var(--bg-surface)",
   display: "flex", alignItems: "center", justifyContent: "center",
   cursor: "pointer", color: "var(--text-muted)", padding: 0,
+  flexShrink: 0,
 };
