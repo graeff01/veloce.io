@@ -17,6 +17,7 @@ import {
   Plus,
   Moon,
   Sun,
+  BrainCircuit,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -28,9 +29,10 @@ interface ClientRow {
 }
 
 const bottomNavItems = [
-  { href: "/",      icon: LayoutDashboard, label: "Visao geral" },
-  { href: "/today", icon: CalendarCheck2,  label: "Hoje" },
-  { href: "/pending", icon: PauseCircle,    label: "Pendencias" },
+  { href: "/",             icon: LayoutDashboard, label: "Visao geral" },
+  { href: "/today",        icon: CalendarCheck2,  label: "Hoje" },
+  { href: "/pending",      icon: PauseCircle,     label: "Pendencias" },
+  { href: "/intelligence", icon: BrainCircuit,    label: "Inteligencia" },
 ];
 
 const adminNavItems = [

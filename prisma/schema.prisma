@@ -84,6 +84,7 @@ model Client {
   tasks         Task[]
   clientPlans   ClientPlan[]
   executionLogs ExecutionLog[]
+  campaigns     Campaign[]
 }
 
 model Plan {
@@ -161,6 +162,147 @@ model Checklist {
 
   task Task @relation(fields: [taskId], references: [id])
 }
+
+// ── Intelligence Layer ────────────────────────────────────────────────────────
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  FINISHED
+  ARCHIVED
+}
+
+enum InsightType {
+  OBSERVATION
+  PATTERN
+  WARNING
+  WINNING_STRATEGY
+  HYPOTHESIS
+}
+
+model Campaign {
+  id        String         @id @default(cuid())
+  clientId  String
+  client    Client         @relation(fields: [clientId], references: [id])
+
+  name      String
+  objective String
+  type      String
+  platform  String
+  vehicle   String?
+  budget    Float?
+  startDate DateTime?
+  endDate   DateTime?
+  status    CampaignStatus @default(ACTIVE)
+  winner    Boolean        @default(false)
+  result    String?
+  tags      String[]
+
+  metrics   CampaignMetric[]
+  creatives Creative[]
+  insights  CampaignInsight[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model CampaignMetric {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  cpl        Float?
+  ctr        Float?
+  cpm        Float?
+  leads      Int?
+  retention  Float?
+  period     String?
+
+  createdAt  DateTime @default(now())
+}
+
+model Creative {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  name       String
+  hook       String
+  format     String
+  angle      String?
+  style      String?
+  retention  Float?
+  ctr        Float?
+  cpl        Float?
+  winner     Boolean  @default(false)
+  starred    Boolean  @default(false)
+  notes      String?
+  mediaUrl   String?
+  tags       String[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model CampaignInsight {
+  id         String      @id @default(cuid())
+  campaignId String
+  campaign   Campaign    @relation(fields: [campaignId], references: [id])
+
+  content    String
+  type       InsightType @default(OBSERVATION)
+  starred    Boolean     @default(false)
+  tags       String[]
+
+  createdAt  DateTime    @default(now())
+}
+
+model Playbook {
+  id          String         @id @default(cuid())
+  name        String
+  niche       String?
+  vehicleType String?
+  objective   String?
+  platform    String?
+  summary     String
+  starred     Boolean        @default(false)
+  tags        String[]
+
+  steps       PlaybookStep[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model PlaybookStep {
+  id         String   @id @default(cuid())
+  playbookId String
+  playbook   Playbook @relation(fields: [playbookId], references: [id])
+
+  order      Int
+  title      String
+  description String
+  rationale  String?
+
+  createdAt  DateTime @default(now())
+}
+
+model GlobalInsight {
+  id          String      @id @default(cuid())
+  content     String
+  type        InsightType @default(OBSERVATION)
+  niche       String?
+  vehicleType String?
+  platform    String?
+  starred     Boolean     @default(false)
+  tags        String[]
+  source      String?
+
+  createdAt   DateTime    @default(now())
+}
+
+// ── Execution log ─────────────────────────────────────────────────────────────
 
 model ExecutionLog {
   id        String   @id @default(cuid())
