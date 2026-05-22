@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
+import { maybeAutoRenew } from "@/lib/plan-generator";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -50,6 +51,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
 
+  // Lazy auto-renewal: silently generates tasks if autoRenew is on and none exist this month
+  await maybeAutoRenew(id);
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -90,6 +94,34 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     : overdueTasks > 0 || daysSinceActivity >= 4 ? "ATTENTION"
     : "HEALTHY";
 
+  // Real progress by deliverable type for current month
+  const activePlan = client.clientPlans.find((cp) => cp.active) ?? client.clientPlans[0];
+  const progressByType: Record<string, { planned: number; done: number; pct: number }> = {};
+
+  if (activePlan) {
+    const monthTasksByType = await prisma.task.groupBy({
+      by: ["type", "status"],
+      where: {
+        clientId: id,
+        deletedAt: null,
+        planMonth: activePlan.month,
+        planYear: activePlan.year,
+      },
+      _count: { id: true },
+    });
+
+    for (const item of activePlan.plan.items) {
+      const doneCount = monthTasksByType
+        .filter((t) => t.type === item.type && t.status === "DONE")
+        .reduce((sum, t) => sum + t._count.id, 0);
+      progressByType[item.type] = {
+        planned: item.quantity,
+        done: doneCount,
+        pct: item.quantity > 0 ? Math.round((doneCount / item.quantity) * 100) : 0,
+      };
+    }
+  }
+
   return NextResponse.json({
     ...client,
     stats: {
@@ -106,6 +138,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       nextTask,
       currentBlocker: blockedTask,
     },
+    progressByType,
     recentLogs,
     notes: recentLogs.filter((log) => log.action === "ADD_NOTE"),
   });

@@ -1,23 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, ChevronRight, ChevronLeft, BookOpen } from "lucide-react";
+import { CheckCircle2, BookOpen, RefreshCw, Zap } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DELIVERABLE_DEFAULTS, calcDueDate } from "@/lib/deliverable-defaults";
+
+interface PlanItem {
+  id: string;
+  type: string;
+  quantity: number;
+  deadlineDayOfMonth?: number | null;
+  defaultPriority?: string;
+  checklistItems?: string[];
+}
 
 interface Plan {
   id: string;
   name: string;
   description?: string;
-  items: Array<{ id: string; type: string; quantity: number }>;
-}
-
-interface WizardTask {
-  type: string;
-  title: string;
-  dueDate: string;
-  occurrence: number;
+  items: PlanItem[];
 }
 
 interface ApplyPlanWizardProps {
@@ -30,8 +33,36 @@ interface ApplyPlanWizardProps {
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+
+const PRIORITY_LABEL: Record<string, string> = {
+  CRITICAL: "Crítica", HIGH: "Alta", NORMAL: "Normal", LOW: "Baixa",
+};
+
+const PRIORITY_COLOR: Record<string, string> = {
+  CRITICAL: "var(--red)", HIGH: "var(--amber)", NORMAL: "var(--blue)", LOW: "var(--text-muted)",
+};
+
+function previewTasks(plan: Plan, month: number, year: number) {
+  const tasks: { type: string; title: string; dueDate: Date; priority: string; checklist: string[] }[] = [];
+  for (const item of plan.items) {
+    const defs = DELIVERABLE_DEFAULTS[item.type] ?? {};
+    const deadline = item.deadlineDayOfMonth ?? defs.deadlineDayOfMonth ?? 15;
+    const priority = item.defaultPriority || defs.priority || "NORMAL";
+    const checklist = item.checklistItems?.length ? item.checklistItems : defs.checklistItems ?? [];
+    for (let i = 1; i <= item.quantity; i++) {
+      tasks.push({
+        type: item.type,
+        title: item.quantity === 1 ? item.type : `${item.type} ${i}`,
+        dueDate: calcDueDate(year, month, deadline),
+        priority,
+        checklist,
+      });
+    }
+  }
+  return tasks;
+}
 
 export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess }: ApplyPlanWizardProps) {
   const [step, setStep] = useState(1);
@@ -39,54 +70,33 @@ export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [tasks, setTasks] = useState<WizardTask[]>([]);
+  const [autoRenew, setAutoRenew] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [createdTasks, setCreatedTasks] = useState<{ title: string }[]>([]);
+  const [createdCount, setCreatedCount] = useState(0);
 
   useEffect(() => {
     if (open) {
-      fetch("/api/plans").then((r) => r.json()).then(setPlans);
+      fetch("/api/plans").then((r) => r.json()).then(setPlans).catch(() => {});
     }
   }, [open]);
 
-  function handleSelectPlan(plan: Plan) {
-    setSelectedPlan(plan);
-    // Generate task placeholders
-    const generated: WizardTask[] = [];
-    for (const item of plan.items) {
-      for (let i = 0; i < item.quantity; i++) {
-        generated.push({
-          type: item.type,
-          title: `${item.type} ${i + 1}`,
-          dueDate: "",
-          occurrence: i + 1,
-        });
-      }
-    }
-    setTasks(generated);
-  }
-
-  function updateTask(idx: number, field: keyof WizardTask, value: string) {
-    setTasks((prev) => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
-  }
+  const preview = selectedPlan ? previewTasks(selectedPlan, month, year) : [];
+  const now = new Date();
+  const yearOptions = [now.getFullYear(), now.getFullYear() + 1];
 
   async function handleApply() {
-    if (tasks.some((t) => !t.dueDate)) {
-      alert("Defina a data de todas as tarefas antes de continuar.");
-      return;
-    }
-
+    if (!selectedPlan) return;
     setLoading(true);
 
     const res = await fetch(`/api/clients/${clientId}/apply-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        planId: selectedPlan!.id,
+        planId: selectedPlan.id,
         month,
         year,
-        tasks,
+        autoRenew,
       }),
     });
 
@@ -94,259 +104,276 @@ export function ApplyPlanWizard({ open, onClose, clientId, clientName, onSuccess
 
     if (res.ok) {
       const data = await res.json();
-      setCreatedTasks(data.tasks);
+      setCreatedCount(data.tasks?.length ?? 0);
       setSuccess(true);
-      setStep(4);
+      setStep(3);
     }
   }
 
   function handleClose() {
     setStep(1);
     setSelectedPlan(null);
-    setTasks([]);
     setSuccess(false);
-    setCreatedTasks([]);
+    setCreatedCount(0);
     onClose();
   }
-
-  function handleSuccessClose() {
-    handleClose();
-    onSuccess();
-  }
-
-  const now = new Date();
-  const yearOptions = [now.getFullYear(), now.getFullYear() + 1];
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title={`Aplicar Plano — ${clientName}`}
+      title={`Ativar Plano — ${clientName}`}
       size="lg"
       footer={
-        step < 4 ? (
+        step === 1 ? (
           <>
-            {step > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => setStep((s) => s - 1)}>
-                <ChevronLeft size={12} /> Voltar
-              </Button>
-            )}
-            <div className="flex-1" />
-            {step === 1 && (
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!selectedPlan}
-                onClick={() => setStep(2)}
-              >
-                Próximo <ChevronRight size={12} />
-              </Button>
-            )}
-            {step === 2 && (
-              <Button variant="primary" size="sm" onClick={() => setStep(3)}>
-                Definir Datas <ChevronRight size={12} />
-              </Button>
-            )}
-            {step === 3 && (
-              <Button
-                variant="primary"
-                size="sm"
-                loading={loading}
-                onClick={handleApply}
-              >
-                Aplicar Plano
-              </Button>
-            )}
+            <div style={{ flex: 1 }} />
+            <Button variant="primary" size="sm" disabled={!selectedPlan} onClick={() => setStep(2)}>
+              Ver preview →
+            </Button>
+          </>
+        ) : step === 2 ? (
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setStep(1)}>← Voltar</Button>
+            <div style={{ flex: 1 }} />
+            <Button variant="primary" size="sm" loading={loading} onClick={handleApply}>
+              <Zap size={12} /> Ativar plano
+            </Button>
           </>
         ) : (
-          <Button variant="primary" size="sm" onClick={handleSuccessClose}>
+          <Button variant="primary" size="sm" onClick={() => { handleClose(); onSuccess(); }}>
             Concluído
           </Button>
         )
       }
     >
-      {/* Steps indicator */}
-      {step < 4 && (
-        <div className="flex items-center gap-2 mb-6">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center gap-2">
+      {/* Steps */}
+      {step < 3 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+          {[1, 2].map((s) => (
+            <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
                 style={{
-                  background: s <= step ? "var(--accent-blue)" : "var(--bg-elevated)",
-                  color: s <= step ? "white" : "var(--text-muted)",
+                  width: 24, height: 24, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 600,
+                  background: s <= step ? "var(--accent)" : "var(--bg-elevated)",
+                  color: s <= step ? "#fff" : "var(--text-muted)",
                 }}
               >
                 {s}
               </div>
-              {s < 3 && (
-                <div className="h-px w-8" style={{ background: s < step ? "var(--accent-blue)" : "var(--border)" }} />
+              {s < 2 && (
+                <div style={{ width: 32, height: 1, background: s < step ? "var(--accent)" : "var(--border)" }} />
               )}
             </div>
           ))}
-          <div className="ml-3 text-xs" style={{ color: "var(--text-muted)" }}>
-            {step === 1 && "Selecionar plano"}
-            {step === 2 && "Revisar entregas"}
-            {step === 3 && "Definir datas"}
-          </div>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>
+            {step === 1 ? "Selecionar plano e período" : "Confirmar e ativar"}
+          </span>
         </div>
       )}
 
-      {/* Step 1: Select plan */}
+      {/* Step 1: selecionar plano + mês/ano */}
       {step === 1 && (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 mb-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Mês / Ano */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
             <div>
-              <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Mês de referência</label>
-              <div className="flex gap-2">
-                <select
-                  value={month}
-                  onChange={(e) => setMonth(parseInt(e.target.value))}
-                  className="px-2 py-1.5 rounded-lg text-xs border focus:outline-none"
-                  style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-secondary)" }}
-                >
-                  {MONTHS.map((m, i) => (
-                    <option key={i} value={i + 1}>{m}</option>
-                  ))}
-                </select>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(parseInt(e.target.value))}
-                  className="px-2 py-1.5 rounded-lg text-xs border focus:outline-none"
-                  style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-secondary)" }}
-                >
-                  {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>Mês</label>
+              <select
+                value={month}
+                onChange={(e) => setMonth(parseInt(e.target.value))}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--text-secondary)", fontSize: 13, outline: "none" }}
+              >
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ano</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(parseInt(e.target.value))}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--text-secondary)", fontSize: 13, outline: "none" }}
+              >
+                {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
             </div>
           </div>
 
-          <p className="text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Selecionar template</p>
-          {plans.map((plan) => (
-            <button
-              key={plan.id}
-              type="button"
-              onClick={() => handleSelectPlan(plan)}
-              className="flex items-start gap-3 p-4 rounded-xl border text-left w-full transition-all"
-              style={{
-                background: selectedPlan?.id === plan.id ? "rgba(59,130,246,0.08)" : "var(--bg-elevated)",
-                borderColor: selectedPlan?.id === plan.id ? "var(--accent-blue)" : "var(--border)",
-              }}
-            >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(139,92,246,0.12)" }}>
-                <BookOpen size={14} style={{ color: "var(--accent-purple)" }} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium mb-1" style={{ color: "var(--text-primary)" }}>{plan.name}</p>
-                {plan.description && (
-                  <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>{plan.description}</p>
-                )}
-                <div className="flex flex-wrap gap-1.5">
-                  {plan.items.map((item) => (
-                    <Badge key={item.id} variant="gray">{item.type}: {item.quantity}x</Badge>
-                  ))}
+          <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Selecionar plano</p>
+          {plans.map((plan) => {
+            const totalTasks = plan.items.reduce((s, i) => s + i.quantity, 0);
+            return (
+              <button
+                key={plan.id}
+                type="button"
+                onClick={() => setSelectedPlan(plan)}
+                style={{
+                  display: "flex", alignItems: "flex-start", gap: 12,
+                  padding: "14px 16px", borderRadius: 10, border: "1px solid",
+                  borderColor: selectedPlan?.id === plan.id ? "var(--accent)" : "var(--border)",
+                  background: selectedPlan?.id === plan.id ? "var(--accent-soft)" : "var(--bg-elevated)",
+                  textAlign: "left", width: "100%", cursor: "pointer",
+                  transition: "border-color 150ms, background 150ms",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                    background: "rgba(139,92,246,0.12)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <BookOpen size={14} style={{ color: "var(--accent)" }} />
                 </div>
-              </div>
-              {selectedPlan?.id === plan.id && (
-                <CheckCircle2 size={16} style={{ color: "var(--accent-blue)" }} />
-              )}
-            </button>
-          ))}
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>{plan.name}</p>
+                  {plan.description && (
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{plan.description}</p>
+                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {plan.items.map((item) => (
+                      <Badge key={item.id} variant="gray">{item.type}: {item.quantity}x</Badge>
+                    ))}
+                    <Badge variant="blue">{totalTasks} tarefas</Badge>
+                  </div>
+                </div>
+                {selectedPlan?.id === plan.id && (
+                  <CheckCircle2 size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Step 2: Review */}
+      {/* Step 2: preview + opção autoRenew */}
       {step === 2 && selectedPlan && (
-        <div>
-          <div className="rounded-xl border p-4 mb-4" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-            <p className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>{selectedPlan.name}</p>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Mês de referência: {MONTHS[month - 1]} / {year}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Resumo do plano */}
+          <div
+            style={{
+              padding: "12px 16px", borderRadius: 10,
+              background: "var(--bg-elevated)", border: "1px solid var(--border)",
+            }}
+          >
+            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>{selectedPlan.name}</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {MONTHS[month - 1]}/{year} · {preview.length} tarefas serão geradas automaticamente
             </p>
           </div>
 
-          <p className="text-xs font-medium mb-3" style={{ color: "var(--text-secondary)" }}>
-            As seguintes tarefas serão geradas ({tasks.length} total):
-          </p>
-
-          <div className="flex flex-col gap-2">
-            {selectedPlan.items.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
-                <div>
-                  <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{item.type}</p>
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    {item.quantity} ocorrência{item.quantity > 1 ? "s" : ""} no mês
-                  </p>
-                </div>
-                <Badge variant="blue">{item.quantity}x</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Set dates */}
-      {step === 3 && (
-        <div>
-          <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-            Defina a data de entrega para cada tarefa. Você pode ajustar depois no Kanban.
-          </p>
-
-          <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1">
-            {tasks.map((task, idx) => (
-              <div key={idx} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="gray">{task.type}</Badge>
-                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>#{task.occurrence}</span>
+          {/* Preview das tarefas */}
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              Tarefas que serão criadas
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+              {preview.map((t, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "9px 12px", borderRadius: 8,
+                    background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{t.title}</p>
+                    {t.checklist.length > 0 && (
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {t.checklist.join(" → ")}
+                      </p>
+                    )}
                   </div>
-                  <input
-                    value={task.title}
-                    onChange={(e) => updateTask(idx, "title", e.target.value)}
-                    className="w-full text-xs px-2 py-1 rounded border focus:outline-none focus:border-blue-500"
-                    style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-primary)" }}
-                  />
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20,
+                        color: PRIORITY_COLOR[t.priority],
+                        background: PRIORITY_COLOR[t.priority] + "18",
+                      }}
+                    >
+                      {PRIORITY_LABEL[t.priority]}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      dia {t.dueDate.getDate()}/{t.dueDate.getMonth() + 1}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] block mb-1" style={{ color: "var(--text-muted)" }}>Data *</label>
-                  <input
-                    type="date"
-                    value={task.dueDate}
-                    onChange={(e) => updateTask(idx, "dueDate", e.target.value)}
-                    className="px-2 py-1 rounded border text-xs focus:outline-none focus:border-blue-500"
-                    style={{
-                      background: task.dueDate ? "var(--bg-base)" : "rgba(239,68,68,0.05)",
-                      borderColor: task.dueDate ? "var(--border-strong)" : "rgba(239,68,68,0.4)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+
+          {/* Opção de auto-renovação */}
+          <button
+            type="button"
+            onClick={() => setAutoRenew((v) => !v)}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              padding: "12px 16px", borderRadius: 10,
+              border: `1px solid ${autoRenew ? "var(--accent)" : "var(--border)"}`,
+              background: autoRenew ? "var(--accent-soft)" : "var(--bg-elevated)",
+              cursor: "pointer", textAlign: "left", width: "100%",
+              transition: "border-color 150ms, background 150ms",
+            }}
+          >
+            <div
+              style={{
+                width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 1,
+                border: `2px solid ${autoRenew ? "var(--accent)" : "var(--border)"}`,
+                background: autoRenew ? "var(--accent)" : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              {autoRenew && <CheckCircle2 size={10} color="#fff" />}
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                <RefreshCw size={12} style={{ color: autoRenew ? "var(--accent)" : "var(--text-muted)" }} />
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Renovação automática</p>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                No início de cada mês, o sistema gera automaticamente as tarefas deste plano sem nenhuma ação da equipe.
+              </p>
+            </div>
+          </button>
         </div>
       )}
 
-      {/* Step 4: Success */}
-      {step === 4 && success && (
-        <div className="flex flex-col items-center text-center py-6">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(16,185,129,0.12)" }}>
+      {/* Step 3: Sucesso */}
+      {step === 3 && success && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "24px 0" }}>
+          <div
+            style={{
+              width: 56, height: 56, borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "rgba(16,185,129,0.12)", marginBottom: 16,
+            }}
+          >
             <CheckCircle2 size={28} style={{ color: "var(--accent-green)" }} />
           </div>
-          <h3 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
-            Plano aplicado com sucesso!
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+            Plano ativado!
           </h3>
-          <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-            {createdTasks.length} tarefas criadas para {clientName}
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
+            <strong style={{ color: "var(--text-primary)" }}>{createdCount} tarefas</strong> criadas automaticamente para {clientName}
           </p>
-          <div className="w-full max-h-48 overflow-y-auto flex flex-col gap-1.5">
-            {createdTasks.map((t, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg text-left" style={{ background: "var(--bg-elevated)" }}>
-                <CheckCircle2 size={12} style={{ color: "var(--accent-green)" }} />
-                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.title}</span>
-              </div>
-            ))}
-          </div>
+          {autoRenew && (
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 14px", borderRadius: 20,
+                background: "var(--accent-soft)", marginTop: 8,
+              }}
+            >
+              <RefreshCw size={12} style={{ color: "var(--accent)" }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>
+                Renovação automática ativada
+              </span>
+            </div>
+          )}
         </div>
       )}
     </Modal>

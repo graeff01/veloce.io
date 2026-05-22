@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Input, Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { DELIVERABLE_DEFAULTS } from "@/lib/deliverable-defaults";
 
 interface PlanItem {
   id?: string;
   type: string;
   quantity: number;
   description?: string;
+  deadlineDayOfMonth?: number | null;
+  defaultPriority?: string;
+  checklistItems?: string[];
 }
 
 interface PlanFormProps {
@@ -39,13 +43,14 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
   const [reviewDays, setReviewDays] = useState(plan?.reviewDays?.toString() ?? "");
   const [demandLimit, setDemandLimit] = useState(plan?.demandLimit?.toString() ?? "");
   const [items, setItems] = useState<PlanItem[]>(
-    plan?.items ?? [{ type: "", quantity: 1 }]
+    plan?.items ?? [{ type: "", quantity: 1, checklistItems: [] }]
   );
+  const [expandedItem, setExpandedItem] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   function addItem() {
-    setItems((prev) => [...prev, { type: "", quantity: 1 }]);
+    setItems((prev) => [...prev, { type: "", quantity: 1, checklistItems: [] }]);
   }
 
   function removeItem(idx: number) {
@@ -53,7 +58,7 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  function updateItem(idx: number, field: keyof PlanItem, value: string | number) {
+  function updateItem(idx: number, field: keyof PlanItem, value: string | number | string[] | null | undefined) {
     setItems((prev) => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   }
 
@@ -167,36 +172,98 @@ export function PlanForm({ plan, onSuccess, onCancel }: PlanFormProps) {
         </div>
 
         <div className="flex flex-col gap-2">
-          {items.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <input
-                value={item.type}
-                onChange={(e) => updateItem(idx, "type", e.target.value)}
-                placeholder="Tipo (ex: Post Feed)"
-                className="flex-1 px-3 py-2 rounded-lg text-xs border focus:outline-none focus:border-blue-500"
-                style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-primary)" }}
-              />
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={item.quantity}
-                onChange={(e) => updateItem(idx, "quantity", parseInt(e.target.value) || 1)}
-                className="w-16 px-2 py-2 rounded-lg text-xs border text-center focus:outline-none focus:border-blue-500"
-                style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-primary)" }}
-              />
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>x/mês</span>
-              <button
-                type="button"
-                onClick={() => removeItem(idx)}
-                disabled={items.length <= 1}
-                className="w-6 h-6 rounded flex items-center justify-center hover:bg-[var(--bg-hover)] disabled:opacity-30"
-                style={{ color: "var(--accent-red)" }}
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          ))}
+          {items.map((item, idx) => {
+            const defs = DELIVERABLE_DEFAULTS[item.type] ?? {};
+            const isExpanded = expandedItem === idx;
+            return (
+              <div key={idx} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                {/* Row principal */}
+                <div className="flex items-center gap-2" style={{ padding: "8px 10px", background: "var(--bg-elevated)" }}>
+                  <input
+                    value={item.type}
+                    onChange={(e) => updateItem(idx, "type", e.target.value)}
+                    placeholder="Tipo (ex: Post Feed)"
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs border focus:outline-none focus:border-blue-500"
+                    style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-primary)" }}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={item.quantity}
+                    onChange={(e) => updateItem(idx, "quantity", parseInt(e.target.value) || 1)}
+                    className="w-14 px-2 py-1.5 rounded-lg text-xs border text-center focus:outline-none"
+                    style={{ background: "var(--bg-base)", borderColor: "var(--border-strong)", color: "var(--text-primary)" }}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>x/mês</span>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedItem(isExpanded ? null : idx)}
+                    title="Configurar prazo e checklist"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "2px 4px" }}
+                  >
+                    {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    disabled={items.length <= 1}
+                    className="w-6 h-6 rounded flex items-center justify-center disabled:opacity-30"
+                    style={{ color: "var(--accent-red)", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+
+                {/* Campos expandidos */}
+                {isExpanded && (
+                  <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-base)", display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <label style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        Dia do mês para vencer
+                        <input
+                          type="number"
+                          min={0}
+                          max={31}
+                          placeholder={`Padrão: dia ${defs.deadlineDayOfMonth ?? 15}`}
+                          value={item.deadlineDayOfMonth ?? ""}
+                          onChange={(e) => updateItem(idx, "deadlineDayOfMonth", e.target.value ? parseInt(e.target.value) : "")}
+                          style={{ display: "block", width: "100%", marginTop: 5, padding: "6px 8px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 12, outline: "none" }}
+                        />
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>0 = último dia do mês</span>
+                      </label>
+                      <label style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        Prioridade padrão
+                        <select
+                          value={item.defaultPriority ?? "NORMAL"}
+                          onChange={(e) => updateItem(idx, "defaultPriority", e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 5, padding: "6px 8px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 12, outline: "none" }}
+                        >
+                          <option value="LOW">Baixa</option>
+                          <option value="NORMAL">Normal</option>
+                          <option value="HIGH">Alta</option>
+                          <option value="CRITICAL">Crítica</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      Checklist padrão (um por linha)
+                      <textarea
+                        rows={3}
+                        placeholder={defs.checklistItems ? defs.checklistItems.join("\n") : "Ex: Brief\nArte\nAprovação"}
+                        value={(item.checklistItems ?? []).join("\n")}
+                        onChange={(e) => updateItem(idx, "checklistItems", e.target.value.split("\n").filter(Boolean))}
+                        style={{ display: "block", width: "100%", marginTop: 5, padding: "6px 8px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 12, outline: "none", resize: "none", boxSizing: "border-box" }}
+                      />
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                        Deixe vazio para usar o padrão do tipo
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

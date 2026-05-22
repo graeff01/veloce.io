@@ -93,6 +93,29 @@ export async function GET() {
     })),
   ].slice(0, 8);
 
+  // Clients with active autoRenew plan but no tasks this month
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  const autoRenewPlans = await prisma.clientPlan.findMany({
+    where: { active: true, autoRenew: true },
+    select: { clientId: true, plan: { select: { name: true } } },
+  });
+
+  const clientsWithoutTasksThisMonth = (
+    await Promise.all(
+      autoRenewPlans.map(async (cp) => {
+        const count = await prisma.task.count({
+          where: { clientId: cp.clientId, deletedAt: null, planMonth: currentMonth, planYear: currentYear },
+        });
+        if (count > 0) return null;
+        const client = activeClients.find((c) => c.id === cp.clientId);
+        if (!client) return null;
+        return { ...client, planName: cp.plan.name };
+      })
+    )
+  ).filter(Boolean) as Array<{ id: string; name: string; planName: string }>;
+
   return NextResponse.json({
     summary: {
       dueToday: dueToday.length,
@@ -101,12 +124,14 @@ export async function GET() {
       inactiveClients: inactiveClients.length,
       noFutureClients: noFutureClients.length,
       criticals: criticals.length,
+      missingTasksClients: clientsWithoutTasksThisMonth.length,
     },
     dueToday,
     overdue,
     blocked,
     inactiveClients,
     noFutureClients,
+    clientsWithoutTasksThisMonth,
     priorityTasks: urgentTasks,
     urgentTasks,
     criticals,

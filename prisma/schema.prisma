@@ -106,23 +106,30 @@ model Plan {
 }
 
 model PlanItem {
-  id          String  @id @default(cuid())
-  planId      String
-  type        String
-  quantity    Int
-  description String?
+  id                 String   @id @default(cuid())
+  planId             String
+  type               String
+  quantity           Int
+  description        String?
+  deadlineDayOfMonth Int?
+  defaultPriority    String   @default("NORMAL")
+  checklistItems     String[]
 
   plan Plan @relation(fields: [planId], references: [id])
 }
 
 model ClientPlan {
-  id        String   @id @default(cuid())
-  clientId  String
-  planId    String
-  month     Int
-  year      Int
-  appliedAt DateTime @default(now())
-  appliedBy String
+  id         String    @id @default(cuid())
+  clientId   String
+  planId     String
+  month      Int
+  year       Int
+  appliedAt  DateTime  @default(now())
+  appliedBy  String
+  autoRenew  Boolean   @default(false)
+  renewDay   Int       @default(1)
+  active     Boolean   @default(true)
+  endDate    DateTime?
 
   client Client @relation(fields: [clientId], references: [id])
   plan   Plan   @relation(fields: [planId], references: [id])

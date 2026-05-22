@@ -7,6 +7,7 @@ import {
   KanbanSquare, CalendarDays, Edit2, Activity,
   AlertTriangle, CheckCircle2, Clock, BookOpen,
   ChevronRight, MessageSquarePlus, HeartPulse, Target,
+  RefreshCw, Zap,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
@@ -54,10 +55,13 @@ interface ClientDetail {
     health: "HEALTHY" | "ATTENTION" | "CRITICAL";
     completionRate: number;
   };
+  progressByType: Record<string, { planned: number; done: number; pct: number }>;
   clientPlans: Array<{
     id: string;
     month: number;
     year: number;
+    active: boolean;
+    autoRenew: boolean;
     plan: {
       id: string;
       name: string;
@@ -182,6 +186,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
   const [note, setNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [renewing, setRenewing] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}`);
@@ -259,6 +264,21 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     : client.stats.openTasks === 0 ? "var(--green)"
     : client.stats.doneTasks > 0 ? "var(--green)"
     : "var(--amber)";
+
+  async function handleRenewNow() {
+    setRenewing(true);
+    const res = await fetch(`/api/clients/${clientId}/renew-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    setRenewing(false);
+    if (res.ok) load();
+    else {
+      const d = await res.json();
+      if (d.error) alert(d.error);
+    }
+  }
 
   async function saveNote() {
     if (!note.trim()) return;
@@ -338,6 +358,19 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 </span>
                 {currentPlan && (
                   <Badge variant="purple">{currentPlan.plan.name}</Badge>
+                )}
+                {currentPlan?.autoRenew && (
+                  <span
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "2px 8px", borderRadius: 20,
+                      background: "rgba(16,185,129,0.1)",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      fontSize: 10, fontWeight: 600, color: "var(--green)",
+                    }}
+                  >
+                    <RefreshCw size={9} /> Auto-renovação
+                  </span>
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
@@ -575,22 +608,33 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                   boxShadow: "var(--shadow-card)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
                   <div>
                     <p style={{ fontSize: 15, fontWeight: 700, color: rhythmTone, lineHeight: "20px" }}>{rhythm}</p>
                     <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                      {client.stats.doneTasks} entregas recentes / {client.stats.openTasks} em aberto
+                      {client.stats.doneTasks} entregas concluídas / {client.stats.openTasks} em aberto
                     </p>
                   </div>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    {currentPlan.plan.items.length} frentes ativas
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRenewNow}
+                    disabled={renewing}
+                    title="Gerar tasks deste mês agora"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      background: "none", border: "1px solid var(--border)",
+                      borderRadius: 7, padding: "4px 10px",
+                      fontSize: 11, color: "var(--text-muted)",
+                      cursor: "pointer", opacity: renewing ? 0.6 : 1,
+                    }}
+                  >
+                    <Zap size={11} /> {renewing ? "Gerando..." : "Renovar agora"}
+                  </button>
                 </div>
                 {currentPlan.plan.items.map((item) => {
-                  const done = Math.min(client.stats.doneTasks, item.quantity);
-                  const pct = item.quantity > 0
-                    ? Math.min(100, Math.round((done / item.quantity) * 100))
-                    : 0;
+                  const prog = client.progressByType?.[item.type];
+                  const done = prog?.done ?? 0;
+                  const pct = prog?.pct ?? 0;
                   const barColor = pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--amber)" : "var(--red)";
                   const typeSty = getTypeStyle(item.type);
 
@@ -601,57 +645,42 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          marginBottom: 6,
+                          marginBottom: 5,
                         }}
                       >
-                        {/* Type badge */}
                         <span
                           style={{
-                            fontSize: 11,
-                            fontWeight: 500,
-                            background: typeSty.bg,
-                            color: typeSty.color,
-                            padding: "2px 8px",
-                            borderRadius: 20,
+                            fontSize: 11, fontWeight: 500,
+                            background: typeSty.bg, color: typeSty.color,
+                            padding: "2px 8px", borderRadius: 20,
                           }}
                         >
                           {item.type}
                         </span>
-                        {/* Count + percentage */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {item.quantity}x planejado
+                            {done}/{item.quantity}
                           </span>
                           <span
                             style={{
-                              display: "none",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              color: barColor,
-                              minWidth: 36,
-                              textAlign: "right",
+                              fontSize: 11, fontWeight: 600,
+                              color: barColor, minWidth: 32, textAlign: "right",
                             }}
                           >
                             {pct}%
                           </span>
                         </div>
                       </div>
-                      {/* Progress bar */}
                       <div
                         style={{
-                          display: "none",
-                          height: 4,
-                          borderRadius: 2,
-                          background: "var(--bg-elevated)",
-                          overflow: "hidden",
+                          height: 4, borderRadius: 2,
+                          background: "var(--bg-elevated)", overflow: "hidden",
                         }}
                       >
                         <div
                           style={{
-                            width: `${pct}%`,
-                            height: "100%",
-                            background: barColor,
-                            borderRadius: 2,
+                            width: `${pct}%`, height: "100%",
+                            background: barColor, borderRadius: 2,
                             transition: "width 400ms ease-out",
                           }}
                         />

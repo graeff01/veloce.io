@@ -35,12 +35,13 @@ type NoFutureClient = { id: string; name: string; futureTasks: number };
 type Critical = { id: string; tone: "red" | "amber"; title: string; subtitle: string; href: string };
 
 type TodayData = {
-  summary: { dueToday: number; overdue: number; blocked: number; inactiveClients: number; noFutureClients: number; criticals: number };
+  summary: { dueToday: number; overdue: number; blocked: number; inactiveClients: number; noFutureClients: number; criticals: number; missingTasksClients?: number };
   dueToday: Task[];
   overdue: Task[];
   blocked: Task[];
   inactiveClients: InactiveClient[];
   noFutureClients: NoFutureClient[];
+  clientsWithoutTasksThisMonth?: Array<{ id: string; name: string; planName: string }>;
   priorityTasks: Task[];
   urgentTasks: Task[];
   criticals: Critical[];
@@ -293,6 +294,20 @@ export function TodayContent() {
           <OperationalList compact empty="Carteira sob controle.">
             {riskClients.map((client) => <RiskClientRow key={client.id} client={client} />)}
           </OperationalList>
+
+          {(data.clientsWithoutTasksThisMonth?.length ?? 0) > 0 && (
+            <>
+              <SectionHeader title="Sem tasks este mes" count={data.clientsWithoutTasksThisMonth!.length} />
+              <OperationalList compact empty="">
+                {data.clientsWithoutTasksThisMonth!.map((client) => (
+                  <RiskClientRow
+                    key={client.id}
+                    client={{ id: client.id, name: client.name, reason: `Plano "${client.planName}" sem tasks geradas`, tone: "amber" }}
+                  />
+                ))}
+              </OperationalList>
+            </>
+          )}
             </>
           )}
         </div>

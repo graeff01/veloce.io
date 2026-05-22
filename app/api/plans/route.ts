@@ -17,6 +17,9 @@ const createPlanSchema = z.object({
       type: z.string().min(1),
       quantity: z.number().min(1),
       description: z.string().optional(),
+      deadlineDayOfMonth: z.number().min(0).max(31).optional(),
+      defaultPriority: z.string().optional(),
+      checklistItems: z.array(z.string()).optional(),
     })
   ).min(1),
 });
