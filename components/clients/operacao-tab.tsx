@@ -2,20 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  ChevronLeft, ChevronRight, CheckCircle2, Circle,
-  AlertTriangle, RefreshCw, Zap, Plus, Clock,
-  ChevronDown, ChevronUp, Loader2,
+  ChevronLeft, ChevronRight, AlertTriangle,
+  RefreshCw, Zap, Plus, ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 import { ApplyPlanWizard } from "@/components/plans/apply-plan-wizard";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-  order: number;
-}
+interface ChecklistItem { id: string; text: string; done: boolean; order: number }
 
 interface Task {
   id: string;
@@ -45,53 +39,48 @@ interface DeliverableData {
   month: number;
   year: number;
   groups: DeliverableGroup[];
-  summary: {
-    total: number;
-    done: number;
-    overdue: number;
-    hasPlan: boolean;
-    planName: string | null;
-  };
+  summary: { total: number; done: number; overdue: number; hasPlan: boolean; planName: string | null };
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
 
-const TYPE_COLOR: Record<string, { bg: string; color: string; dot: string }> = {
-  "Post Feed":   { bg: "#EEF2FF", color: "#4F46E5", dot: "#4F46E5" },
-  "Story":       { bg: "#F0FDF4", color: "#16A34A", dot: "#16A34A" },
-  "Reels":       { bg: "#FFF7ED", color: "#EA580C", dot: "#EA580C" },
-  "Campanha":    { bg: "#FEF3C7", color: "#D97706", dot: "#D97706" },
-  "Criativo":    { bg: "#F0FDFA", color: "#0D9488", dot: "#0D9488" },
-  "Relatório":   { bg: "#F8FAFC", color: "#64748B", dot: "#64748B" },
-  "Copy":        { bg: "#EFF6FF", color: "#2563EB", dot: "#2563EB" },
-  "Outros":      { bg: "var(--bg-elevated)", color: "var(--text-secondary)", dot: "var(--text-muted)" },
+const TYPE_COLOR: Record<string, { bg: string; color: string; border: string }> = {
+  "Post Feed":  { bg: "#EEF2FF", color: "#4338CA", border: "#C7D2FE" },
+  "Story":      { bg: "#F0FDF4", color: "#15803D", border: "#BBF7D0" },
+  "Reels":      { bg: "#FFF7ED", color: "#C2410C", border: "#FED7AA" },
+  "Campanha":   { bg: "#FFFBEB", color: "#B45309", border: "#FDE68A" },
+  "Criativo":   { bg: "#F0FDFA", color: "#0F766E", border: "#99F6E4" },
+  "Relatório":  { bg: "#F8FAFC", color: "#475569", border: "#E2E8F0" },
+  "Copy":       { bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" },
+  "Google Ads": { bg: "#FEF3C7", color: "#92400E", border: "#FDE68A" },
+  "TikTok Ads": { bg: "#FDF4FF", color: "#7E22CE", border: "#E9D5FF" },
 };
 
-function getTypeStyle(type: string) {
-  return TYPE_COLOR[type] ?? TYPE_COLOR["Outros"];
+function typeStyle(type: string) {
+  return TYPE_COLOR[type] ?? { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" };
 }
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
-  return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+  return `${d.getDate().toString().padStart(2,"0")}/${(d.getMonth()+1).toString().padStart(2,"0")}`;
 }
 
 function isOverdue(task: Task) {
   return task.status !== "DONE" && new Date(task.dueDate) < new Date();
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────────────────────────
 
 export function OperacaoTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [data, setData] = useState<DeliverableData | null>(null);
+  const [month, setMonth]   = useState(now.getMonth() + 1);
+  const [year, setYear]     = useState(now.getFullYear());
+  const [data, setData]     = useState<DeliverableData | null>(null);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -104,7 +93,6 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
     if (res.ok) {
       const d: DeliverableData = await res.json();
       setData(d);
-      // Default: expand all groups
       const expanded: Record<string, boolean> = {};
       d.groups.forEach((g) => { expanded[g.type] = true; });
       setExpandedGroups(expanded);
@@ -118,38 +106,61 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
     if (month === 1) { setMonth(12); setYear((y) => y - 1); }
     else setMonth((m) => m - 1);
   }
-
   function nextMonth() {
     if (month === 12) { setMonth(1); setYear((y) => y + 1); }
     else setMonth((m) => m + 1);
   }
 
   async function toggleStatus(task: Task) {
+    if (togglingId) return;
     setTogglingId(task.id);
     const next = task.status === "DONE" ? "TODO" : "DONE";
+
+    // Optimistic update first
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        groups: prev.groups.map((g) => {
+          const newTasks = g.tasks.map((t) => t.id === task.id ? { ...t, status: next as Task["status"] } : t);
+          const newDone = newTasks.filter((t) => t.status === "DONE").length;
+          const newOverdue = newTasks.filter((t) => isOverdue(t)).length;
+          return {
+            ...g,
+            tasks: newTasks,
+            done: newDone,
+            overdue: newOverdue,
+            pct: Math.round((newDone / (g.planned || g.total)) * 100),
+          };
+        }),
+        summary: {
+          ...prev.summary,
+          done: prev.summary.done + (next === "DONE" ? 1 : -1),
+          overdue: next === "DONE"
+            ? Math.max(0, prev.summary.overdue - (isOverdue(task) ? 1 : 0))
+            : prev.summary.overdue + (new Date(task.dueDate) < now ? 1 : 0),
+        },
+      };
+    });
+
     const res = await fetch(`/api/tasks/${task.id}/status`, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     });
-    if (res.ok) {
+
+    // Revert on failure
+    if (!res.ok) {
       setData((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          groups: prev.groups.map((g) => ({
-            ...g,
-            tasks: g.tasks.map((t) => t.id === task.id ? { ...t, status: next } : t),
-            done: g.tasks.filter((t) => (t.id === task.id ? next === "DONE" : t.status === "DONE")).length,
-            pct: Math.round(
-              (g.tasks.filter((t) => (t.id === task.id ? next === "DONE" : t.status === "DONE")).length /
-                (g.planned || g.total)) * 100
-            ),
-          })),
-          summary: {
-            ...prev.summary,
-            done: prev.summary.done + (next === "DONE" ? 1 : -1),
-          },
+          groups: prev.groups.map((g) => {
+            const reverted = g.tasks.map((t) => t.id === task.id ? { ...t, status: task.status } : t);
+            const rd = reverted.filter((t) => t.status === "DONE").length;
+            return { ...g, tasks: reverted, done: rd, pct: Math.round((rd / (g.planned || g.total)) * 100) };
+          }),
+          summary: { ...prev.summary, done: prev.summary.done + (next === "DONE" ? -1 : 1) },
         };
       });
     }
@@ -159,378 +170,357 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
   async function handleRenew() {
     setRenewing(true);
     const res = await fetch(`/api/clients/${clientId}/renew-plan`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     });
     setRenewing(false);
-    if (res.ok) load();
-    else {
+    load();
+    if (!res.ok) {
       const d = await res.json();
       if (d.error && d.error !== "Tarefas já existem para este mês") alert(d.error);
-      else load();
     }
   }
 
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
-  const totalPct = data
-    ? data.summary.total > 0
-      ? Math.round((data.summary.done / data.summary.total) * 100)
-      : 0
+  const totalPct = data && data.summary.total > 0
+    ? Math.round((data.summary.done / data.summary.total) * 100)
     : 0;
+  const progressColor = totalPct >= 80 ? "#16A34A" : totalPct >= 50 ? "#D97706" : "#DC2626";
 
   return (
-    <div style={{ padding: "24px 28px", maxWidth: 780 }}>
-      {/* Month navigator */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button
-            onClick={prevMonth}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, display: "flex", alignItems: "center" }}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <div style={{ minWidth: 160, textAlign: "center" }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-              {MONTH_NAMES[month - 1]} {year}
-            </span>
-            {isCurrentMonth && (
-              <span style={{
-                marginLeft: 8, fontSize: 10, fontWeight: 600,
-                background: "var(--accent-soft)", color: "var(--accent)",
-                padding: "1px 7px", borderRadius: 20,
-              }}>
-                mês atual
+    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
+      <div style={{ maxWidth: 820, padding: "24px 28px" }}>
+
+        {/* ── Top bar ──────────────────────────────────────── */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+
+          {/* Month nav */}
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <button
+              onClick={prevMonth}
+              style={{
+                width: 30, height: 30, borderRadius: 8,
+                border: "1px solid var(--border)", background: "var(--bg-surface)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "var(--text-muted)",
+              }}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <div style={{
+              minWidth: 172, textAlign: "center",
+              padding: "0 12px",
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
+                {MONTH_NAMES[month - 1]} {year}
               </span>
-            )}
+              {isCurrentMonth && (
+                <span style={{
+                  marginLeft: 8, fontSize: 10, fontWeight: 600,
+                  background: "var(--accent-soft)", color: "var(--accent)",
+                  padding: "2px 7px", borderRadius: 20,
+                }}>
+                  atual
+                </span>
+              )}
+            </div>
+            <button
+              onClick={nextMonth}
+              style={{
+                width: 30, height: 30, borderRadius: 8,
+                border: "1px solid var(--border)", background: "var(--bg-surface)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "var(--text-muted)",
+              }}
+            >
+              <ChevronRight size={14} />
+            </button>
           </div>
-          <button
-            onClick={nextMonth}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, display: "flex", alignItems: "center" }}
-          >
-            <ChevronRight size={16} />
-          </button>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 8 }}>
+            {data?.summary.hasPlan && (
+              <button
+                onClick={handleRenew}
+                disabled={renewing}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  border: "1px solid var(--border)", borderRadius: 8,
+                  background: "var(--bg-surface)", color: "var(--text-muted)",
+                  padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer",
+                  opacity: renewing ? 0.6 : 1, transition: "opacity 150ms",
+                }}
+              >
+                <Zap size={12} /> {renewing ? "Gerando..." : "Gerar entregas"}
+              </button>
+            )}
+            <button
+              onClick={() => setPlanWizardOpen(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                border: "1px solid var(--border)", borderRadius: 8,
+                background: "var(--bg-surface)", color: "var(--text-secondary)",
+                padding: "6px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              <RefreshCw size={12} /> Trocar plano
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          {data?.summary.hasPlan && (
+        {/* ── Loading ───────────────────────────────────────── */}
+        {loading && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0", color: "var(--text-muted)" }}>
+            <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
+          </div>
+        )}
+
+        {/* ── Empty: no plan ────────────────────────────────── */}
+        {!loading && data && data.summary.total === 0 && !data.summary.hasPlan && (
+          <div style={{
+            border: "1.5px dashed var(--border)", borderRadius: 16,
+            padding: "56px 32px", textAlign: "center",
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 16, margin: "0 auto 18px",
+              background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Plus size={24} color="var(--accent)" />
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+              Nenhum plano aplicado
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 22, maxWidth: 340, margin: "0 auto 22px" }}>
+              Aplique um plano para gerar automaticamente os entregáveis mensais.
+            </p>
+            <button
+              onClick={() => setPlanWizardOpen(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                background: "var(--accent)", color: "#fff", border: "none",
+                borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              <Plus size={14} /> Aplicar plano
+            </button>
+          </div>
+        )}
+
+        {/* ── Empty: has plan, no tasks ─────────────────────── */}
+        {!loading && data && data.summary.total === 0 && data.summary.hasPlan && (
+          <div style={{
+            border: "1.5px dashed var(--border)", borderRadius: 16,
+            padding: "48px 32px", textAlign: "center",
+          }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+              Sem entregas para {MONTH_NAMES[month - 1]}
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
+              Plano ativo: <strong>{data.summary.planName}</strong>
+            </p>
             <button
               onClick={handleRenew}
               disabled={renewing}
               style={{
-                display: "flex", alignItems: "center", gap: 5,
-                border: "1px solid var(--border)", borderRadius: 7,
-                background: "var(--bg-surface)", color: "var(--text-muted)",
-                padding: "6px 12px", fontSize: 12, cursor: "pointer",
-                opacity: renewing ? 0.6 : 1,
+                display: "inline-flex", alignItems: "center", gap: 7,
+                background: "var(--accent)", color: "#fff", border: "none",
+                borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 600,
+                cursor: "pointer", opacity: renewing ? 0.6 : 1,
               }}
             >
-              <Zap size={12} /> {renewing ? "Gerando..." : "Gerar entregas"}
+              <Zap size={14} /> {renewing ? "Gerando..." : "Gerar entregas do mês"}
             </button>
-          )}
-          <button
-            onClick={() => setPlanWizardOpen(true)}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              border: "1px solid var(--border)", borderRadius: 7,
-              background: "var(--bg-surface)", color: "var(--text-secondary)",
-              padding: "6px 12px", fontSize: 12, cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={12} /> Trocar plano
-          </button>
-        </div>
-      </div>
-
-      {/* Loading state */}
-      {loading && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "var(--text-muted)" }}>
-          <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} />
-        </div>
-      )}
-
-      {/* Empty: no plan and no tasks */}
-      {!loading && data && data.summary.total === 0 && !data.summary.hasPlan && (
-        <div style={{
-          border: "1px dashed var(--border)", borderRadius: 14,
-          padding: "48px 32px", textAlign: "center",
-        }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 14, margin: "0 auto 16px",
-            background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <Plus size={22} color="var(--accent)" />
           </div>
-          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
-            Nenhum plano aplicado
-          </p>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20, maxWidth: 360, margin: "0 auto 20px" }}>
-            Aplique um plano de serviços para gerar automaticamente os entregáveis deste cliente.
-          </p>
-          <button
-            onClick={() => setPlanWizardOpen(true)}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              background: "var(--accent)", color: "#fff", border: "none",
-              borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-            }}
-          >
-            <Plus size={14} /> Aplicar plano
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Empty: has plan but no tasks for this month */}
-      {!loading && data && data.summary.total === 0 && data.summary.hasPlan && (
-        <div style={{
-          border: "1px dashed var(--border)", borderRadius: 14,
-          padding: "40px 32px", textAlign: "center",
-        }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
-            Sem entregas para {MONTH_NAMES[month - 1]}
-          </p>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
-            Plano ativo: <strong>{data.summary.planName}</strong>
-          </p>
-          <button
-            onClick={handleRenew}
-            disabled={renewing}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              background: "var(--accent)", color: "#fff", border: "none",
-              borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600,
-              cursor: "pointer", opacity: renewing ? 0.6 : 1,
-            }}
-          >
-            <Zap size={14} /> {renewing ? "Gerando..." : "Gerar entregas do mês"}
-          </button>
-        </div>
-      )}
+        {/* ── Content ───────────────────────────────────────── */}
+        {!loading && data && data.summary.total > 0 && (
+          <div>
 
-      {/* Content */}
-      {!loading && data && data.summary.total > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          {/* Summary bar */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 16, marginBottom: 16,
-            padding: "12px 16px", borderRadius: 10,
-            background: "var(--bg-surface)", border: "1px solid var(--border)",
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                  {data.summary.done}/{data.summary.total} entregues
-                </span>
+            {/* Summary card */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 20,
+              padding: "14px 20px", borderRadius: 12, marginBottom: 20,
+              background: "var(--bg-surface)", border: "1px solid var(--border)",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            }}>
+              {/* Circular progress */}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <svg width={52} height={52} style={{ transform: "rotate(-90deg)" }}>
+                  <circle cx={26} cy={26} r={21} fill="none" stroke="var(--bg-elevated)" strokeWidth={4} />
+                  <circle
+                    cx={26} cy={26} r={21}
+                    fill="none" stroke={progressColor} strokeWidth={4}
+                    strokeDasharray={`${2 * Math.PI * 21}`}
+                    strokeDashoffset={`${2 * Math.PI * 21 * (1 - totalPct / 100)}`}
+                    strokeLinecap="round"
+                    style={{ transition: "stroke-dashoffset 600ms ease-out" }}
+                  />
+                </svg>
                 <span style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: totalPct >= 70 ? "var(--green)" : totalPct >= 40 ? "var(--amber)" : "var(--red)",
+                  position: "absolute", inset: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: progressColor,
                 }}>
                   {totalPct}%
                 </span>
               </div>
-              <div style={{ height: 5, borderRadius: 3, background: "var(--bg-elevated)", overflow: "hidden" }}>
+
+              {/* Text */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>
+                  {data.summary.done} de {data.summary.total} entregues
+                </p>
+                <div style={{ height: 5, borderRadius: 3, background: "var(--bg-elevated)", overflow: "hidden" }}>
+                  <div style={{
+                    width: `${totalPct}%`, height: "100%", borderRadius: 3,
+                    background: progressColor, transition: "width 600ms ease-out",
+                  }} />
+                </div>
+              </div>
+
+              {/* Overdue badge */}
+              {data.summary.overdue > 0 && (
                 <div style={{
-                  width: `${totalPct}%`, height: "100%", borderRadius: 3,
-                  background: totalPct >= 70 ? "var(--green)" : totalPct >= 40 ? "var(--amber)" : "var(--red)",
-                  transition: "width 500ms ease-out",
-                }} />
-              </div>
+                  display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                  padding: "6px 12px", borderRadius: 8,
+                  background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.18)",
+                  fontSize: 12, fontWeight: 600, color: "#DC2626",
+                }}>
+                  <AlertTriangle size={12} />
+                  {data.summary.overdue} em atraso
+                </div>
+              )}
+
+              {/* All done celebration */}
+              {totalPct === 100 && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                  padding: "6px 12px", borderRadius: 8,
+                  background: "rgba(22,163,74,0.08)", border: "1px solid rgba(22,163,74,0.2)",
+                  fontSize: 12, fontWeight: 600, color: "#15803D",
+                }}>
+                  ✓ Mês completo
+                </div>
+              )}
             </div>
-            {data.summary.overdue > 0 && (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "4px 10px", borderRadius: 7,
-                background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
-                fontSize: 12, fontWeight: 600, color: "var(--red)", flexShrink: 0,
-              }}>
-                <AlertTriangle size={12} />
-                {data.summary.overdue} em atraso
-              </div>
-            )}
-          </div>
 
-          {/* Deliverable groups */}
-          {data.groups.map((group) => {
-            const style = getTypeStyle(group.type);
-            const expanded = expandedGroups[group.type] ?? true;
-            const pct = group.planned > 0
-              ? Math.round((group.done / group.planned) * 100)
-              : group.total > 0 ? Math.round((group.done / group.total) * 100) : 0;
-            const barColor = pct >= 100 ? "var(--green)" : pct >= 60 ? "var(--amber)" : group.overdue > 0 ? "var(--red)" : "var(--accent)";
-            const allDone = group.done >= (group.planned || group.total);
+            {/* Groups */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {data.groups.map((group) => {
+                const s = typeStyle(group.type);
+                const expanded = expandedGroups[group.type] ?? true;
+                const pct = group.planned > 0
+                  ? Math.round((group.done / group.planned) * 100)
+                  : group.total > 0 ? Math.round((group.done / group.total) * 100) : 0;
+                const allDone = group.done >= (group.planned || group.total);
+                const barColor = allDone ? "#16A34A" : group.overdue > 0 ? "#DC2626" : pct >= 50 ? "#D97706" : "var(--accent)";
 
-            return (
-              <div
-                key={group.type}
-                style={{
-                  border: `1px solid ${group.overdue > 0 ? "rgba(239,68,68,0.2)" : allDone ? "rgba(16,185,129,0.2)" : "var(--border)"}`,
-                  borderRadius: 12, overflow: "hidden",
-                  marginBottom: 8,
-                  background: allDone ? "rgba(16,185,129,0.02)" : "var(--bg-surface)",
-                }}
-              >
-                {/* Group header */}
-                <button
-                  type="button"
-                  onClick={() => setExpandedGroups((prev) => ({ ...prev, [group.type]: !expanded }))}
-                  style={{
-                    width: "100%", background: "none", border: "none", cursor: "pointer",
-                    padding: "12px 16px", display: "flex", alignItems: "center", gap: 12,
-                  }}
-                >
-                  {/* Type badge */}
-                  <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "3px 10px", borderRadius: 20, flexShrink: 0,
-                    background: style.bg, color: style.color, fontSize: 12, fontWeight: 600,
-                  }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: style.dot }} />
-                    {group.type}
-                  </span>
-
-                  {/* Progress inline */}
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ flex: 1, height: 3, borderRadius: 2, background: "var(--bg-elevated)", overflow: "hidden" }}>
-                      <div style={{
-                        width: `${Math.min(100, pct)}%`, height: "100%", borderRadius: 2,
-                        background: barColor, transition: "width 400ms ease-out",
-                      }} />
-                    </div>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
-                      {group.done}/{group.planned || group.total}
-                    </span>
-                  </div>
-
-                  {/* Status badges */}
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                    {allDone && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--green)", background: "rgba(16,185,129,0.1)", padding: "2px 7px", borderRadius: 20 }}>
-                        ✓ completo
+                return (
+                  <div
+                    key={group.type}
+                    style={{
+                      borderRadius: 12, overflow: "hidden",
+                      border: `1px solid ${allDone ? "rgba(22,163,74,0.2)" : group.overdue > 0 ? "rgba(220,38,38,0.15)" : "var(--border)"}`,
+                      background: "var(--bg-surface)",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                      transition: "box-shadow 150ms",
+                    }}
+                  >
+                    {/* Group header */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroups((p) => ({ ...p, [group.type]: !expanded }))}
+                      style={{
+                        width: "100%", background: allDone ? "rgba(22,163,74,0.03)" : "transparent",
+                        border: "none", cursor: "pointer",
+                        padding: "11px 16px", display: "flex", alignItems: "center", gap: 12,
+                      }}
+                    >
+                      {/* Type pill */}
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
+                        padding: "3px 10px 3px 8px", borderRadius: 20,
+                        background: s.bg, color: s.color,
+                        border: `1px solid ${s.border}`,
+                        fontSize: 11.5, fontWeight: 600, letterSpacing: "0.01em",
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, opacity: 0.7 }} />
+                        {group.type}
                       </span>
-                    )}
-                    {group.overdue > 0 && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--red)", background: "rgba(239,68,68,0.08)", padding: "2px 7px", borderRadius: 20 }}>
-                        {group.overdue} atrasado{group.overdue > 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {expanded ? <ChevronUp size={13} color="var(--text-muted)" /> : <ChevronDown size={13} color="var(--text-muted)" />}
-                  </div>
-                </button>
 
-                {/* Task list */}
-                {expanded && (
-                  <div style={{ borderTop: "1px solid var(--border)" }}>
-                    {group.tasks.map((task, idx) => {
-                      const done = task.status === "DONE";
-                      const overdue = isOverdue(task);
-                      const toggling = togglingId === task.id;
-                      const isLast = idx === group.tasks.length - 1;
-
-                      return (
-                        <div
-                          key={task.id}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 12,
-                            padding: "10px 16px",
-                            borderBottom: isLast ? "none" : "1px solid var(--border)",
-                            background: overdue ? "rgba(239,68,68,0.02)" : "transparent",
-                            transition: "background 150ms",
-                          }}
-                        >
-                          {/* Toggle button */}
-                          <button
-                            type="button"
-                            onClick={() => !toggling && toggleStatus(task)}
-                            disabled={toggling}
-                            style={{
-                              background: "none", border: "none", cursor: toggling ? "default" : "pointer",
-                              padding: 0, display: "flex", alignItems: "center", flexShrink: 0,
-                              opacity: toggling ? 0.5 : 1,
-                            }}
-                          >
-                            {toggling ? (
-                              <Loader2 size={18} color="var(--text-muted)" style={{ animation: "spin 1s linear infinite" }} />
-                            ) : done ? (
-                              <CheckCircle2 size={18} color="var(--green)" />
-                            ) : (
-                              <Circle size={18} color={overdue ? "var(--red)" : "var(--text-muted)"} />
-                            )}
-                          </button>
-
-                          {/* Title */}
-                          <span style={{
-                            flex: 1, fontSize: 13,
-                            color: done ? "var(--text-muted)" : "var(--text-primary)",
-                            fontWeight: done ? 400 : 500,
-                            textDecoration: done ? "line-through" : "none",
-                            textDecorationColor: "var(--text-muted)",
-                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                          }}>
-                            {task.title}
-                          </span>
-
-                          {/* Checklist progress */}
-                          {task.checklists.length > 0 && !done && (
-                            <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-                              {task.checklists.filter((c) => c.done).length}/{task.checklists.length}
-                            </span>
-                          )}
-
-                          {/* Priority pill */}
-                          {task.priority === "CRITICAL" && (
-                            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--red)", background: "rgba(239,68,68,0.1)", padding: "1px 6px", borderRadius: 20, flexShrink: 0 }}>
-                              CRÍTICA
-                            </span>
-                          )}
-                          {task.priority === "HIGH" && !done && (
-                            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--amber)", background: "rgba(245,158,11,0.1)", padding: "1px 6px", borderRadius: 20, flexShrink: 0 }}>
-                              ALTA
-                            </span>
-                          )}
-
-                          {/* Blocker indicator */}
-                          {task.blocker && !done && (
-                            <span title={task.blocker}>
-                              <AlertTriangle size={13} color="var(--amber)" />
-                            </span>
-                          )}
-
-                          {/* Due date */}
-                          <span style={{
-                            fontSize: 11, flexShrink: 0,
-                            color: overdue ? "var(--red)" : done ? "var(--text-muted)" : "var(--text-muted)",
-                            display: "flex", alignItems: "center", gap: 3,
-                          }}>
-                            {overdue && !done && <AlertTriangle size={10} />}
-                            <Clock size={10} />
-                            {fmtDate(task.dueDate)}
-                          </span>
-
-                          {/* Assignee */}
-                          {task.assignee && (
-                            <span
-                              title={task.assignee.name}
-                              style={{
-                                width: 22, height: 22, borderRadius: "50%",
-                                background: "var(--accent-soft)", color: "var(--accent)",
-                                fontSize: 9, fontWeight: 700,
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {task.assignee.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
-                            </span>
-                          )}
+                      {/* Progress bar */}
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, height: 4, borderRadius: 3, background: "var(--bg-elevated)", overflow: "hidden" }}>
+                          <div style={{
+                            width: `${Math.min(100, pct)}%`, height: "100%", borderRadius: 3,
+                            background: barColor, transition: "width 500ms ease-out",
+                          }} />
                         </div>
-                      );
-                    })}
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", flexShrink: 0, minWidth: 32, textAlign: "right" }}>
+                          {group.done}/{group.planned || group.total}
+                        </span>
+                      </div>
+
+                      {/* Badges */}
+                      <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+                        {allDone && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, color: "#15803D",
+                            background: "rgba(22,163,74,0.1)", border: "1px solid rgba(22,163,74,0.15)",
+                            padding: "2px 8px", borderRadius: 20,
+                          }}>
+                            ✓ completo
+                          </span>
+                        )}
+                        {group.overdue > 0 && !allDone && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, color: "#DC2626",
+                            background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.15)",
+                            padding: "2px 8px", borderRadius: 20,
+                          }}>
+                            {group.overdue} atrasad{group.overdue > 1 ? "os" : "a"}
+                          </span>
+                        )}
+                        <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
+                          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Task rows */}
+                    {expanded && (
+                      <div style={{ borderTop: "1px solid var(--border)" }}>
+                        {group.tasks.map((task, idx) => {
+                          const done = task.status === "DONE";
+                          const overdue = isOverdue(task);
+                          const toggling = togglingId === task.id;
+                          const isLast = idx === group.tasks.length - 1;
+                          const checklistDone = task.checklists.filter((c) => c.done).length;
+                          const checklistTotal = task.checklists.length;
+
+                          return (
+                            <TaskRow
+                              key={task.id}
+                              task={task}
+                              done={done}
+                              overdue={overdue}
+                              toggling={toggling}
+                              isLast={isLast}
+                              checklistDone={checklistDone}
+                              checklistTotal={checklistTotal}
+                              onToggle={() => toggleStatus(task)}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Plan wizard */}
       <ApplyPlanWizard
@@ -540,6 +530,166 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
         clientName={clientName}
         onSuccess={() => { setPlanWizardOpen(false); load(); }}
       />
+    </div>
+  );
+}
+
+// ── TaskRow ────────────────────────────────────────────────────────────────────
+
+function TaskRow({
+  task,
+  done,
+  overdue,
+  toggling,
+  isLast,
+  checklistDone,
+  checklistTotal,
+  onToggle,
+}: {
+  task: Task;
+  done: boolean;
+  overdue: boolean;
+  toggling: boolean;
+  isLast: boolean;
+  checklistDone: number;
+  checklistTotal: number;
+  onToggle: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "10px 16px",
+        borderBottom: isLast ? "none" : "1px solid var(--border)",
+        background: done
+          ? "transparent"
+          : overdue
+            ? "rgba(220,38,38,0.018)"
+            : hovered ? "rgba(0,0,0,0.018)" : "transparent",
+        transition: "background 120ms",
+      }}
+    >
+      {/* Checkbox */}
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={toggling}
+        style={{
+          flexShrink: 0, width: 20, height: 20,
+          borderRadius: 6,
+          border: `2px solid ${done ? "#16A34A" : overdue ? "#DC2626" : hovered ? "var(--accent)" : "var(--border-strong)"}`,
+          background: done ? "#16A34A" : "transparent",
+          cursor: toggling ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "border-color 150ms, background 150ms",
+          padding: 0,
+        }}
+      >
+        {toggling ? (
+          <Loader2 size={11} color={done ? "#fff" : "var(--text-muted)"} style={{ animation: "spin 0.8s linear infinite" }} />
+        ) : done ? (
+          <svg width={11} height={11} viewBox="0 0 11 11" fill="none">
+            <path d="M2 5.5L4.5 8L9 3" stroke="#fff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
+      </button>
+
+      {/* Title */}
+      <span style={{
+        flex: 1, fontSize: 13, minWidth: 0,
+        color: done ? "var(--text-muted)" : "var(--text-primary)",
+        fontWeight: 500,
+        textDecoration: done ? "line-through" : "none",
+        textDecorationColor: "var(--border-strong)",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        opacity: done ? 0.6 : 1,
+        transition: "opacity 200ms, color 200ms",
+      }}>
+        {task.title}
+      </span>
+
+      {/* Right-side metadata */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+
+        {/* Checklist mini-bar */}
+        {checklistTotal > 0 && !done && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", gap: 2 }}>
+              {Array.from({ length: checklistTotal }).map((_, i) => (
+                <span
+                  key={i}
+                  style={{
+                    width: 5, height: 5, borderRadius: 2,
+                    background: i < checklistDone ? "var(--accent)" : "var(--bg-elevated)",
+                    border: "1px solid var(--border)",
+                  }}
+                />
+              ))}
+            </div>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {checklistDone}/{checklistTotal}
+            </span>
+          </div>
+        )}
+
+        {/* Priority */}
+        {task.priority === "CRITICAL" && !done && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: "#DC2626",
+            background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.15)",
+            padding: "1px 6px", borderRadius: 20,
+          }}>
+            CRÍTICA
+          </span>
+        )}
+        {task.priority === "HIGH" && !done && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: "#B45309",
+            background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)",
+            padding: "1px 6px", borderRadius: 20,
+          }}>
+            ALTA
+          </span>
+        )}
+
+        {/* Blocker */}
+        {task.blocker && !done && (
+          <span title={task.blocker} style={{ display: "flex", alignItems: "center" }}>
+            <AlertTriangle size={13} color="#D97706" />
+          </span>
+        )}
+
+        {/* Due date */}
+        <span style={{
+          fontSize: 11, fontWeight: 500,
+          color: done ? "var(--text-muted)" : overdue ? "#DC2626" : "var(--text-muted)",
+          display: "flex", alignItems: "center", gap: 3,
+          opacity: done ? 0.5 : 1,
+        }}>
+          {overdue && !done && <AlertTriangle size={9} />}
+          {fmtDate(task.dueDate)}
+        </span>
+
+        {/* Assignee avatar */}
+        {task.assignee && (
+          <span
+            title={task.assignee.name}
+            style={{
+              width: 22, height: 22, borderRadius: "50%",
+              background: "var(--accent-soft)", color: "var(--accent)",
+              fontSize: 9, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              border: "1.5px solid var(--accent-soft)",
+            }}
+          >
+            {task.assignee.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
