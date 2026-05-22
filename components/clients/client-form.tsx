@@ -199,7 +199,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 gap-6">
         <div className="min-w-0 flex-1">
-          <div style={{ maxWidth: 860, paddingInline: 28, paddingTop: 20, width: "100%" }}>
+          <div style={{ maxWidth: 860, paddingInline: 36, paddingTop: 24, paddingBottom: 32, width: "100%" }}>
             <div className="mb-8">
               <div className="flex items-start justify-between gap-6">
                 <div>
@@ -283,22 +283,26 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
                   <TextAreaField label="Comportamento do cliente" value={clientBehavior} onChange={setClientBehavior} placeholder="Como aprova, responde e decide" rows={3} />
                   <TextAreaField label="Restricoes e pontos de atencao" value={restrictions} onChange={setRestrictions} placeholder="O que evitar ou monitorar" rows={3} />
                 </div>
-                <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}>
-                  <label className="mb-2 block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>Links importantes</label>
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Links importantes</span>
                   <div className="flex gap-2">
-                    <input value={linkDraft} onChange={(event) => setLinkDraft(event.target.value)} placeholder="https://..." className="h-11 flex-1 rounded-lg border px-3 text-sm outline-none" style={fieldStyle} />
-                    <button type="button" onClick={addLink} className="inline-flex h-11 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
-                      <Plus size={13} /> Adicionar
+                    <input value={linkDraft} onChange={(event) => setLinkDraft(event.target.value)} placeholder="https://..." className="h-10 flex-1 rounded-lg border px-3 text-sm outline-none" style={fieldStyle} />
+                    <button type="button" onClick={addLink} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-4 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
+                      <Plus size={12} /> Adicionar
                     </button>
                   </div>
-                  <div className="mt-2 flex flex-col gap-1">
-                    {links.map((link) => (
-                      <button key={link} type="button" onClick={() => removeLink(link)} className="flex items-center justify-between rounded-lg border px-3 py-2 text-left text-xs" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
-                        <span className="truncate">{link}</span>
-                        <Trash2 size={12} style={{ color: "var(--red)" }} />
-                      </button>
-                    ))}
-                  </div>
+                  {links.length > 0 && (
+                    <div className="mt-1 flex flex-col gap-1">
+                      {links.map((link) => (
+                        <div key={link} className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "rgba(148,163,184,0.12)", color: "var(--text-secondary)" }}>
+                          <span className="truncate">{link}</span>
+                          <button type="button" onClick={() => removeLink(link)} className="ml-2 shrink-0">
+                            <Trash2 size={12} style={{ color: "var(--red)" }} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </SetupSection>
             )}
@@ -363,10 +367,9 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
 }
 
 const fieldStyle = {
-  borderColor: "var(--border-strong)",
-  background: "var(--bg-base)",
+  borderColor: "rgba(148,163,184,0.16)",
+  background: "rgba(15,23,42,0.38)",
   color: "var(--text-primary)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45)",
 };
 
 function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; icon: React.ElementType; done: boolean }>; current: number; onSelect: (index: number) => void }) {
@@ -404,20 +407,23 @@ function StepRail({ steps, current, onSelect }: { steps: Array<{ label: string; 
 function SetupSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <section className="op-enter">
-      <div className="mb-7">
-        <h3 className="text-[18px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
-        <p className="mt-2 text-sm leading-5" style={{ color: "var(--text-muted)" }}>{description}</p>
+      <div className="mb-8">
+        <h3 className="text-[17px] font-semibold leading-6" style={{ color: "var(--text-primary)" }}>{title}</h3>
+        <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
-      <div className="flex flex-col gap-6">{children}</div>
+      <div className="flex flex-col gap-8">{children}</div>
     </section>
   );
 }
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl px-6 py-5" style={{ background: "rgba(255,255,255,0.018)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.10)" }}>
-      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.10em]" style={{ color: "rgba(148,163,184,0.56)" }}>{title}</p>
-      <div className="grid grid-cols-1 gap-x-[18px] gap-y-5 md:grid-cols-2">{children}</div>
+    <div>
+      <div className="mb-5 flex items-center gap-3">
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(148,163,184,0.44)" }}>{title}</span>
+        <div className="h-px flex-1" style={{ background: "rgba(148,163,184,0.08)" }} />
+      </div>
+      <div className="grid grid-cols-1 gap-x-5 gap-y-5 md:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -493,31 +499,31 @@ function OperationalModule({
 
 function Field({ label, value, onChange, placeholder, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: string; required?: boolean }) {
   return (
-    <label className="group block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
-      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="block h-8 w-full bg-transparent text-sm leading-5 outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
-    </label>
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</span>
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-10 rounded-lg border px-3 text-sm outline-none placeholder:text-[var(--text-muted)]" style={fieldStyle} />
+    </div>
   );
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return (
-    <label className="block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
-      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="block h-8 w-full bg-transparent text-sm outline-none" style={{ color: "var(--text-primary)" }}>
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={fieldStyle}>
         <option value="">Selecionar</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
-    </label>
+    </div>
   );
 }
 
 function TextAreaField({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
   return (
-    <label className="block rounded-xl px-4 py-3" style={{ background: "rgba(15,23,42,0.34)", boxShadow: "inset 0 0 0 1px rgba(148,163,184,0.14)" }}>
-      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "rgba(148,163,184,0.68)" }}>{label}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]" style={{ color: "var(--text-primary)" }} />
-    </label>
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</span>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} className="resize-none rounded-lg border px-3 py-2.5 text-sm leading-5 outline-none placeholder:text-[var(--text-muted)]" style={fieldStyle} />
+    </div>
   );
 }
 
