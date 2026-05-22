@@ -191,6 +191,9 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const [savingNote, setSavingNote] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [operacaoKey, setOperacaoKey] = useState(0);
+  const nowRef = new Date();
+  const [operacaoMonth, setOperacaoMonth] = useState(nowRef.getMonth() + 1);
+  const [operacaoYear, setOperacaoYear]   = useState(nowRef.getFullYear());
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}`);
@@ -380,7 +383,14 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {/* ── Tab content ─────────────────────────────────── */}
       {tab === "operacao" && (
-        <OperacaoTab key={operacaoKey} clientId={clientId} clientName={client.name} />
+        <OperacaoTab
+          key={operacaoKey}
+          clientId={clientId}
+          clientName={client.name}
+          initialMonth={operacaoMonth}
+          initialYear={operacaoYear}
+          onMonthChange={(m, y) => { setOperacaoMonth(m); setOperacaoYear(y); }}
+        />
       )}
 
       {tab === "overview" && (

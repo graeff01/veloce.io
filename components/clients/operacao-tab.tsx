@@ -71,10 +71,16 @@ function isOverdue(task: Task) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-export function OperacaoTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+export function OperacaoTab({
+  clientId, clientName, initialMonth, initialYear, onMonthChange,
+}: {
+  clientId: string; clientName: string;
+  initialMonth?: number; initialYear?: number;
+  onMonthChange?: (month: number, year: number) => void;
+}) {
   const now = new Date();
-  const [month, setMonth]       = useState(now.getMonth() + 1);
-  const [year, setYear]         = useState(now.getFullYear());
+  const [month, setMonth]       = useState(initialMonth ?? now.getMonth() + 1);
+  const [year, setYear]         = useState(initialYear  ?? now.getFullYear());
   const [data, setData]         = useState<DeliverableData | null>(null);
   const [loading, setLoading]   = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -91,12 +97,16 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
   useEffect(() => { load(); }, [load]);
 
   function prevMonth() {
-    if (month === 1) { setMonth(12); setYear(y => y - 1); }
-    else setMonth(m => m - 1);
+    const newMonth = month === 1 ? 12 : month - 1;
+    const newYear  = month === 1 ? year - 1 : year;
+    setMonth(newMonth); setYear(newYear);
+    onMonthChange?.(newMonth, newYear);
   }
   function nextMonth() {
-    if (month === 12) { setMonth(1); setYear(y => y + 1); }
-    else setMonth(m => m + 1);
+    const newMonth = month === 12 ? 1 : month + 1;
+    const newYear  = month === 12 ? year + 1 : year;
+    setMonth(newMonth); setYear(newYear);
+    onMonthChange?.(newMonth, newYear);
   }
 
   async function toggleTask(task: Task) {
@@ -143,10 +153,16 @@ export function OperacaoTab({ clientId, clientName }: { clientId: string; client
 
   async function handleGenerate() {
     setRenewing(true);
-    await fetch(`/api/clients/${clientId}/renew-plan`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    const res = await fetch(`/api/clients/${clientId}/renew-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month, year }),
     });
     setRenewing(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (d.error) alert(d.error);
+    }
     load();
   }
 
