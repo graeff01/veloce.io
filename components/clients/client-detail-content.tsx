@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
-  KanbanSquare, CalendarDays, Edit2, Activity,
-  AlertTriangle, CheckCircle2, Clock, BookOpen,
-  ChevronRight, MessageSquarePlus, HeartPulse, Target,
-  RefreshCw, Zap,
+  Edit2, Activity, AlertTriangle, CheckCircle2, Clock,
+  RefreshCw, Zap, MessageSquarePlus, HeartPulse,
+  CalendarDays, Brain, BarChart3,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
@@ -15,7 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { ApplyPlanWizard } from "@/components/plans/apply-plan-wizard";
+import { OperacaoTab } from "@/components/clients/operacao-tab";
 import { formatDate } from "@/lib/utils";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ClientDetail {
   id: string;
@@ -89,6 +91,8 @@ interface ClientDetail {
   }>;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const actionLabels: Record<string, string> = {
   CREATE_TASK: "criou uma tarefa",
   UPDATE_STATUS: "moveu uma tarefa",
@@ -110,11 +114,6 @@ const actionColors: Record<string, string> = {
   ADD_NOTE: "var(--text-secondary)",
   CREATE_PLAN: "var(--accent)",
 };
-
-const months = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-];
 
 const typeColors: Record<string, { bg: string; color: string }> = {
   "Post Feed": { bg: "var(--blue-soft)",   color: "var(--blue)" },
@@ -160,10 +159,7 @@ function getLogMeta(log: ClientDetail["recentLogs"][0]) {
 
 function formatStatus(status: string) {
   const labels: Record<string, string> = {
-    TODO: "fila",
-    IN_PROGRESS: "execucao",
-    REVIEW: "revisao",
-    DONE: "concluido",
+    TODO: "fila", IN_PROGRESS: "execucao", REVIEW: "revisao", DONE: "concluido",
   };
   return labels[status] ?? status.toLowerCase();
 }
@@ -178,10 +174,17 @@ function timeAgo(date: string) {
   return `ha ${days}d`;
 }
 
+// ── Tab type ──────────────────────────────────────────────────────────────────
+
+type Tab = "overview" | "operacao" | "inteligencia";
+
+// ── Root component ────────────────────────────────────────────────────────────
+
 export function ClientDetailContent({ clientId }: { clientId: string }) {
   const { data: session } = useSession();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Tab>("operacao");
   const [editOpen, setEditOpen] = useState(false);
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -194,7 +197,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     setLoading(false);
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [clientId]);
 
   const isAdmin = session?.user.role === "ADMIN";
@@ -217,53 +220,18 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     </div>
   );
 
-  const latestNote = client.notes.find((log) => typeof log.details?.note === "string");
-  const operationalMemory = [
-    {
-      label: "Ultima decisao registrada",
-      value: latestNote && typeof latestNote.details?.note === "string" ? latestNote.details.note : "Nenhuma nota operacional ainda",
-      tone: latestNote ? "var(--accent)" : "var(--text-muted)",
-    },
-    {
-      label: "Ritmo do cliente",
-      value: client.stats.daysSinceActivity === 999
-        ? "Sem historico suficiente"
-        : client.stats.daysSinceActivity >= 5
-          ? `Sem movimento ha ${client.stats.daysSinceActivity} dias`
-          : "Contato recente e operacao ativa",
-      tone: client.stats.daysSinceActivity >= 5 || client.stats.daysSinceActivity === 999 ? "var(--amber)" : "var(--green)",
-    },
-    {
-      label: "Proxima acao natural",
-      value: client.operationalContext.currentBlocker?.blocker
-        ? `Destravar: ${client.operationalContext.currentBlocker.blocker}`
-        : client.operationalContext.nextTask
-          ? `Preparar ${client.operationalContext.nextTask.title}`
-          : "Planejar nova entrega",
-      tone: client.operationalContext.currentBlocker ? "var(--red)" : "var(--blue)",
-    },
-  ];
-  const clientAreas = [
-    { label: "Operacao", href: "#operacao" },
-    { label: "Pendencias", href: "#pendencias" },
-    { label: "Calendario", href: `/clients/${clientId}/calendar` },
-    { label: "Timeline", href: "#timeline" },
-    { label: "Planejamento", href: "#planejamento" },
-    { label: "Contexto", href: "#contexto" },
-  ];
-  const timelineLogs = client.recentLogs
-    .filter((log) => log.action !== "UPDATE_CLIENT")
-    .slice(0, 5);
-  const rhythm =
-    client.stats.overdueTasks > 0 ? "Operacao atrasada"
-    : client.stats.openTasks === 0 ? "Operacao tranquila"
-    : client.stats.doneTasks > 0 ? "Ritmo saudavel"
-    : "Ritmo em formacao";
-  const rhythmTone =
-    client.stats.overdueTasks > 0 ? "var(--red)"
-    : client.stats.openTasks === 0 ? "var(--green)"
-    : client.stats.doneTasks > 0 ? "var(--green)"
-    : "var(--amber)";
+  const healthConfig = {
+    HEALTHY: { label: "Operacao saudavel", color: "var(--green)", bg: "var(--green-soft)" },
+    ATTENTION: { label: "Atencao", color: "var(--amber)", bg: "var(--amber-soft)" },
+    CRITICAL: { label: "Critico", color: "var(--red)", bg: "var(--red-soft)" },
+  }[client.stats.health];
+
+  const nextAction = client.operationalContext.currentBlocker?.blocker
+    ? `Destravar ${client.operationalContext.currentBlocker.blocker}`
+    : client.operationalContext.nextTask?.title ?? "Planejar proxima entrega";
+  const lastActivity = client.operationalContext.lastActivityAt ? timeAgo(client.operationalContext.lastActivityAt) : "sem registro";
+  const currentPending = client.operationalContext.currentBlocker?.title
+    ?? (client.stats.overdueTasks > 0 ? `${client.stats.overdueTasks} entrega${client.stats.overdueTasks === 1 ? "" : "s"} em atraso` : "sem pendencia critica");
 
   async function handleRenewNow() {
     setRenewing(true);
@@ -289,116 +257,81 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       body: JSON.stringify({ note: note.trim() }),
     });
     setSavingNote(false);
-    if (res.ok) {
-      setNote("");
-      load();
-    }
+    if (res.ok) { setNote(""); load(); }
   }
 
-  const healthConfig = {
-    HEALTHY: { label: "Operacao saudavel", color: "var(--green)", bg: "var(--green-soft)" },
-    ATTENTION: { label: "Atencao", color: "var(--amber)", bg: "var(--amber-soft)" },
-    CRITICAL: { label: "Critico", color: "var(--red)", bg: "var(--red-soft)" },
-  }[client.stats.health];
-  const nextAction = client.operationalContext.currentBlocker?.blocker
-    ? `Destravar ${client.operationalContext.currentBlocker.blocker}`
-    : client.operationalContext.nextTask?.title ?? "Planejar proxima entrega";
-  const lastActivity = client.operationalContext.lastActivityAt ? timeAgo(client.operationalContext.lastActivityAt) : "sem registro";
-  const currentPending = client.operationalContext.currentBlocker?.title
-    ?? (client.stats.overdueTasks > 0 ? `${client.stats.overdueTasks} entrega${client.stats.overdueTasks === 1 ? "" : "s"} em atraso` : "sem pendencia critica");
+  const timelineLogs = client.recentLogs
+    .filter((log) => log.action !== "UPDATE_CLIENT")
+    .slice(0, 5);
+
+  const rhythm =
+    client.stats.overdueTasks > 0 ? "Operacao atrasada"
+    : client.stats.openTasks === 0 ? "Operacao tranquila"
+    : client.stats.doneTasks > 0 ? "Ritmo saudavel"
+    : "Ritmo em formacao";
+
+  const rhythmTone =
+    client.stats.overdueTasks > 0 ? "var(--red)"
+    : client.stats.openTasks === 0 ? "var(--green)"
+    : client.stats.doneTasks > 0 ? "var(--green)"
+    : "var(--amber)";
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "overview",     label: "Overview",      icon: <BarChart3 size={13} /> },
+    { key: "operacao",     label: "Operação",       icon: <CheckCircle2 size={13} /> },
+    { key: "inteligencia", label: "Inteligência",   icon: <Brain size={13} /> },
+  ];
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
 
       {/* ── Header ──────────────────────────────────────── */}
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          borderBottom: "1px solid var(--border)",
-          padding: "20px 28px",
-          flexShrink: 0,
-        }}
-      >
-        {/* Top row: avatar + name + action buttons */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          {/* Left: identity */}
+      <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border)", padding: "18px 28px 0", flexShrink: 0 }}>
+        {/* Top row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             <Avatar name={client.name} size="md" />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <h1
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                    lineHeight: "24px",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
+                <h1 style={{ fontSize: 17, fontWeight: 600, color: "var(--text-primary)", lineHeight: "24px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {client.name}
                 </h1>
                 <ClientStatusBadge status={client.status} />
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "3px 8px",
-                    borderRadius: 7,
-                    background: healthConfig.bg,
-                    color: healthConfig.color,
-                    fontSize: 11,
-                    fontWeight: 650,
-                  }}
-                >
-                  <HeartPulse size={12} />
-                  {healthConfig.label}
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "2px 8px", borderRadius: 7,
+                  background: healthConfig.bg, color: healthConfig.color,
+                  fontSize: 11, fontWeight: 650,
+                }}>
+                  <HeartPulse size={11} /> {healthConfig.label}
                 </span>
-                {currentPlan && (
-                  <Badge variant="purple">{currentPlan.plan.name}</Badge>
-                )}
+                {currentPlan && <Badge variant="purple">{currentPlan.plan.name}</Badge>}
                 {currentPlan?.autoRenew && (
-                  <span
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 4,
-                      padding: "2px 8px", borderRadius: 20,
-                      background: "rgba(16,185,129,0.1)",
-                      border: "1px solid rgba(16,185,129,0.3)",
-                      fontSize: 10, fontWeight: 600, color: "var(--green)",
-                    }}
-                  >
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    padding: "2px 8px", borderRadius: 20,
+                    background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)",
+                    fontSize: 10, fontWeight: 600, color: "var(--green)",
+                  }}>
                     <RefreshCw size={9} /> Auto-renovação
                   </span>
                 )}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-                {client.email && (
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{client.email}</span>
-                )}
-                {client.phone && (
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{client.phone}</span>
-                )}
-                {client.primaryContact && (
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Resp. {client.primaryContact}</span>
-                )}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 3 }}>
+                {client.email && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{client.email}</span>}
+                {client.phone && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{client.phone}</span>}
+                {client.primaryContact && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Resp. {client.primaryContact}</span>}
               </div>
             </div>
           </div>
 
-          {/* Right: action buttons */}
+          {/* Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {isAdmin && (
               <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
                 <Edit2 size={12} /> Editar
               </Button>
             )}
-            <Link href={`/clients/${clientId}/tasks`} style={{ textDecoration: "none" }}>
-              <Button variant="ghost" size="sm">
-                <KanbanSquare size={12} /> Kanban
-              </Button>
-            </Link>
             <Link href={`/clients/${clientId}/calendar`} style={{ textDecoration: "none" }}>
               <Button variant="ghost" size="sm">
                 <CalendarDays size={12} /> Calendário
@@ -407,443 +340,68 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.3fr 0.75fr 1fr 0.8fr",
-            gap: 18,
-            marginTop: 18,
-            paddingTop: 14,
-            borderTop: "1px solid var(--border)",
-          }}
-        >
+        {/* Summary strip */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "1.3fr 0.75fr 1fr 0.8fr",
+          gap: 18, paddingBottom: 14, borderBottom: "1px solid var(--border)",
+        }}>
           <SummaryLine label="Proxima acao" value={nextAction} tone={client.operationalContext.currentBlocker ? "var(--amber)" : "var(--accent)"} primary />
           <SummaryLine label="Ultima atividade" value={lastActivity} tone={client.stats.daysSinceActivity >= 4 ? "var(--amber)" : "var(--green)"} />
           <SummaryLine label="Pendencia" value={currentPending} tone={client.operationalContext.currentBlocker || client.stats.overdueTasks > 0 ? "var(--red)" : "var(--green)"} />
           <SummaryLine label="Plano" value={currentPlan?.plan.name ?? "sem plano ativo"} tone="var(--blue)" />
         </div>
 
-        {/* Stat chips row */}
-        <div
-          style={{
-            display: "none",
-            gap: 8,
-            marginTop: 16,
-            paddingTop: 16,
-            borderTop: "1px solid var(--border)",
-            flexWrap: "wrap",
-          }}
-        >
-          <StatChip icon={Clock} label="Tarefas no mês" value={client.stats.monthTasks} color="var(--blue)" />
-          <StatChip icon={CheckCircle2} label="Concluídas" value={client.stats.doneTasks} color="var(--green)" />
-          <StatChip icon={AlertTriangle} label="Em atraso" value={client.stats.overdueTasks} color="var(--red)" alert={client.stats.overdueTasks > 0} />
-          <StatChip icon={Activity} label="Sem atividade" value={client.stats.daysSinceActivity === 999 ? "N/A" : `${client.stats.daysSinceActivity}d`} color="var(--amber)" alert={client.stats.daysSinceActivity >= 4} />
-          <StatChip
-            icon={BookOpen}
-            label="Plano ativo"
-            value={currentPlan?.plan.name ?? "—"}
-            color="var(--accent)"
-            small
-          />
-        </div>
-      </div>
-
-      {/* ── Body ────────────────────────────────────────── */}
-      <div
-        style={{
-          flex: 1,
-          padding: "24px 28px",
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr",
-          gap: 24,
-          alignItems: "start",
-        }}
-      >
-        {/* LEFT COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <section>
-            <h2
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--text-muted)",
-                marginBottom: 12,
-              }}
-            >
-              Contexto Operacional
-            </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <ContextTile
-                label="Ultima atividade"
-                value={client.operationalContext.lastActivityAt ? timeAgo(client.operationalContext.lastActivityAt) : "Sem registro"}
-                tone={client.stats.daysSinceActivity >= 4 ? "var(--amber)" : "var(--green)"}
-              />
-              <ContextTile
-                label="Proxima entrega"
-                value={client.operationalContext.nextTask ? formatDate(client.operationalContext.nextTask.dueDate) : "Nada programado"}
-                detail={client.operationalContext.nextTask?.title}
-                tone={client.operationalContext.nextTask ? "var(--blue)" : "var(--red)"}
-              />
-              <ContextTile
-                label="Pendencia atual"
-                value={client.operationalContext.currentBlocker?.blocker ?? "Sem bloqueio"}
-                detail={client.operationalContext.currentBlocker?.title}
-                tone={client.operationalContext.currentBlocker ? "var(--amber)" : "var(--green)"}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h2
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--text-muted)",
-                marginBottom: 12,
-              }}
-            >
-              Memoria Operacional
-            </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              {operationalMemory.map((item) => (
-                <MemoryTile key={item.label} label={item.label} value={item.value} tone={item.tone} />
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <h2
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--text-muted)",
-                marginBottom: 12,
-              }}
-            >
-              Areas do Cliente
-            </h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {clientAreas.map((area) => (
-                <AreaPill key={area.label} label={area.label} href={area.href} />
-              ))}
-            </div>
-          </section>
-
-          {/* Acesso Rápido */}
-          <section style={{ display: "none" }}>
-            <h2
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--text-muted)",
-                marginBottom: 12,
-              }}
-            >
-              Acesso Rápido
-            </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <QuickAccessCard
-                href={`/clients/${clientId}/tasks`}
-                icon={<KanbanSquare size={18} style={{ color: "var(--accent)" }} />}
-                iconBg="var(--accent-soft)"
-                title="Kanban de Tarefas"
-                description="Gerenciar execução"
-              />
-              <QuickAccessCard
-                href={`/clients/${clientId}/calendar`}
-                icon={<CalendarDays size={18} style={{ color: "var(--blue)" }} />}
-                iconBg="var(--blue-soft)"
-                title="Calendário Mensal"
-                description="Visualizar distribuição"
-              />
-            </div>
-          </section>
-
-          {/* Progresso do Plano */}
-          {currentPlan && (
-            <section>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <h2
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  Ritmo Operacional
-                </h2>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: "var(--text-muted)",
-                    background: "var(--bg-elevated)",
-                    padding: "2px 8px",
-                    borderRadius: 20,
-                  }}
-                >
-                  {months[currentPlan.month - 1]}/{currentPlan.year}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: "16px 20px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                  boxShadow: "var(--shadow-card)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-                  <div>
-                    <p style={{ fontSize: 15, fontWeight: 700, color: rhythmTone, lineHeight: "20px" }}>{rhythm}</p>
-                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                      {client.stats.doneTasks} entregas concluídas / {client.stats.openTasks} em aberto
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRenewNow}
-                    disabled={renewing}
-                    title="Gerar tasks deste mês agora"
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      background: "none", border: "1px solid var(--border)",
-                      borderRadius: 7, padding: "4px 10px",
-                      fontSize: 11, color: "var(--text-muted)",
-                      cursor: "pointer", opacity: renewing ? 0.6 : 1,
-                    }}
-                  >
-                    <Zap size={11} /> {renewing ? "Gerando..." : "Renovar agora"}
-                  </button>
-                </div>
-                {currentPlan.plan.items.map((item) => {
-                  const prog = client.progressByType?.[item.type];
-                  const done = prog?.done ?? 0;
-                  const pct = prog?.pct ?? 0;
-                  const barColor = pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--amber)" : "var(--red)";
-                  const typeSty = getTypeStyle(item.type);
-
-                  return (
-                    <div key={item.id}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: 5,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11, fontWeight: 500,
-                            background: typeSty.bg, color: typeSty.color,
-                            padding: "2px 8px", borderRadius: 20,
-                          }}
-                        >
-                          {item.type}
-                        </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            {done}/{item.quantity}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 11, fontWeight: 600,
-                              color: barColor, minWidth: 32, textAlign: "right",
-                            }}
-                          >
-                            {pct}%
-                          </span>
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          height: 4, borderRadius: 2,
-                          background: "var(--bg-elevated)", overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${pct}%`, height: "100%",
-                            background: barColor, borderRadius: 2,
-                            transition: "width 400ms ease-out",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          <section>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-                Observacoes Internas
-              </h2>
-              <MessageSquarePlus size={14} style={{ color: "var(--text-muted)" }} />
-            </div>
-            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-              <div style={{ padding: 14, borderBottom: "1px solid var(--border)" }}>
-                <textarea
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Ex: prefere aprovar pelo WhatsApp, evitar domingo..."
-                  rows={3}
-                  style={{ width: "100%", resize: "none", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-base)", color: "var(--text-primary)", padding: 10, fontSize: 13, outline: "none" }}
-                />
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                  <Button type="button" variant="secondary" size="sm" loading={savingNote} onClick={saveNote}>
-                    Salvar observacao
-                  </Button>
-                </div>
-              </div>
-              {client.notes.length === 0 ? (
-                <p style={{ padding: 14, fontSize: 12, color: "var(--text-muted)" }}>Nenhuma observacao interna ainda.</p>
-              ) : (
-                client.notes.slice(0, 5).map((log) => (
-                  <div key={log.id} style={{ padding: "11px 14px", borderBottom: "1px solid var(--border)" }}>
-                    <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: "18px" }}>
-                      {typeof log.details?.note === "string" ? log.details.note : "Observacao registrada"}
-                    </p>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>
-                      {log.user.name} / {formatDate(log.createdAt)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-
-        {/* RIGHT COLUMN - Timeline */}
-        <div>
-          <h2
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--text-muted)",
-              marginBottom: 12,
-            }}
-          >
-            Timeline do Cliente
-          </h2>
-          <div
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "8px 0",
-              boxShadow: "var(--shadow-card)",
-            }}
-          >
-            {timelineLogs.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "24px 0" }}>
-                <Activity size={24} style={{ color: "var(--text-muted)", opacity: 0.3, margin: "0 auto 8px" }} />
-                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhuma atividade registrada</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {timelineLogs.map((log, i) => {
-                  const dotColor = actionColors[log.action] ?? "var(--blue)";
-                  return (
-                    <div
-                      key={log.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 9,
-                        padding: "9px 13px",
-                        borderBottom: i < client.recentLogs.length - 1 ? "1px solid var(--border)" : "none",
-                        position: "relative",
-                        animation: "feedIn 220ms ease-out both",
-                        animationDelay: `${Math.min(i * 28, 180)}ms`,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: "50%",
-                          background: dotColor,
-                          boxShadow: `0 0 0 4px ${dotColor}16`,
-                          marginTop: 6,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 650,
-                            color: "var(--text-primary)",
-                            lineHeight: "16px",
-                          }}
-                        >
-                          {log.user.name.split(" ").map((word) => word[0]).slice(0, 2).join("").toUpperCase()} / {getLogTitle(log)}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-secondary)",
-                            marginTop: 3,
-                            lineHeight: "16px",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {getLogMeta(log)}
-                        </p>
-                        <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-                          {timeAgo(log.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {client.recentLogs.length > timelineLogs.length && (
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 2, paddingTop: 2 }}>
+          {tabs.map(({ key, label, icon }) => {
+            const active = tab === key;
+            return (
               <button
+                key={key}
                 type="button"
+                onClick={() => setTab(key)}
                 style={{
-                  width: "100%",
-                  padding: "10px 13px 4px",
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", border: "none", background: "none",
+                  cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 500,
+                  color: active ? "var(--text-primary)" : "var(--text-muted)",
+                  borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+                  marginBottom: -1,
+                  transition: "color 120ms, border-color 120ms",
                 }}
               >
-                Ver historico completo
+                {icon} {label}
               </button>
-            )}
-          </div>
+            );
+          })}
         </div>
       </div>
+
+      {/* ── Tab content ─────────────────────────────────── */}
+      {tab === "operacao" && (
+        <OperacaoTab clientId={clientId} clientName={client.name} />
+      )}
+
+      {tab === "overview" && (
+        <OverviewTab
+          client={client}
+          currentPlan={currentPlan}
+          rhythm={rhythm}
+          rhythmTone={rhythmTone}
+          timelineLogs={timelineLogs}
+          note={note}
+          setNote={setNote}
+          savingNote={savingNote}
+          saveNote={saveNote}
+          renewing={renewing}
+          handleRenewNow={handleRenewNow}
+          setPlanWizardOpen={setPlanWizardOpen}
+        />
+      )}
+
+      {tab === "inteligencia" && (
+        <InteligenciaTab clientId={clientId} clientName={client.name} niche={client.niche} />
+      )}
 
       {/* ── Modals ──────────────────────────────────────── */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar perfil operacional" size="2xl" variant="drawer">
@@ -892,40 +450,340 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   );
 }
 
-function ContextTile({
-  label,
-  value,
-  detail,
-  tone,
+// ── Overview Tab ──────────────────────────────────────────────────────────────
+
+function OverviewTab({
+  client,
+  currentPlan,
+  rhythm,
+  rhythmTone,
+  timelineLogs,
+  note,
+  setNote,
+  savingNote,
+  saveNote,
+  renewing,
+  handleRenewNow,
+  setPlanWizardOpen,
 }: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone: string;
+  client: ClientDetail;
+  currentPlan: ClientDetail["clientPlans"][0] | undefined;
+  rhythm: string;
+  rhythmTone: string;
+  timelineLogs: ClientDetail["recentLogs"];
+  note: string;
+  setNote: (v: string) => void;
+  savingNote: boolean;
+  saveNote: () => void;
+  renewing: boolean;
+  handleRenewNow: () => void;
+  setPlanWizardOpen: (v: boolean) => void;
 }) {
+  const months = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
   return (
-    <div
-      style={{
-        minHeight: 64,
-        padding: "0 0 12px",
-        borderBottom: "1px solid var(--border)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-        <Target size={12} style={{ color: tone }} />
-        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-          {label}
+    <div style={{ flex: 1, padding: "24px 28px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24, alignItems: "start" }}>
+
+      {/* LEFT */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* Ritmo operacional */}
+        {currentPlan ? (
+          <section>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <SectionLabel>Ritmo Operacional</SectionLabel>
+              <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-elevated)", padding: "2px 8px", borderRadius: 20 }}>
+                {months[currentPlan.month - 1]}/{currentPlan.year}
+              </span>
+            </div>
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14, boxShadow: "var(--shadow-card)" }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: rhythmTone, lineHeight: "20px" }}>{rhythm}</p>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {client.stats.doneTasks} entregas concluídas / {client.stats.openTasks} em aberto
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRenewNow}
+                  disabled={renewing}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: "none", border: "1px solid var(--border)",
+                    borderRadius: 7, padding: "4px 10px",
+                    fontSize: 11, color: "var(--text-muted)",
+                    cursor: "pointer", opacity: renewing ? 0.6 : 1,
+                  }}
+                >
+                  <Zap size={11} /> {renewing ? "Gerando..." : "Renovar agora"}
+                </button>
+              </div>
+              {currentPlan.plan.items.map((item) => {
+                const prog = client.progressByType?.[item.type];
+                const done = prog?.done ?? 0;
+                const pct = prog?.pct ?? 0;
+                const barColor = pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--amber)" : "var(--red)";
+                const typeSty = getTypeStyle(item.type);
+                return (
+                  <div key={item.id}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                      <span style={{ fontSize: 11, fontWeight: 500, background: typeSty.bg, color: typeSty.color, padding: "2px 8px", borderRadius: 20 }}>
+                        {item.type}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{done}/{item.quantity}</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: barColor, minWidth: 32, textAlign: "right" }}>{pct}%</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 2, background: "var(--bg-elevated)", overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 400ms ease-out" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <section>
+            <SectionLabel>Plano</SectionLabel>
+            <div style={{
+              border: "1px dashed var(--border)", borderRadius: 10,
+              padding: "28px 20px", textAlign: "center",
+            }}>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
+                Nenhum plano aplicado a este cliente.
+              </p>
+              <button
+                type="button"
+                onClick={() => setPlanWizardOpen(true)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  background: "var(--accent)", color: "#fff", border: "none",
+                  borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Aplicar plano
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Observações internas */}
+        <section>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <SectionLabel>Observacoes Internas</SectionLabel>
+            <MessageSquarePlus size={14} style={{ color: "var(--text-muted)" }} />
+          </div>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <div style={{ padding: 14, borderBottom: "1px solid var(--border)" }}>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Ex: prefere aprovar pelo WhatsApp, evitar domingo..."
+                rows={3}
+                style={{ width: "100%", resize: "none", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-base)", color: "var(--text-primary)", padding: 10, fontSize: 13, outline: "none" }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                <Button type="button" variant="secondary" size="sm" loading={savingNote} onClick={saveNote}>
+                  Salvar observacao
+                </Button>
+              </div>
+            </div>
+            {client.notes.length === 0 ? (
+              <p style={{ padding: 14, fontSize: 12, color: "var(--text-muted)" }}>Nenhuma observacao interna ainda.</p>
+            ) : (
+              client.notes.slice(0, 5).map((log) => (
+                <div key={log.id} style={{ padding: "11px 14px", borderBottom: "1px solid var(--border)" }}>
+                  <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: "18px" }}>
+                    {typeof log.details?.note === "string" ? log.details.note : "Observacao registrada"}
+                  </p>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>
+                    {log.user.name} / {formatDate(log.createdAt)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* Dados do cliente */}
+        <section>
+          <SectionLabel style={{ marginBottom: 12 }}>Dados do Cliente</SectionLabel>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: 8 }}>
+            {[
+              { label: "Nicho", value: client.niche },
+              { label: "Objetivo", value: client.mainGoal },
+              { label: "Frequencia", value: client.operationalFrequency },
+              { label: "Tom de comunicacao", value: client.communicationTone },
+              { label: "Restricoes", value: client.restrictions },
+              { label: "Preferencias", value: client.preferences },
+              { label: "Notas estrategicas", value: client.strategicNotes },
+            ].filter((r) => r.value).map((row) => (
+              <div key={row.label} style={{ display: "flex", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", minWidth: 140, flexShrink: 0 }}>{row.label}</span>
+                <span style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: "18px" }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {/* RIGHT - Timeline */}
+      <div>
+        <SectionLabel style={{ marginBottom: 12 }}>Timeline do Cliente</SectionLabel>
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 0", boxShadow: "var(--shadow-card)" }}>
+          {timelineLogs.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <Activity size={24} style={{ color: "var(--text-muted)", opacity: 0.3, margin: "0 auto 8px" }} />
+              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhuma atividade registrada</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {timelineLogs.map((log, i) => {
+                const dotColor = actionColors[log.action] ?? "var(--blue)";
+                return (
+                  <div
+                    key={log.id}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 9,
+                      padding: "9px 13px",
+                      borderBottom: i < timelineLogs.length - 1 ? "1px solid var(--border)" : "none",
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor, boxShadow: `0 0 0 4px ${dotColor}16`, marginTop: 6, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 650, color: "var(--text-primary)", lineHeight: "16px" }}>
+                        {log.user.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()} / {getLogTitle(log)}
+                      </p>
+                      <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3, lineHeight: "16px", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        {getLogMeta(log)}
+                      </p>
+                      <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+                        {timeAgo(log.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Contexto rápido */}
+        <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+          <SectionLabel style={{ marginBottom: 4 }}>Contexto Rapido</SectionLabel>
+          {[
+            {
+              label: "Ultima atividade",
+              value: client.operationalContext.lastActivityAt ? timeAgo(client.operationalContext.lastActivityAt) : "Sem registro",
+              tone: client.stats.daysSinceActivity >= 4 ? "var(--amber)" : "var(--green)",
+            },
+            {
+              label: "Proxima entrega",
+              value: client.operationalContext.nextTask ? formatDate(client.operationalContext.nextTask.dueDate) : "Nada programado",
+              sub: client.operationalContext.nextTask?.title,
+              tone: client.operationalContext.nextTask ? "var(--blue)" : "var(--red)",
+            },
+            {
+              label: "Pendencia",
+              value: client.operationalContext.currentBlocker?.blocker ?? "Sem bloqueio",
+              sub: client.operationalContext.currentBlocker?.title,
+              tone: client.operationalContext.currentBlocker ? "var(--amber)" : "var(--green)",
+            },
+          ].map((item) => (
+            <div key={item.label} style={{ padding: "10px 14px", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: item.tone, flexShrink: 0 }} />
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>{item.label}</span>
+              </div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</p>
+              {item.sub && <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.sub}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Inteligência Tab ───────────────────────────────────────────────────────────
+
+function InteligenciaTab({ clientId, clientName, niche }: { clientId: string; clientName: string; niche?: string }) {
+  return (
+    <div style={{ padding: "32px 28px", maxWidth: 680 }}>
+      <div style={{ marginBottom: 24 }}>
+        <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>
+          Acesse a base de inteligência do cliente <strong>{clientName}</strong> — campanhas, criativos, insights e exportações para IA.
         </p>
       </div>
-      <p style={{ fontSize: 13, fontWeight: 650, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {value}
-      </p>
-      {detail && (
-        <p style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {detail}
-        </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <IntelCard
+          href={`/intelligence/creatives?clientId=${clientId}`}
+          title="Criativos e Hooks"
+          description="Criativos registrados para este cliente"
+          color="var(--accent)"
+          bg="var(--accent-soft)"
+        />
+        <IntelCard
+          href={`/intelligence?clientId=${clientId}`}
+          title="Busca de Padrões"
+          description="Busca contextual por campanhas e criativos"
+          color="var(--blue)"
+          bg="var(--blue-soft)"
+        />
+        <IntelCard
+          href={`/intelligence/export?clientId=${clientId}${niche ? `&niche=${encodeURIComponent(niche)}` : ""}`}
+          title="Exportar Contexto IA"
+          description="Gerar briefing estruturado para Claude"
+          color="var(--green)"
+          bg="var(--green-soft)"
+        />
+        <IntelCard
+          href={`/intelligence/playbooks`}
+          title="Playbooks"
+          description="Estratégias reutilizáveis da agência"
+          color="var(--amber)"
+          bg="var(--amber-soft)"
+        />
+      </div>
+
+      {niche && (
+        <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+          Nicho detectado: <strong style={{ color: "var(--text-primary)" }}>{niche}</strong> — sugestão de filtro aplicada nos links acima.
+        </div>
       )}
     </div>
+  );
+}
+
+function IntelCard({ href, title, description, color, bg }: { href: string; title: string; description: string; color: string; bg: string }) {
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <div style={{
+        padding: "16px 18px", borderRadius: 10,
+        background: "var(--bg-surface)", border: "1px solid var(--border)",
+        boxShadow: "var(--shadow-card)", cursor: "pointer",
+        transition: "box-shadow 150ms, border-color 150ms",
+      }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+          <Brain size={15} color={color} />
+        </div>
+        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>{title}</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{description}</p>
+      </div>
+    </Link>
+  );
+}
+
+// ── Shared sub-components ─────────────────────────────────────────────────────
+
+function SectionLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", ...style }}>
+      {children}
+    </h2>
   );
 }
 
@@ -934,220 +792,16 @@ function SummaryLine({ label, value, tone, primary }: { label: string; value: st
     <div style={{ minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, boxShadow: `0 0 0 4px ${tone}14`, flexShrink: 0 }} />
-        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-          {label}
-        </p>
+        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</p>
       </div>
-      <p
-        style={{
-          fontSize: primary ? 15 : 13,
-          fontWeight: primary ? 700 : 600,
-          color: primary ? "var(--text-primary)" : "var(--text-secondary)",
-          lineHeight: primary ? "20px" : "18px",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
+      <p style={{
+        fontSize: primary ? 15 : 13, fontWeight: primary ? 700 : 600,
+        color: primary ? "var(--text-primary)" : "var(--text-secondary)",
+        lineHeight: primary ? "20px" : "18px",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>
         {value}
       </p>
     </div>
-  );
-}
-
-function MemoryTile({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div
-      className="op-enter"
-      style={{
-        minHeight: 82,
-        padding: "0 0 12px",
-        borderBottom: "1px solid var(--border)",
-        background: "transparent",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-        <span
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            background: tone,
-            boxShadow: `0 0 0 4px ${tone}16`,
-            flexShrink: 0,
-          }}
-        />
-        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-          {label}
-        </p>
-      </div>
-      <p
-        style={{
-          fontSize: 12,
-          fontWeight: 560,
-          color: "var(--text-primary)",
-          lineHeight: "18px",
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function AreaPill({ label, href }: { label: string; href: string }) {
-  const internal = href.startsWith("#");
-  const content = (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
-        height: 30,
-        padding: "0 11px",
-        borderRadius: 999,
-        border: "1px solid var(--border)",
-        background: "var(--bg-surface)",
-        color: "var(--text-secondary)",
-        fontSize: 12,
-        fontWeight: 650,
-        boxShadow: "0 8px 20px rgba(15,23,42,0.04)",
-      }}
-    >
-      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)" }} />
-      {label}
-    </span>
-  );
-
-  if (internal) {
-    return <a href={href} style={{ textDecoration: "none" }}>{content}</a>;
-  }
-
-  return (
-    <Link href={href} style={{ textDecoration: "none" }}>{content}</Link>
-  );
-}
-
-/* ─── Stat Chip ─────────────────────────────────────── */
-function StatChip({
-  icon: Icon,
-  label,
-  value,
-  color,
-  alert,
-  small,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  color: string;
-  alert?: boolean;
-  small?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 14px",
-        borderRadius: 8,
-        background: alert ? color + "12" : "var(--bg-elevated)",
-        border: `1px solid ${alert ? color + "40" : "var(--border)"}`,
-      }}
-    >
-      <Icon size={12} style={{ color, flexShrink: 0 }} />
-      <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{label}</span>
-      <span
-        style={{
-          fontSize: small ? 12 : 14,
-          fontWeight: 600,
-          color: alert ? color : "var(--text-primary)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: 120,
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-/* ─── Quick Access Card ──────────────────────────────── */
-function QuickAccessCard({
-  href,
-  icon,
-  iconBg,
-  title,
-  description,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  title: string;
-  description: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <Link href={href} style={{ textDecoration: "none" }}>
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "14px 16px",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          cursor: "pointer",
-          transition: "box-shadow 150ms ease-out, border-color 150ms ease-out",
-          boxShadow: hovered ? "var(--shadow-hover)" : "var(--shadow-card)",
-          borderColor: hovered ? "var(--border-strong)" : "var(--border)",
-        }}
-      >
-        {/* Icon */}
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            background: iconBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
-        {/* Text */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: hovered ? "var(--accent)" : "var(--text-primary)",
-              transition: "color 150ms ease-out",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {title}
-          </p>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{description}</p>
-        </div>
-        <ChevronRight size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-      </div>
-    </Link>
   );
 }
