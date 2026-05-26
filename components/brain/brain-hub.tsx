@@ -26,16 +26,16 @@ interface BrainItem {
 const CATEGORIES = ["Estratégia","Campanha","Concorrência","Referência","Insight","Oportunidade"];
 
 const CAT_CONFIG: Record<string, { color: string; bg: string }> = {
-  Estratégia:   { color: "#4338CA", bg: "#EEF2FF" },
-  Campanha:     { color: "#B45309", bg: "#FFFBEB" },
-  Concorrência: { color: "#DC2626", bg: "#FEF2F2" },
-  Referência:   { color: "#0F766E", bg: "#CCFBF1" },
-  Insight:      { color: "#7C3AED", bg: "#F5F3FF" },
-  Oportunidade: { color: "#15803D", bg: "#F0FDF4" },
+  Estratégia:   { color: "#4338CA", bg: "rgba(67,56,202,0.12)"  },
+  Campanha:     { color: "#B45309", bg: "rgba(180,83,9,0.12)"   },
+  Concorrência: { color: "#DC2626", bg: "rgba(220,38,38,0.12)"  },
+  Referência:   { color: "#0F766E", bg: "rgba(15,118,110,0.12)" },
+  Insight:      { color: "#7C3AED", bg: "rgba(124,58,237,0.12)" },
+  Oportunidade: { color: "#15803D", bg: "rgba(21,128,61,0.12)"  },
 };
 
 function getCat(cat: string) {
-  return CAT_CONFIG[cat] ?? { color: "#6366F1", bg: "#EEF2FF" };
+  return CAT_CONFIG[cat] ?? { color: "#6366F1", bg: "rgba(99,102,241,0.12)" };
 }
 
 // ── Brain card ─────────────────────────────────────────────────────────────────
@@ -54,12 +54,19 @@ function Card({
 
   return (
     <div style={{
-      padding: "14px 16px", borderRadius: 12,
+      display: "flex", alignItems: "stretch",
+      borderRadius: 12,
       border: `1px solid ${item.pinned ? color + "44" : "var(--border)"}`,
-      background: item.pinned ? bg : "var(--bg-surface)",
+      background: "var(--bg-surface)",
       transition: "box-shadow 150ms",
-      position: "relative",
-    }}>
+      overflow: "hidden",
+    }}
+      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)")}
+      onMouseLeave={e => ((e.currentTarget as HTMLElement).style.boxShadow = "none")}
+    >
+      {/* Left color bar */}
+      <div style={{ width: 3, background: item.pinned ? color : "var(--border)", flexShrink: 0 }} />
+      <div style={{ flex: 1, padding: "14px 16px", position: "relative" }}>
       {/* Pin indicator */}
       {item.pinned && (
         <div style={{ position: "absolute", top: 10, right: 10, width: 6, height: 6, borderRadius: "50%", background: color }} />
@@ -75,7 +82,7 @@ function Card({
             <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: 0, lineHeight: 1.3 }}>
               {item.title}
             </h3>
-            <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: bg, color, fontWeight: 600, border: `1px solid ${color}33` }}>
+            <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: bg, color, fontWeight: 600 }}>
               {item.category}
             </span>
             {item.client && (
@@ -104,7 +111,7 @@ function Card({
           {item.links.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
               {item.links.map((l, i) => (
-                <a key={i} href={l} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color, padding: "2px 7px", borderRadius: 6, background: bg, textDecoration: "none" }}>
+                <a key={i} href={l} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color, padding: "2px 7px", borderRadius: 6, background: `${color}18`, textDecoration: "none" }}>
                   <ExternalLink size={9} />{l.replace(/^https?:\/\//, "").slice(0, 30)}
                 </a>
               ))}
@@ -145,6 +152,7 @@ function Card({
       <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8, textAlign: "right" }}>
         {new Date(item.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
       </p>
+      </div>
     </div>
   );
 }
@@ -304,7 +312,7 @@ export function BrainHub() {
       <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border)", padding: "16px 28px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#F5F3FF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(168,85,247,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Lightbulb size={18} color="#A855F7" />
             </div>
             <div>
