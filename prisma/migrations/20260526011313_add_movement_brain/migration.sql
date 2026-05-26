@@ -1,25 +1,57 @@
--- CreateEnum
-CREATE TYPE "MovementStatus" AS ENUM ('PLANNED', 'IN_PROGRESS', 'REVIEW', 'DONE', 'ARCHIVED');
+-- CreateEnum (idempotent)
+DO $$ BEGIN
+  CREATE TYPE "MovementStatus" AS ENUM ('PLANNED', 'IN_PROGRESS', 'REVIEW', 'DONE', 'ARCHIVED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "CampaignStatus" AS ENUM ('ACTIVE', 'PAUSED', 'FINISHED', 'ARCHIVED');
+DO $$ BEGIN
+  CREATE TYPE "CampaignStatus" AS ENUM ('ACTIVE', 'PAUSED', 'FINISHED', 'ARCHIVED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "InsightType" AS ENUM ('OBSERVATION', 'PATTERN', 'WARNING', 'WINNING_STRATEGY', 'HYPOTHESIS');
+DO $$ BEGIN
+  CREATE TYPE "InsightType" AS ENUM ('OBSERVATION', 'PATTERN', 'WARNING', 'WINNING_STRATEGY', 'HYPOTHESIS');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AlterTable
-ALTER TABLE "ClientPlan" ADD COLUMN     "active" BOOLEAN NOT NULL DEFAULT true,
-ADD COLUMN     "autoRenew" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "endDate" TIMESTAMP(3),
-ADD COLUMN     "renewDay" INTEGER NOT NULL DEFAULT 1;
+-- AlterTable (idempotent)
+DO $$ BEGIN
+  ALTER TABLE "ClientPlan" ADD COLUMN "active" BOOLEAN NOT NULL DEFAULT true;
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
 
--- AlterTable
-ALTER TABLE "PlanItem" ADD COLUMN     "checklistItems" TEXT[],
-ADD COLUMN     "deadlineDayOfMonth" INTEGER,
-ADD COLUMN     "defaultPriority" TEXT NOT NULL DEFAULT 'NORMAL';
+DO $$ BEGIN
+  ALTER TABLE "ClientPlan" ADD COLUMN "autoRenew" BOOLEAN NOT NULL DEFAULT false;
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
 
--- CreateTable
-CREATE TABLE "Movement" (
+DO $$ BEGIN
+  ALTER TABLE "ClientPlan" ADD COLUMN "endDate" TIMESTAMP(3);
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "ClientPlan" ADD COLUMN "renewDay" INTEGER NOT NULL DEFAULT 1;
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "PlanItem" ADD COLUMN "checklistItems" TEXT[];
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "PlanItem" ADD COLUMN "deadlineDayOfMonth" INTEGER;
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "PlanItem" ADD COLUMN "defaultPriority" TEXT NOT NULL DEFAULT 'NORMAL';
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "Movement" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -39,8 +71,7 @@ CREATE TABLE "Movement" (
     CONSTRAINT "Movement_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Brain" (
+CREATE TABLE IF NOT EXISTS "Brain" (
     "id" TEXT NOT NULL,
     "clientId" TEXT,
     "title" TEXT NOT NULL,
@@ -55,8 +86,7 @@ CREATE TABLE "Brain" (
     CONSTRAINT "Brain_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Campaign" (
+CREATE TABLE IF NOT EXISTS "Campaign" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -78,8 +108,7 @@ CREATE TABLE "Campaign" (
     CONSTRAINT "Campaign_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "CampaignMetric" (
+CREATE TABLE IF NOT EXISTS "CampaignMetric" (
     "id" TEXT NOT NULL,
     "campaignId" TEXT NOT NULL,
     "cpl" DOUBLE PRECISION,
@@ -93,8 +122,7 @@ CREATE TABLE "CampaignMetric" (
     CONSTRAINT "CampaignMetric_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Creative" (
+CREATE TABLE IF NOT EXISTS "Creative" (
     "id" TEXT NOT NULL,
     "campaignId" TEXT,
     "name" TEXT NOT NULL,
@@ -119,8 +147,7 @@ CREATE TABLE "Creative" (
     CONSTRAINT "Creative_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "CampaignInsight" (
+CREATE TABLE IF NOT EXISTS "CampaignInsight" (
     "id" TEXT NOT NULL,
     "campaignId" TEXT,
     "content" TEXT NOT NULL,
@@ -135,8 +162,7 @@ CREATE TABLE "CampaignInsight" (
     CONSTRAINT "CampaignInsight_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Playbook" (
+CREATE TABLE IF NOT EXISTS "Playbook" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "niche" TEXT,
@@ -152,8 +178,7 @@ CREATE TABLE "Playbook" (
     CONSTRAINT "Playbook_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "PlaybookStep" (
+CREATE TABLE IF NOT EXISTS "PlaybookStep" (
     "id" TEXT NOT NULL,
     "playbookId" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
@@ -165,8 +190,7 @@ CREATE TABLE "PlaybookStep" (
     CONSTRAINT "PlaybookStep_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "GlobalInsight" (
+CREATE TABLE IF NOT EXISTS "GlobalInsight" (
     "id" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "type" "InsightType" NOT NULL DEFAULT 'OBSERVATION',
@@ -181,26 +205,43 @@ CREATE TABLE "GlobalInsight" (
     CONSTRAINT "GlobalInsight_pkey" PRIMARY KEY ("id")
 );
 
--- AddForeignKey
-ALTER TABLE "Movement" ADD CONSTRAINT "Movement_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- AddForeignKey (idempotent)
+DO $$ BEGIN
+  ALTER TABLE "Movement" ADD CONSTRAINT "Movement_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Movement" ADD CONSTRAINT "Movement_assignedTo_fkey" FOREIGN KEY ("assignedTo") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "Movement" ADD CONSTRAINT "Movement_assignedTo_fkey" FOREIGN KEY ("assignedTo") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Brain" ADD CONSTRAINT "Brain_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "Brain" ADD CONSTRAINT "Brain_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Campaign" ADD CONSTRAINT "Campaign_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "Campaign" ADD CONSTRAINT "Campaign_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "CampaignMetric" ADD CONSTRAINT "CampaignMetric_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "CampaignMetric" ADD CONSTRAINT "CampaignMetric_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Creative" ADD CONSTRAINT "Creative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "Creative" ADD CONSTRAINT "Creative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "CampaignInsight" ADD CONSTRAINT "CampaignInsight_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "CampaignInsight" ADD CONSTRAINT "CampaignInsight_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "PlaybookStep" ADD CONSTRAINT "PlaybookStep_playbookId_fkey" FOREIGN KEY ("playbookId") REFERENCES "Playbook"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "PlaybookStep" ADD CONSTRAINT "PlaybookStep_playbookId_fkey" FOREIGN KEY ("playbookId") REFERENCES "Playbook"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
