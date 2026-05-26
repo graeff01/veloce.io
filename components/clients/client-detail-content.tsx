@@ -15,6 +15,7 @@ import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { ApplyPlanWizard } from "@/components/plans/apply-plan-wizard";
 import { OperacaoTab } from "@/components/clients/operacao-tab";
+import { MovimentoTab } from "@/components/clients/movimento-tab";
 import { formatDate } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -176,7 +177,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "operacao" | "inteligencia";
+type Tab = "overview" | "movimentos" | "operacao" | "inteligencia";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const { data: session } = useSession();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("operacao");
+  const [tab, setTab] = useState<Tab>("movimentos");
   const [editOpen, setEditOpen] = useState(false);
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -281,9 +282,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     : "var(--amber)";
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "overview",     label: "Overview",      icon: <BarChart3 size={13} /> },
-    { key: "operacao",     label: "Operação",       icon: <CheckCircle2 size={13} /> },
-    { key: "inteligencia", label: "Inteligência",   icon: <Brain size={13} /> },
+    { key: "movimentos",   label: "Movimentações",  icon: <Zap size={13} /> },
+    { key: "overview",     label: "Overview",       icon: <BarChart3 size={13} /> },
+    { key: "operacao",     label: "Operação",        icon: <CheckCircle2 size={13} /> },
+    { key: "inteligencia", label: "Inteligência",    icon: <Brain size={13} /> },
   ];
 
   return (
@@ -382,6 +384,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Tab content ─────────────────────────────────── */}
+      {tab === "movimentos" && (
+        <MovimentoTab clientId={clientId} />
+      )}
+
       {tab === "operacao" && (
         <OperacaoTab
           key={operacaoKey}

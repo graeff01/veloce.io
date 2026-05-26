@@ -31,6 +31,14 @@ enum TaskPriority {
   LOW
 }
 
+enum MovementStatus {
+  PLANNED
+  IN_PROGRESS
+  REVIEW
+  DONE
+  ARCHIVED
+}
+
 model User {
   id        String    @id @default(cuid())
   name      String
@@ -43,8 +51,9 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  assignedTasks Task[]         @relation("AssignedTasks")
-  executionLogs ExecutionLog[]
+  assignedTasks     Task[]         @relation("AssignedTasks")
+  assignedMovements Movement[]     @relation("AssignedMovements")
+  executionLogs     ExecutionLog[]
 }
 
 model Client {
@@ -82,6 +91,8 @@ model Client {
   deletedAt    DateTime?
 
   tasks         Task[]
+  movements     Movement[]
+  brains        Brain[]
   clientPlans   ClientPlan[]
   executionLogs ExecutionLog[]
   campaigns     Campaign[]
@@ -168,6 +179,44 @@ model Checklist {
   createdAt DateTime @default(now())
 
   task Task @relation(fields: [taskId], references: [id])
+}
+
+// ── Movement Layer ────────────────────────────────────────────────────────────
+
+model Movement {
+  id          String         @id @default(cuid())
+  clientId    String
+  title       String
+  category    String
+  status      MovementStatus @default(PLANNED)
+  priority    TaskPriority   @default(NORMAL)
+  date        DateTime
+  endDate     DateTime?
+  assignedTo  String?
+  description String?
+  links       String[]
+  tags        String[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  client   Client @relation(fields: [clientId], references: [id])
+  assignee User?  @relation("AssignedMovements", fields: [assignedTo], references: [id])
+}
+
+model Brain {
+  id         String   @id @default(cuid())
+  clientId   String?
+  title      String
+  content    String?
+  category   String   @default("Insight")
+  links      String[]
+  tags       String[]
+  pinned     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id])
 }
 
 // ── Intelligence Layer ────────────────────────────────────────────────────────
