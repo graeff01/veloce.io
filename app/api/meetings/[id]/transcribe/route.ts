@@ -36,7 +36,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const transcript = whisperData.text;
   const duration = whisperData.duration ? Math.round(whisperData.duration) : undefined;
 
-  // Generate summary via Groq chat
+  // Generate structured analysis via Groq chat
   let summary = "";
   let decisions: string[] = [];
   let nextSteps: string[] = [];
@@ -49,13 +49,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama3-8b-8192",
+        model: "llama3-70b-8192",
         temperature: 0.2,
         messages: [
           {
             role: "system",
-            content:
-              "Você é um assistente especialista em reuniões de agência de marketing. Analise a transcrição e responda APENAS com JSON válido no formato: {\"summary\": \"resumo em 2-3 frases\", \"decisions\": [\"decisão 1\", ...], \"nextSteps\": [\"próximo passo 1\", ...]}. Máximo 5 decisões e 5 próximos passos. Seja objetivo e direto.",
+            content: `Você é um assistente especialista em reuniões de agência de marketing digital. Analise a transcrição e responda APENAS com JSON válido neste formato:
+{
+  "summary": "resumo executivo em 2-3 frases do que foi a reunião",
+  "topics": [
+    { "title": "Assunto discutido", "content": "o que foi dito e discutido sobre este tópico" }
+  ],
+  "decisions": ["decisão tomada 1", "decisão tomada 2"],
+  "nextSteps": ["próximo passo 1", "próximo passo 2"],
+  "actionItems": [
+    { "task": "tarefa específica", "responsible": "nome ou cargo se mencionado", "deadline": "prazo se mencionado ou null" }
+  ],
+  "keyHighlights": ["ponto importante 1", "ponto importante 2"]
+}
+Regras: máximo 5 topics, 5 decisions, 5 nextSteps, 5 actionItems, 4 keyHighlights. Seja objetivo e extraia apenas o que foi realmente dito.`,
           },
           {
             role: "user",
@@ -70,10 +82,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const raw = chatData.choices[0]?.message?.content ?? "";
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as { summary?: string; decisions?: string[]; nextSteps?: string[] };
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          summary?: string;
+          decisions?: string[];
+          nextSteps?: string[];
+          topics?: Array<{ title: string; content: string }>;
+          actionItems?: Array<{ task: string; responsible: string | null; deadline: string | null }>;
+          keyHighlights?: string[];
+        };
         summary = parsed.summary ?? "";
         decisions = parsed.decisions ?? [];
         nextSteps = parsed.nextSteps ?? [];
+        // Store extra structured data in summary field as JSON prefix for UI
+        const extra = {
+          topics: parsed.topics ?? [],
+          actionItems: parsed.actionItems ?? [],
+          keyHighlights: parsed.keyHighlights ?? [],
+        };
+        // Prepend structured metadata as a JSON block separated by a sentinel
+        summary = `__STRUCTURED__${JSON.stringify(extra)}__END__${summary}`;
       }
     }
   } catch {

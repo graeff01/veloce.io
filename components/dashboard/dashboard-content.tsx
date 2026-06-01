@@ -6,7 +6,7 @@ import {
   Users, AlertTriangle, CheckCircle2, Clock,
   TrendingDown, Activity, Zap, ArrowRight,
   BellRing, ChevronRight,
-  CalendarDays, ListTodo, Settings, Wallet, PauseCircle,
+  CalendarDays, Settings, Wallet,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate } from "@/lib/utils";
@@ -282,20 +282,12 @@ const NAV_ITEMS = [
     soft: "rgba(79,70,229,0.08)",
   },
   {
-    href: "/today",
-    label: "Today",
-    description: "Tasks do dia",
-    icon: ListTodo,
+    href: "/calendar",
+    label: "Calendário",
+    description: "Movimentos e agenda",
+    icon: CalendarDays,
     color: "#0891B2",
     soft: "rgba(8,145,178,0.08)",
-  },
-  {
-    href: "/pending",
-    label: "Pendências",
-    description: "Fila de aprovação",
-    icon: PauseCircle,
-    color: "#D97706",
-    soft: "rgba(217,119,6,0.08)",
   },
   {
     href: "/finances",
@@ -306,9 +298,17 @@ const NAV_ITEMS = [
     soft: "rgba(5,150,105,0.08)",
   },
   {
+    href: "/hr",
+    label: "Equipe",
+    description: "Pessoas e custos",
+    icon: Users,
+    color: "#D97706",
+    soft: "rgba(217,119,6,0.08)",
+  },
+  {
     href: "/intelligence/campaigns",
-    label: "Campanhas",
-    description: "Busca e criativos",
+    label: "Inteligência",
+    description: "Padrões e insights",
     icon: Zap,
     color: "#7C3AED",
     soft: "rgba(124,58,237,0.08)",

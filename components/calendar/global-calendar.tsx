@@ -453,6 +453,200 @@ function AgendaItem({
   );
 }
 
+// ── Agenda View (side-by-side day columns) ────────────────────────────────────
+
+function AgendaView({
+  movements, calTasks, showTasks, month, year, now,
+  onEdit, onStatusChange, onNewMovement,
+}: {
+  movements: Movement[];
+  calTasks: CalTask[];
+  showTasks: boolean;
+  month: number;
+  year: number;
+  now: Date;
+  onEdit: (m: Movement) => void;
+  onStatusChange: (id: string, s: Movement["status"]) => void;
+  onNewMovement: () => void;
+}) {
+  // Build a map of all days that have items
+  const byDay: Record<string, { mvs: Movement[]; tasks: CalTask[] }> = {};
+  movements.forEach(m => {
+    const key = m.date.slice(0, 10);
+    if (!byDay[key]) byDay[key] = { mvs: [], tasks: [] };
+    byDay[key].mvs.push(m);
+  });
+  if (showTasks) {
+    calTasks.forEach(t => {
+      const key = t.dueDate.slice(0, 10);
+      if (!byDay[key]) byDay[key] = { mvs: [], tasks: [] };
+      byDay[key].tasks.push(t);
+    });
+  }
+
+  const days = Object.keys(byDay).sort();
+
+  if (days.length === 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, padding: "60px 0", color: "var(--text-muted)" }}>
+        <Calendar size={40} style={{ opacity: 0.3 }} />
+        <p style={{ fontSize: 14 }}>Nenhuma movimentação em {MONTHS[month - 1]}</p>
+        <button onClick={onNewMovement} style={{ padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          Registrar movimentação
+        </button>
+      </div>
+    );
+  }
+
+  // Group days into weeks (rows of up to 7 days)
+  const COLS = 5; // show 5 day columns at a time feels like Google Calendar
+  const chunks: string[][] = [];
+  for (let i = 0; i < days.length; i += COLS) chunks.push(days.slice(i, i + COLS));
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1, padding: "16px 20px" }}>
+      {chunks.map((chunk, ci) => (
+        <div key={ci} style={{ marginBottom: 20 }}>
+          {/* Day header row */}
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${chunk.length}, 1fr)`, gap: 8, marginBottom: 0 }}>
+            {chunk.map(day => {
+              const d = new Date(day + "T12:00:00");
+              const isToday = isSameDay(d, now);
+              const total = byDay[day].mvs.length + byDay[day].tasks.length;
+              return (
+                <div key={day} style={{
+                  padding: "10px 14px 8px",
+                  background: isToday ? "var(--accent-soft)" : "var(--bg-surface)",
+                  borderRadius: "10px 10px 0 0",
+                  border: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`,
+                  borderBottom: "none",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{
+                      width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: isToday ? "var(--accent)" : "transparent",
+                      color: isToday ? "#fff" : "var(--text-secondary)",
+                      fontSize: 14, fontWeight: 700,
+                    }}>
+                      {d.getDate()}
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: isToday ? "var(--accent)" : "var(--text-primary)", margin: 0 }}>
+                        {WEEKDAYS_SHORT[d.getDay()]}
+                      </p>
+                      <p style={{ fontSize: 10, color: "var(--text-muted)", margin: 0 }}>
+                        {total} item{total !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Items row */}
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${chunk.length}, 1fr)`, gap: 8 }}>
+            {chunk.map(day => {
+              const { mvs, tasks } = byDay[day];
+              const d = new Date(day + "T12:00:00");
+              const isToday = isSameDay(d, now);
+              return (
+                <div key={day} style={{
+                  minHeight: 100,
+                  background: "var(--bg-base)",
+                  border: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius: "0 0 10px 10px",
+                  borderTop: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`,
+                  padding: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 5,
+                }}>
+                  {mvs.map(mv => (
+                    <AgendaColumnCard key={mv.id} mv={mv} onEdit={onEdit} onStatusChange={onStatusChange} />
+                  ))}
+                  {tasks.map(t => (
+                    <AgendaColumnTask key={t.id} task={t} />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AgendaColumnCard({
+  mv, onEdit, onStatusChange,
+}: {
+  mv: Movement;
+  onEdit: (m: Movement) => void;
+  onStatusChange: (id: string, s: Movement["status"]) => void;
+}) {
+  const cc = clientColor(mv.clientId);
+  const isDone = mv.status === "DONE";
+  return (
+    <div
+      onClick={() => onEdit(mv)}
+      style={{
+        padding: "7px 9px", borderRadius: 8, cursor: "pointer",
+        background: isDone ? "var(--bg-surface)" : cc.bg,
+        border: `1px solid ${cc.border}30`,
+        opacity: isDone ? 0.55 : 1,
+        transition: "box-shadow 120ms",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: cc.border, flexShrink: 0, marginTop: 4 }} />
+        <span style={{
+          fontSize: 11.5, fontWeight: 600, color: cc.text, flex: 1, lineHeight: "16px",
+          textDecoration: isDone ? "line-through" : "none",
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {mv.title}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 12 }}>
+        <span style={{ fontSize: 10, color: cc.text, opacity: 0.7 }}>{mv.category}</span>
+        <StatusPill status={mv.status} onChange={s => onStatusChange(mv.id, s)} />
+      </div>
+    </div>
+  );
+}
+
+function AgendaColumnTask({ task }: { task: CalTask }) {
+  const color = TASK_STATUS_COLOR[task.status] ?? "#64748B";
+  const statusLabel: Record<string, string> = {
+    TODO: "A fazer", IN_PROGRESS: "Em execução", REVIEW: "Revisão", DONE: "Concluído",
+  };
+  return (
+    <div style={{
+      padding: "6px 8px", borderRadius: 7,
+      background: color + "0c", border: `1px solid ${color}28`,
+      borderLeft: `3px solid ${color}`,
+      opacity: task.status === "DONE" ? 0.55 : 1,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+        <CheckSquare size={9} style={{ color, flexShrink: 0, marginTop: 3 }} />
+        <span style={{
+          fontSize: 11, fontWeight: 500, color: "var(--text-primary)", flex: 1, lineHeight: "15px",
+          textDecoration: task.status === "DONE" ? "line-through" : "none",
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {task.title}
+        </span>
+      </div>
+      {task.client && (
+        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "3px 0 0 14px" }}>
+          {task.client.brand || task.client.name}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function GlobalCalendar() {
@@ -675,72 +869,18 @@ export function GlobalCalendar() {
             </div>
           </div>
         ) : (
-          /* Agenda view */
-          <div style={{ padding: "20px 32px", maxWidth: 840, margin: "0 auto" }}>
-            {movements.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
-                <Calendar size={40} style={{ opacity: 0.3, margin: "0 auto 12px" }} />
-                <p style={{ fontSize: 14 }}>Nenhuma movimentação em {MONTHS[month - 1]}</p>
-                <button onClick={() => setModal({})} style={{ marginTop: 12, padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                  Registrar movimentação
-                </button>
-              </div>
-            ) : (
-              (() => {
-                // Group by day
-                const byDay: Record<string, Movement[]> = {};
-                movements.forEach(m => {
-                  const key = m.date.slice(0, 10);
-                  if (!byDay[key]) byDay[key] = [];
-                  byDay[key].push(m);
-                });
-                // Also merge tasks into agenda
-                if (showTasks) {
-                  calTasks.forEach(t => {
-                    const key = t.dueDate.slice(0, 10);
-                    if (!byDay[key]) byDay[key] = [];
-                  });
-                }
-                return Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([day, mvs]) => {
-                  const d = new Date(day + "T12:00:00");
-                  const isToday = isSameDay(d, now);
-                  const dayTasks = showTasks ? calTasks.filter(t => t.dueDate.slice(0, 10) === day) : [];
-                  const totalCount = mvs.length + dayTasks.length;
-                  return (
-                    <div key={day} style={{ marginBottom: 28 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                        <div style={{
-                          width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          background: isToday ? "var(--accent)" : "var(--bg-elevated)",
-                          color: isToday ? "#fff" : "var(--text-secondary)",
-                          fontSize: 14, fontWeight: 700,
-                        }}>
-                          {d.getDate()}
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
-                            {WEEKDAYS_LONG[d.getDay()]}{isToday ? " — hoje" : ""}
-                          </span>
-                          <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>
-                            {totalCount} item{totalCount !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 46 }}>
-                        {mvs.map(mv => (
-                          <AgendaItem key={mv.id} mv={mv} onEdit={m => setModal({ movement: m })} onStatusChange={handleStatusChange} />
-                        ))}
-                        {dayTasks.map(t => (
-                          <AgendaTaskItem key={t.id} task={t} />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                });
-              })()
-            )}
-          </div>
+          /* Agenda view — side-by-side day columns */
+          <AgendaView
+            movements={movements}
+            calTasks={calTasks}
+            showTasks={showTasks}
+            month={month}
+            year={year}
+            now={now}
+            onEdit={m => setModal({ movement: m })}
+            onStatusChange={handleStatusChange}
+            onNewMovement={() => setModal({})}
+          />
         )}
       </div>
 

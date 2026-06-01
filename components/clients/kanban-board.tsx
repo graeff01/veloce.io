@@ -91,7 +91,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle]     = useState("");
   const [newType, setNewType]       = useState("");
-  const [newDueDate, setNewDueDate] = useState("");
   const [saving, setSaving]         = useState(false);
 
   // Drag state
@@ -119,9 +118,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   useEffect(() => { load(); }, [load]);
 
   function openCreate() {
-    // default due date = last day of current viewed month
-    const lastDay = new Date(year, month, 0);
-    setNewDueDate(lastDay.toISOString().slice(0, 10));
     setNewTitle("");
     setNewType("");
     setShowCreate(true);
@@ -137,7 +133,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       body: JSON.stringify({
         title: newTitle.trim(),
         type: newType || undefined,
-        dueDate: newDueDate,
         planMonth: month,
         planYear: year,
       }),
@@ -406,26 +401,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                 </div>
               </div>
 
-              {/* Due date */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Prazo
-                </label>
-                <input
-                  type="date"
-                  value={newDueDate}
-                  onChange={e => setNewDueDate(e.target.value)}
-                  style={{
-                    height: 40, padding: "0 12px",
-                    background: "var(--bg-base)",
-                    border: "1px solid var(--border-strong)",
-                    borderRadius: 9, fontSize: 13,
-                    color: "var(--text-primary)", outline: "none", width: "100%",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
               {/* Footer */}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
                 <button
@@ -644,7 +619,7 @@ function KanbanCard({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: hover && !isDragging ? "var(--bg-elevated)" : "var(--bg-surface)",
+        background: isDragging ? "var(--bg-surface)" : hover ? `color-mix(in srgb, ${accentCol} 6%, var(--bg-elevated))` : `color-mix(in srgb, ${accentCol} 4%, var(--bg-surface))`,
         border: `1px solid ${isDragging ? colColor + "50" : hover ? colColor + "35" : "var(--border)"}`,
         borderLeft: `3px solid ${accentCol}`,
         borderRadius: 10,

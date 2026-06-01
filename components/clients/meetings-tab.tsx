@@ -15,6 +15,10 @@ import {
   Loader2,
   FileAudio,
   X,
+  Play,
+  ListChecks,
+  MessageSquare,
+  Zap,
 } from "lucide-react";
 
 interface Meeting {
@@ -54,6 +58,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing]   = useState<string | null>(null);
   const [transcribeErr, setTranscribeErr] = useState<string | null>(null);
+  const [audioUrls, setAudioUrls]         = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -80,6 +85,8 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
       setMeetings((prev) => [meeting, ...prev]);
 
       if (audioFile) {
+        const url = URL.createObjectURL(audioFile);
+        setAudioUrls(prev => ({ ...prev, [meeting.id]: url }));
         await handleTranscribe(meeting.id, audioFile);
       }
 
@@ -91,6 +98,12 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
       setExpanded(meeting.id);
     }
     setCreating(false);
+  }
+
+  function handleAudioSelect(meetingId: string, file: File) {
+    const url = URL.createObjectURL(file);
+    setAudioUrls(prev => ({ ...prev, [meetingId]: url }));
+    handleTranscribe(meetingId, file);
   }
 
   async function handleTranscribe(meetingId: string, file: File) {
@@ -349,9 +362,10 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
               meeting={meeting}
               expanded={expanded === meeting.id}
               transcribing={transcribing === meeting.id}
+              audioUrl={audioUrls[meeting.id]}
               onToggle={() => setExpanded((v) => (v === meeting.id ? null : meeting.id))}
               onDelete={() => handleDelete(meeting.id)}
-              onTranscribe={(file) => handleTranscribe(meeting.id, file)}
+              onTranscribe={(file) => handleAudioSelect(meeting.id, file)}
             />
           ))}
         </div>
@@ -360,10 +374,33 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   );
 }
 
+interface StructuredData {
+  topics: Array<{ title: string; content: string }>;
+  actionItems: Array<{ task: string; responsible: string | null; deadline: string | null }>;
+  keyHighlights: string[];
+}
+
+function parseStructured(raw: string | null): { structured: StructuredData | null; plainSummary: string } {
+  if (!raw) return { structured: null, plainSummary: "" };
+  const sentinel = "__STRUCTURED__";
+  const endSentinel = "__END__";
+  if (raw.startsWith(sentinel)) {
+    const endIdx = raw.indexOf(endSentinel);
+    if (endIdx > 0) {
+      const jsonPart = raw.slice(sentinel.length, endIdx);
+      const plain    = raw.slice(endIdx + endSentinel.length);
+      try { return { structured: JSON.parse(jsonPart) as StructuredData, plainSummary: plain }; }
+      catch { /* fall through */ }
+    }
+  }
+  return { structured: null, plainSummary: raw };
+}
+
 function MeetingCard({
   meeting,
   expanded,
   transcribing,
+  audioUrl,
   onToggle,
   onDelete,
   onTranscribe,
@@ -371,12 +408,20 @@ function MeetingCard({
   meeting: Meeting;
   expanded: boolean;
   transcribing: boolean;
+  audioUrl?: string;
   onToggle: () => void;
   onDelete: () => void;
   onTranscribe: (file: File) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const hasTranscript = !!meeting.transcript;
+  const { structured, plainSummary } = parseStructured(meeting.summary);
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+    color: "var(--text-muted)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5,
+    margin: "0 0 8px",
+  };
 
   return (
     <div
@@ -445,6 +490,11 @@ function MeetingCard({
                 {meeting.participants.length > 2 && ` +${meeting.participants.length - 2}`}
               </span>
             )}
+            {hasTranscript && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "1px 7px", borderRadius: 20 }}>
+                Analisado
+              </span>
+            )}
           </div>
         </div>
 
@@ -485,7 +535,7 @@ function MeetingCard({
           {transcribing && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--accent)" }}>
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
-              Transcrevendo...
+              Analisando...
             </span>
           )}
           <button
@@ -501,27 +551,93 @@ function MeetingCard({
 
       {/* Expanded content */}
       {expanded && (
-        <div style={{ borderTop: "1px solid var(--border)", padding: "16px 16px 20px" }}>
-          {meeting.summary && (
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
-                Resumo
+        <div style={{ borderTop: "1px solid var(--border)", padding: "18px 18px 22px" }}>
+
+          {/* Audio player */}
+          {audioUrl && (
+            <div style={{ marginBottom: 18 }}>
+              <p style={sectionLabelStyle}>
+                <Play size={10} /> Reproduzir gravação
+              </p>
+              <audio
+                controls
+                src={audioUrl}
+                style={{ width: "100%", height: 36, borderRadius: 8, outline: "none" }}
+              />
+            </div>
+          )}
+
+          {/* Summary */}
+          {plainSummary && (
+            <div style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              background: "var(--bg-base)",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              borderLeft: "3px solid var(--accent)",
+            }}>
+              <p style={sectionLabelStyle}>
+                <MessageSquare size={10} /> Resumo executivo
               </p>
               <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.6, margin: 0 }}>
-                {meeting.summary}
+                {plainSummary}
               </p>
             </div>
           )}
 
+          {/* Key highlights */}
+          {structured && structured.keyHighlights.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabelStyle}>
+                <Zap size={10} /> Destaques
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {structured.keyHighlights.map((h, i) => (
+                  <span key={i} style={{
+                    fontSize: 11, padding: "4px 10px", borderRadius: 20,
+                    background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.18)",
+                    color: "var(--accent)", fontWeight: 500,
+                  }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Topics */}
+          {structured && structured.topics.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabelStyle}>
+                <MessageSquare size={10} /> Tópicos discutidos
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {structured.topics.map((topic, i) => (
+                  <div key={i} style={{
+                    background: "var(--bg-base)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", margin: "0 0 4px" }}>{topic.title}</p>
+                    <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{topic.content}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Decisions */}
           {meeting.decisions.length > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
-                Decisões
+              <p style={sectionLabelStyle}>
+                <CheckSquare size={10} /> Decisões tomadas
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {meeting.decisions.map((d, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <CheckSquare size={13} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0" }}>
+                    <CheckSquare size={13} style={{ color: "#16A34A", flexShrink: 0, marginTop: 1 }} />
                     <p style={{ fontSize: 13, color: "var(--text-primary)", margin: 0, lineHeight: 1.5 }}>{d}</p>
                   </div>
                 ))}
@@ -529,10 +645,42 @@ function MeetingCard({
             </div>
           )}
 
+          {/* Action Items */}
+          {structured && structured.actionItems.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabelStyle}>
+                <ListChecks size={10} /> Ações definidas
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {structured.actionItems.map((item, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "flex-start", gap: 10,
+                    padding: "8px 10px", borderRadius: 8,
+                    background: "rgba(37,99,235,0.04)", border: "1px solid rgba(37,99,235,0.12)",
+                  }}>
+                    <ArrowRight size={12} style={{ color: "#2563EB", flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>{item.task}</p>
+                      <div style={{ display: "flex", gap: 10, marginTop: 3 }}>
+                        {item.responsible && (
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>👤 {item.responsible}</span>
+                        )}
+                        {item.deadline && (
+                          <span style={{ fontSize: 11, color: "#D97706" }}>📅 {item.deadline}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Next steps */}
           {meeting.nextSteps.length > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
-                Próximos passos
+              <p style={sectionLabelStyle}>
+                <ArrowRight size={10} /> Próximos passos
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {meeting.nextSteps.map((s, i) => (
@@ -545,35 +693,52 @@ function MeetingCard({
             </div>
           )}
 
-          {meeting.transcript && (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
-                Transcrição completa
-              </p>
-              <div
-                style={{
-                  background: "var(--bg-base)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "12px 14px",
-                  fontSize: 12,
-                  color: "var(--text-secondary)",
-                  lineHeight: 1.7,
-                  maxHeight: 240,
-                  overflowY: "auto",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {meeting.transcript}
-              </div>
-            </div>
-          )}
+          {/* Full transcript (collapsible) */}
+          {meeting.transcript && <TranscriptBlock transcript={meeting.transcript} />}
 
           {!meeting.transcript && !transcribing && (
             <p style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
               Nenhuma transcrição disponível. Use o botão "Transcrever" para enviar um áudio.
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TranscriptBlock({ transcript }: { transcript: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+          color: "var(--text-muted)", padding: "0 0 8px",
+        }}
+      >
+        {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+        Transcrição completa
+      </button>
+      {open && (
+        <div
+          style={{
+            background: "var(--bg-base)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "12px 14px",
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            lineHeight: 1.7,
+            maxHeight: 280,
+            overflowY: "auto",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {transcript}
         </div>
       )}
     </div>
