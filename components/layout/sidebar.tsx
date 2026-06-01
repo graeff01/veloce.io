@@ -17,6 +17,7 @@ import {
   Moon,
   Sun,
   Wallet,
+  Users,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -31,6 +32,7 @@ const bottomNavItems = [
   { href: "/",          icon: LayoutDashboard, label: "Visao geral" },
   { href: "/calendar",  icon: CalendarDays,    label: "Calendario" },
   { href: "/finances",  icon: Wallet,          label: "Financas" },
+  { href: "/hr",        icon: Users,           label: "Equipe" },
 ];
 
 const adminNavItems = [

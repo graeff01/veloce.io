@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft, ChevronRight, Plus, X, Zap, Calendar,
   AlignLeft, Tag, User, ExternalLink, Loader2, Check,
-  LayoutGrid, List, Clock,
+  LayoutGrid, List, Clock, CheckSquare,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -29,6 +29,16 @@ interface Client {
   id: string;
   name: string;
   brand?: string | null;
+}
+
+interface CalTask {
+  id: string;
+  clientId: string;
+  title: string;
+  type: string | null;
+  status: "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+  dueDate: string;
+  client?: { id: string; name: string; brand?: string | null };
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -451,19 +461,25 @@ export function GlobalCalendar() {
   const [year,      setYear]      = useState(now.getFullYear());
   const [view,      setView]      = useState<"month" | "agenda">("month");
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [calTasks,  setCalTasks]  = useState<CalTask[]>([]);
   const [clients,   setClients]   = useState<Client[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [modal,     setModal]     = useState<{ date?: Date; movement?: Movement } | null>(null);
   const [filterClient, setFilterClient] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showTasks, setShowTasks] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ month: String(month), year: String(year) });
     if (filterClient !== "all") params.set("clientId", filterClient);
     if (filterStatus !== "all") params.set("status", filterStatus);
-    const res = await fetch(`/api/movements?${params}`);
-    if (res.ok) setMovements(await res.json());
+    const [mvRes, taskRes] = await Promise.all([
+      fetch(`/api/movements?${params}`),
+      fetch(`/api/calendar/tasks?month=${month}&year=${year}${filterClient !== "all" ? `&clientId=${filterClient}` : ""}`),
+    ]);
+    if (mvRes.ok)   setMovements(await mvRes.json());
+    if (taskRes.ok) setCalTasks(await taskRes.json());
     setLoading(false);
   }, [month, year, filterClient, filterStatus]);
 
@@ -506,6 +522,10 @@ export function GlobalCalendar() {
 
   function movementsForDay(day: Date) {
     return movements.filter(m => isSameDay(localDate(m.date), day));
+  }
+
+  function tasksForDay(day: Date) {
+    return calTasks.filter(t => isSameDay(localDate(t.dueDate), day));
   }
 
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
@@ -562,6 +582,11 @@ export function GlobalCalendar() {
           {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 
+        {/* Tasks toggle */}
+        <button onClick={() => setShowTasks(v => !v)} style={btnStyle(showTasks)}>
+          <CheckSquare size={13} /> Tarefas
+        </button>
+
         {/* View toggle */}
         <div style={{ display: "flex", gap: 4 }}>
           <button onClick={() => setView("month")}  style={btnStyle(view === "month")}><LayoutGrid size={13} /> Mês</button>
@@ -603,7 +628,9 @@ export function GlobalCalendar() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flex: 1, gridAutoRows: "1fr" }}>
               {cells.map((day, idx) => {
                 if (!day) return <div key={`e-${idx}`} style={{ borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", opacity: 0.4 }} />;
-                const dayMvs = movementsForDay(day);
+                const dayMvs   = movementsForDay(day);
+                const dayTasks = showTasks ? tasksForDay(day) : [];
+                const totalItems = dayMvs.length + dayTasks.length;
                 const isToday = isSameDay(day, now);
                 return (
                   <div
@@ -628,19 +655,17 @@ export function GlobalCalendar() {
                       {day.getDate()}
                     </div>
 
-                    {/* Movements */}
+                    {/* Movements + tasks */}
                     <div style={{ flex: 1, overflow: "hidden" }}>
-                      {dayMvs.slice(0, 4).map(mv => (
-                        <MovCard
-                          key={mv.id}
-                          mv={mv}
-                          onEdit={m => { setModal({ movement: m }); }}
-                          onStatusChange={handleStatusChange}
-                        />
+                      {dayMvs.slice(0, 3).map(mv => (
+                        <MovCard key={mv.id} mv={mv} onEdit={m => { setModal({ movement: m }); }} onStatusChange={handleStatusChange} />
                       ))}
-                      {dayMvs.length > 4 && (
+                      {dayTasks.slice(0, 3).map(t => (
+                        <TaskChip key={t.id} task={t} />
+                      ))}
+                      {totalItems > 6 && (
                         <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>
-                          +{dayMvs.length - 4} mais
+                          +{totalItems - 6} mais
                         </span>
                       )}
                     </div>
@@ -669,9 +694,18 @@ export function GlobalCalendar() {
                   if (!byDay[key]) byDay[key] = [];
                   byDay[key].push(m);
                 });
+                // Also merge tasks into agenda
+                if (showTasks) {
+                  calTasks.forEach(t => {
+                    const key = t.dueDate.slice(0, 10);
+                    if (!byDay[key]) byDay[key] = [];
+                  });
+                }
                 return Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([day, mvs]) => {
                   const d = new Date(day + "T12:00:00");
                   const isToday = isSameDay(d, now);
+                  const dayTasks = showTasks ? calTasks.filter(t => t.dueDate.slice(0, 10) === day) : [];
+                  const totalCount = mvs.length + dayTasks.length;
                   return (
                     <div key={day} style={{ marginBottom: 28 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -689,13 +723,16 @@ export function GlobalCalendar() {
                             {WEEKDAYS_LONG[d.getDay()]}{isToday ? " — hoje" : ""}
                           </span>
                           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>
-                            {mvs.length} movimentaç{mvs.length === 1 ? "ão" : "ões"}
+                            {totalCount} item{totalCount !== 1 ? "s" : ""}
                           </span>
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 46 }}>
                         {mvs.map(mv => (
                           <AgendaItem key={mv.id} mv={mv} onEdit={m => setModal({ movement: m })} onStatusChange={handleStatusChange} />
+                        ))}
+                        {dayTasks.map(t => (
+                          <AgendaTaskItem key={t.id} task={t} />
                         ))}
                       </div>
                     </div>
@@ -736,6 +773,66 @@ export function GlobalCalendar() {
           onSaved={handleSaved}
         />
       )}
+    </div>
+  );
+}
+
+// ── Task Chip (month grid) ─────────────────────────────────────────────────────
+
+const TASK_STATUS_COLOR: Record<string, string> = {
+  TODO:        "#64748B",
+  IN_PROGRESS: "#2563EB",
+  REVIEW:      "#D97706",
+  DONE:        "#16A34A",
+};
+
+function TaskChip({ task }: { task: CalTask }) {
+  const color = TASK_STATUS_COLOR[task.status] ?? "#64748B";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 4,
+      padding: "2px 5px", borderRadius: 4, marginBottom: 2,
+      background: color + "18", border: `1px solid ${color}30`,
+    }}>
+      <CheckSquare size={8} style={{ color, flexShrink: 0 }} />
+      <span style={{
+        fontSize: 10, fontWeight: 500, color: "var(--text-secondary)",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {task.title}
+      </span>
+    </div>
+  );
+}
+
+// ── Agenda Task Item ───────────────────────────────────────────────────────────
+
+function AgendaTaskItem({ task }: { task: CalTask }) {
+  const color = TASK_STATUS_COLOR[task.status] ?? "#64748B";
+  const statusLabel: Record<string, string> = {
+    TODO: "A fazer", IN_PROGRESS: "Em execução", REVIEW: "Revisão", DONE: "Concluído",
+  };
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "10px 14px", borderRadius: 10,
+      background: "var(--bg-surface)", border: "1px solid var(--border)",
+      borderLeft: `3px solid ${color}`,
+    }}>
+      <CheckSquare size={14} style={{ color, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {task.title}
+        </p>
+        {(task.type || task.client) && (
+          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0" }}>
+            {task.client?.brand || task.client?.name}{task.type ? ` · ${task.type}` : ""}
+          </p>
+        )}
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 600, color, background: color + "18", padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
+        {statusLabel[task.status] ?? task.status}
+      </span>
     </div>
   );
 }

@@ -25,7 +25,17 @@ interface Entry {
 }
 
 const CATEGORIES_RECEITA = ["Mensalidade", "Projeto", "Consultoria", "Bônus", "Outro"];
-const CATEGORIES_DESPESA  = ["Software", "Equipe", "Marketing", "Infra", "Freelancer", "Outro"];
+
+// Despesas organizadas por grupo semântico
+const EXPENSE_GROUPS: { group: string; color: string; categories: string[] }[] = [
+  { group: "Assinaturas & Software",  color: "#7C3AED", categories: ["SaaS / Plataforma", "Ferramenta de gestão", "Hospedagem", "Domínio", "Cloud / Infra"] },
+  { group: "Equipe",                  color: "#2563EB", categories: ["Salário CLT", "Pagamento PJ", "Freelancer", "Benefícios", "Treinamento"] },
+  { group: "Operação & Marketing",    color: "#D97706", categories: ["Tráfego pago", "Criativo externo", "Impressão / Material", "Evento"] },
+  { group: "Financeiro & Admin",      color: "#DC2626", categories: ["Imposto / Taxa", "Contador", "Jurídico", "Banco / Cartão"] },
+  { group: "Outro",                   color: "#64748B", categories: ["Outro"] },
+];
+
+const CATEGORIES_DESPESA = EXPENSE_GROUPS.flatMap(g => g.categories);
 
 const MONTHS = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -436,13 +446,12 @@ function NewEntryModal({ type, onClose, onSave }: {
   onSave: (entry: Omit<Entry, "id">) => void;
 }) {
   const isReceita = type === "RECEITA";
-  const categories = isReceita ? CATEGORIES_RECEITA : CATEGORIES_DESPESA;
   const [saving, setSaving] = useState(false);
 
   const [description, setDescription] = useState("");
   const [value, setValue] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [category, setCategory] = useState(categories[0]);
+  const [category, setCategory] = useState(isReceita ? CATEGORIES_RECEITA[0] : EXPENSE_GROUPS[0].categories[0]);
   const [status, setStatus] = useState<Entry["status"]>("PENDENTE");
   const [mode, setMode] = useState<EntryMode>("AVULSO");
   const [client, setClient] = useState("");
@@ -559,9 +568,19 @@ function NewEntryModal({ type, onClose, onSave }: {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <FormField label="Categoria">
-              <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
-                {categories.map(c => <option key={c}>{c}</option>)}
-              </select>
+              {isReceita ? (
+                <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
+                  {CATEGORIES_RECEITA.map(c => <option key={c}>{c}</option>)}
+                </select>
+              ) : (
+                <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
+                  {EXPENSE_GROUPS.map(g => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.categories.map(c => <option key={c}>{c}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
             </FormField>
             <FormField label="Status">
               <select value={status} onChange={e => setStatus(e.target.value as Entry["status"])} style={inputStyle}>
