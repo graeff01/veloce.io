@@ -58,6 +58,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing]   = useState<string | null>(null);
   const [transcribeErr, setTranscribeErr] = useState<string | null>(null);
+  const [analyzing, setAnalyzing]         = useState<string | null>(null);
   const [audioUrls, setAudioUrls]         = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -127,6 +128,24 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
       setTranscribeErr("Falha de rede ao enviar áudio.");
     }
     setTranscribing(null);
+  }
+
+  async function handleAnalyze(meetingId: string) {
+    setAnalyzing(meetingId);
+    setTranscribeErr(null);
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/analyze`, { method: "POST" });
+      if (res.ok) {
+        const updated: Meeting = await res.json();
+        setMeetings(prev => prev.map(m => m.id === meetingId ? updated : m));
+      } else {
+        const d = await res.json().catch(() => null);
+        setTranscribeErr(d?.detail ?? d?.error ?? "Erro ao analisar reunião.");
+      }
+    } catch {
+      setTranscribeErr("Falha de rede ao analisar.");
+    }
+    setAnalyzing(null);
   }
 
   async function handleDelete(id: string) {
@@ -362,10 +381,12 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
               meeting={meeting}
               expanded={expanded === meeting.id}
               transcribing={transcribing === meeting.id}
+              analyzing={analyzing === meeting.id}
               audioUrl={audioUrls[meeting.id]}
               onToggle={() => setExpanded((v) => (v === meeting.id ? null : meeting.id))}
               onDelete={() => handleDelete(meeting.id)}
               onTranscribe={(file) => handleAudioSelect(meeting.id, file)}
+              onAnalyze={() => handleAnalyze(meeting.id)}
             />
           ))}
         </div>
@@ -400,22 +421,27 @@ function MeetingCard({
   meeting,
   expanded,
   transcribing,
+  analyzing,
   audioUrl,
   onToggle,
   onDelete,
   onTranscribe,
+  onAnalyze,
 }: {
   meeting: Meeting;
   expanded: boolean;
   transcribing: boolean;
+  analyzing: boolean;
   audioUrl?: string;
   onToggle: () => void;
   onDelete: () => void;
   onTranscribe: (file: File) => void;
+  onAnalyze: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const hasTranscript = !!meeting.transcript;
   const { structured, plainSummary } = parseStructured(meeting.summary);
+  const hasStructured = structured !== null;
 
   const sectionLabelStyle: React.CSSProperties = {
     fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
@@ -515,16 +541,10 @@ function MeetingCard({
                 onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
                 title="Transcrever áudio"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: "5px 10px",
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "5px 10px", background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)", borderRadius: 6,
+                  fontSize: 11, color: "var(--text-muted)", cursor: "pointer",
                 }}
               >
                 <Upload size={11} />
@@ -532,10 +552,27 @@ function MeetingCard({
               </button>
             </>
           )}
-          {transcribing && (
+          {hasTranscript && !transcribing && !analyzing && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
+              title={hasStructured ? "Re-analisar reunião" : "Gerar análise estruturada"}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 10px", background: hasStructured ? "var(--bg-elevated)" : "var(--accent-soft)",
+                border: `1px solid ${hasStructured ? "var(--border)" : "var(--accent)"}`,
+                borderRadius: 6, fontSize: 11,
+                color: hasStructured ? "var(--text-muted)" : "var(--accent)",
+                cursor: "pointer",
+              }}
+            >
+              <Zap size={11} />
+              {hasStructured ? "Re-analisar" : "Analisar"}
+            </button>
+          )}
+          {(transcribing || analyzing) && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--accent)" }}>
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
-              Analisando...
+              {transcribing ? "Transcrevendo..." : "Analisando..."}
             </span>
           )}
           <button
@@ -693,7 +730,50 @@ function MeetingCard({
             </div>
           )}
 
-          {/* Full transcript (collapsible) */}
+          {/* When transcript exists but no structured analysis yet */}
+          {hasTranscript && !hasStructured && !analyzing && (
+            <div style={{
+              padding: "14px 16px", borderRadius: 10,
+              background: "rgba(124,58,237,0.06)", border: "1px dashed rgba(124,58,237,0.3)",
+              display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+            }}>
+              <Zap size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", margin: "0 0 2px" }}>
+                  Análise não gerada
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                  Esta reunião tem transcrição mas ainda não foi analisada pela IA.
+                </p>
+              </div>
+              <button
+                onClick={onAnalyze}
+                style={{
+                  padding: "7px 16px", borderRadius: 8, border: "none",
+                  background: "var(--accent)", color: "#fff",
+                  fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0,
+                  display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <Zap size={11} /> Gerar análise
+              </button>
+            </div>
+          )}
+
+          {analyzing && (
+            <div style={{
+              padding: "14px 16px", borderRadius: 10,
+              background: "var(--accent-soft)", border: "1px solid var(--accent)",
+              display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+            }}>
+              <Loader2 size={14} style={{ color: "var(--accent)", animation: "spin 1s linear infinite" }} />
+              <p style={{ fontSize: 13, color: "var(--accent)", margin: 0, fontWeight: 500 }}>
+                Analisando reunião com IA...
+              </p>
+            </div>
+          )}
+
+          {/* Full transcript (collapsible — always available but hidden by default) */}
           {meeting.transcript && <TranscriptBlock transcript={meeting.transcript} />}
 
           {!meeting.transcript && !transcribing && (
