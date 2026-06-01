@@ -21,7 +21,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama3-70b-8192",
+      model: "llama-3.3-70b-versatile",
       temperature: 0.2,
       messages: [
         {
