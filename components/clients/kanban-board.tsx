@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   AlertTriangle, Loader2, Plus, ChevronLeft, ChevronRight,
-  GripVertical, Calendar, Flag, X,
+  GripVertical, Calendar, Flag, X, Trash2,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -93,6 +93,9 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [newType, setNewType]       = useState("");
   const [saving, setSaving]         = useState(false);
 
+  // Rollover: archive DONE tasks from past months once per session
+  const rolloverDone = useRef(false);
+
   // Drag state
   const dragTaskId   = useRef<string | null>(null);
   const dragOverCol  = useRef<Status | null>(null);
@@ -116,6 +119,16 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   }, [clientId, month, year]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Run rollover once per session when viewing current month
+  useEffect(() => {
+    if (isCurrentMonth && !rolloverDone.current) {
+      rolloverDone.current = true;
+      fetch("/api/tasks/rollover", { method: "POST" }).then(r => {
+        if (r.ok) r.json().then(d => { if (d.archived > 0) load(); });
+      }).catch(() => {});
+    }
+  }, [isCurrentMonth, load]);
 
   function openCreate() {
     setNewTitle("");
@@ -142,6 +155,11 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       setShowCreate(false);
       load();
     }
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
   }
 
   function prevMonth() {
@@ -463,6 +481,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                onDelete={handleDeleteTask}
               />
             );
           })}
@@ -476,7 +495,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
 function Column({
   col, tasks, isDraggingOver, overIdx, draggingId,
-  onDragOver, onDrop, onDragStart, onDragEnd,
+  onDragOver, onDrop, onDragStart, onDragEnd, onDelete,
 }: {
   col: typeof COLUMNS[number];
   tasks: Task[];
@@ -487,6 +506,7 @@ function Column({
   onDrop: (e: React.DragEvent, col: Status) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <div
@@ -552,6 +572,7 @@ function Column({
                 e.stopPropagation();
                 onDragOver(e, col.key, idx);
               }}
+              onDelete={onDelete}
             />
           </div>
         ))}
@@ -594,7 +615,7 @@ function DropLine({ color }: { color: string }) {
 // ── Kanban Card ────────────────────────────────────────────────────────────────
 
 function KanbanCard({
-  task, isDragging, colColor, onDragStart, onDragEnd, onDragOver,
+  task, isDragging, colColor, onDragStart, onDragEnd, onDragOver, onDelete,
 }: {
   task: Task;
   isDragging: boolean;
@@ -602,6 +623,7 @@ function KanbanCard({
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
   onDragOver: (e: React.DragEvent) => void;
+  onDelete: (id: string) => void;
 }) {
   const [hover, setHover] = useState(false);
   const overdue  = isOverdue(task);
@@ -634,7 +656,7 @@ function KanbanCard({
         display: "flex", flexDirection: "column", gap: 8,
       }}
     >
-      {/* Top row: drag handle + title */}
+      {/* Top row: drag handle + title + delete */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
         <GripVertical
           size={13}
@@ -647,6 +669,20 @@ function KanbanCard({
         }}>
           {task.title}
         </span>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(task.id); }}
+          title="Excluir tarefa"
+          style={{
+            background: "none", border: "none", cursor: "pointer", padding: 2,
+            color: "var(--text-muted)", borderRadius: 4, flexShrink: 0,
+            opacity: hover ? 0.5 : 0, transition: "opacity 120ms, color 120ms",
+            display: "flex", alignItems: "center",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
+          onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
+        >
+          <Trash2 size={11} />
+        </button>
       </div>
 
       {/* Type badge — uses status color tint so it integrates visually */}

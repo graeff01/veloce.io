@@ -10,7 +10,7 @@ const createTaskSchema = z.object({
   priority: z.enum(["CRITICAL", "HIGH", "NORMAL", "LOW"]).optional(),
   blocker: z.string().optional().nullable(),
   assignedTo: z.string().optional(),
-  dueDate: z.string().min(1, "Data de entrega é obrigatória"),
+  dueDate: z.string().optional(),
   planMonth: z.number().optional(),
   planYear: z.number().optional(),
   checklists: z.array(z.object({ text: z.string(), order: z.number() })).optional(),
@@ -75,7 +75,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       priority: parsed.data.priority ?? "NORMAL",
       blocker: parsed.data.blocker || null,
       assignedTo: parsed.data.assignedTo || null,
-      dueDate: new Date(parsed.data.dueDate),
+      dueDate: parsed.data.dueDate
+        ? new Date(parsed.data.dueDate)
+        : new Date(parsed.data.planYear ?? new Date().getFullYear(), parsed.data.planMonth ?? new Date().getMonth() + 1, 0),
       planMonth: parsed.data.planMonth,
       planYear: parsed.data.planYear,
       checklists: parsed.data.checklists

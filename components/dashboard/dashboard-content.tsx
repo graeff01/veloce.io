@@ -306,14 +306,6 @@ const NAV_ITEMS = [
     soft: "rgba(217,119,6,0.08)",
   },
   {
-    href: "/intelligence/campaigns",
-    label: "Inteligência",
-    description: "Padrões e insights",
-    icon: Zap,
-    color: "#7C3AED",
-    soft: "rgba(124,58,237,0.08)",
-  },
-  {
     href: "/settings",
     label: "Configurações",
     description: "Time e permissões",
@@ -329,7 +321,7 @@ function QuickNav() {
       <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, opacity: 0.7 }}>
         Acesso rápido
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
