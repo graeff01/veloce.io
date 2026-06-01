@@ -52,7 +52,8 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newParticipants, setNewParticipants] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [transcribing, setTranscribing] = useState<string | null>(null); // meeting id being transcribed
+  const [transcribing, setTranscribing]   = useState<string | null>(null);
+  const [transcribeErr, setTranscribeErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -94,15 +95,23 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
 
   async function handleTranscribe(meetingId: string, file: File) {
     setTranscribing(meetingId);
+    setTranscribeErr(null);
     const form = new FormData();
     form.append("audio", file);
-    const res = await fetch(`/api/meetings/${meetingId}/transcribe`, {
-      method: "POST",
-      body: form,
-    });
-    if (res.ok) {
-      const updated: Meeting = await res.json();
-      setMeetings((prev) => prev.map((m) => (m.id === meetingId ? updated : m)));
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/transcribe`, {
+        method: "POST",
+        body: form,
+      });
+      if (res.ok) {
+        const updated: Meeting = await res.json();
+        setMeetings((prev) => prev.map((m) => (m.id === meetingId ? updated : m)));
+      } else {
+        const d = await res.json().catch(() => null);
+        setTranscribeErr(d?.detail ?? d?.error ?? "Erro ao transcrever. Verifique se GROQ_API_KEY está configurada no Railway.");
+      }
+    } catch {
+      setTranscribeErr("Falha de rede ao enviar áudio.");
     }
     setTranscribing(null);
   }
@@ -124,6 +133,25 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   return (
     <div style={{ padding: "28px 40px", maxWidth: 860 }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Transcription error */}
+      {transcribeErr && (
+        <div style={{
+          marginBottom: 16, padding: "10px 14px", borderRadius: 9,
+          background: "var(--red-soft, #fef2f2)", border: "1px solid rgba(220,38,38,0.2)",
+          color: "var(--red, #DC2626)", fontSize: 12, display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 10,
+        }}>
+          <span>{transcribeErr}</span>
+          <button
+            type="button"
+            onClick={() => setTranscribeErr(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0, flexShrink: 0 }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>

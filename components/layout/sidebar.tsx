@@ -13,11 +13,11 @@ import {
   AlertTriangle,
   ArrowRight,
   Search,
-  Plus,
   Moon,
   Sun,
   Wallet,
   Users,
+  UserRound,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -31,6 +31,7 @@ interface ClientRow {
 const bottomNavItems = [
   { href: "/",          icon: LayoutDashboard, label: "Visao geral" },
   { href: "/calendar",  icon: CalendarDays,    label: "Calendario" },
+  { href: "/clients",   icon: UserRound,       label: "Clientes" },
   { href: "/finances",  icon: Wallet,          label: "Financas" },
   { href: "/hr",        icon: Users,           label: "Equipe" },
 ];
@@ -167,13 +168,14 @@ export function Sidebar() {
           minHeight: 0,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 34px", gap: 6, margin: "0 12px 12px" }}>
+        <div style={{ margin: "0 12px 12px" }}>
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("veloce-command-open"))}
             title="Abrir Command Palette"
             style={{
               height: 34,
+              width: "100%",
               border: "1px solid var(--border)",
               borderRadius: 8,
               background: "var(--bg-base)",
@@ -191,25 +193,6 @@ export function Sidebar() {
               Buscar ou criar
             </span>
             <span style={{ fontSize: 10 }}>K</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("veloce-command-open", { detail: { mode: "task" } }))}
-            title="Criar rapido"
-            style={{
-              height: 34,
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              background: "var(--accent)",
-              color: "white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              boxShadow: "0 10px 24px rgba(124,58,237,0.18)",
-            }}
-          >
-            <Plus size={14} />
           </button>
         </div>
 

@@ -2,12 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePathname } from "next/navigation";
 import {
   Building2,
   CheckCircle2,
   ClipboardList,
-  FilePlus2,
   History,
   Loader2,
   MessageSquarePlus,
@@ -41,29 +39,27 @@ type SearchResponse = {
 
 type ClientOption = { id: string; name: string; status: string };
 type UserOption = { id: string; title: string };
-type ActionMode = "task" | "client" | "campaign" | "note" | "calendar" | null;
+type ActionMode = "task" | "client" | "note" | null;
 type CommandOpenEvent = CustomEvent<{ mode?: Exclude<ActionMode, null> }>;
 
 const quickActions = [
-  { id: "task" as const, label: "Criar tarefa", hint: "Nova demanda operacional", icon: ClipboardList },
-  { id: "client" as const, label: "Criar cliente", hint: "Adicionar conta", icon: Building2 },
-  { id: "campaign" as const, label: "Criar campanha", hint: "Tarefa do tipo campanha", icon: FilePlus2 },
-  { id: "note" as const, label: "Adicionar observacao", hint: "Registrar contexto no feed", icon: MessageSquarePlus },
-  { id: "calendar" as const, label: "Abrir calendario", hint: "Selecionar cliente e abrir agenda", icon: Navigation },
+  { id: "task" as const,   label: "Criar tarefa",           hint: "Nova demanda operacional",    icon: ClipboardList },
+  { id: "client" as const, label: "Criar cliente",          hint: "Adicionar conta",             icon: Building2 },
+  { id: "note" as const,   label: "Adicionar observacao",   hint: "Registrar contexto no feed",  icon: MessageSquarePlus },
 ];
 
 const navigationItems: SearchItem[] = [
-  { id: "nav-today", type: "nav", title: "Hoje", subtitle: "Central operacional do dia", href: "/today", meta: "Navegar" },
-  { id: "nav-pending", type: "nav", title: "Pendencias", subtitle: "Bloqueios e aprovacoes", href: "/pending", meta: "Navegar" },
-  { id: "nav-clients", type: "nav", title: "Clientes", subtitle: "Contas ativas e contexto", href: "/clients", meta: "Navegar" },
-  { id: "nav-plans", type: "nav", title: "Templates operacionais", subtitle: "Modelos iniciais reutilizaveis", href: "/plans", meta: "Opcional" },
+  { id: "nav-home",     type: "nav", title: "Visão geral",  subtitle: "Dashboard principal",         href: "/",          meta: "Navegar" },
+  { id: "nav-clients",  type: "nav", title: "Clientes",     subtitle: "Contas ativas e contexto",    href: "/clients",   meta: "Navegar" },
+  { id: "nav-calendar", type: "nav", title: "Calendário",   subtitle: "Agenda de entregas",          href: "/calendar",  meta: "Navegar" },
+  { id: "nav-finances", type: "nav", title: "Financeiro",   subtitle: "Receitas e despesas",         href: "/finances",  meta: "Navegar" },
+  { id: "nav-hr",       type: "nav", title: "Equipe",       subtitle: "Funcionários e prestadores",  href: "/hr",        meta: "Navegar" },
 ];
 
 const emptySearch: SearchResponse = { clients: [], tasks: [], campaigns: [], users: [], activities: [] };
 
 export function CommandCenter() {
   const router = useRouter();
-  const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -86,26 +82,13 @@ export function CommandCenter() {
         meta: "Acao",
         actionId: action.id,
       }));
-      const clientMatch = pathname.match(/\/clients\/([^/]+)/);
-      const contextualNav = clientMatch?.[1]
-        ? [
-            {
-              id: "nav-calendar-current",
-              type: "nav" as const,
-              title: "Abrir calendario",
-              subtitle: "Calendario do cliente atual",
-              href: `/clients/${clientMatch[1]}/calendar`,
-              meta: "Navegar",
-            },
-          ]
-        : [];
-      const localItems = [...navigationItems, ...contextualNav, ...actionItems].filter((item) => {
+      const localItems = [...navigationItems, ...actionItems].filter((item) => {
         if (!normalized) return true;
         return `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized);
       });
       return [...localItems, ...results.clients, ...results.tasks, ...results.campaigns, ...results.users, ...(results.activities ?? [])];
     },
-    [pathname, query, results]
+    [query, results]
   );
 
   useEffect(() => {
@@ -430,7 +413,7 @@ function QuickActionForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        type: taskType || (mode === "campaign" ? "Campanha" : undefined),
+        type: taskType || undefined,
         assignedTo: assignedTo || undefined,
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       }),
@@ -442,8 +425,7 @@ function QuickActionForm({
   }
 
   const isClient = mode === "client";
-  const isNote = mode === "note";
-  const isCalendar = mode === "calendar";
+  const isNote   = mode === "note";
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 p-2">
@@ -457,18 +439,7 @@ function QuickActionForm({
         </label>
       )}
 
-      {isCalendar ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={() => onDone(selectedClientId ? `/clients/${selectedClientId}/calendar` : "/clients")}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white"
-            style={{ background: "var(--accent)" }}
-          >
-            Abrir calendario
-          </button>
-        </div>
-      ) : isClient ? (
+      {isClient ? (
         <>
           <Field label="Nome do cliente" value={name} onChange={setName} required autoFocus />
           <Field label="Email" value={email} onChange={setEmail} type="email" />
@@ -489,7 +460,7 @@ function QuickActionForm({
         </label>
       ) : (
         <>
-          <Field label={mode === "campaign" ? "Nome da campanha" : "Titulo da tarefa"} value={title} onChange={setTitle} required autoFocus />
+          <Field label="Titulo da tarefa" value={title} onChange={setTitle} required autoFocus />
           <TagSelector value={taskType} onChange={setTaskType} />
           <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
             Responsavel
@@ -503,7 +474,7 @@ function QuickActionForm({
 
       {error && <p className="rounded-lg px-3 py-2 text-xs" style={{ color: "var(--red)", background: "var(--red-soft)" }}>{error}</p>}
 
-      {!isCalendar && <div className="mt-1 flex items-center justify-end gap-2">
+      <div className="mt-1 flex items-center justify-end gap-2">
         <button type="button" onClick={onBack} className="rounded-lg px-3 py-2 text-xs font-medium transition-colors hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-secondary)" }}>
           Voltar
         </button>
@@ -511,7 +482,7 @@ function QuickActionForm({
           {saving && <Loader2 size={13} className="animate-spin" />}
           Executar
         </button>
-      </div>}
+      </div>
     </form>
   );
 }

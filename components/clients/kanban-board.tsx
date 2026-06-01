@@ -5,6 +5,7 @@ import {
   AlertTriangle, Loader2, Plus, ChevronLeft, ChevronRight,
   GripVertical, Calendar, Flag, X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -88,9 +89,10 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newType, setNewType] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [newTitle, setNewTitle]     = useState("");
+  const [newType, setNewType]       = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [saving, setSaving]         = useState(false);
 
   // Drag state
   const dragTaskId   = useRef<string | null>(null);
@@ -116,6 +118,15 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
   useEffect(() => { load(); }, [load]);
 
+  function openCreate() {
+    // default due date = last day of current viewed month
+    const lastDay = new Date(year, month, 0);
+    setNewDueDate(lastDay.toISOString().slice(0, 10));
+    setNewTitle("");
+    setNewType("");
+    setShowCreate(true);
+  }
+
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -126,13 +137,13 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       body: JSON.stringify({
         title: newTitle.trim(),
         type: newType || undefined,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        dueDate: newDueDate,
+        planMonth: month,
+        planYear: year,
       }),
     });
     setSaving(false);
     if (res.ok) {
-      setNewTitle("");
-      setNewType("");
       setShowCreate(false);
       load();
     }
@@ -285,89 +296,169 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
             {clientName}
           </span>
           <button
-            onClick={() => setShowCreate(v => !v)}
+            onClick={openCreate}
             style={{
               display: "flex", alignItems: "center", gap: 5,
-              padding: "6px 12px", borderRadius: 8,
-              background: showCreate ? "var(--bg-elevated)" : "var(--accent)",
-              color: showCreate ? "var(--text-muted)" : "#fff",
-              border: showCreate ? "1px solid var(--border)" : "none",
+              padding: "6px 14px", borderRadius: 8,
+              background: "var(--accent)", color: "#fff",
+              border: "none",
               fontSize: 12, fontWeight: 600, cursor: "pointer",
-              boxShadow: showCreate ? "none" : "0 4px 12px rgba(124,58,237,0.25)",
-              transition: "all 150ms ease",
+              boxShadow: "0 4px 12px rgba(124,58,237,0.25)",
+              transition: "opacity 150ms ease",
             }}
           >
-            {showCreate ? <X size={12} /> : <Plus size={12} />}
-            {showCreate ? "Cancelar" : "Nova tarefa"}
+            <Plus size={12} /> Nova tarefa
           </button>
         </div>
       </div>
 
-      {/* ── Inline create form ───────────────────────────── */}
-      {showCreate && (
-        <form
-          onSubmit={handleCreateTask}
+      {/* ── Create task modal ────────────────────────────── */}
+      {showCreate && typeof window !== "undefined" && createPortal(
+        <div
           style={{
-            padding: "12px 28px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-surface)",
-            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-            flexShrink: 0,
+            position: "fixed", inset: 0, zIndex: 90,
+            background: "rgba(15,23,42,0.45)", backdropFilter: "blur(10px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 16px",
           }}
+          onMouseDown={e => { if (e.target === e.currentTarget) setShowCreate(false); }}
         >
-          <input
-            autoFocus
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
-            placeholder="Título da tarefa..."
-            style={{
-              flex: 1, minWidth: 220,
-              height: 36, padding: "0 12px",
-              background: "var(--bg-base)",
-              border: "1px solid var(--border)",
-              borderRadius: 8, fontSize: 13,
-              color: "var(--text-primary)", outline: "none",
-            }}
-          />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {TASK_TAGS.map(tag => {
-              const active = newType === tag;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setNewType(active ? "" : tag)}
+          <div style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            width: "100%", maxWidth: 520,
+            boxShadow: "0 24px 64px rgba(0,0,0,0.25)",
+            overflow: "hidden",
+          }}>
+            {/* Modal header */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "18px 22px 14px",
+              borderBottom: "1px solid var(--border)",
+            }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+                  Nova tarefa
+                </p>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "3px 0 0" }}>
+                  {MONTHS[month - 1]} {year} · {clientName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <form onSubmit={handleCreateTask} style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Title */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Título *
+                </label>
+                <input
+                  autoFocus
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  placeholder="Ex: Post Feed — Lançamento..."
                   style={{
-                    padding: "4px 10px", borderRadius: 20, fontSize: 11,
-                    fontWeight: active ? 600 : 500,
-                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    background: active ? "var(--accent-soft)" : "var(--bg-base)",
-                    color: active ? "var(--accent)" : "var(--text-muted)",
-                    cursor: "pointer", transition: "all 100ms ease",
+                    height: 40, padding: "0 12px",
+                    background: "var(--bg-base)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 9, fontSize: 13,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              {/* Tags */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Tag / Tipo
+                </label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {TASK_TAGS.map(tag => {
+                    const active = newType === tag;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setNewType(active ? "" : tag)}
+                        style={{
+                          padding: "5px 12px", borderRadius: 20, fontSize: 11,
+                          fontWeight: active ? 600 : 500,
+                          border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                          background: active ? "var(--accent-soft)" : "var(--bg-elevated)",
+                          color: active ? "var(--accent)" : "var(--text-muted)",
+                          cursor: "pointer", transition: "all 100ms ease",
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Due date */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Prazo
+                </label>
+                <input
+                  type="date"
+                  value={newDueDate}
+                  onChange={e => setNewDueDate(e.target.value)}
+                  style={{
+                    height: 40, padding: "0 12px",
+                    background: "var(--bg-base)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 9, fontSize: 13,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              {/* Footer */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  style={{
+                    padding: "8px 18px", borderRadius: 9,
+                    border: "1px solid var(--border)", background: "transparent",
+                    color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
                   }}
                 >
-                  {tag}
+                  Cancelar
                 </button>
-              );
-            })}
+                <button
+                  type="submit"
+                  disabled={saving || !newTitle.trim()}
+                  style={{
+                    padding: "8px 22px", borderRadius: 9,
+                    background: "var(--accent)", color: "#fff",
+                    border: "none", fontSize: 13, fontWeight: 600,
+                    cursor: saving || !newTitle.trim() ? "not-allowed" : "pointer",
+                    opacity: saving || !newTitle.trim() ? 0.6 : 1,
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  {saving && <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />}
+                  Criar tarefa
+                </button>
+              </div>
+            </form>
           </div>
-          <button
-            type="submit"
-            disabled={saving || !newTitle.trim()}
-            style={{
-              padding: "7px 16px", borderRadius: 8,
-              background: "var(--accent)", color: "#fff",
-              border: "none", fontSize: 12, fontWeight: 600,
-              cursor: saving || !newTitle.trim() ? "not-allowed" : "pointer",
-              opacity: saving || !newTitle.trim() ? 0.6 : 1,
-              display: "flex", alignItems: "center", gap: 5,
-              flexShrink: 0,
-            }}
-          >
-            {saving && <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />}
-            Criar
-          </button>
-        </form>
+        </div>,
+        document.body
       )}
 
       {/* ── Board ───────────────────────────────────────────── */}
@@ -378,7 +469,8 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       ) : (
         <div style={{
           flex: 1, overflowX: "auto", overflowY: "hidden",
-          display: "flex", gap: 10, padding: "16px 20px",
+          display: "flex", gap: 12, padding: "16px 20px",
+          minWidth: 0,
         }}>
           {COLUMNS.map(col => {
             const colTasks = tasksByCol(col.key);
@@ -425,7 +517,7 @@ function Column({
     <div
       style={{
         display: "flex", flexDirection: "column",
-        width: 270, minWidth: 270, flexShrink: 0,
+        flex: 1, minWidth: 220,
         background: isDraggingOver ? col.soft : "var(--bg-elevated)",
         border: `1.5px solid ${isDraggingOver ? col.color + "55" : "var(--border)"}`,
         borderRadius: 14,
