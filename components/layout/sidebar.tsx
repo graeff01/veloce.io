@@ -7,9 +7,7 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
-  CalendarCheck2,
   CalendarDays,
-  PauseCircle,
   Settings,
   LogOut,
   AlertTriangle,
@@ -32,8 +30,6 @@ interface ClientRow {
 const bottomNavItems = [
   { href: "/",          icon: LayoutDashboard, label: "Visao geral" },
   { href: "/calendar",  icon: CalendarDays,    label: "Calendario" },
-  { href: "/today",     icon: CalendarCheck2,  label: "Hoje" },
-  { href: "/pending",   icon: PauseCircle,     label: "Pendencias" },
   { href: "/finances",  icon: Wallet,          label: "Financas" },
 ];
 

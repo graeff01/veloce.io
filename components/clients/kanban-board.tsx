@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   AlertTriangle, Loader2, Plus, ChevronLeft, ChevronRight,
-  GripVertical, Calendar, Flag, User,
+  GripVertical, Calendar, Flag, X,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -76,12 +76,21 @@ function isOverdue(task: Task) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
+const TASK_TAGS = [
+  "Post Feed", "Story", "Reels", "Campanha", "Criativo",
+  "Relatório", "Copy", "Google Ads", "TikTok Ads", "Outro",
+];
+
 export function KanbanBoard({ clientId, clientName }: { clientId: string; clientName: string }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear]   = useState(now.getFullYear());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newType, setNewType] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Drag state
   const dragTaskId   = useRef<string | null>(null);
@@ -106,6 +115,28 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   }, [clientId, month, year]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setSaving(true);
+    const res = await fetch(`/api/clients/${clientId}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newTitle.trim(),
+        type: newType || undefined,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setNewTitle("");
+      setNewType("");
+      setShowCreate(false);
+      load();
+    }
+  }
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
@@ -248,11 +279,96 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
           )}
         </div>
 
-        {/* Client label */}
-        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
-          {clientName}
-        </span>
+        {/* Right side: client label + new task button */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+            {clientName}
+          </span>
+          <button
+            onClick={() => setShowCreate(v => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "6px 12px", borderRadius: 8,
+              background: showCreate ? "var(--bg-elevated)" : "var(--accent)",
+              color: showCreate ? "var(--text-muted)" : "#fff",
+              border: showCreate ? "1px solid var(--border)" : "none",
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              boxShadow: showCreate ? "none" : "0 4px 12px rgba(124,58,237,0.25)",
+              transition: "all 150ms ease",
+            }}
+          >
+            {showCreate ? <X size={12} /> : <Plus size={12} />}
+            {showCreate ? "Cancelar" : "Nova tarefa"}
+          </button>
+        </div>
       </div>
+
+      {/* ── Inline create form ───────────────────────────── */}
+      {showCreate && (
+        <form
+          onSubmit={handleCreateTask}
+          style={{
+            padding: "12px 28px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg-surface)",
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            flexShrink: 0,
+          }}
+        >
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            placeholder="Título da tarefa..."
+            style={{
+              flex: 1, minWidth: 220,
+              height: 36, padding: "0 12px",
+              background: "var(--bg-base)",
+              border: "1px solid var(--border)",
+              borderRadius: 8, fontSize: 13,
+              color: "var(--text-primary)", outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {TASK_TAGS.map(tag => {
+              const active = newType === tag;
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setNewType(active ? "" : tag)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 20, fontSize: 11,
+                    fontWeight: active ? 600 : 500,
+                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                    background: active ? "var(--accent-soft)" : "var(--bg-base)",
+                    color: active ? "var(--accent)" : "var(--text-muted)",
+                    cursor: "pointer", transition: "all 100ms ease",
+                  }}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="submit"
+            disabled={saving || !newTitle.trim()}
+            style={{
+              padding: "7px 16px", borderRadius: 8,
+              background: "var(--accent)", color: "#fff",
+              border: "none", fontSize: 12, fontWeight: 600,
+              cursor: saving || !newTitle.trim() ? "not-allowed" : "pointer",
+              opacity: saving || !newTitle.trim() ? 0.6 : 1,
+              display: "flex", alignItems: "center", gap: 5,
+              flexShrink: 0,
+            }}
+          >
+            {saving && <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />}
+            Criar
+          </button>
+        </form>
+      )}
 
       {/* ── Board ───────────────────────────────────────────── */}
       {loading ? (

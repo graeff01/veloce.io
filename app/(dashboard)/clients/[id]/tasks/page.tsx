@@ -1,6 +1,6 @@
-import { KanbanContent } from "@/components/tasks/kanban-content";
+import { redirect } from "next/navigation";
 
 export default async function TasksPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <KanbanContent clientId={id} />;
+  redirect(`/clients/${id}`);
 }

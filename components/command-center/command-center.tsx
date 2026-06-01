@@ -381,7 +381,7 @@ function QuickActionForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [taskType, setTaskType] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
@@ -430,15 +430,15 @@ function QuickActionForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        type: mode === "campaign" ? "Campanha" : undefined,
+        type: taskType || (mode === "campaign" ? "Campanha" : undefined),
         assignedTo: assignedTo || undefined,
-        dueDate,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       }),
     });
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) return setError(data?.error ?? "Nao foi possivel criar a tarefa.");
-    return onDone(selectedClient ? `/clients/${selectedClient.id}/tasks` : undefined);
+    return onDone(selectedClient ? `/clients/${selectedClient.id}` : undefined);
   }
 
   const isClient = mode === "client";
@@ -490,19 +490,14 @@ function QuickActionForm({
       ) : (
         <>
           <Field label={mode === "campaign" ? "Nome da campanha" : "Titulo da tarefa"} value={title} onChange={setTitle} required autoFocus />
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Prazo
-              <input value={dueDate} onChange={(event) => setDueDate(event.target.value)} required type="date" className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }} />
-            </label>
-            <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Responsavel
-              <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
-                <option value="">Sem responsavel</option>
-                {users.map((user) => <option key={user.id} value={user.id}>{user.title}</option>)}
-              </select>
-            </label>
-          </div>
+          <TagSelector value={taskType} onChange={setTaskType} />
+          <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+            Responsavel
+            <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="h-10 rounded-lg border px-3 text-sm outline-none" style={{ borderColor: "var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
+              <option value="">Sem responsavel</option>
+              {users.map((user) => <option key={user.id} value={user.id}>{user.title}</option>)}
+            </select>
+          </label>
         </>
       )}
 
@@ -518,6 +513,46 @@ function QuickActionForm({
         </button>
       </div>}
     </form>
+  );
+}
+
+const TASK_TAGS = [
+  "Post Feed", "Story", "Reels", "Campanha", "Criativo",
+  "Relatório", "Copy", "Google Ads", "TikTok Ads", "Outro",
+];
+
+function TagSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        Tag / Tipo
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {TASK_TAGS.map((tag) => {
+          const active = value === tag;
+          return (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onChange(active ? "" : tag)}
+              style={{
+                padding: "4px 11px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: active ? 600 : 500,
+                border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                background: active ? "var(--accent-soft)" : "var(--bg-elevated)",
+                color: active ? "var(--accent)" : "var(--text-secondary)",
+                cursor: "pointer",
+                transition: "all 100ms ease",
+              }}
+            >
+              {tag}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
