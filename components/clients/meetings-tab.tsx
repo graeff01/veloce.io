@@ -32,6 +32,7 @@ interface Meeting {
   nextSteps: string[];
   participants: string[];
   createdAt: string;
+  linkedTaskTitles?: string[];
 }
 
 function fmtDate(iso: string) {
@@ -378,6 +379,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
           {meetings.map((meeting) => (
             <MeetingCard
               key={meeting.id}
+              clientId={clientId}
               meeting={meeting}
               expanded={expanded === meeting.id}
               transcribing={transcribing === meeting.id}
@@ -417,7 +419,32 @@ function parseStructured(raw: string | null): { structured: StructuredData | nul
   return { structured: null, plainSummary: raw };
 }
 
+// Try to parse an AI-produced deadline string ("15/06", "15/06/2026", "2026-06-15")
+// into an ISO date. Returns null when it can't be confidently parsed.
+function parseDeadline(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  // ISO yyyy-mm-dd
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  // dd/mm or dd/mm/yyyy
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (br) {
+    const day = Number(br[1]);
+    const mon = Number(br[2]);
+    let yr = br[3] ? Number(br[3]) : new Date().getFullYear();
+    if (yr < 100) yr += 2000;
+    const d = new Date(yr, mon - 1, day);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
 function MeetingCard({
+  clientId,
   meeting,
   expanded,
   transcribing,
@@ -428,6 +455,7 @@ function MeetingCard({
   onTranscribe,
   onAnalyze,
 }: {
+  clientId: string;
   meeting: Meeting;
   expanded: boolean;
   transcribing: boolean;
@@ -442,6 +470,42 @@ function MeetingCard({
   const hasTranscript = !!meeting.transcript;
   const { structured, plainSummary } = parseStructured(meeting.summary);
   const hasStructured = structured !== null;
+
+  // Track which action items have been turned into kanban tasks.
+  // Seed from server: action items whose text already matches a linked task title.
+  const linkedTitles = meeting.linkedTaskTitles ?? [];
+  const [taskState, setTaskState] = useState<Record<number, "creating" | "done" | "error">>(() => {
+    const seed: Record<number, "done"> = {};
+    structured?.actionItems.forEach((item, i) => {
+      if (linkedTitles.includes(item.task)) seed[i] = "done";
+    });
+    return seed;
+  });
+
+  async function handleCreateTask(idx: number, item: StructuredData["actionItems"][number]) {
+    if (taskState[idx] === "creating" || taskState[idx] === "done") return;
+    setTaskState((prev) => ({ ...prev, [idx]: "creating" }));
+    const now = new Date();
+    const dueDate = parseDeadline(item.deadline);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.task,
+          type: "Reunião",
+          description: item.responsible ? `Responsável: ${item.responsible}` : undefined,
+          planMonth: now.getMonth() + 1,
+          planYear: now.getFullYear(),
+          meetingId: meeting.id,
+          ...(dueDate ? { dueDate } : {}),
+        }),
+      });
+      setTaskState((prev) => ({ ...prev, [idx]: res.ok ? "done" : "error" }));
+    } catch {
+      setTaskState((prev) => ({ ...prev, [idx]: "error" }));
+    }
+  }
 
   const sectionLabelStyle: React.CSSProperties = {
     fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
@@ -689,14 +753,16 @@ function MeetingCard({
                 <ListChecks size={10} /> Ações definidas
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {structured.actionItems.map((item, i) => (
+                {structured.actionItems.map((item, i) => {
+                  const st = taskState[i];
+                  return (
                   <div key={i} style={{
                     display: "flex", alignItems: "flex-start", gap: 10,
                     padding: "8px 10px", borderRadius: 8,
                     background: "rgba(37,99,235,0.04)", border: "1px solid rgba(37,99,235,0.12)",
                   }}>
                     <ArrowRight size={12} style={{ color: "#2563EB", flexShrink: 0, marginTop: 2 }} />
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>{item.task}</p>
                       <div style={{ display: "flex", gap: 10, marginTop: 3 }}>
                         {item.responsible && (
@@ -707,8 +773,45 @@ function MeetingCard({
                         )}
                       </div>
                     </div>
+                    {st === "done" ? (
+                      <span
+                        title="Tarefa criada no Kanban"
+                        style={{
+                          display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+                          fontSize: 11, fontWeight: 600, color: "#16A34A",
+                          padding: "5px 9px", borderRadius: 6,
+                          background: "rgba(22,163,74,0.08)", border: "1px solid rgba(22,163,74,0.2)",
+                        }}
+                      >
+                        <CheckSquare size={11} /> No Kanban
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleCreateTask(i, item)}
+                        disabled={st === "creating"}
+                        title={st === "error" ? "Erro ao criar — tente novamente" : "Criar tarefa no Kanban"}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+                          fontSize: 11, fontWeight: 600,
+                          color: st === "error" ? "#DC2626" : "#2563EB",
+                          padding: "5px 9px", borderRadius: 6, cursor: st === "creating" ? "default" : "pointer",
+                          background: st === "error" ? "rgba(220,38,38,0.06)" : "rgba(37,99,235,0.08)",
+                          border: `1px solid ${st === "error" ? "rgba(220,38,38,0.25)" : "rgba(37,99,235,0.25)"}`,
+                          opacity: st === "creating" ? 0.6 : 1,
+                        }}
+                      >
+                        {st === "creating" ? (
+                          <><Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} /> Criando...</>
+                        ) : st === "error" ? (
+                          <><Plus size={11} /> Tentar de novo</>
+                        ) : (
+                          <><Plus size={11} /> Criar tarefa</>
+                        )}
+                      </button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

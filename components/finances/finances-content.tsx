@@ -321,19 +321,43 @@ export function FinancesContent() {
             />
             {/* Recorrentes summary */}
             <RecurrenteSummary entries={allEntries} />
-            {/* HR notice */}
-            {hrPeople.filter(p => p.status === "ATIVO").length > 0 && (
-              <div style={{
-                padding: "10px 14px", borderRadius: 9,
-                background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)",
-                fontSize: 11, color: "#2563EB",
-                display: "flex", alignItems: "center", gap: 6,
-              }}>
-                <span style={{ fontWeight: 700 }}>Equipe:</span>
-                {hrPeople.filter(p => p.status === "ATIVO").length} pessoa(s) importada(s) do RH automaticamente.
-                As despesas de equipe são geradas a cada mês.
-              </div>
-            )}
+            {/* HR / Equipe breakdown — synced automatically from the Equipe tab */}
+            {hrPeople.filter(p => p.status === "ATIVO").length > 0 && (() => {
+              const ativos       = hrPeople.filter(p => p.status === "ATIVO" && p.salary > 0);
+              const funcionarios = ativos.filter(p => p.type === "FUNCIONARIO");
+              const prestadores  = ativos.filter(p => p.type === "PRESTADOR");
+              const totalFunc    = funcionarios.reduce((s, p) => s + p.salary, 0);
+              const totalPrest   = prestadores.reduce((s, p) => s + p.salary, 0);
+              return (
+                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ padding: "11px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", gap: 7 }}>
+                    <Circle size={7} fill="#2563EB" color="#2563EB" />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>Custos com Equipe</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "#2563EB", background: "rgba(37,99,235,0.1)", padding: "1px 5px", borderRadius: 4, letterSpacing: "0.04em", marginLeft: "auto" }}>
+                      AUTO RH
+                    </span>
+                  </div>
+                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Funcionários ({funcionarios.length})</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>{fmtBRL(totalFunc)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Prestadores de serviço ({prestadores.length})</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>{fmtBRL(totalPrest)}</span>
+                    </div>
+                    <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>Total mensal</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{fmtBRL(totalFunc + totalPrest)}</span>
+                    </div>
+                    <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0", opacity: 0.8 }}>
+                      Sincronizado da aba Equipe e contabilizado como despesa recorrente a cada mês.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

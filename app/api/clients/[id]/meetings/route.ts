@@ -19,7 +19,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     orderBy: { date: "desc" },
   });
 
-  return NextResponse.json(meetings);
+  // Action items already turned into kanban tasks, grouped by meeting
+  const linkedTasks = await prisma.task.findMany({
+    where: { meetingId: { in: meetings.map((m) => m.id) }, deletedAt: null },
+    select: { meetingId: true, title: true },
+  });
+  const titlesByMeeting = new Map<string, string[]>();
+  for (const t of linkedTasks) {
+    if (!t.meetingId) continue;
+    const arr = titlesByMeeting.get(t.meetingId) ?? [];
+    arr.push(t.title);
+    titlesByMeeting.set(t.meetingId, arr);
+  }
+
+  return NextResponse.json(
+    meetings.map((m) => ({ ...m, linkedTaskTitles: titlesByMeeting.get(m.id) ?? [] })),
+  );
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

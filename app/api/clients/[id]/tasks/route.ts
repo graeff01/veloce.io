@@ -13,6 +13,7 @@ const createTaskSchema = z.object({
   dueDate: z.string().optional(),
   planMonth: z.number().optional(),
   planYear: z.number().optional(),
+  meetingId: z.string().optional(),
   checklists: z.array(z.object({ text: z.string(), order: z.number() })).optional(),
 });
 
@@ -80,6 +81,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         : new Date(parsed.data.planYear ?? new Date().getFullYear(), parsed.data.planMonth ?? new Date().getMonth() + 1, 0),
       planMonth: parsed.data.planMonth,
       planYear: parsed.data.planYear,
+      meetingId: parsed.data.meetingId || null,
       checklists: parsed.data.checklists
         ? { create: parsed.data.checklists.map((c) => ({ text: c.text, order: c.order })) }
         : undefined,

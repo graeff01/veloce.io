@@ -158,8 +158,23 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   }
 
   async function handleDeleteTask(taskId: string) {
+    const snapshot = tasks;
+    // Optimistic removal
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const ct = res.headers.get("content-type") ?? "";
+      // The server confirms with JSON { ok: true }. If we get a non-OK status
+      // or an HTML response (e.g. an auth redirect to /login), the delete did
+      // NOT persist — restore the card so the UI matches the database.
+      if (!res.ok || !ct.includes("application/json")) {
+        setTasks(snapshot);
+        alert("Não foi possível excluir a tarefa. Faça login novamente e tente de novo.");
+      }
+    } catch {
+      setTasks(snapshot);
+      alert("Falha de rede ao excluir a tarefa. Tente novamente.");
+    }
   }
 
   function prevMonth() {

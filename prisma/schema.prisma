@@ -115,6 +115,7 @@ model Meeting {
   updatedAt    DateTime @updatedAt
 
   client Client @relation(fields: [clientId], references: [id])
+  tasks  Task[]
 }
 
 model Plan {
@@ -179,12 +180,14 @@ model Task {
   planMonth   Int?
   planYear    Int?
   order       Int        @default(0)
+  meetingId   String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
 
   client        Client         @relation(fields: [clientId], references: [id])
   assignee      User?          @relation("AssignedTasks", fields: [assignedTo], references: [id])
+  meeting       Meeting?       @relation(fields: [meetingId], references: [id])
   checklists    Checklist[]
   executionLogs ExecutionLog[]
 }
