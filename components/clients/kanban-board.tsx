@@ -1,0 +1,552 @@
+"use client";
+
+import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  AlertTriangle, Loader2, Plus, ChevronLeft, ChevronRight,
+  GripVertical, Calendar, Flag, User,
+} from "lucide-react";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+
+interface Task {
+  id: string;
+  title: string;
+  type: string | null;
+  status: Status;
+  priority: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
+  dueDate: string;
+  blocker: string | null;
+  assignee: { id: string; name: string } | null;
+  checklists: { id: string; text: string; done: boolean; order: number }[];
+  planMonth: number | null;
+  planYear: number | null;
+  order: number;
+}
+
+// ── Column config ──────────────────────────────────────────────────────────────
+
+const COLUMNS: { key: Status; label: string; color: string; soft: string; accent: string }[] = [
+  { key: "TODO",        label: "A fazer",     color: "#64748B", soft: "rgba(100,116,139,0.08)", accent: "#94A3B8" },
+  { key: "IN_PROGRESS", label: "Em execução", color: "#2563EB", soft: "rgba(37,99,235,0.08)",   accent: "#60A5FA" },
+  { key: "REVIEW",      label: "Revisão",     color: "#D97706", soft: "rgba(217,119,6,0.08)",   accent: "#FCD34D" },
+  { key: "DONE",        label: "Concluído",   color: "#16A34A", soft: "rgba(22,163,74,0.08)",   accent: "#4ADE80" },
+];
+
+const MONTHS = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
+];
+
+const PRIORITY_COLOR: Record<string, string> = {
+  CRITICAL: "#DC2626",
+  HIGH:     "#D97706",
+  NORMAL:   "var(--text-muted)",
+  LOW:      "var(--text-muted)",
+};
+
+const TYPE_COLOR: Record<string, string> = {
+  "Post Feed":  "#4338CA",
+  "Story":      "#15803D",
+  "Reels":      "#C2410C",
+  "Campanha":   "#B45309",
+  "Criativo":   "#0F766E",
+  "Relatório":  "#475569",
+  "Copy":       "#1D4ED8",
+  "Google Ads": "#92400E",
+  "TikTok Ads": "#7E22CE",
+};
+
+function typeColor(type: string | null) {
+  if (!type) return "#6366F1";
+  return TYPE_COLOR[type] ?? "#6366F1";
+}
+
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  const dd = d.getDate().toString().padStart(2, "0");
+  const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+  return `${dd}/${mm}`;
+}
+
+function isOverdue(task: Task) {
+  return task.status !== "DONE" && new Date(task.dueDate) < new Date();
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+export function KanbanBoard({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear]   = useState(now.getFullYear());
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Drag state
+  const dragTaskId   = useRef<string | null>(null);
+  const dragOverCol  = useRef<Status | null>(null);
+  const dragOverIdx  = useRef<number | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [overCol, setOverCol]   = useState<Status | null>(null);
+  const [overIdx, setOverIdx]   = useState<number | null>(null);
+
+  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/clients/${clientId}/deliverables?month=${month}&year=${year}`);
+    if (res.ok) {
+      const data = await res.json();
+      const all: Task[] = data.groups.flatMap((g: { tasks: Task[] }) => g.tasks);
+      all.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      setTasks(all);
+    }
+    setLoading(false);
+  }, [clientId, month, year]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function prevMonth() {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (month === 12) { setMonth(1); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  }
+
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+
+  function handleDragStart(e: React.DragEvent, taskId: string) {
+    dragTaskId.current = taskId;
+    setDragging(taskId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", taskId);
+  }
+
+  function handleDragEnd() {
+    dragTaskId.current = null;
+    setDragging(null);
+    setOverCol(null);
+    setOverIdx(null);
+  }
+
+  function handleDragOver(e: React.DragEvent, col: Status, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    dragOverCol.current = col;
+    dragOverIdx.current = idx;
+    setOverCol(col);
+    setOverIdx(idx);
+  }
+
+  function handleDrop(e: React.DragEvent, targetStatus: Status) {
+    e.preventDefault();
+    const id = dragTaskId.current;
+    if (!id) return;
+
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const targetIdx = dragOverIdx.current ?? 0;
+    const colTasks = tasks
+      .filter(t => t.status === targetStatus && t.id !== id)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    colTasks.splice(targetIdx, 0, { ...task, status: targetStatus });
+
+    const newOrders = colTasks.map((t, i) => ({ id: t.id, order: i }));
+    const orderedIds = colTasks.map(t => t.id);
+
+    // Optimistic update
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === id) return { ...t, status: targetStatus };
+        const found = newOrders.find(o => o.id === t.id);
+        if (found) return { ...t, order: found.order };
+        return t;
+      });
+      return updated;
+    });
+
+    // API call
+    fetch(`/api/tasks/${id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: targetStatus,
+        orderedIds,
+      }),
+    }).catch(() => load());
+
+    setDragging(null);
+    setOverCol(null);
+    setOverIdx(null);
+    dragTaskId.current = null;
+  }
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const tasksByCol = (col: Status) =>
+    tasks
+      .filter(t => t.status === col)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const total = tasks.length;
+  const done  = tasks.filter(t => t.status === "DONE").length;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  const overdue = tasks.filter(t => isOverdue(t)).length;
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ── Toolbar ─────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 28px", borderBottom: "1px solid var(--border)",
+        background: "var(--bg-surface)", flexShrink: 0,
+        gap: 20,
+      }}>
+        {/* Month nav */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={prevMonth} style={navBtn}><ChevronLeft size={14} /></button>
+          <div style={{ textAlign: "center", minWidth: 148 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
+              {MONTHS[month - 1]} {year}
+            </span>
+            {isCurrentMonth && (
+              <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 20 }}>
+                hoje
+              </span>
+            )}
+          </div>
+          <button onClick={nextMonth} style={navBtn}><ChevronRight size={14} /></button>
+        </div>
+
+        {/* Progress */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flex: 1, maxWidth: 360 }}>
+          <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--bg-elevated)", overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 3,
+              width: `${pct}%`,
+              background: pct >= 80 ? "#16A34A" : pct >= 40 ? "#D97706" : "var(--accent)",
+              transition: "width 500ms cubic-bezier(.4,0,.2,1)",
+            }} />
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", minWidth: 44 }}>
+            {done}/{total}
+          </span>
+          {overdue > 0 && (
+            <span style={{
+              display: "flex", alignItems: "center", gap: 4,
+              fontSize: 11, fontWeight: 600, color: "#DC2626",
+              background: "rgba(220,38,38,0.08)", padding: "3px 9px", borderRadius: 20,
+            }}>
+              <AlertTriangle size={10} /> {overdue} atraso
+            </span>
+          )}
+        </div>
+
+        {/* Client label */}
+        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+          {clientName}
+        </span>
+      </div>
+
+      {/* ── Board ───────────────────────────────────────────── */}
+      {loading ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Loader2 size={22} color="var(--text-muted)" style={{ animation: "spin 1s linear infinite" }} />
+        </div>
+      ) : (
+        <div style={{
+          flex: 1, overflowX: "auto", overflowY: "hidden",
+          display: "flex", gap: 10, padding: "16px 20px",
+        }}>
+          {COLUMNS.map(col => {
+            const colTasks = tasksByCol(col.key);
+            const isDraggingOver = overCol === col.key;
+
+            return (
+              <Column
+                key={col.key}
+                col={col}
+                tasks={colTasks}
+                isDraggingOver={isDraggingOver}
+                overIdx={isDraggingOver ? overIdx : null}
+                draggingId={dragging}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Column ─────────────────────────────────────────────────────────────────────
+
+function Column({
+  col, tasks, isDraggingOver, overIdx, draggingId,
+  onDragOver, onDrop, onDragStart, onDragEnd,
+}: {
+  col: typeof COLUMNS[number];
+  tasks: Task[];
+  isDraggingOver: boolean;
+  overIdx: number | null;
+  draggingId: string | null;
+  onDragOver: (e: React.DragEvent, col: Status, idx: number) => void;
+  onDrop: (e: React.DragEvent, col: Status) => void;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex", flexDirection: "column",
+        width: 270, minWidth: 270, flexShrink: 0,
+        background: isDraggingOver ? col.soft : "var(--bg-elevated)",
+        border: `1.5px solid ${isDraggingOver ? col.color + "55" : "var(--border)"}`,
+        borderRadius: 14,
+        transition: "background 150ms ease, border-color 150ms ease",
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragOver(e, col.key, tasks.length);
+      }}
+      onDrop={(e) => onDrop(e, col.key)}
+    >
+      {/* Column header */}
+      <div style={{
+        padding: "12px 14px 10px",
+        display: "flex", alignItems: "center", gap: 8,
+        borderBottom: "1px solid var(--border)",
+        flexShrink: 0,
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: col.color, flexShrink: 0,
+          boxShadow: `0 0 0 3px ${col.color}20`,
+        }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", flex: 1, letterSpacing: "-0.01em" }}>
+          {col.label}
+        </span>
+        <span style={{
+          fontSize: 11, fontWeight: 600,
+          color: tasks.length > 0 ? col.color : "var(--text-muted)",
+          background: tasks.length > 0 ? col.soft : "transparent",
+          padding: "1px 7px", borderRadius: 20,
+          minWidth: 22, textAlign: "center",
+        }}>
+          {tasks.length}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div style={{
+        flex: 1, overflowY: "auto",
+        padding: "8px 8px",
+        display: "flex", flexDirection: "column", gap: 0,
+      }}>
+        {tasks.map((task, idx) => (
+          <div key={task.id}>
+            {/* Drop indicator above */}
+            {isDraggingOver && overIdx === idx && draggingId !== task.id && (
+              <DropLine color={col.color} />
+            )}
+            <KanbanCard
+              task={task}
+              isDragging={draggingId === task.id}
+              colColor={col.color}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOver={(e) => {
+                e.stopPropagation();
+                onDragOver(e, col.key, idx);
+              }}
+            />
+          </div>
+        ))}
+
+        {/* Drop indicator at end of column */}
+        {isDraggingOver && (overIdx === null || overIdx >= tasks.length) && (
+          <DropLine color={col.color} />
+        )}
+
+        {/* Empty state */}
+        {tasks.length === 0 && !isDraggingOver && (
+          <div style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "28px 12px", opacity: 0.4,
+          }}>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+              Arraste uma tarefa aqui
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Drop Line ──────────────────────────────────────────────────────────────────
+
+function DropLine({ color }: { color: string }) {
+  return (
+    <div style={{
+      height: 3, borderRadius: 2,
+      background: color,
+      margin: "3px 4px",
+      boxShadow: `0 0 8px ${color}60`,
+      animation: "pulse 1s ease infinite",
+    }} />
+  );
+}
+
+// ── Kanban Card ────────────────────────────────────────────────────────────────
+
+function KanbanCard({
+  task, isDragging, colColor, onDragStart, onDragEnd, onDragOver,
+}: {
+  task: Task;
+  isDragging: boolean;
+  colColor: string;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const overdue  = isOverdue(task);
+  const clDone   = task.checklists.filter(c => c.done).length;
+  const clTotal  = task.checklists.length;
+  const tcol     = typeColor(task.type);
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, task.id)}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: isDragging ? "var(--bg-elevated)" : hover ? "var(--bg-surface)" : "var(--bg-surface)",
+        border: `1px solid ${isDragging ? colColor + "60" : overdue ? "#DC262622" : "var(--border)"}`,
+        borderLeft: overdue ? "3px solid #DC2626" : `3px solid ${tcol}`,
+        borderRadius: 10,
+        padding: "10px 10px 10px 12px",
+        marginBottom: 6,
+        cursor: "grab",
+        opacity: isDragging ? 0.4 : 1,
+        transform: hover && !isDragging ? "translateY(-1px)" : "none",
+        boxShadow: hover && !isDragging ? "0 3px 12px rgba(0,0,0,0.08)" : "var(--shadow-card)",
+        transition: "opacity 100ms, transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+        userSelect: "none",
+        display: "flex", flexDirection: "column", gap: 8,
+      }}
+    >
+      {/* Top row: drag handle + title */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+        <GripVertical
+          size={13}
+          style={{ color: "var(--text-muted)", opacity: hover ? 0.6 : 0.2, flexShrink: 0, marginTop: 1, transition: "opacity 120ms" }}
+        />
+        <span style={{
+          fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)",
+          lineHeight: "17px", flex: 1,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {task.title}
+        </span>
+      </div>
+
+      {/* Type badge */}
+      {task.type && (
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 4, alignSelf: "flex-start",
+          background: tcol + "15", border: `1px solid ${tcol}30`,
+          padding: "2px 7px", borderRadius: 20,
+          fontSize: 10, fontWeight: 600, color: tcol,
+        }}>
+          {task.type}
+        </div>
+      )}
+
+      {/* Checklist mini bar */}
+      {clTotal > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ flex: 1, height: 3, borderRadius: 2, background: "var(--bg-elevated)", overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 2, width: `${Math.round((clDone / clTotal) * 100)}%`,
+              background: clDone === clTotal ? "#16A34A" : colColor,
+              transition: "width 300ms ease",
+            }} />
+          </div>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
+            {clDone}/{clTotal}
+          </span>
+        </div>
+      )}
+
+      {/* Footer: date + priority + assignee + blocker */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+
+        <span style={{
+          display: "flex", alignItems: "center", gap: 3,
+          fontSize: 10, fontWeight: overdue ? 700 : 500,
+          color: overdue ? "#DC2626" : "var(--text-muted)",
+        }}>
+          <Calendar size={9} style={{ opacity: 0.7 }} />
+          {fmtDate(task.dueDate)}
+        </span>
+
+        {task.priority !== "NORMAL" && task.priority !== "LOW" && (
+          <span style={{
+            display: "flex", alignItems: "center", gap: 3,
+            fontSize: 10, fontWeight: 600,
+            color: PRIORITY_COLOR[task.priority],
+          }}>
+            <Flag size={9} />
+            {task.priority === "CRITICAL" ? "Crítica" : "Alta"}
+          </span>
+        )}
+
+        {task.blocker && (
+          <span title={task.blocker} style={{ display: "flex", alignItems: "center" }}>
+            <AlertTriangle size={11} color="#D97706" />
+          </span>
+        )}
+
+        {task.assignee && (
+          <span
+            title={task.assignee.name}
+            style={{
+              marginLeft: "auto",
+              width: 20, height: 20, borderRadius: "50%",
+              background: "var(--accent-soft)", color: "var(--accent)",
+              fontSize: 8, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {task.assignee.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Shared styles ──────────────────────────────────────────────────────────────
+
+const navBtn: React.CSSProperties = {
+  width: 28, height: 28, borderRadius: 7,
+  border: "1px solid var(--border)", background: "var(--bg-surface)",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  cursor: "pointer", color: "var(--text-muted)", padding: 0,
+};

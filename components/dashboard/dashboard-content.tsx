@@ -6,6 +6,7 @@ import {
   Users, AlertTriangle, CheckCircle2, Clock,
   TrendingDown, Activity, Zap, ArrowRight,
   BellRing, ChevronRight,
+  CalendarDays, ListTodo, Settings, Wallet, PauseCircle,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate } from "@/lib/utils";
@@ -106,6 +107,9 @@ export function DashboardContent({ userName }: { userName: string }) {
       </div>
 
       <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* ── Quick nav ──────────────────────────────── */}
+        <QuickNav />
 
         {/* ── Metric blocks ──────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
@@ -261,6 +265,127 @@ export function DashboardContent({ userName }: { userName: string }) {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Quick Nav ──────────────────────────────────────── */
+
+const NAV_ITEMS = [
+  {
+    href: "/clients",
+    label: "Clientes",
+    description: "Carteira e setup",
+    icon: Users,
+    color: "#4F46E5",
+    soft: "rgba(79,70,229,0.08)",
+  },
+  {
+    href: "/today",
+    label: "Today",
+    description: "Tasks do dia",
+    icon: ListTodo,
+    color: "#0891B2",
+    soft: "rgba(8,145,178,0.08)",
+  },
+  {
+    href: "/pending",
+    label: "Pendências",
+    description: "Fila de aprovação",
+    icon: PauseCircle,
+    color: "#D97706",
+    soft: "rgba(217,119,6,0.08)",
+  },
+  {
+    href: "/finances",
+    label: "Finanças",
+    description: "Receitas e despesas",
+    icon: Wallet,
+    color: "#059669",
+    soft: "rgba(5,150,105,0.08)",
+  },
+  {
+    href: "/intelligence/campaigns",
+    label: "Campanhas",
+    description: "Busca e criativos",
+    icon: Zap,
+    color: "#7C3AED",
+    soft: "rgba(124,58,237,0.08)",
+  },
+  {
+    href: "/settings",
+    label: "Configurações",
+    description: "Time e permissões",
+    icon: Settings,
+    color: "#475569",
+    soft: "rgba(71,85,105,0.08)",
+  },
+] as const;
+
+function QuickNav() {
+  return (
+    <div>
+      <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, opacity: 0.7 }}>
+        Acesso rápido
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href} style={{ textDecoration: "none" }}>
+              <QuickNavCard item={item} Icon={Icon} />
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QuickNavCard({
+  item,
+  Icon,
+}: {
+  item: typeof NAV_ITEMS[number];
+  Icon: React.ElementType;
+}) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: hover ? item.soft : "var(--bg-surface)",
+        border: `1px solid ${hover ? item.color + "33" : "var(--border)"}`,
+        borderRadius: 12,
+        padding: "14px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        cursor: "pointer",
+        transition: "background 140ms ease, border-color 140ms ease, transform 140ms ease",
+        transform: hover ? "translateY(-1px)" : "translateY(0)",
+        boxShadow: hover ? `0 4px 16px ${item.color}18` : "none",
+      }}
+    >
+      <div style={{
+        width: 34, height: 34, borderRadius: 9,
+        background: item.soft,
+        border: `1px solid ${item.color}22`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "background 140ms ease",
+      }}>
+        <Icon size={16} style={{ color: item.color }} />
+      </div>
+      <div>
+        <p style={{ fontSize: 12.5, fontWeight: 650, color: "var(--text-primary)", lineHeight: 1, marginBottom: 3 }}>
+          {item.label}
+        </p>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+          {item.description}
+        </p>
       </div>
     </div>
   );

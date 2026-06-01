@@ -206,22 +206,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     if (activePlan) {
       const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
 
       // Find types that were removed
       const previousTypes = activePlan.plan.items.map((i) => i.type);
       const newTypes = deliverables.map((d) => d.type);
       const removedTypes = previousTypes.filter((t) => !newTypes.includes(t));
 
-      // Soft-delete tasks of removed types for the current month
+      // Soft-delete all undone tasks of removed types (current + future months)
       if (removedTypes.length > 0) {
         await prisma.task.updateMany({
           where: {
             clientId: id,
             type: { in: removedTypes },
-            planMonth: currentMonth,
-            planYear: currentYear,
+            status: { not: "DONE" },
             deletedAt: null,
           },
           data: { deletedAt: now },

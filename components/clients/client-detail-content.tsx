@@ -5,15 +5,14 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, MessageSquarePlus,
-  CalendarDays, Brain, Zap,
+  CalendarDays, Zap, Columns3, User,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
-import { MovimentoTab } from "@/components/clients/movimento-tab";
-import { ClientBrainTab } from "@/components/clients/client-brain-tab";
+import { KanbanBoard } from "@/components/clients/kanban-board";
 import { formatDate } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -126,7 +125,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "brain" | "perfil";
+type Tab = "operacao" | "perfil";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -182,9 +181,8 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "operacao", label: "Operação", icon: <Zap size={13} /> },
-    { key: "brain",    label: "Brain",    icon: <Brain size={13} /> },
-    { key: "perfil",   label: "Perfil",   icon: <Activity size={13} /> },
+    { key: "operacao", label: "Operação", icon: <Columns3 size={13} /> },
+    { key: "perfil",   label: "Perfil",   icon: <User size={13} /> },
   ];
 
   return (
@@ -281,11 +279,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {/* ── Tab content ──────────────────────────────────── */}
       {tab === "operacao" && (
-        <MovimentoTab clientId={clientId} />
-      )}
-
-      {tab === "brain" && (
-        <ClientBrainTab clientId={clientId} />
+        <KanbanBoard clientId={clientId} clientName={client.name} />
       )}
 
       {tab === "perfil" && (
@@ -407,7 +401,7 @@ function PerfilTab({
       {/* ── Left ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
-        {/* Plano ativo (admin only info) */}
+        {/* Plano ativo */}
         {currentPlan && isAdmin && (
           <section>
             <Label>Plano ativo</Label>
@@ -548,7 +542,7 @@ function PerfilTab({
             </div>
           ) : (
             timelineLogs.map((log, i) => {
-              const dot = ACTION_COLORS[log.action] ?? "var(--blue)";
+              const dotColor = ACTION_COLORS[log.action] ?? "var(--blue)";
               const label = ACTION_LABELS[log.action] ?? log.action;
               return (
                 <div
@@ -561,8 +555,8 @@ function PerfilTab({
                 >
                   <span style={{
                     width: 7, height: 7, borderRadius: "50%",
-                    background: dot, flexShrink: 0, marginTop: 5,
-                    boxShadow: `0 0 0 3px ${dot}20`,
+                    background: dotColor, flexShrink: 0, marginTop: 5,
+                    boxShadow: `0 0 0 3px ${dotColor}20`,
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", lineHeight: "16px" }}>
