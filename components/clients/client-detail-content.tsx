@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, MessageSquarePlus,
-  CalendarDays, Zap, Columns3, User,
+  CalendarDays, Columns3, User, Mic,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
+import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { formatDate } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil";
+type Tab = "operacao" | "perfil" | "reunioes";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -181,8 +182,9 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "operacao", label: "Operação", icon: <Columns3 size={13} /> },
-    { key: "perfil",   label: "Perfil",   icon: <User size={13} /> },
+    { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
+    { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
+    { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
   return (
@@ -280,6 +282,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       {/* ── Tab content ──────────────────────────────────── */}
       {tab === "operacao" && (
         <KanbanBoard clientId={clientId} clientName={client.name} />
+      )}
+
+      {tab === "reunioes" && (
+        <MeetingsTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (

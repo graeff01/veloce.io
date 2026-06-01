@@ -96,6 +96,25 @@ model Client {
   clientPlans   ClientPlan[]
   executionLogs ExecutionLog[]
   campaigns     Campaign[]
+  meetings      Meeting[]
+}
+
+model Meeting {
+  id           String   @id @default(cuid())
+  clientId     String
+  title        String
+  date         DateTime
+  duration     Int?
+  audioUrl     String?
+  transcript   String?
+  summary      String?
+  decisions    String[]
+  nextSteps    String[]
+  participants String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id])
 }
 
 model Plan {
