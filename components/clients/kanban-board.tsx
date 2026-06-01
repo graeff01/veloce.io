@@ -632,7 +632,8 @@ function KanbanCard({
   const overdue  = isOverdue(task);
   const clDone   = task.checklists.filter(c => c.done).length;
   const clTotal  = task.checklists.length;
-  const tcol     = typeColor(task.type);
+  // accent color = column status color (overdue overrides to red)
+  const accentCol = overdue ? "#DC2626" : colColor;
 
   return (
     <div
@@ -643,16 +644,16 @@ function KanbanCard({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: isDragging ? "var(--bg-elevated)" : hover ? "var(--bg-surface)" : "var(--bg-surface)",
-        border: `1px solid ${isDragging ? colColor + "60" : overdue ? "#DC262622" : "var(--border)"}`,
-        borderLeft: overdue ? "3px solid #DC2626" : `3px solid ${tcol}`,
+        background: hover && !isDragging ? "var(--bg-elevated)" : "var(--bg-surface)",
+        border: `1px solid ${isDragging ? colColor + "50" : hover ? colColor + "35" : "var(--border)"}`,
+        borderLeft: `3px solid ${accentCol}`,
         borderRadius: 10,
         padding: "10px 10px 10px 12px",
         marginBottom: 6,
         cursor: "grab",
-        opacity: isDragging ? 0.4 : 1,
+        opacity: isDragging ? 0.35 : 1,
         transform: hover && !isDragging ? "translateY(-1px)" : "none",
-        boxShadow: hover && !isDragging ? "0 3px 12px rgba(0,0,0,0.08)" : "var(--shadow-card)",
+        boxShadow: hover && !isDragging ? `0 4px 14px ${colColor}20` : "none",
         transition: "opacity 100ms, transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
         userSelect: "none",
         display: "flex", flexDirection: "column", gap: 8,
@@ -662,7 +663,7 @@ function KanbanCard({
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
         <GripVertical
           size={13}
-          style={{ color: "var(--text-muted)", opacity: hover ? 0.6 : 0.2, flexShrink: 0, marginTop: 1, transition: "opacity 120ms" }}
+          style={{ color: "var(--text-muted)", opacity: hover ? 0.5 : 0.15, flexShrink: 0, marginTop: 1, transition: "opacity 120ms" }}
         />
         <span style={{
           fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)",
@@ -673,13 +674,13 @@ function KanbanCard({
         </span>
       </div>
 
-      {/* Type badge */}
+      {/* Type badge — uses status color tint so it integrates visually */}
       {task.type && (
         <div style={{
           display: "inline-flex", alignItems: "center", gap: 4, alignSelf: "flex-start",
-          background: tcol + "15", border: `1px solid ${tcol}30`,
-          padding: "2px 7px", borderRadius: 20,
-          fontSize: 10, fontWeight: 600, color: tcol,
+          background: accentCol + "14", border: `1px solid ${accentCol}28`,
+          padding: "2px 8px", borderRadius: 20,
+          fontSize: 10, fontWeight: 600, color: accentCol,
         }}>
           {task.type}
         </div>

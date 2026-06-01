@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight,
   Plus, ChevronLeft, ChevronRight, Circle, X, RefreshCw, Zap,
@@ -22,6 +22,21 @@ interface Entry {
   date: string;
   status: "PAGO" | "PENDENTE" | "VENCIDO";
   client?: string;
+}
+
+// HR person synced from /hr page via localStorage
+interface HrPerson {
+  id: string;
+  type: "FUNCIONARIO" | "PRESTADOR";
+  name: string;
+  role: string;
+  salary: number;
+  status: "ATIVO" | "INATIVO";
+}
+
+function loadHrPeople(): HrPerson[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem("veloce-hr-people") ?? "[]") as HrPerson[]; } catch { return []; }
 }
 
 const CATEGORIES_RECEITA = ["Mensalidade", "Projeto", "Consultoria", "Bônus", "Outro"];
@@ -61,12 +76,37 @@ function fmtDate(iso: string) {
 
 export function FinancesContent() {
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth]   = useState(now.getMonth() + 1);
+  const [year,  setYear]    = useState(now.getFullYear());
   const [filter, setFilter] = useState<"TODOS" | EntryType>("TODOS");
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<EntryType>("RECEITA");
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [entries, setEntries]   = useState<Entry[]>([]);
+  const [hrPeople, setHrPeople] = useState<HrPerson[]>([]);
+
+  // sync HR people from localStorage (re-reads when tab gains focus)
+  useEffect(() => {
+    function sync() { setHrPeople(loadHrPeople()); }
+    sync();
+    window.addEventListener("focus", sync);
+    window.addEventListener("storage", sync);
+    return () => { window.removeEventListener("focus", sync); window.removeEventListener("storage", sync); };
+  }, []);
+
+  // HR entries are read-only, derived from hrPeople (active only, current month)
+  const hrEntries: Entry[] = hrPeople
+    .filter(p => p.status === "ATIVO" && p.salary > 0)
+    .map(p => ({
+      id: `hr-${p.id}`,
+      type: "DESPESA" as const,
+      mode: "RECORRENTE" as const,
+      description: p.name,
+      category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
+      value: p.salary,
+      date: `${year}-${String(month).padStart(2, "0")}-05`,
+      status: "PENDENTE" as const,
+      client: p.role || undefined,
+    }));
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1);
@@ -75,13 +115,16 @@ export function FinancesContent() {
     if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1);
   }
 
-  const filtered = filter === "TODOS" ? entries : entries.filter(e => e.type === filter);
+  // all entries = manual + auto-generated from HR
+  const allEntries = [...entries, ...hrEntries];
 
-  const totalReceita = entries.filter(e => e.type === "RECEITA" && e.status === "PAGO").reduce((s, e) => s + e.value, 0);
-  const totalDespesa = entries.filter(e => e.type === "DESPESA" && e.status === "PAGO").reduce((s, e) => s + e.value, 0);
+  const filtered = (filter === "TODOS" ? allEntries : allEntries.filter(e => e.type === filter));
+
+  const totalReceita = allEntries.filter(e => e.type === "RECEITA" && e.status === "PAGO").reduce((s, e) => s + e.value, 0);
+  const totalDespesa = allEntries.filter(e => e.type === "DESPESA" && e.status === "PAGO").reduce((s, e) => s + e.value, 0);
   const lucro        = totalReceita - totalDespesa;
-  const pendReceita  = entries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").reduce((s, e) => s + e.value, 0);
-  const pendDespesa  = entries.filter(e => e.type === "DESPESA" && e.status === "PENDENTE").reduce((s, e) => s + e.value, 0);
+  const pendReceita  = allEntries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").reduce((s, e) => s + e.value, 0);
+  const pendDespesa  = allEntries.filter(e => e.type === "DESPESA" && e.status === "PENDENTE").reduce((s, e) => s + e.value, 0);
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
 
   function handleSave(entry: Omit<Entry, "id">) {
@@ -236,7 +279,13 @@ export function FinancesContent() {
                 </div>
               ) : (
                 filtered.map((entry, i) => (
-                  <EntryRow key={entry.id} entry={entry} last={i === filtered.length - 1} onDelete={handleDelete} />
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    last={i === filtered.length - 1}
+                    onDelete={entry.id.startsWith("hr-") ? undefined : handleDelete}
+                    isHr={entry.id.startsWith("hr-")}
+                  />
                 ))
               )}
 
@@ -263,15 +312,28 @@ export function FinancesContent() {
             <CategoryBreakdown
               title="Categorias de Receita"
               color="#16A34A"
-              entries={entries.filter(e => e.type === "RECEITA")}
+              entries={allEntries.filter(e => e.type === "RECEITA")}
             />
             <CategoryBreakdown
               title="Categorias de Despesa"
               color="#DC2626"
-              entries={entries.filter(e => e.type === "DESPESA")}
+              entries={allEntries.filter(e => e.type === "DESPESA")}
             />
             {/* Recorrentes summary */}
-            <RecurrenteSummary entries={entries} />
+            <RecurrenteSummary entries={allEntries} />
+            {/* HR notice */}
+            {hrPeople.filter(p => p.status === "ATIVO").length > 0 && (
+              <div style={{
+                padding: "10px 14px", borderRadius: 9,
+                background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)",
+                fontSize: 11, color: "#2563EB",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ fontWeight: 700 }}>Equipe:</span>
+                {hrPeople.filter(p => p.status === "ATIVO").length} pessoa(s) importada(s) do RH automaticamente.
+                As despesas de equipe são geradas a cada mês.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -289,7 +351,11 @@ export function FinancesContent() {
 
 // ── Entry Row ──────────────────────────────────────────────────────────────────
 
-function EntryRow({ entry, last, onDelete }: { entry: Entry; last: boolean; onDelete: (id: string) => void }) {
+function EntryRow({ entry, last, onDelete, isHr }: {
+  entry: Entry; last: boolean;
+  onDelete?: (id: string) => void;
+  isHr?: boolean;
+}) {
   const [hover, setHover] = useState(false);
   const isReceita = entry.type === "RECEITA";
   const st = STATUS_CONFIG[entry.status];
@@ -302,7 +368,8 @@ function EntryRow({ entry, last, onDelete }: { entry: Entry; last: boolean; onDe
         display: "grid", gridTemplateColumns: "1fr 100px 80px 130px 110px 80px",
         padding: "11px 18px",
         borderBottom: last ? "none" : "1px solid var(--border)",
-        background: hover ? "var(--bg-elevated)" : "transparent",
+        background: isHr ? "rgba(37,99,235,0.03)" : hover ? "var(--bg-elevated)" : "transparent",
+        borderLeft: isHr ? "2px solid rgba(37,99,235,0.3)" : "2px solid transparent",
         transition: "background 100ms",
         alignItems: "center",
       }}
@@ -314,6 +381,11 @@ function EntryRow({ entry, last, onDelete }: { entry: Entry; last: boolean; onDe
           <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {entry.description}
           </p>
+          {isHr && (
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#2563EB", background: "rgba(37,99,235,0.1)", padding: "1px 5px", borderRadius: 4, letterSpacing: "0.04em", flexShrink: 0 }}>
+              RH
+            </span>
+          )}
         </div>
         {entry.client && (
           <p style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 13, marginTop: 2 }}>{entry.client}</p>
@@ -344,7 +416,7 @@ function EntryRow({ entry, last, onDelete }: { entry: Entry; last: boolean; onDe
         <span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
           {st.label}
         </span>
-        {hover && (
+        {hover && !isHr && onDelete && (
           <button
             onClick={() => onDelete(entry.id)}
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, display: "flex", alignItems: "center" }}

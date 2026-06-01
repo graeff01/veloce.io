@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const LS_KEY = "veloce-hr-people";
 import {
   Users, Plus, X, Briefcase, DollarSign, Phone,
   Mail, Edit2, Trash2, UserCheck, UserX, Loader2,
@@ -45,11 +47,19 @@ function fmtBRL(v: number) {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export function HrContent() {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Person | null>(null);
+  const [people, setPeople] = useState<Person[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") as Person[]; } catch { return []; }
+  });
+  const [showForm, setShowForm]     = useState(false);
+  const [editing, setEditing]       = useState<Person | null>(null);
   const [filterType, setFilterType] = useState<"TODOS" | PersonType>("TODOS");
   const [filterStatus, setFilterStatus] = useState<"TODOS" | PersonStatus>("TODOS");
+
+  // persist to localStorage whenever people changes
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify(people));
+  }, [people]);
 
   const filtered = people.filter(p => {
     if (filterType !== "TODOS" && p.type !== filterType) return false;
@@ -57,7 +67,7 @@ export function HrContent() {
     return true;
   });
 
-  const ativos      = people.filter(p => p.status === "ATIVO");
+  const ativos       = people.filter(p => p.status === "ATIVO");
   const funcionarios = ativos.filter(p => p.type === "FUNCIONARIO");
   const prestadores  = ativos.filter(p => p.type === "PRESTADOR");
   const totalMensal  = ativos.reduce((s, p) => s + p.salary, 0);
