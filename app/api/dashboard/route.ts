@@ -18,6 +18,9 @@ export async function GET() {
     dueTodayTasks,
     overdueTasks,
     completedThisMonth,
+    allMonthTasks,
+    receitaMes,
+    receitaPendente,
   ] = await Promise.all([
     prisma.client.count({ where: { deletedAt: null, status: "ACTIVE" } }),
     prisma.task.count({
@@ -29,6 +32,31 @@ export async function GET() {
     prisma.task.count({
       where: { deletedAt: null, status: "DONE", updatedAt: { gte: startOfMonth, lte: endOfMonth } },
     }),
+    prisma.task.count({
+      where: { deletedAt: null, dueDate: { gte: startOfMonth, lte: endOfMonth } },
+    }),
+    // receita paga este mês (avulso + recorrente)
+    prisma.financeEntry.aggregate({
+      where: {
+        deletedAt: null, type: "RECEITA", status: "PAGO",
+        OR: [
+          { mode: "AVULSO",     date: { gte: startOfMonth, lte: endOfMonth } },
+          { mode: "RECORRENTE" },
+        ],
+      },
+      _sum: { value: true },
+    }),
+    // receita pendente este mês
+    prisma.financeEntry.aggregate({
+      where: {
+        deletedAt: null, type: "RECEITA", status: "PENDENTE",
+        OR: [
+          { mode: "AVULSO",     date: { gte: startOfMonth, lte: endOfMonth } },
+          { mode: "RECORRENTE" },
+        ],
+      },
+      _sum: { value: true },
+    }),
   ]);
 
   // Client health stats
@@ -39,7 +67,7 @@ export async function GET() {
 
   const clientStats = await Promise.all(
     clients.map(async (client) => {
-      const [monthTasks, doneTasks, overdue, lastLog] = await Promise.all([
+      const [monthTasks, doneTasks, overdue, lastLog, receitaCliente] = await Promise.all([
         prisma.task.count({
           where: { clientId: client.id, deletedAt: null, dueDate: { gte: startOfMonth, lte: endOfMonth } },
         }),
@@ -52,6 +80,16 @@ export async function GET() {
         prisma.executionLog.findFirst({
           where: { clientId: client.id },
           orderBy: { createdAt: "desc" },
+        }),
+        prisma.financeEntry.aggregate({
+          where: {
+            clientId: client.id, deletedAt: null, type: "RECEITA",
+            OR: [
+              { mode: "AVULSO",     date: { gte: startOfMonth, lte: endOfMonth } },
+              { mode: "RECORRENTE" },
+            ],
+          },
+          _sum: { value: true },
         }),
       ]);
 
@@ -68,6 +106,7 @@ export async function GET() {
           completionRate: monthTasks > 0 ? Math.round((doneTasks / monthTasks) * 100) : 0,
           daysSinceActivity,
           inactive: daysSinceActivity >= 7,
+          receitaMes: receitaCliente._sum.value ?? 0,
         },
       };
     })
@@ -114,8 +153,21 @@ export async function GET() {
     }
   }
 
+  const taxaConclusao = allMonthTasks > 0
+    ? Math.round((completedThisMonth / allMonthTasks) * 100)
+    : 0;
+
   return NextResponse.json({
-    summary: { activeClients, dueTodayTasks, overdueTasks, completedThisMonth },
+    summary: {
+      activeClients,
+      dueTodayTasks,
+      overdueTasks,
+      completedThisMonth,
+      allMonthTasks,
+      taxaConclusao,
+      receitaMes:      receitaMes._sum.value      ?? 0,
+      receitaPendente: receitaPendente._sum.value ?? 0,
+    },
     clientStats,
     overdueDetails,
     suggestions,

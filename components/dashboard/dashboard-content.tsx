@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Users, AlertTriangle, CheckCircle2, Clock,
-  TrendingDown, Activity, Zap, ArrowRight,
+  TrendingDown, TrendingUp, Activity, Zap, ArrowRight,
   BellRing, ChevronRight,
   CalendarDays, Settings, Wallet, Brain,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate } from "@/lib/utils";
+
+function fmtBRL(v: number) {
+  if (v >= 1000) return `R$${(v / 1000).toFixed(1).replace(".", ",")}k`;
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 interface DashboardData {
   summary: {
@@ -17,6 +22,10 @@ interface DashboardData {
     dueTodayTasks: number;
     overdueTasks: number;
     completedThisMonth: number;
+    allMonthTasks: number;
+    taxaConclusao: number;
+    receitaMes: number;
+    receitaPendente: number;
   };
   clientStats: Array<{
     id: string;
@@ -30,6 +39,7 @@ interface DashboardData {
       completionRate: number;
       daysSinceActivity: number;
       inactive: boolean;
+      receitaMes: number;
     };
   }>;
   overdueDetails: Array<{
@@ -47,6 +57,11 @@ interface DashboardData {
   }>;
 }
 
+const EMPTY: DashboardData = {
+  summary: { activeClients: 0, dueTodayTasks: 0, overdueTasks: 0, completedThisMonth: 0, allMonthTasks: 0, taxaConclusao: 0, receitaMes: 0, receitaPendente: 0 },
+  clientStats: [], overdueDetails: [], suggestions: [],
+};
+
 export function DashboardContent({ userName }: { userName: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,18 +69,8 @@ export function DashboardContent({ userName }: { userName: string }) {
   useEffect(() => {
     fetch("/api/dashboard")
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => setData(d ?? {
-        summary: { activeClients: 0, dueTodayTasks: 0, overdueTasks: 0, completedThisMonth: 0 },
-        clientStats: [],
-        overdueDetails: [],
-        suggestions: [],
-      }))
-      .catch(() => setData({
-        summary: { activeClients: 0, dueTodayTasks: 0, overdueTasks: 0, completedThisMonth: 0 },
-        clientStats: [],
-        overdueDetails: [],
-        suggestions: [],
-      }))
+      .then((d) => setData(d ?? EMPTY))
+      .catch(() => setData(EMPTY))
       .finally(() => setLoading(false));
   }, []);
 
@@ -115,15 +120,17 @@ export function DashboardContent({ userName }: { userName: string }) {
         {/* ── Metric blocks ──────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
           <MetricBlock
-            label="Clientes ativos"
-            value={data.summary.activeClients}
-            icon={Users}
-            accentColor="var(--blue)"
-            softColor="var(--blue-soft)"
+            label="Receita do mês"
+            value={fmtBRL(data.summary.receitaMes)}
+            sub={data.summary.receitaPendente > 0 ? `+${fmtBRL(data.summary.receitaPendente)} pendente` : "Tudo recebido"}
+            icon={TrendingUp}
+            accentColor="var(--green)"
+            softColor="var(--green-soft)"
           />
           <MetricBlock
             label="Entregam hoje"
-            value={data.summary.dueTodayTasks}
+            value={String(data.summary.dueTodayTasks)}
+            sub={data.summary.dueTodayTasks > 0 ? "requer atenção agora" : "Sem entregas hoje"}
             icon={Clock}
             accentColor="var(--amber)"
             softColor="var(--amber-soft)"
@@ -131,18 +138,20 @@ export function DashboardContent({ userName }: { userName: string }) {
           />
           <MetricBlock
             label="Em atraso"
-            value={data.summary.overdueTasks}
+            value={String(data.summary.overdueTasks)}
+            sub={data.summary.overdueTasks > 0 ? "tarefas vencidas" : "Nenhum atraso"}
             icon={AlertTriangle}
             accentColor="var(--red)"
             softColor="var(--red-soft)"
             alert={data.summary.overdueTasks > 0}
           />
           <MetricBlock
-            label="Concluídas no mês"
-            value={data.summary.completedThisMonth}
+            label="Taxa de conclusão"
+            value={`${data.summary.taxaConclusao}%`}
+            sub={`${data.summary.completedThisMonth}/${data.summary.allMonthTasks} tarefas no mês`}
             icon={CheckCircle2}
-            accentColor="var(--green)"
-            softColor="var(--green-soft)"
+            accentColor={data.summary.taxaConclusao >= 70 ? "var(--green)" : data.summary.taxaConclusao >= 40 ? "var(--amber)" : "var(--red)"}
+            softColor={data.summary.taxaConclusao >= 70 ? "var(--green-soft)" : data.summary.taxaConclusao >= 40 ? "var(--amber-soft)" : "var(--red-soft)"}
           />
         </div>
 
@@ -215,56 +224,8 @@ export function DashboardContent({ userName }: { userName: string }) {
             </div>
           </div>
 
-          {/* RIGHT — Alerts panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {data.suggestions.length > 0 && (
-              <AlertsPanel
-                title="Sugestões Operacionais"
-                icon={<Zap size={13} style={{ color: "var(--accent)" }} />}
-              >
-                {data.suggestions.slice(0, 4).map((s, i) => (
-                  <SuggestionRow key={i} suggestion={s} />
-                ))}
-              </AlertsPanel>
-            )}
-
-            {data.overdueDetails.length > 0 && (
-              <AlertsPanel
-                title="Tarefas em Atraso"
-                icon={<BellRing size={13} style={{ color: "var(--red)" }} />}
-                count={data.overdueDetails.length}
-              >
-                {data.overdueDetails.slice(0, 6).map((task) => (
-                  <OverdueRow key={task.id} task={task} />
-                ))}
-              </AlertsPanel>
-            )}
-
-            {data.suggestions.length === 0 && data.overdueDetails.length === 0 && (
-              <div
-                style={{
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  boxShadow: "var(--shadow-card)",
-                  padding: "32px 20px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 8,
-                  textAlign: "center",
-                }}
-              >
-                <Activity size={24} style={{ color: "var(--green)", opacity: 0.4 }} />
-                <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
-                  Operação saudável
-                </p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Operacao sem alertas agora
-                </p>
-              </div>
-            )}
-          </div>
+          {/* RIGHT — Radar operacional */}
+          <RadarPanel suggestions={data.suggestions} overdueDetails={data.overdueDetails} />
         </div>
       </div>
     </div>
@@ -396,62 +357,50 @@ function QuickNavCard({
 function MetricBlock({
   label,
   value,
+  sub,
   icon: Icon,
   accentColor,
   softColor,
   alert,
 }: {
   label: string;
-  value: number;
+  value: string;
+  sub?: string;
   icon: React.ElementType;
   accentColor: string;
   softColor: string;
   alert?: boolean;
 }) {
+  const isAlert = alert && value !== "0";
   return (
     <div
       style={{
         background: "var(--bg-surface)",
-        border: `1px solid ${alert && value > 0 ? accentColor + "55" : "var(--border)"}`,
-        borderLeft: alert && value > 0 ? `3px solid ${accentColor}` : `3px solid transparent`,
+        border: `1px solid ${isAlert ? accentColor + "44" : "var(--border)"}`,
+        borderLeft: isAlert ? `3px solid ${accentColor}` : `3px solid transparent`,
         borderRadius: 10,
         padding: "16px 18px",
         boxShadow: "var(--shadow-card)",
         display: "flex",
         flexDirection: "column",
-        gap: 12,
+        gap: 10,
         transition: "box-shadow 150ms ease-out",
       }}
     >
-      {/* Icon */}
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: softColor,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Icon size={15} style={{ color: accentColor }} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ width: 30, height: 30, borderRadius: 8, background: softColor, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon size={14} style={{ color: accentColor }} />
+        </div>
+        {isAlert && (
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: accentColor, animation: "pulse 2s ease infinite" }} />
+        )}
       </div>
-      {/* Number + label */}
       <div>
-        <p
-          style={{
-            fontSize: 28,
-            fontWeight: 700,
-            letterSpacing: "-0.03em",
-            color: alert && value > 0 ? accentColor : "var(--text-primary)",
-            lineHeight: 1,
-            marginBottom: 4,
-          }}
-        >
+        <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.03em", color: isAlert ? accentColor : "var(--text-primary)", lineHeight: 1, marginBottom: 3 }}>
           {value}
         </p>
-        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</p>
+        <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", lineHeight: 1.3 }}>{label}</p>
+        {sub && <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, opacity: 0.8 }}>{sub}</p>}
       </div>
     </div>
   );
@@ -522,217 +471,136 @@ function ClientHealthRow({
 
         {/* Progress bar */}
         <div style={{ flex: 1, padding: "0 8px" }}>
-          <div
-            style={{
-              height: 4,
-              borderRadius: 2,
-              background: "var(--bg-elevated)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${stats.completionRate}%`,
-                height: "100%",
-                background: healthColor,
-                borderRadius: 2,
-                transition: "width 400ms ease-out",
-              }}
-            />
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {stats.doneTasks}/{stats.monthTasks} concluídas
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: healthColor }}>
+              {stats.completionRate}%
+            </span>
           </div>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, lineHeight: "14px" }}>
-            {stats.doneTasks}/{stats.monthTasks} concluídas
-          </p>
+          <div style={{ height: 4, borderRadius: 2, background: "var(--bg-elevated)", overflow: "hidden" }}>
+            <div style={{ width: `${stats.completionRate}%`, height: "100%", background: healthColor, borderRadius: 2, transition: "width 400ms ease-out" }} />
+          </div>
         </div>
 
-        {/* Overdue badge */}
-        <div style={{ width: 80, textAlign: "right", flexShrink: 0 }}>
-          {stats.overdue > 0 ? (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                fontSize: 11,
-                fontWeight: 500,
-                color: "var(--red)",
-                background: "var(--red-soft)",
-                padding: "2px 8px",
-                borderRadius: 20,
-              }}
-            >
-              <AlertTriangle size={9} />
-              {stats.overdue} atraso
+        {/* Receita */}
+        <div style={{ width: 72, textAlign: "right", flexShrink: 0 }}>
+          {stats.receitaMes > 0 ? (
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>
+              {fmtBRL(stats.receitaMes)}
             </span>
           ) : (
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--green)",
-                background: "var(--green-soft)",
-                padding: "2px 8px",
-                borderRadius: 20,
-              }}
-            >
+            <span style={{ fontSize: 11, color: "var(--text-muted)", opacity: 0.5 }}>—</span>
+          )}
+        </div>
+
+        {/* Status badge */}
+        <div style={{ width: 72, textAlign: "right", flexShrink: 0 }}>
+          {stats.overdue > 0 ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: "var(--red)", background: "var(--red-soft)", padding: "2px 7px", borderRadius: 20 }}>
+              <AlertTriangle size={8} />
+              {stats.overdue}
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--green)", background: "var(--green-soft)", padding: "2px 7px", borderRadius: 20 }}>
               OK
             </span>
           )}
         </div>
-
-        {/* Health dot */}
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: healthColor,
-            flexShrink: 0,
-          }}
-        />
       </div>
     </Link>
   );
 }
 
-/* ─── Alerts Panel ───────────────────────────────────── */
-function AlertsPanel({
-  title,
-  icon,
-  count,
-  children,
+/* ─── Radar Panel ────────────────────────────────────── */
+function RadarPanel({
+  suggestions,
+  overdueDetails,
 }: {
-  title: string;
-  icon: React.ReactNode;
-  count?: number;
-  children: React.ReactNode;
+  suggestions: DashboardData["suggestions"];
+  overdueDetails: DashboardData["overdueDetails"];
 }) {
+  const typeConfig: Record<string, { color: string; icon: React.ElementType; label: string }> = {
+    overdue:  { color: "var(--red)",   icon: AlertTriangle, label: "Atraso"     },
+    inactive: { color: "var(--amber)", icon: Clock,         label: "Inativo"    },
+    behind:   { color: "var(--amber)", icon: TrendingDown,  label: "Lento"      },
+  };
+
+  const hasAlerts = suggestions.length > 0 || overdueDetails.length > 0;
+
   return (
-    <div
-      style={{
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        boxShadow: "var(--shadow-card)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "11px 16px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg-elevated)",
-        }}
-      >
-        {icon}
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>
-          {title}
-        </span>
-        {count !== undefined && (
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--red)",
-              background: "var(--red-soft)",
-              padding: "1px 7px",
-              borderRadius: 20,
-            }}
-          >
-            {count}
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+        <Zap size={13} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>Radar operacional</span>
+        {hasAlerts && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--red)", background: "var(--red-soft)", padding: "1px 7px", borderRadius: 20 }}>
+            {suggestions.length + (overdueDetails.length > 0 ? 1 : 0)}
           </span>
         )}
       </div>
-      <div style={{ padding: "6px 0" }}>{children}</div>
-    </div>
-  );
-}
 
-/* ─── Suggestion Row ─────────────────────────────────── */
-function SuggestionRow({ suggestion }: { suggestion: DashboardData["suggestions"][0] }) {
-  const typeConfig: Record<string, { color: string; icon: React.ElementType }> = {
-    overdue:  { color: "var(--red)",   icon: AlertTriangle },
-    inactive: { color: "var(--amber)", icon: Clock },
-    behind:   { color: "var(--amber)", icon: TrendingDown },
-  };
-  const cfg = typeConfig[suggestion.type] ?? { color: "var(--blue)", icon: Activity };
-  const Icon = cfg.icon;
+      {!hasAlerts ? (
+        <div style={{ padding: "32px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center" }}>
+          <Activity size={22} style={{ color: "var(--green)", opacity: 0.35 }} />
+          <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Operação saudável</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhum alerta no momento</p>
+        </div>
+      ) : (
+        <div style={{ padding: "8px 0" }}>
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
-        padding: "7px 16px",
-        borderLeft: `3px solid ${cfg.color}`,
-        marginLeft: 0,
-        marginBottom: 2,
-      }}
-    >
-      <Icon size={11} style={{ color: cfg.color, marginTop: 3, flexShrink: 0 }} />
-      <p style={{ fontSize: 12, color: "var(--text-secondary)", flex: 1, lineHeight: "18px" }}>
-        {suggestion.message}
-      </p>
-      {suggestion.clientId && (
-        <Link href={`/clients/${suggestion.clientId}`} style={{ flexShrink: 0 }}>
-          <ChevronRight size={11} style={{ color: "var(--text-muted)" }} />
-        </Link>
+          {/* Suggestions */}
+          {suggestions.slice(0, 4).map((s, i) => {
+            const cfg = typeConfig[s.type] ?? { color: "var(--blue)", icon: Activity, label: "Alerta" };
+            const Icon = cfg.icon;
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 16px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, background: cfg.color + "15", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                  <Icon size={11} style={{ color: cfg.color }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: "17px", margin: 0 }}>{s.message}</p>
+                </div>
+                {s.clientId && (
+                  <Link href={`/clients/${s.clientId}`} style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+                    <ChevronRight size={12} style={{ color: "var(--text-muted)" }} />
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Overdue tasks — grouped label */}
+          {overdueDetails.length > 0 && (
+            <>
+              <div style={{ padding: "7px 16px 4px", display: "flex", alignItems: "center", gap: 6 }}>
+                <BellRing size={10} style={{ color: "var(--red)" }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "var(--red)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  {overdueDetails.length} tarefa{overdueDetails.length !== 1 ? "s" : ""} vencida{overdueDetails.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {overdueDetails.slice(0, 5).map((task) => (
+                <Link key={task.id} href={`/clients/${task.client.id}`} style={{ textDecoration: "none", display: "block" }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px", transition: "background 120ms" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-elevated)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--red)", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", margin: 0, lineHeight: "16px" }}>{task.title}</p>
+                      <p style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: "14px" }}>{task.client.name} · {formatDate(task.dueDate)}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </>
+          )}
+        </div>
       )}
     </div>
-  );
-}
-
-/* ─── Overdue Row ────────────────────────────────────── */
-function OverdueRow({ task }: { task: DashboardData["overdueDetails"][0] }) {
-  return (
-    <Link href={`/clients/${task.client.id}/tasks`} style={{ textDecoration: "none", display: "block" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "7px 16px",
-          transition: "background 150ms ease-out",
-          cursor: "pointer",
-        }}
-        onMouseEnter={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)")
-        }
-        onMouseLeave={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.background = "transparent")
-        }
-      >
-        <div
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "var(--red)",
-            flexShrink: 0,
-          }}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--text-primary)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              lineHeight: "17px",
-            }}
-          >
-            {task.title}
-          </p>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: "15px" }}>
-            {task.client.name} · {formatDate(task.dueDate)}
-          </p>
-        </div>
-      </div>
-    </Link>
   );
 }
 
