@@ -133,34 +133,33 @@ export function FinancesContent() {
   // HR entries derived from hrPeople
   const hrEntries: Entry[] = hrPeople
     .filter(p => p.status === "ATIVO")
-    .flatMap(p => {
+    .flatMap((p): Entry[] => {
       const key = `hr-${p.id}`;
       if (p.type === "PRESTADOR" && p.unitValue) {
-        // variable: qty × unitValue
         const qty = hrQty[key] ?? 0;
-        if (qty === 0) return []; // zero qty = not yet registered this month
+        if (qty === 0) return [];
         return [{
           id: key,
-          type: "DESPESA" as const,
-          mode: "AVULSO" as const,
+          type: "DESPESA",
+          mode: "AVULSO",
           description: p.name,
           category: "Pagamento PJ",
           value: qty * p.unitValue,
           date: `${monthPrefix}-05`,
-          status: "PENDENTE" as const,
+          status: "PENDENTE",
           client: `${qty}× ${p.unit || "entrega"} · ${p.role || ""}`.trim(),
         }];
       }
       if (p.salary > 0) {
         return [{
           id: key,
-          type: "DESPESA" as const,
-          mode: "RECORRENTE" as const,
+          type: "DESPESA",
+          mode: "RECORRENTE",
           description: p.name,
           category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
           value: p.salary,
           date: `${monthPrefix}-05`,
-          status: "PENDENTE" as const,
+          status: "PENDENTE",
           client: p.role || undefined,
         }];
       }
