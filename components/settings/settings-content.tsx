@@ -95,14 +95,14 @@ export function SettingsContent() {
 
   const [wiping, setWiping] = useState(false);
   async function wipeTasks() {
-    if (!confirm("Isso vai REMOVER todas as tarefas do Kanban e do Calendário de TODOS os clientes. Tem certeza?")) return;
-    if (!confirm("Confirmação final: zerar todas as tarefas para começar do zero?")) return;
+    if (!confirm("Isso vai REMOVER todas as tarefas e movimentações do Kanban e do Calendário de TODOS os clientes. Tem certeza?")) return;
+    if (!confirm("Confirmação final: zerar tudo para começar do zero?")) return;
     setWiping(true);
     try {
       const res = await fetch("/api/tasks/wipe", { method: "POST" });
       const data = await res.json().catch(() => null);
       if (res.ok) {
-        alert(`${data?.count ?? 0} tarefa(s) removida(s). Kanban e calendário zerados.`);
+        alert(`Zerado: ${data?.tasks ?? 0} tarefa(s) e ${data?.movements ?? 0} movimentação(ões) removida(s). Kanban e calendário limpos.`);
       } else {
         alert(data?.error ?? "Não foi possível zerar as tarefas.");
       }
@@ -309,9 +309,9 @@ export function SettingsContent() {
             </div>
             <div style={{ padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Zerar todas as tarefas</p>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Zerar tarefas e movimentações</p>
                 <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                  Remove todas as tarefas do Kanban e do Calendário de todos os clientes para começar do zero.
+                  Remove todas as tarefas e movimentações do Kanban e do Calendário de todos os clientes para começar do zero.
                 </p>
               </div>
               <button

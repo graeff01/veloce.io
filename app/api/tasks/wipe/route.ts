@@ -3,9 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, logAction } from "@/lib/api-helpers";
 
 // POST /api/tasks/wipe
-// Soft-deletes ALL tasks of the workspace (admin only). Both the kanban and the
-// calendar read from the Task table (filtering deletedAt: null), so this clears
-// both at once — for starting a clean slate.
+// Soft-deletes ALL tasks AND movements of the workspace (admin only). The kanban
+// reads from Task; the calendar reads from both Task and Movement (all filtering
+// deletedAt: null), so this clears the kanban and the calendar at once — for a
+// clean slate.
 export async function POST() {
   const { error, session } = await requireAuth("tasks:delete");
   if (error) return error;
@@ -14,12 +15,16 @@ export async function POST() {
     return NextResponse.json({ error: "Apenas administradores podem zerar as tarefas" }, { status: 403 });
   }
 
-  const result = await prisma.task.updateMany({
-    where: { deletedAt: null },
-    data: { deletedAt: new Date() },
+  const now = new Date();
+  const [tasks, movements] = await prisma.$transaction([
+    prisma.task.updateMany({ where: { deletedAt: null }, data: { deletedAt: now } }),
+    prisma.movement.updateMany({ where: { deletedAt: null }, data: { deletedAt: now } }),
+  ]);
+
+  await logAction(session!.user.id, "WIPE_TASKS", undefined, undefined, {
+    tasks: tasks.count,
+    movements: movements.count,
   });
 
-  await logAction(session!.user.id, "WIPE_TASKS", undefined, undefined, { count: result.count });
-
-  return NextResponse.json({ ok: true, count: result.count });
+  return NextResponse.json({ ok: true, count: tasks.count + movements.count, tasks: tasks.count, movements: movements.count });
 }
