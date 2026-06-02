@@ -30,7 +30,7 @@ export async function GET() {
     }),
     prisma.client.findMany({
       where: { deletedAt: null, status: "ACTIVE" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, logoUrl: true },
       orderBy: { name: "asc" },
     }),
   ]);

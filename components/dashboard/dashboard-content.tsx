@@ -21,6 +21,7 @@ interface DashboardData {
   clientStats: Array<{
     id: string;
     name: string;
+    logoUrl?: string | null;
     status: string;
     stats: {
       monthTasks: number;
@@ -487,7 +488,7 @@ function ClientHealthRow({
         }
       >
         {/* Avatar */}
-        <Avatar name={client.name} size="sm" />
+        <Avatar name={client.name} src={client.logoUrl} size="sm" />
 
         {/* Name + inactivity note */}
         <div style={{ width: 140, flexShrink: 0 }}>

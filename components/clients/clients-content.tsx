@@ -13,6 +13,7 @@ import { Modal } from "@/components/ui/modal";
 interface Client {
   id: string;
   name: string;
+  logoUrl?: string | null;
   email?: string;
   phone?: string;
   status: "ACTIVE" | "INACTIVE" | "PAUSED";
@@ -277,7 +278,7 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
       >
         {/* Client name + email */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <Avatar name={client.name} size="sm" />
+          <Avatar name={client.name} src={client.logoUrl} size="sm" />
           <div style={{ minWidth: 0 }}>
             <p
               style={{

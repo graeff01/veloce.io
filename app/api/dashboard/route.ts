@@ -34,7 +34,7 @@ export async function GET() {
   // Client health stats
   const clients = await prisma.client.findMany({
     where: { deletedAt: null, status: "ACTIVE" },
-    select: { id: true, name: true, status: true, activePlanId: true },
+    select: { id: true, name: true, status: true, activePlanId: true, logoUrl: true },
   });
 
   const clientStats = await Promise.all(

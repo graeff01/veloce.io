@@ -30,8 +30,8 @@ type Task = {
   assignee?: { id: string; name: string } | null;
 };
 
-type InactiveClient = { id: string; name: string; daysSinceActivity: number };
-type NoFutureClient = { id: string; name: string; futureTasks: number };
+type InactiveClient = { id: string; name: string; logoUrl?: string | null; daysSinceActivity: number };
+type NoFutureClient = { id: string; name: string; logoUrl?: string | null; futureTasks: number };
 type Critical = { id: string; tone: "red" | "amber"; title: string; subtitle: string; href: string };
 
 type TodayData = {
@@ -116,12 +116,14 @@ export function TodayContent() {
     ...data.inactiveClients.map((client) => ({
       id: client.id,
       name: client.name,
+      logoUrl: client.logoUrl,
       reason: client.daysSinceActivity === 999 ? "Sem atividade registrada" : `${client.daysSinceActivity} dias sem movimento`,
       tone: client.daysSinceActivity >= 8 || client.daysSinceActivity === 999 ? "red" : "amber",
     })),
     ...data.noFutureClients.map((client) => ({
       id: client.id,
       name: client.name,
+      logoUrl: client.logoUrl,
       reason: "Sem proxima entrega programada",
       tone: "blue",
     })),
@@ -440,12 +442,12 @@ function CriticalRow({ item }: { item: Critical }) {
   );
 }
 
-function RiskClientRow({ client }: { client: { id: string; name: string; reason: string; tone: string } }) {
+function RiskClientRow({ client }: { client: { id: string; name: string; logoUrl?: string | null; reason: string; tone: string } }) {
   const color = client.tone === "red" ? "var(--red)" : client.tone === "amber" ? "var(--amber)" : "var(--blue)";
   return (
     <Link href={`/clients/${client.id}`} style={{ textDecoration: "none", display: "block" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 52, padding: "9px 12px", borderBottom: "1px solid var(--border)" }}>
-        <Avatar name={client.name} size="sm" />
+        <Avatar name={client.name} src={client.logoUrl} size="sm" />
         <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 13, fontWeight: 540, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{client.name}</p>
           <p style={{ fontSize: 11, color: "var(--text-muted)" }}>

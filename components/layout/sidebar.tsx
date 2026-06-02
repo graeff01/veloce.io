@@ -26,6 +26,7 @@ interface ClientRow {
   name: string;
   status: string;
   overdue: number;
+  logoUrl?: string | null;
 }
 
 const bottomNavItems = [
@@ -49,7 +50,7 @@ export function Sidebar() {
   useEffect(() => {
     fetch("/api/clients")
       .then((r) => r.ok ? r.json() : [])
-      .then((data: Array<{ id: string; name: string; status: string; stats?: { overdueTasks?: number } }>) => {
+      .then((data: Array<{ id: string; name: string; status: string; logoUrl?: string | null; stats?: { overdueTasks?: number } }>) => {
         setClients(
           data
             .filter((c) => c.status === "ACTIVE" || c.status === "PAUSED")
@@ -58,6 +59,7 @@ export function Sidebar() {
               name: c.name,
               status: c.status,
               overdue: c.stats?.overdueTasks ?? 0,
+              logoUrl: c.logoUrl,
             }))
         );
       })
@@ -416,24 +418,33 @@ function SidebarClientRow({
         }}
       >
         {/* Mini avatar */}
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: "50%",
-            background: avatarBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
-            fontWeight: 600,
-            color: "#fff",
-            flexShrink: 0,
-            transition: "background 150ms ease-out",
-          }}
-        >
-          {initials}
-        </div>
+        {client.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={client.logoUrl}
+            alt={client.name}
+            style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              background: avatarBg,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+              fontWeight: 600,
+              color: "#fff",
+              flexShrink: 0,
+              transition: "background 150ms ease-out",
+            }}
+          >
+            {initials}
+          </div>
+        )}
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <p
