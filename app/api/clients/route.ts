@@ -3,14 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
 import { slugify } from "@/lib/utils";
-import { buildTasksFromPlanItems, createTasksWithChecklists } from "@/lib/plan-generator";
 import { z } from "zod";
-
-const deliverableItemSchema = z.object({
-  type: z.string().min(1),
-  quantity: z.number().int().min(1),
-  deadlineDayOfMonth: z.number().int().min(0).max(31).nullable(),
-});
 
 const createClientSchema = z.object({
   name: z.string().min(1),
@@ -38,7 +31,6 @@ const createClientSchema = z.object({
   restrictions: z.string().optional(),
   preferences: z.string().optional(),
   clientBehavior: z.string().optional(),
-  deliverables: z.array(deliverableItemSchema).optional(),
 });
 
 export async function GET() {
@@ -160,46 +152,6 @@ export async function POST(req: Request) {
       clientBehavior: parsed.data.clientBehavior || null,
     },
   });
-
-  // If deliverables were defined, create a custom Plan + ClientPlan + tasks for current month
-  const deliverables = parsed.data.deliverables ?? [];
-  if (deliverables.length > 0) {
-    const now = new Date();
-    const planMonth = now.getMonth() + 1;
-    const planYear = now.getFullYear();
-
-    const plan = await prisma.plan.create({
-      data: {
-        name: `Plano — ${parsed.data.brand || parsed.data.name}`,
-        category: "custom",
-        items: {
-          create: deliverables.map((d) => ({
-            type: d.type,
-            quantity: d.quantity,
-            deadlineDayOfMonth: d.deadlineDayOfMonth,
-            defaultPriority: "NORMAL",
-            checklistItems: [],
-          })),
-        },
-      },
-      include: { items: true },
-    });
-
-    await prisma.clientPlan.create({
-      data: {
-        clientId: client.id,
-        planId: plan.id,
-        month: planMonth,
-        year: planYear,
-        appliedBy: session!.user.id,
-        autoRenew: true,
-        active: true,
-      },
-    });
-
-    const rawTasks = buildTasksFromPlanItems(client.id, planMonth, planYear, plan.items);
-    await createTasksWithChecklists(rawTasks, plan.items);
-  }
 
   await logAction(session!.user.id, "CREATE_CLIENT", client.id, undefined, { name: client.name });
 

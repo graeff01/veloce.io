@@ -56,8 +56,9 @@ interface ClientDetail {
     health: "HEALTHY" | "ATTENTION" | "CRITICAL";
     completionRate: number;
   };
-  progressByType: Record<string, { planned: number; done: number; pct: number }>;
-  clientPlans: Array<{
+  progressByType?: Record<string, { planned: number; done: number; pct: number }>;
+  // Plano/entregáveis removidos — mantido opcional só para compatibilidade de tipo.
+  clientPlans?: Array<{
     id: string;
     month: number;
     year: number;
@@ -149,7 +150,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [clientId]);
 
   const isAdmin    = session?.user.role === "ADMIN";
-  const currentPlan = client?.clientPlans?.[0];
 
   if (loading) return (
     <div style={{ flex: 1, padding: 32 }}>
@@ -219,7 +219,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 }}>
                   {healthConfig.label}
                 </span>
-                {currentPlan && <Badge variant="purple">{currentPlan.plan.name}</Badge>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
                 {client.niche && (
@@ -291,7 +290,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       {tab === "perfil" && (
         <PerfilTab
           client={client}
-          currentPlan={currentPlan}
           isAdmin={isAdmin}
           note={note}
           setNote={setNote}
@@ -337,11 +335,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
             restrictions:        client.restrictions,
             preferences:         client.preferences,
             clientBehavior:      client.clientBehavior,
-            deliverables:        currentPlan?.plan.items.map((item) => ({
-              type:              item.type,
-              quantity:          item.quantity,
-              deadlineDayOfMonth: item.deadlineDayOfMonth ?? null,
-            })) ?? [],
           }}
           onSuccess={() => { setEditOpen(false); load(); }}
           onCancel={() => setEditOpen(false)}
@@ -355,7 +348,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
 function PerfilTab({
   client,
-  currentPlan,
   isAdmin,
   note,
   setNote,
@@ -364,7 +356,6 @@ function PerfilTab({
   onEditOpen,
 }: {
   client: ClientDetail;
-  currentPlan: ClientDetail["clientPlans"][0] | undefined;
   isAdmin: boolean;
   note: string;
   setNote: (v: string) => void;
@@ -406,41 +397,6 @@ function PerfilTab({
 
       {/* ── Left ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-
-        {/* Plano ativo */}
-        {currentPlan && isAdmin && (
-          <section>
-            <Label>Plano ativo</Label>
-            <div style={{
-              marginTop: 10,
-              padding: "12px 16px", borderRadius: 10,
-              background: "var(--bg-surface)", border: "1px solid var(--border)",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                  {currentPlan.plan.name}
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  {currentPlan.autoRenew ? "Auto-renovação ativa" : "Renovação manual"}
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {currentPlan.plan.items.map(item => (
-                  <span
-                    key={item.id}
-                    style={{
-                      fontSize: 10, padding: "2px 8px", borderRadius: 20,
-                      background: "var(--bg-elevated)", color: "var(--text-secondary)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {item.quantity}x {item.type}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
 
         {/* Observações internas */}
         <section>

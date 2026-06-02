@@ -2,14 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
-import { maybeAutoRenew } from "@/lib/plan-generator";
 import { z } from "zod";
-
-const deliverableItemSchema = z.object({
-  type: z.string().min(1),
-  quantity: z.number().int().min(1),
-  deadlineDayOfMonth: z.number().int().min(0).max(31).nullable(),
-});
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -38,7 +31,6 @@ const updateSchema = z.object({
   restrictions: z.string().optional(),
   preferences: z.string().optional(),
   clientBehavior: z.string().optional(),
-  deliverables: z.array(deliverableItemSchema).optional(),
 });
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -48,18 +40,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const client = await prisma.client.findFirst({
     where: { id, deletedAt: null },
-    include: {
-      clientPlans: {
-        include: { plan: { include: { items: true } } },
-        orderBy: { appliedAt: "desc" },
-      },
-    },
   });
 
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
-
-  // Lazy auto-renewal: silently generates tasks if autoRenew is on and none exist this month
-  await maybeAutoRenew(id);
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -101,34 +84,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     : overdueTasks > 0 || daysSinceActivity >= 4 ? "ATTENTION"
     : "HEALTHY";
 
-  // Real progress by deliverable type for current month
-  const activePlan = client.clientPlans.find((cp) => cp.active) ?? client.clientPlans[0];
-  const progressByType: Record<string, { planned: number; done: number; pct: number }> = {};
-
-  if (activePlan) {
-    const monthTasksByType = await prisma.task.groupBy({
-      by: ["type", "status"],
-      where: {
-        clientId: id,
-        deletedAt: null,
-        planMonth: activePlan.month,
-        planYear: activePlan.year,
-      },
-      _count: { id: true },
-    });
-
-    for (const item of activePlan.plan.items) {
-      const doneCount = monthTasksByType
-        .filter((t) => t.type === item.type && t.status === "DONE")
-        .reduce((sum, t) => sum + t._count.id, 0);
-      progressByType[item.type] = {
-        planned: item.quantity,
-        done: doneCount,
-        pct: item.quantity > 0 ? Math.round((doneCount / item.quantity) * 100) : 0,
-      };
-    }
-  }
-
   return NextResponse.json({
     ...client,
     stats: {
@@ -145,7 +100,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       nextTask,
       currentBlocker: blockedTask,
     },
-    progressByType,
+    progressByType: {},
     recentLogs,
     notes: recentLogs.filter((log) => log.action === "ADD_NOTE"),
   });
@@ -194,82 +149,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.clientBehavior !== undefined && { clientBehavior: parsed.data.clientBehavior || null }),
     },
   });
-
-  // If deliverables provided, sync PlanItems on the active custom plan
-  if (parsed.data.deliverables !== undefined) {
-    const deliverables = parsed.data.deliverables ?? [];
-    const activePlan = await prisma.clientPlan.findFirst({
-      where: { clientId: id, active: true },
-      include: { plan: { include: { items: true } } },
-      orderBy: { appliedAt: "desc" },
-    });
-
-    if (activePlan) {
-      const now = new Date();
-
-      // Find types that were removed
-      const previousTypes = activePlan.plan.items.map((i) => i.type);
-      const newTypes = deliverables.map((d) => d.type);
-      const removedTypes = previousTypes.filter((t) => !newTypes.includes(t));
-
-      // Soft-delete all undone tasks of removed types (current + future months)
-      if (removedTypes.length > 0) {
-        await prisma.task.updateMany({
-          where: {
-            clientId: id,
-            type: { in: removedTypes },
-            status: { not: "DONE" },
-            deletedAt: null,
-          },
-          data: { deletedAt: now },
-        });
-      }
-
-      // Replace all plan items
-      await prisma.planItem.deleteMany({ where: { planId: activePlan.planId } });
-      if (deliverables.length > 0) {
-        await prisma.planItem.createMany({
-          data: deliverables.map((d) => ({
-            planId: activePlan.planId,
-            type: d.type,
-            quantity: d.quantity,
-            deadlineDayOfMonth: d.deadlineDayOfMonth,
-            defaultPriority: "NORMAL",
-            checklistItems: [],
-          })),
-        });
-      }
-    } else if (deliverables.length > 0) {
-      // No active plan yet — create one (e.g. edited before plan was created)
-      const now = new Date();
-      const plan = await prisma.plan.create({
-        data: {
-          name: `Plano — ${parsed.data.brand || client.name}`,
-          category: "custom",
-          items: {
-            create: deliverables.map((d) => ({
-              type: d.type,
-              quantity: d.quantity,
-              deadlineDayOfMonth: d.deadlineDayOfMonth,
-              defaultPriority: "NORMAL",
-              checklistItems: [],
-            })),
-          },
-        },
-      });
-      await prisma.clientPlan.create({
-        data: {
-          clientId: id,
-          planId: plan.id,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
-          appliedBy: session!.user.id,
-          autoRenew: true,
-          active: true,
-        },
-      });
-    }
-  }
 
   await logAction(session!.user.id, "UPDATE_CLIENT", id, undefined, { before: client, after: parsed.data });
 

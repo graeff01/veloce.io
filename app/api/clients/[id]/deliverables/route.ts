@@ -68,24 +68,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (task.status !== "DONE" && task.dueDate < now) byType[key].overdue++;
   }
 
-  // Active plan for the month (for planned quantities)
-  const activePlan = await prisma.clientPlan.findFirst({
-    where: { clientId: id, active: true },
-    include: { plan: { include: { items: true } } },
-    orderBy: { appliedAt: "desc" },
-  });
-
-  const plannedQty: Record<string, number> = {};
-  if (activePlan) {
-    for (const item of activePlan.plan.items) {
-      plannedQty[item.type] = item.quantity;
-    }
-  }
-
   const groups = Object.values(byType).map((g) => ({
     ...g,
-    planned: plannedQty[g.type] ?? g.total,
-    pct: g.total > 0 ? Math.round((g.done / (plannedQty[g.type] ?? g.total)) * 100) : 0,
+    planned: g.total,
+    pct: g.total > 0 ? Math.round((g.done / g.total) * 100) : 0,
   }));
 
   return NextResponse.json({
@@ -96,8 +82,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       total: allTasks.length,
       done: allTasks.filter((t) => t.status === "DONE").length,
       overdue: allTasks.filter((t) => t.status !== "DONE" && t.dueDate < now).length,
-      hasPlan: !!activePlan,
-      planName: activePlan?.plan.name ?? null,
+      hasPlan: false,
+      planName: null,
     },
   });
 }
