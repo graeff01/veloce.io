@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Users, ShoppingCart, Link2,
-  AlertTriangle, CheckCircle2, Clock,
+  AlertTriangle, CheckCircle2,
 } from "lucide-react";
+import { WinningCampaigns } from "@/components/clients/winning-campaigns";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
   // ── Not connected ──────────────────────────────────────────────────────────
   if (!conn) return (
-    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", padding: "32px 28px" }}>
+    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", padding: "32px 28px", display: "flex", flexDirection: "column", gap: 32 }}>
       {showSetup
         ? <SetupForm clientId={clientId} onSaved={() => { setShowSetup(false); load(); }} onCancel={() => setShowSetup(false)} />
         : (
@@ -157,6 +158,12 @@ export function AdsTab({ clientId }: { clientId: string }) {
           </div>
         )
       }
+      {/* Acervo disponível mesmo sem conexão Meta */}
+      {!showSetup && (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 24 }}>
+          <WinningCampaigns clientId={clientId} />
+        </div>
+      )}
     </div>
   );
 
@@ -297,6 +304,11 @@ export function AdsTab({ clientId }: { clientId: string }) {
             </div>
           </>
         )}
+        {/* ── Winning Campaigns ── */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
+          <WinningCampaigns clientId={clientId} />
+        </div>
+
       </div>
     </div>
   );

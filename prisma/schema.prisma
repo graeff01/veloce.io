@@ -91,15 +91,16 @@ model Client {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
-  tasks          Task[]
-  movements      Movement[]
-  brains         Brain[]
-  clientPlans    ClientPlan[]
-  executionLogs  ExecutionLog[]
-  campaigns      Campaign[]
-  meetings       Meeting[]
-  financeEntries FinanceEntry[]
-  metaConnection MetaConnection?
+  tasks             Task[]
+  movements         Movement[]
+  brains            Brain[]
+  clientPlans       ClientPlan[]
+  executionLogs     ExecutionLog[]
+  campaigns         Campaign[]
+  meetings          Meeting[]
+  financeEntries    FinanceEntry[]
+  metaConnection    MetaConnection?
+  winningCampaigns  WinningCampaign[]
 }
 
 model Meeting {
@@ -433,6 +434,37 @@ model MetaInsight {
   connection      MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, campaignId, dateStart, dateStop])
+}
+
+// ── Winning Campaigns (acervo curado manualmente) ────────────────────────────
+
+model WinningCampaign {
+  id              String   @id @default(cuid())
+  clientId        String
+  month           Int
+  year            Int
+  name            String
+  platform        String   @default("Meta Ads")
+  tags            String[]
+
+  // métricas
+  spend           Float    @default(0)
+  leads           Int      @default(0)
+  cpl             Float    @default(0)
+  ctr             Float    @default(0)
+  reach           Int      @default(0)
+  roas            Float    @default(0)
+
+  // aprendizados
+  whatWorked      String?
+  audience        String?
+  creativeUrl     String?
+  nextSteps       String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────
