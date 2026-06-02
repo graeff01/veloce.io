@@ -432,6 +432,20 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                     );
                   })}
                 </div>
+                {/* Custom tag — type anything not in the presets */}
+                <input
+                  value={TASK_TAGS.includes(newType) ? "" : newType}
+                  onChange={e => setNewType(e.target.value)}
+                  placeholder="ou digite uma tag personalizada..."
+                  style={{
+                    marginTop: 8, height: 36, padding: "0 12px",
+                    background: "var(--bg-base)",
+                    border: `1px solid ${newType && !TASK_TAGS.includes(newType) ? "var(--accent)" : "var(--border-strong)"}`,
+                    borderRadius: 9, fontSize: 13,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
               </div>
 
               {/* Footer */}

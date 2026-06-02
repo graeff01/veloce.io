@@ -45,6 +45,30 @@ function fmtDuration(secs: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Build a "Add to Google Calendar" template URL from a saved meeting. The
+// meeting stays in our system; this just pre-fills a Google Calendar event the
+// user confirms. All-day on the meeting's date (no time field is captured).
+function googleCalendarUrl(m: Meeting): string {
+  const d = new Date(m.date);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const start = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+  const nd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+  const end = `${nd.getUTCFullYear()}${pad(nd.getUTCMonth() + 1)}${pad(nd.getUTCDate())}`;
+  const { plainSummary } = parseStructured(m.summary);
+  const details = [
+    m.participants.length ? `Participantes: ${m.participants.join(", ")}` : "",
+    plainSummary,
+    "Registrado no Veloce.io",
+  ].filter(Boolean).join("\n\n");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: m.title,
+    dates: `${start}/${end}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 // ── Audio preprocessing for transcription ───────────────────────────────────────
 // Groq Whisper rejects files over 25MB. We downsample the audio to 16kHz mono
 // (Whisper's internal rate — no quality loss) and split it into time-based
@@ -764,6 +788,25 @@ function MeetingCard({
       {/* Expanded content */}
       {expanded && (
         <div style={{ borderTop: "1px solid var(--border)", padding: "18px 18px 22px" }}>
+
+          {/* Add to Google Calendar — meeting stays saved here, this just pre-fills the event */}
+          <div style={{ marginBottom: 18 }}>
+            <a
+              href={googleCalendarUrl(meeting)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "8px 14px", borderRadius: 8,
+                background: "var(--bg-base)", border: "1px solid var(--border)",
+                color: "var(--text-primary)", fontSize: 12, fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <Calendar size={13} style={{ color: "var(--accent)" }} />
+              Adicionar ao Google Agenda
+            </a>
+          </div>
 
           {/* Audio player */}
           {audioUrl && (
