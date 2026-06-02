@@ -21,6 +21,7 @@ interface ClientDetail {
   id: string;
   name: string;
   brand?: string;
+  logoUrl?: string | null;
   email?: string;
   phone?: string;
   primaryContact?: string;
@@ -185,7 +186,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         {/* Top row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            <Avatar name={client.name} size="md" />
+            <Avatar name={client.name} src={client.logoUrl} size="md" />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <h1 style={{
