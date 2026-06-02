@@ -93,6 +93,25 @@ export function SettingsContent() {
     load();
   }
 
+  const [wiping, setWiping] = useState(false);
+  async function wipeTasks() {
+    if (!confirm("Isso vai REMOVER todas as tarefas do Kanban e do Calendário de TODOS os clientes. Tem certeza?")) return;
+    if (!confirm("Confirmação final: zerar todas as tarefas para começar do zero?")) return;
+    setWiping(true);
+    try {
+      const res = await fetch("/api/tasks/wipe", { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        alert(`${data?.count ?? 0} tarefa(s) removida(s). Kanban e calendário zerados.`);
+      } else {
+        alert(data?.error ?? "Não foi possível zerar as tarefas.");
+      }
+    } catch {
+      alert("Falha de rede ao zerar as tarefas.");
+    }
+    setWiping(false);
+  }
+
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
       <div
@@ -269,6 +288,56 @@ export function SettingsContent() {
             </div>
           )}
         </div>
+
+        {/* Danger zone — admin only */}
+        {session?.user.role === "ADMIN" && (
+          <div
+            style={{
+              marginTop: 18,
+              background: "var(--bg-surface)",
+              border: "1px solid rgba(220,38,38,0.3)",
+              borderRadius: 10,
+              boxShadow: "var(--shadow-card)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-panel)" }}>
+              <h2 style={{ fontSize: 14, fontWeight: 650, color: "var(--red, #DC2626)" }}>Zona de risco</h2>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                Ações irreversíveis. Use com cuidado.
+              </p>
+            </div>
+            <div style={{ padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Zerar todas as tarefas</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  Remove todas as tarefas do Kanban e do Calendário de todos os clientes para começar do zero.
+                </p>
+              </div>
+              <button
+                onClick={wipeTasks}
+                disabled={wiping}
+                style={{
+                  flexShrink: 0,
+                  padding: "9px 16px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(220,38,38,0.4)",
+                  background: "rgba(220,38,38,0.08)",
+                  color: "var(--red, #DC2626)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: wiping ? "not-allowed" : "pointer",
+                  opacity: wiping ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Trash2 size={14} /> {wiping ? "Zerando..." : "Zerar tarefas"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal open={newUserOpen} onClose={() => setNewUserOpen(false)} title="Novo usuario" size="sm">

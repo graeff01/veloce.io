@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight,
-  Plus, ChevronLeft, ChevronRight, Circle, X, RefreshCw, Zap,
+  Plus, ChevronLeft, ChevronRight, ChevronDown, Circle, X, RefreshCw, Zap,
   Loader2, Repeat,
 } from "lucide-react";
 
@@ -38,6 +38,13 @@ function loadHrPeople(): HrPerson[] {
   if (typeof window === "undefined") return [];
   try { return JSON.parse(localStorage.getItem("veloce-hr-people") ?? "[]") as HrPerson[]; } catch { return []; }
 }
+
+// Manual entries and per-month status overrides are persisted locally.
+const ENTRIES_KEY = "veloce-fin-entries";
+const STATUS_KEY  = "veloce-fin-status";
+// { [baseEntryId]: { "YYYY-M": status } } — lets a recurring entry have a
+// different status per month (e.g. paid this month, pending the next).
+type StatusMap = Record<string, Record<string, Entry["status"]>>;
 
 const CATEGORIES_RECEITA = ["Mensalidade", "Projeto", "Consultoria", "Bônus", "Outro"];
 
@@ -81,8 +88,19 @@ export function FinancesContent() {
   const [filter, setFilter] = useState<"TODOS" | EntryType>("TODOS");
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<EntryType>("RECEITA");
-  const [entries, setEntries]   = useState<Entry[]>([]);
+  const [entries, setEntries]   = useState<Entry[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) ?? "[]") as Entry[]; } catch { return []; }
+  });
+  const [statusMap, setStatusMap] = useState<StatusMap>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(localStorage.getItem(STATUS_KEY) ?? "{}") as StatusMap; } catch { return {}; }
+  });
   const [hrPeople, setHrPeople] = useState<HrPerson[]>([]);
+
+  // Persist manual entries + per-month status overrides
+  useEffect(() => { localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries)); }, [entries]);
+  useEffect(() => { localStorage.setItem(STATUS_KEY, JSON.stringify(statusMap)); }, [statusMap]);
 
   // sync HR people from localStorage (re-reads when tab gains focus)
   useEffect(() => {
@@ -93,20 +111,41 @@ export function FinancesContent() {
     return () => { window.removeEventListener("focus", sync); window.removeEventListener("storage", sync); };
   }, []);
 
-  // HR entries are read-only, derived from hrPeople (active only, current month)
+  const ym = `${year}-${month}`;
+  const resolveStatus = (baseId: string, fallback: Entry["status"]) => statusMap[baseId]?.[ym] ?? fallback;
+
+  // HR entries — recurring by nature, generated for the viewed month, with per-month status
   const hrEntries: Entry[] = hrPeople
     .filter(p => p.status === "ATIVO" && p.salary > 0)
-    .map(p => ({
-      id: `hr-${p.id}`,
-      type: "DESPESA" as const,
-      mode: "RECORRENTE" as const,
-      description: p.name,
-      category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
-      value: p.salary,
-      date: `${year}-${String(month).padStart(2, "0")}-05`,
-      status: "PENDENTE" as const,
-      client: p.role || undefined,
-    }));
+    .map(p => {
+      const id = `hr-${p.id}`;
+      return {
+        id,
+        type: "DESPESA" as const,
+        mode: "RECORRENTE" as const,
+        description: p.name,
+        category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
+        value: p.salary,
+        date: `${year}-${String(month).padStart(2, "0")}-05`,
+        status: resolveStatus(id, "PENDENTE"),
+        client: p.role || undefined,
+      };
+    });
+
+  // Manual entries applicable to the viewed month.
+  // AVULSO: only its own month. RECORRENTE: every month from its start onward,
+  // with status resolved per-month so marking one month paid doesn't touch the others.
+  const manualEntries: Entry[] = entries
+    .filter(e => {
+      const [sy, sm] = e.date.split("-").map(Number);
+      if (e.mode === "AVULSO") return sy === year && sm === month;
+      return year > sy || (year === sy && month >= sm);
+    })
+    .map(e => {
+      if (e.mode === "AVULSO") return e;
+      const day = e.date.split("-")[2] ?? "01";
+      return { ...e, date: `${year}-${String(month).padStart(2, "0")}-${day}`, status: resolveStatus(e.id, e.status) };
+    });
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1);
@@ -115,8 +154,8 @@ export function FinancesContent() {
     if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1);
   }
 
-  // all entries = manual + auto-generated from HR
-  const allEntries = [...entries, ...hrEntries];
+  // entries shown for the currently viewed month (manual applicable + HR)
+  const allEntries = [...manualEntries, ...hrEntries];
 
   const filtered = (filter === "TODOS" ? allEntries : allEntries.filter(e => e.type === filter));
 
@@ -133,6 +172,17 @@ export function FinancesContent() {
 
   function handleDelete(id: string) {
     setEntries(prev => prev.filter(e => e.id !== id));
+    setStatusMap(prev => { const next = { ...prev }; delete next[id]; return next; });
+  }
+
+  // Adjust an entry's status. Recurring (incl. HR) → only the viewed month;
+  // avulso → the entry itself.
+  function handleStatusChange(entry: Entry, status: Entry["status"]) {
+    if (entry.mode === "RECORRENTE") {
+      setStatusMap(prev => ({ ...prev, [entry.id]: { ...(prev[entry.id] ?? {}), [ym]: status } }));
+    } else {
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status } : e));
+    }
   }
 
   return (
@@ -218,7 +268,7 @@ export function FinancesContent() {
           <KpiCard
             label="A receber"
             value={fmtBRL(pendReceita)}
-            sub={`${entries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").length} cobranças pendentes`}
+            sub={`${allEntries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").length} cobranças pendentes`}
             icon={<ArrowUpRight size={15} color="#D97706" />}
             iconBg="rgba(217,119,6,0.1)"
             valueColor="#D97706"
@@ -284,6 +334,7 @@ export function FinancesContent() {
                     entry={entry}
                     last={i === filtered.length - 1}
                     onDelete={entry.id.startsWith("hr-") ? undefined : handleDelete}
+                    onStatusChange={handleStatusChange}
                     isHr={entry.id.startsWith("hr-")}
                   />
                 ))
@@ -375,9 +426,10 @@ export function FinancesContent() {
 
 // ── Entry Row ──────────────────────────────────────────────────────────────────
 
-function EntryRow({ entry, last, onDelete, isHr }: {
+function EntryRow({ entry, last, onDelete, onStatusChange, isHr }: {
   entry: Entry; last: boolean;
   onDelete?: (id: string) => void;
+  onStatusChange: (entry: Entry, status: Entry["status"]) => void;
   isHr?: boolean;
 }) {
   const [hover, setHover] = useState(false);
@@ -435,11 +487,28 @@ function EntryRow({ entry, last, onDelete, isHr }: {
       {/* Date */}
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(entry.date)}</span>
 
-      {/* Status + delete */}
+      {/* Status (editable) + delete */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
-          {st.label}
-        </span>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 600, color: st.color, background: st.bg,
+            padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap",
+            display: "inline-flex", alignItems: "center", gap: 3, cursor: "pointer",
+          }}>
+            {st.label}
+            <ChevronDown size={9} style={{ opacity: 0.6 }} />
+          </span>
+          <select
+            value={entry.status}
+            onChange={(e) => onStatusChange(entry, e.target.value as Entry["status"])}
+            title="Alterar status"
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: "none" }}
+          >
+            <option value="PAGO">Pago</option>
+            <option value="PENDENTE">Pendente</option>
+            <option value="VENCIDO">Vencido</option>
+          </select>
+        </div>
         {hover && !isHr && onDelete && (
           <button
             onClick={() => onDelete(entry.id)}
