@@ -7,6 +7,7 @@ const createSchema = z.object({
   title:        z.string().min(1),
   date:         z.string(),
   participants: z.array(z.string()).optional(),
+  description:  z.string().optional(),
 });
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,6 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       title:        parsed.data.title,
       date:         new Date(parsed.data.date),
       participants: parsed.data.participants ?? [],
+      summary:      parsed.data.description || null,
     },
   });
 

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft, ChevronRight, Plus, X, Zap, Calendar,
-  AlignLeft, Tag, User, ExternalLink, Loader2, Check,
-  LayoutGrid, List, Clock, CheckSquare,
+  AlignLeft, ExternalLink, Loader2, Check,
+  LayoutGrid, List, Clock, CheckSquare, Mic, Users,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -310,6 +310,281 @@ function MovementModal({
   );
 }
 
+// ── Meeting Schedule Modal ────────────────────────────────────────────────────
+// Creates: (1) a Meeting record for the Reuniões tab, (2) a kanban Task of
+// type "Reunião" so it shows in the board, and (3) opens Google Calendar with
+// all fields pre-filled so the user confirms the event there.
+
+function buildGCalUrl({
+  title, date, time, durationMins, participants, description,
+}: {
+  title: string; date: string; time: string; durationMins: number;
+  participants: string[]; description: string;
+}): string {
+  const startDt = new Date(`${date}T${time || "09:00"}:00`);
+  const endDt   = new Date(startDt.getTime() + durationMins * 60_000);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}T${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}00`;
+  const details = [
+    participants.length ? `Participantes: ${participants.join(", ")}` : "",
+    description,
+    "Agendado via Veloce.io",
+  ].filter(Boolean).join("\n\n");
+  const p = new URLSearchParams({
+    action: "TEMPLATE",
+    text:   title,
+    dates:  `${fmt(startDt)}/${fmt(endDt)}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${p.toString()}`;
+}
+
+function MeetingScheduleModal({
+  clients,
+  initialDate,
+  onClose,
+}: {
+  clients: Client[];
+  initialDate?: Date;
+  onClose: () => void;
+}) {
+  const defaultDate = (initialDate ?? new Date()).toISOString().slice(0, 10);
+  const [clientId,      setClientId]      = useState(clients[0]?.id ?? "");
+  const [title,         setTitle]         = useState("");
+  const [date,          setDate]          = useState(defaultDate);
+  const [time,          setTime]          = useState("09:00");
+  const [durationMins,  setDurationMins]  = useState(60);
+  const [participantDraft, setParticipantDraft] = useState("");
+  const [participants,  setParticipants]  = useState<string[]>([]);
+  const [description,   setDescription]  = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { titleRef.current?.focus(); }, []);
+
+  function addParticipant() {
+    const v = participantDraft.trim();
+    if (v && !participants.includes(v)) { setParticipants(p => [...p, v]); setParticipantDraft(""); }
+  }
+
+  async function handleSave() {
+    if (!title.trim() || !clientId) return;
+    setSaving(true);
+    setError("");
+    try {
+      // 1 — create Meeting record (populates Reuniões tab)
+      const meetingRes = await fetch(`/api/clients/${clientId}/meetings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), date: `${date}T${time}:00`, participants, description: description || undefined }),
+      });
+      if (!meetingRes.ok) throw new Error("Erro ao criar reunião");
+
+      // 2 — create kanban Task of type "Reunião" (populates kanban board)
+      await fetch(`/api/clients/${clientId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          type: "Reunião",
+          planMonth: new Date(date).getMonth() + 1,
+          planYear:  new Date(date).getFullYear(),
+          dueDate:   `${date}T${time}:00`,
+          description: description || undefined,
+        }),
+      });
+
+      // 3 — open Google Calendar (user confirms the event there)
+      const gcUrl = buildGCalUrl({ title: title.trim(), date, time, durationMins, participants, description });
+      window.open(gcUrl, "_blank", "noopener,noreferrer");
+
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro inesperado");
+      setSaving(false);
+    }
+  }
+
+  const sel: React.CSSProperties = {
+    padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)",
+    background: "var(--bg-base)", color: "var(--text-primary)", fontSize: 13,
+    outline: "none", width: "100%",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 540, background: "var(--bg-surface)", borderRadius: 16,
+          border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.25)",
+          overflow: "hidden",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(124,58,237,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Mic size={15} color="#7C3AED" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", display: "block" }}>Agendar Reunião</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Cria reunião no sistema, tarefa no kanban e abre o Google Agenda</span>
+          </div>
+          <button onClick={onClose} style={{ display: "flex", padding: 4, borderRadius: 6, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-muted)" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Title */}
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+            placeholder="Título da reunião"
+            style={{ ...sel, fontSize: 15, fontWeight: 600, padding: "10px 12px", background: "var(--bg-elevated)" }}
+          />
+
+          {/* Client */}
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>Cliente</label>
+            <select value={clientId} onChange={e => setClientId(e.target.value)} style={sel}>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.brand || c.name}</option>)}
+            </select>
+          </div>
+
+          {/* Date + Time + Duration */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>Data</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={sel} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>Horário</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={sel} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>Duração</label>
+              <select value={durationMins} onChange={e => setDurationMins(Number(e.target.value))} style={sel}>
+                <option value={30}>30 min</option>
+                <option value={45}>45 min</option>
+                <option value={60}>1 hora</option>
+                <option value={90}>1h 30min</option>
+                <option value={120}>2 horas</option>
+                <option value={180}>3 horas</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Participants */}
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>
+              <Users size={10} style={{ display: "inline", marginRight: 4 }} />Participantes
+            </label>
+            <div style={{ display: "flex", gap: 6, marginBottom: participants.length ? 6 : 0 }}>
+              <input
+                value={participantDraft}
+                onChange={e => setParticipantDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addParticipant(); } }}
+                placeholder="Nome ou e-mail"
+                style={{ ...sel, flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={addParticipant}
+                style={{ padding: "7px 14px", borderRadius: 8, background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                Add
+              </button>
+            </div>
+            {participants.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {participants.map((p, i) => (
+                  <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.25)", fontSize: 11, color: "#7C3AED" }}>
+                    {p}
+                    <button onClick={() => setParticipants(prev => prev.filter((_, j) => j !== i))} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#7C3AED", padding: 0, display: "flex" }}>
+                      <X size={9} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Agenda/description */}
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", display: "block", marginBottom: 5 }}>
+              <AlignLeft size={10} style={{ display: "inline", marginRight: 4 }} />Pauta / Descrição (opcional)
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Tópicos a discutir, objetivos, contexto..."
+              style={{ ...sel, resize: "none", lineHeight: 1.5 }}
+            />
+          </div>
+
+          {error && (
+            <p style={{ fontSize: 12, color: "#DC2626", background: "rgba(220,38,38,0.08)", padding: "8px 12px", borderRadius: 8, margin: 0 }}>{error}</p>
+          )}
+
+          {/* What will happen preview */}
+          <div style={{ background: "var(--bg-elevated)", borderRadius: 9, padding: "10px 14px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 5 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", margin: 0 }}>Ao confirmar</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {[
+                { icon: <Mic size={10} color="#7C3AED" />, text: "Reunião registrada na aba Reuniões do cliente", color: "#7C3AED" },
+                { icon: <Check size={10} color="#2563EB" />, text: "Tarefa \"Reunião\" criada no kanban do cliente", color: "#2563EB" },
+                { icon: <ExternalLink size={10} color="#16A34A" />, text: "Google Agenda abre com os dados pré-preenchidos", color: "#16A34A" },
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {item.icon}
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: "1px solid var(--border)" }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13 }}>
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!title.trim() || !clientId || saving}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "8px 20px", borderRadius: 9, border: "none",
+              background: title.trim() && clientId ? "#7C3AED" : "var(--bg-elevated)",
+              color: title.trim() && clientId ? "#fff" : "var(--text-muted)",
+              cursor: title.trim() && clientId ? "pointer" : "default",
+              fontSize: 13, fontWeight: 600,
+            }}
+          >
+            {saving
+              ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+              : <ExternalLink size={13} />}
+            Agendar e abrir Google Agenda
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Status cycle button ────────────────────────────────────────────────────────
 
 const STATUS_CYCLE: Movement["status"][] = ["PLANNED","IN_PROGRESS","REVIEW","DONE"];
@@ -457,7 +732,7 @@ function AgendaItem({
 
 function AgendaView({
   movements, calTasks, showTasks, month, year, now,
-  onEdit, onStatusChange, onNewMovement,
+  onEdit, onStatusChange, onNewMovement, onNewMeeting,
 }: {
   movements: Movement[];
   calTasks: CalTask[];
@@ -468,6 +743,7 @@ function AgendaView({
   onEdit: (m: Movement) => void;
   onStatusChange: (id: string, s: Movement["status"]) => void;
   onNewMovement: () => void;
+  onNewMeeting: () => void;
 }) {
   // Build a map of all days that have items
   const byDay: Record<string, { mvs: Movement[]; tasks: CalTask[] }> = {};
@@ -490,10 +766,15 @@ function AgendaView({
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, padding: "60px 0", color: "var(--text-muted)" }}>
         <Calendar size={40} style={{ opacity: 0.3 }} />
-        <p style={{ fontSize: 14 }}>Nenhuma movimentação em {MONTHS[month - 1]}</p>
-        <button onClick={onNewMovement} style={{ padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-          Registrar movimentação
-        </button>
+        <p style={{ fontSize: 14 }}>Nenhum item em {MONTHS[month - 1]}</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onNewMeeting} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", background: "#7C3AED", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <Mic size={13} /> Agendar reunião
+          </button>
+          <button onClick={onNewMovement} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, cursor: "pointer" }}>
+            <Plus size={13} /> Movimentação
+          </button>
+        </div>
       </div>
     );
   }
@@ -659,6 +940,7 @@ export function GlobalCalendar() {
   const [clients,   setClients]   = useState<Client[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [modal,     setModal]     = useState<{ date?: Date; movement?: Movement } | null>(null);
+  const [meetingModal, setMeetingModal] = useState<{ date?: Date } | null>(null);
   const [filterClient, setFilterClient] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showTasks, setShowTasks] = useState(true);
@@ -787,17 +1069,31 @@ export function GlobalCalendar() {
           <button onClick={() => setView("agenda")} style={btnStyle(view === "agenda")}><List size={13} /> Agenda</button>
         </div>
 
-        {/* New movement */}
+        {/* New movement (subtle) */}
         <button
           onClick={() => setModal({})}
           style={{
             display: "flex", alignItems: "center", gap: 6,
-            padding: "7px 14px", borderRadius: 9, border: "none",
-            background: "var(--accent)", color: "#fff",
+            padding: "7px 14px", borderRadius: 9,
+            border: "1px solid var(--border)",
+            background: "var(--bg-surface)", color: "var(--text-secondary)",
+            fontSize: 13, fontWeight: 500, cursor: "pointer",
+          }}
+        >
+          <Plus size={14} /> Movimentação
+        </button>
+
+        {/* Schedule meeting — primary CTA */}
+        <button
+          onClick={() => setMeetingModal({})}
+          style={{
+            display: "flex", alignItems: "center", gap: 7,
+            padding: "7px 16px", borderRadius: 9, border: "none",
+            background: "#7C3AED", color: "#fff",
             fontSize: 13, fontWeight: 600, cursor: "pointer",
           }}
         >
-          <Plus size={14} /> Nova movimentação
+          <Mic size={14} /> Agendar reunião
         </button>
       </div>
 
@@ -836,7 +1132,7 @@ export function GlobalCalendar() {
                       minHeight: 100, display: "flex", flexDirection: "column",
                       cursor: "pointer",
                     }}
-                    onClick={() => setModal({ date: day })}
+                    onClick={() => setMeetingModal({ date: day })}
                   >
                     {/* Day number */}
                     <div style={{
@@ -880,6 +1176,7 @@ export function GlobalCalendar() {
             onEdit={m => setModal({ movement: m })}
             onStatusChange={handleStatusChange}
             onNewMovement={() => setModal({})}
+            onNewMeeting={() => setMeetingModal({})}
           />
         )}
       </div>
@@ -904,13 +1201,22 @@ export function GlobalCalendar() {
         </div>
       )}
 
-      {/* ── Modal ── */}
+      {/* ── Movement modal ── */}
       {modal !== null && (
         <MovementModal
           clients={clients}
           initial={modal}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* ── Meeting schedule modal ── */}
+      {meetingModal !== null && (
+        <MeetingScheduleModal
+          clients={clients}
+          initialDate={meetingModal.date}
+          onClose={() => setMeetingModal(null)}
         />
       )}
     </div>
