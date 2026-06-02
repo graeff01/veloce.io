@@ -91,7 +91,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle]     = useState("");
   const [newType, setNewType]       = useState("");
-  const [newPriority, setNewPriority] = useState<Task["priority"]>("NORMAL");
   const [saving, setSaving]         = useState(false);
 
   // Rollover: archive DONE tasks from past months once per session
@@ -134,7 +133,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   function openCreate() {
     setNewTitle("");
     setNewType("");
-    setNewPriority("NORMAL");
     setShowCreate(true);
   }
 
@@ -148,7 +146,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       body: JSON.stringify({
         title: newTitle.trim(),
         type: newType || undefined,
-        priority: newPriority,
         planMonth: month,
         planYear: year,
       }),
@@ -161,22 +158,11 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   }
 
   async function handleDeleteTask(taskId: string) {
-    // Optimistic removal
+    if (!confirm("Excluir esta tarefa?")) return;
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
-      const ct = res.headers.get("content-type") ?? "";
-      // The server confirms with JSON { ok: true }. A non-OK status or an HTML
-      // response (e.g. an auth redirect to /login) means the delete did NOT
-      // persist — resync from the server so the UI matches the database
-      // (restoring only what is actually still there, never stale snapshots).
-      if (!res.ok || !ct.includes("application/json")) {
-        await load();
-        alert("Não foi possível excluir a tarefa. Faça login novamente e tente de novo.");
-      }
-    } catch {
-      await load();
-      alert("Falha de rede ao excluir a tarefa. Tente novamente.");
+    const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+    if (!res.ok) {
+      load();
     }
   }
 
@@ -431,55 +417,6 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                         }}
                       >
                         {tag}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Custom tag — type anything not in the presets */}
-                <input
-                  value={TASK_TAGS.includes(newType) ? "" : newType}
-                  onChange={e => setNewType(e.target.value)}
-                  placeholder="ou digite uma tag personalizada..."
-                  style={{
-                    marginTop: 8, height: 36, padding: "0 12px",
-                    background: "var(--bg-base)",
-                    border: `1px solid ${newType && !TASK_TAGS.includes(newType) ? "var(--accent)" : "var(--border-strong)"}`,
-                    borderRadius: 9, fontSize: 13,
-                    color: "var(--text-primary)", outline: "none", width: "100%",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              {/* Priority */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Prioridade
-                </label>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {([
-                    { key: "LOW", label: "Baixa", color: "#64748B" },
-                    { key: "NORMAL", label: "Normal", color: "#64748B" },
-                    { key: "HIGH", label: "Alta", color: "#D97706" },
-                    { key: "CRITICAL", label: "Crítica", color: "#DC2626" },
-                  ] as const).map(p => {
-                    const active = newPriority === p.key;
-                    const color = p.color;
-                    return (
-                      <button
-                        key={p.key}
-                        type="button"
-                        onClick={() => setNewPriority(p.key)}
-                        style={{
-                          padding: "5px 12px", borderRadius: 20, fontSize: 11,
-                          fontWeight: active ? 600 : 500,
-                          border: `1px solid ${active ? color : "var(--border)"}`,
-                          background: active ? color + "1a" : "var(--bg-elevated)",
-                          color: active ? color : "var(--text-muted)",
-                          cursor: "pointer", transition: "all 100ms ease",
-                        }}
-                      >
-                        {p.label}
                       </button>
                     );
                   })}

@@ -22,7 +22,9 @@ interface Person {
   department: string;
   email: string;
   phone: string;
-  salary: number;
+  salary: number;        // for FUNCIONARIO: monthly fixed; for PRESTADOR: value per unit
+  unitValue?: number;    // PRESTADOR only: value per delivery unit
+  unit?: string;         // PRESTADOR only: e.g. "vídeo", "post", "hora"
   status: PersonStatus;
   startDate: string;
   notes: string;
@@ -70,7 +72,7 @@ export function HrContent() {
   const ativos       = people.filter(p => p.status === "ATIVO");
   const funcionarios = ativos.filter(p => p.type === "FUNCIONARIO");
   const prestadores  = ativos.filter(p => p.type === "PRESTADOR");
-  const totalMensal  = ativos.reduce((s, p) => s + p.salary, 0);
+  const totalMensal  = ativos.reduce((s, p) => s + (p.type === "PRESTADOR" && p.unitValue ? 0 : p.salary), 0);
 
   function handleSave(person: Omit<Person, "id">) {
     if (editing) {
@@ -249,7 +251,16 @@ function PersonRow({ person, last, onEdit, onDelete, onToggleStatus }: {
         {tc.icon} {tc.label}
       </span>
       <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{person.department}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{fmtBRL(person.salary)}</span>
+      <div>
+        {person.type === "PRESTADOR" && person.unitValue ? (
+          <>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", letterSpacing: "-0.02em" }}>{fmtBRL(person.unitValue)}/{person.unit || "entrega"}</span>
+            <p style={{ fontSize: 10, color: "var(--text-muted)", margin: 0 }}>variável</p>
+          </>
+        ) : (
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{fmtBRL(person.salary)}</span>
+        )}
+      </div>
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
         {person.startDate ? new Date(person.startDate + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "numeric" }) : "—"}
       </span>
@@ -283,6 +294,9 @@ function PersonModal({ initial, onClose, onSave }: {
   const [email, setEmail]       = useState(initial?.email ?? "");
   const [phone, setPhone]       = useState(initial?.phone ?? "");
   const [salary, setSalary]     = useState(String(initial?.salary ?? ""));
+  const [isVariable, setIsVariable] = useState(initial?.type === "PRESTADOR" && !!initial?.unitValue);
+  const [unitValue, setUnitValue]   = useState(String(initial?.unitValue ?? ""));
+  const [unit, setUnit]             = useState(initial?.unit ?? "vídeo");
   const [status, setStatus]     = useState<PersonStatus>(initial?.status ?? "ATIVO");
   const [startDate, setStart]   = useState(initial?.startDate ?? new Date().toISOString().slice(0, 10));
   const [notes, setNotes]       = useState(initial?.notes ?? "");
@@ -291,7 +305,14 @@ function PersonModal({ initial, onClose, onSave }: {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    onSave({ type, name, role, department, email, phone, salary: parseFloat(salary) || 0, status, startDate, notes });
+    const isPrestadorVariavel = type === "PRESTADOR" && isVariable;
+    onSave({
+      type, name, role, department, email, phone,
+      salary: isPrestadorVariavel ? 0 : parseFloat(salary) || 0,
+      unitValue: isPrestadorVariavel ? parseFloat(unitValue) || 0 : undefined,
+      unit: isPrestadorVariavel ? unit : undefined,
+      status, startDate, notes,
+    });
   }
 
   return (
@@ -355,9 +376,41 @@ function PersonModal({ initial, onClose, onSave }: {
                 {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
               </select>
             </FormField>
-            <FormField label={type === "FUNCIONARIO" ? "Salário/mês (R$)" : "Honorário/mês (R$)"}>
-              <input type="number" min="0" step="0.01" value={salary} onChange={e => setSalary(e.target.value)} placeholder="0,00" style={inputStyle} />
-            </FormField>
+            {type === "PRESTADOR" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Pagamento</label>
+                  <div style={{ display: "flex", gap: 0, background: "var(--bg-base)", borderRadius: 7, padding: 2, border: "1px solid var(--border)" }}>
+                    {[{v: false, l: "Fixo/mês"}, {v: true, l: "Por entrega"}].map(o => (
+                      <button key={String(o.v)} type="button" onClick={() => setIsVariable(o.v)}
+                        style={{ padding: "3px 10px", borderRadius: 5, border: "none", fontSize: 11, fontWeight: isVariable === o.v ? 600 : 500, cursor: "pointer",
+                          background: isVariable === o.v ? "var(--bg-surface)" : "transparent",
+                          color: isVariable === o.v ? "#7C3AED" : "var(--text-muted)" }}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {isVariable ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <FormField label="Valor por entrega (R$)">
+                      <input type="number" min="0" step="0.01" value={unitValue} onChange={e => setUnitValue(e.target.value)} placeholder="500,00" style={inputStyle} />
+                    </FormField>
+                    <FormField label="Unidade">
+                      <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="ex: vídeo, post, hora" style={inputStyle} />
+                    </FormField>
+                  </div>
+                ) : (
+                  <FormField label="Honorário fixo/mês (R$)">
+                    <input type="number" min="0" step="0.01" value={salary} onChange={e => setSalary(e.target.value)} placeholder="0,00" style={inputStyle} />
+                  </FormField>
+                )}
+              </div>
+            ) : (
+              <FormField label="Salário/mês (R$)">
+                <input type="number" min="0" step="0.01" value={salary} onChange={e => setSalary(e.target.value)} placeholder="0,00" style={inputStyle} />
+              </FormField>
+            )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

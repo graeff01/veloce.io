@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight,
-  Plus, ChevronLeft, ChevronRight, ChevronDown, Circle, X, RefreshCw, Zap,
+  Plus, ChevronLeft, ChevronRight, Circle, X, RefreshCw, Zap,
   Loader2, Repeat,
 } from "lucide-react";
 
@@ -31,6 +31,8 @@ interface HrPerson {
   name: string;
   role: string;
   salary: number;
+  unitValue?: number;
+  unit?: string;
   status: "ATIVO" | "INATIVO";
 }
 
@@ -39,12 +41,18 @@ function loadHrPeople(): HrPerson[] {
   try { return JSON.parse(localStorage.getItem("veloce-hr-people") ?? "[]") as HrPerson[]; } catch { return []; }
 }
 
-// Manual entries and per-month status overrides are persisted locally.
-const ENTRIES_KEY = "veloce-fin-entries";
-const STATUS_KEY  = "veloce-fin-status";
-// { [baseEntryId]: { "YYYY-M": status } } — lets a recurring entry have a
-// different status per month (e.g. paid this month, pending the next).
-type StatusMap = Record<string, Record<string, Entry["status"]>>;
+const LS_ENTRIES = "veloce-finances-entries";
+const LS_RECORRENTES = "veloce-finances-recorrentes";
+
+function loadEntries(): Entry[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(LS_ENTRIES) ?? "[]") as Entry[]; } catch { return []; }
+}
+
+function loadRecorrentes(): Entry[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(LS_RECORRENTES) ?? "[]") as Entry[]; } catch { return []; }
+}
 
 const CATEGORIES_RECEITA = ["Mensalidade", "Projeto", "Consultoria", "Bônus", "Outro"];
 
@@ -88,21 +96,30 @@ export function FinancesContent() {
   const [filter, setFilter] = useState<"TODOS" | EntryType>("TODOS");
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<EntryType>("RECEITA");
-  const [entries, setEntries]   = useState<Entry[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) ?? "[]") as Entry[]; } catch { return []; }
-  });
-  const [statusMap, setStatusMap] = useState<StatusMap>(() => {
+  // avulso entries (per-month)
+  const [entries, setEntries]         = useState<Entry[]>(() => loadEntries());
+  // recorrentes (persist forever, shown every month)
+  const [recorrentes, setRecorrentes] = useState<Entry[]>(() => loadRecorrentes());
+  const [hrPeople, setHrPeople]       = useState<HrPerson[]>([]);
+  // qty override for variable contractors: { "hr-<id>": qty }
+  const LS_QTY = `veloce-hr-qty-${year}-${month}`;
+  const [hrQty, setHrQty] = useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
-    try { return JSON.parse(localStorage.getItem(STATUS_KEY) ?? "{}") as StatusMap; } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(`veloce-hr-qty-${now.getFullYear()}-${now.getMonth() + 1}`) ?? "{}"); } catch { return {}; }
   });
-  const [hrPeople, setHrPeople] = useState<HrPerson[]>([]);
 
-  // Persist manual entries + per-month status overrides
-  useEffect(() => { localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries)); }, [entries]);
-  useEffect(() => { localStorage.setItem(STATUS_KEY, JSON.stringify(statusMap)); }, [statusMap]);
+  // persist entries & recorrentes
+  useEffect(() => { localStorage.setItem(LS_ENTRIES, JSON.stringify(entries)); }, [entries]);
+  useEffect(() => { localStorage.setItem(LS_RECORRENTES, JSON.stringify(recorrentes)); }, [recorrentes]);
+  useEffect(() => { localStorage.setItem(LS_QTY, JSON.stringify(hrQty)); }, [hrQty, LS_QTY]);
 
-  // sync HR people from localStorage (re-reads when tab gains focus)
+  // reload qty when month changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { setHrQty(JSON.parse(localStorage.getItem(LS_QTY) ?? "{}")); } catch { setHrQty({}); }
+  }, [month, year, LS_QTY]);
+
+  // sync HR people from localStorage
   useEffect(() => {
     function sync() { setHrPeople(loadHrPeople()); }
     sync();
@@ -111,41 +128,54 @@ export function FinancesContent() {
     return () => { window.removeEventListener("focus", sync); window.removeEventListener("storage", sync); };
   }, []);
 
-  const ym = `${year}-${month}`;
-  const resolveStatus = (baseId: string, fallback: Entry["status"]) => statusMap[baseId]?.[ym] ?? fallback;
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  // HR entries — recurring by nature, generated for the viewed month, with per-month status
+  // HR entries derived from hrPeople
   const hrEntries: Entry[] = hrPeople
-    .filter(p => p.status === "ATIVO" && p.salary > 0)
-    .map(p => {
-      const id = `hr-${p.id}`;
-      return {
-        id,
-        type: "DESPESA" as const,
-        mode: "RECORRENTE" as const,
-        description: p.name,
-        category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
-        value: p.salary,
-        date: `${year}-${String(month).padStart(2, "0")}-05`,
-        status: resolveStatus(id, "PENDENTE"),
-        client: p.role || undefined,
-      };
+    .filter(p => p.status === "ATIVO")
+    .flatMap(p => {
+      const key = `hr-${p.id}`;
+      if (p.type === "PRESTADOR" && p.unitValue) {
+        // variable: qty × unitValue
+        const qty = hrQty[key] ?? 0;
+        if (qty === 0) return []; // zero qty = not yet registered this month
+        return [{
+          id: key,
+          type: "DESPESA" as const,
+          mode: "AVULSO" as const,
+          description: p.name,
+          category: "Pagamento PJ",
+          value: qty * p.unitValue,
+          date: `${monthPrefix}-05`,
+          status: "PENDENTE" as const,
+          client: `${qty}× ${p.unit || "entrega"} · ${p.role || ""}`.trim(),
+        }];
+      }
+      if (p.salary > 0) {
+        return [{
+          id: key,
+          type: "DESPESA" as const,
+          mode: "RECORRENTE" as const,
+          description: p.name,
+          category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
+          value: p.salary,
+          date: `${monthPrefix}-05`,
+          status: "PENDENTE" as const,
+          client: p.role || undefined,
+        }];
+      }
+      return [];
     });
 
-  // Manual entries applicable to the viewed month.
-  // AVULSO: only its own month. RECORRENTE: every month from its start onward,
-  // with status resolved per-month so marking one month paid doesn't touch the others.
-  const manualEntries: Entry[] = entries
-    .filter(e => {
-      const [sy, sm] = e.date.split("-").map(Number);
-      if (e.mode === "AVULSO") return sy === year && sm === month;
-      return year > sy || (year === sy && month >= sm);
-    })
-    .map(e => {
-      if (e.mode === "AVULSO") return e;
-      const day = e.date.split("-")[2] ?? "01";
-      return { ...e, date: `${year}-${String(month).padStart(2, "0")}-${day}`, status: resolveStatus(e.id, e.status) };
-    });
+  // recorrentes entries stamped with current month date
+  const recorrentesThisMonth: Entry[] = recorrentes.map(r => ({
+    ...r,
+    id: `rec-${r.id}-${year}-${month}`,
+    date: `${monthPrefix}-01`,
+  }));
+
+  // avulso entries filtered to this month
+  const avulsoThisMonth = entries.filter(e => e.date.startsWith(monthPrefix));
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1);
@@ -154,9 +184,7 @@ export function FinancesContent() {
     if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1);
   }
 
-  // entries shown for the currently viewed month (manual applicable + HR)
-  const allEntries = [...manualEntries, ...hrEntries];
-
+  const allEntries = [...avulsoThisMonth, ...recorrentesThisMonth, ...hrEntries];
   const filtered = (filter === "TODOS" ? allEntries : allEntries.filter(e => e.type === filter));
 
   const totalReceita = allEntries.filter(e => e.type === "RECEITA" && e.status === "PAGO").reduce((s, e) => s + e.value, 0);
@@ -167,22 +195,28 @@ export function FinancesContent() {
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
 
   function handleSave(entry: Omit<Entry, "id">) {
-    setEntries(prev => [{ ...entry, id: crypto.randomUUID() }, ...prev]);
+    const id = crypto.randomUUID();
+    if (entry.mode === "RECORRENTE") {
+      // strip date — it will be stamped per-month on display
+      setRecorrentes(prev => [{ ...entry, id }, ...prev]);
+    } else {
+      setEntries(prev => [{ ...entry, id }, ...prev]);
+    }
   }
 
   function handleDelete(id: string) {
-    setEntries(prev => prev.filter(e => e.id !== id));
-    setStatusMap(prev => { const next = { ...prev }; delete next[id]; return next; });
+    if (id.startsWith("rec-")) {
+      // extract original recorrente id
+      const parts = id.split("-");
+      const origId = parts.slice(1, parts.length - 2).join("-");
+      setRecorrentes(prev => prev.filter(r => r.id !== origId));
+    } else {
+      setEntries(prev => prev.filter(e => e.id !== id));
+    }
   }
 
-  // Adjust an entry's status. Recurring (incl. HR) → only the viewed month;
-  // avulso → the entry itself.
-  function handleStatusChange(entry: Entry, status: Entry["status"]) {
-    if (entry.mode === "RECORRENTE") {
-      setStatusMap(prev => ({ ...prev, [entry.id]: { ...(prev[entry.id] ?? {}), [ym]: status } }));
-    } else {
-      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status } : e));
-    }
+  function handleHrQtyChange(hrKey: string, qty: number) {
+    setHrQty(prev => ({ ...prev, [hrKey]: qty }));
   }
 
   return (
@@ -268,7 +302,7 @@ export function FinancesContent() {
           <KpiCard
             label="A receber"
             value={fmtBRL(pendReceita)}
-            sub={`${allEntries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").length} cobranças pendentes`}
+            sub={`${entries.filter(e => e.type === "RECEITA" && e.status === "PENDENTE").length} cobranças pendentes`}
             icon={<ArrowUpRight size={15} color="#D97706" />}
             iconBg="rgba(217,119,6,0.1)"
             valueColor="#D97706"
@@ -334,7 +368,6 @@ export function FinancesContent() {
                     entry={entry}
                     last={i === filtered.length - 1}
                     onDelete={entry.id.startsWith("hr-") ? undefined : handleDelete}
-                    onStatusChange={handleStatusChange}
                     isHr={entry.id.startsWith("hr-")}
                   />
                 ))
@@ -372,43 +405,19 @@ export function FinancesContent() {
             />
             {/* Recorrentes summary */}
             <RecurrenteSummary entries={allEntries} />
-            {/* HR / Equipe breakdown — synced automatically from the Equipe tab */}
-            {hrPeople.filter(p => p.status === "ATIVO").length > 0 && (() => {
-              const ativos       = hrPeople.filter(p => p.status === "ATIVO" && p.salary > 0);
-              const funcionarios = ativos.filter(p => p.type === "FUNCIONARIO");
-              const prestadores  = ativos.filter(p => p.type === "PRESTADOR");
-              const totalFunc    = funcionarios.reduce((s, p) => s + p.salary, 0);
-              const totalPrest   = prestadores.reduce((s, p) => s + p.salary, 0);
-              return (
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ padding: "11px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", gap: 7 }}>
-                    <Circle size={7} fill="#2563EB" color="#2563EB" />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>Custos com Equipe</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: "#2563EB", background: "rgba(37,99,235,0.1)", padding: "1px 5px", borderRadius: 4, letterSpacing: "0.04em", marginLeft: "auto" }}>
-                      AUTO RH
-                    </span>
-                  </div>
-                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Funcionários ({funcionarios.length})</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>{fmtBRL(totalFunc)}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Prestadores de serviço ({prestadores.length})</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>{fmtBRL(totalPrest)}</span>
-                    </div>
-                    <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>Total mensal</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{fmtBRL(totalFunc + totalPrest)}</span>
-                    </div>
-                    <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0", opacity: 0.8 }}>
-                      Sincronizado da aba Equipe e contabilizado como despesa recorrente a cada mês.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* HR notice */}
+            {hrPeople.filter(p => p.status === "ATIVO").length > 0 && (
+              <div style={{
+                padding: "10px 14px", borderRadius: 9,
+                background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)",
+                fontSize: 11, color: "#2563EB",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ fontWeight: 700 }}>Equipe:</span>
+                {hrPeople.filter(p => p.status === "ATIVO").length} pessoa(s) importada(s) do RH automaticamente.
+                As despesas de equipe são geradas a cada mês.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -426,10 +435,9 @@ export function FinancesContent() {
 
 // ── Entry Row ──────────────────────────────────────────────────────────────────
 
-function EntryRow({ entry, last, onDelete, onStatusChange, isHr }: {
+function EntryRow({ entry, last, onDelete, isHr }: {
   entry: Entry; last: boolean;
   onDelete?: (id: string) => void;
-  onStatusChange: (entry: Entry, status: Entry["status"]) => void;
   isHr?: boolean;
 }) {
   const [hover, setHover] = useState(false);
@@ -487,28 +495,11 @@ function EntryRow({ entry, last, onDelete, onStatusChange, isHr }: {
       {/* Date */}
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(entry.date)}</span>
 
-      {/* Status (editable) + delete */}
+      {/* Status + delete */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{ position: "relative", display: "inline-block" }}>
-          <span style={{
-            fontSize: 10, fontWeight: 600, color: st.color, background: st.bg,
-            padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap",
-            display: "inline-flex", alignItems: "center", gap: 3, cursor: "pointer",
-          }}>
-            {st.label}
-            <ChevronDown size={9} style={{ opacity: 0.6 }} />
-          </span>
-          <select
-            value={entry.status}
-            onChange={(e) => onStatusChange(entry, e.target.value as Entry["status"])}
-            title="Alterar status"
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: "none" }}
-          >
-            <option value="PAGO">Pago</option>
-            <option value="PENDENTE">Pendente</option>
-            <option value="VENCIDO">Vencido</option>
-          </select>
-        </div>
+        <span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
+          {st.label}
+        </span>
         {hover && !isHr && onDelete && (
           <button
             onClick={() => onDelete(entry.id)}
