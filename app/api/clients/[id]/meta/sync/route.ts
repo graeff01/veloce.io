@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
+import { decryptSecret } from "@/lib/crypto";
 
 // POST — busca insights do Meta e salva no banco
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -10,6 +11,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const conn = await prisma.metaConnection.findUnique({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "Conexão Meta não configurada" }, { status: 404 });
+
+  const accessToken = decryptSecret(conn.accessToken);
 
   // Período: mês atual por padrão, ou override via body
   const body = await req.json().catch(() => ({}));
@@ -30,14 +33,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     + `&level=adset`
     + `&time_increment=all_days`
     + `&limit=200`
-    + `&access_token=${conn.accessToken}`;
+    + `&access_token=${accessToken}`;
 
   const metaRes = await fetch(url);
   const metaData = await metaRes.json();
 
   if (!metaRes.ok || metaData.error) {
+    const err = metaData.error;
+    // Token expirado/inválido (Meta usa code 190 / type OAuthException)
+    if (err?.code === 190 || err?.type === "OAuthException") {
+      return NextResponse.json(
+        { error: "O token do Meta expirou ou foi revogado. Reconecte a conta em Anúncios.", reconnect: true },
+        { status: 401 }
+      );
+    }
     return NextResponse.json(
-      { error: metaData.error?.message ?? "Erro ao buscar dados do Meta" },
+      { error: err?.message ?? "Erro ao buscar dados do Meta" },
       { status: 400 }
     );
   }
@@ -74,9 +85,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     await prisma.metaInsight.upsert({
       where: {
-        connectionId_campaignId_dateStart_dateStop: {
+        connectionId_campaignId_adsetId_dateStart_dateStop: {
           connectionId: conn.id,
           campaignId:   row.campaign_id,
+          adsetId:      row.adset_id ?? null,
           dateStart:    new Date(since),
           dateStop:     new Date(until),
         },

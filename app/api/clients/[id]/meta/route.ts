@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
+import { encryptSecret } from "@/lib/crypto";
 import { z } from "zod";
 
 const saveSchema = z.object({
@@ -8,7 +9,7 @@ const saveSchema = z.object({
   accessToken: z.string().min(1),
 });
 
-// GET — retorna a conexão e os insights do mês atual
+// GET — retorna a conexão e os insights do mês atual (sem expor o accessToken)
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
@@ -23,7 +24,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     },
   });
 
-  return NextResponse.json(conn ?? null);
+  if (!conn) return NextResponse.json(null);
+
+  // Nunca enviar o token ao cliente
+  const { accessToken: _token, ...safe } = conn;
+  return NextResponse.json({ ...safe, hasToken: true });
 }
 
 // POST — salva/atualiza credenciais e verifica a conta
@@ -54,24 +59,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
+  const encrypted = encryptSecret(accessToken);
+
   const conn = await prisma.metaConnection.upsert({
     where: { clientId: id },
     create: {
       clientId:    id,
       adAccountId: accountId,
-      accessToken,
+      accessToken: encrypted,
       accountName: verifyData.name ?? null,
       currency:    verifyData.currency ?? "BRL",
     },
     update: {
       adAccountId: accountId,
-      accessToken,
+      accessToken: encrypted,
       accountName: verifyData.name ?? null,
       currency:    verifyData.currency ?? "BRL",
     },
   });
 
-  return NextResponse.json(conn, { status: 201 });
+  const { accessToken: _t, ...safe } = conn;
+  return NextResponse.json({ ...safe, hasToken: true }, { status: 201 });
 }
 
 // DELETE — remove conexão e todos os insights

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireAuth, logAction } from "@/lib/api-helpers";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -30,17 +30,15 @@ export async function GET(req: Request) {
   if (clientId) where.clientId = clientId;
   if (mode && mode !== "all") where.mode = mode;
 
-  // avulso: filter by month/year via date range
-  // recorrente: return all (they repeat every month, stamped on display)
-  if (month && year && (!mode || mode === "AVULSO")) {
+  // Recorrentes repetem todo mês (stamped na exibição) — não filtra por data.
+  // Avulsos (e a visão "all") filtram pelo mês/ano informado.
+  if (month && year && mode !== "RECORRENTE") {
     const m = parseInt(month);
     const y = parseInt(year);
-    if (mode === "AVULSO") {
-      where.date = {
-        gte: new Date(y, m - 1, 1),
-        lte: new Date(y, m, 0, 23, 59, 59),
-      };
-    }
+    where.date = {
+      gte: new Date(y, m - 1, 1),
+      lte: new Date(y, m, 0, 23, 59, 59),
+    };
   }
 
   const entries = await prisma.financeEntry.findMany({
@@ -53,7 +51,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireAuth("clients:update");
+  const { error, session } = await requireAuth("clients:update");
   if (error) return error;
 
   const body   = await req.json();
@@ -73,6 +71,10 @@ export async function POST(req: Request) {
       notes:       parsed.data.notes    || null,
     },
     include: { client: { select: { id: true, name: true, brand: true } } },
+  });
+
+  await logAction(session!.user.id, "CREATE_FINANCE", entry.clientId ?? undefined, undefined, {
+    type: entry.type, value: entry.value, description: entry.description,
   });
 
   return NextResponse.json(entry, { status: 201 });

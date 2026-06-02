@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireAuth, logAction } from "@/lib/api-helpers";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -15,7 +15,7 @@ const updateSchema = z.object({
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:update");
+  const { error, session } = await requireAuth("clients:update");
   if (error) return error;
 
   const body   = await req.json();
@@ -36,14 +36,21 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     include: { client: { select: { id: true, name: true, brand: true } } },
   });
 
+  await logAction(session!.user.id, "UPDATE_FINANCE", entry.clientId ?? undefined, undefined, {
+    status: entry.status, value: entry.value, description: entry.description,
+  });
+
   return NextResponse.json(entry);
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:update");
+  const { error, session } = await requireAuth("clients:update");
   if (error) return error;
 
-  await prisma.financeEntry.update({ where: { id }, data: { deletedAt: new Date() } });
+  const entry = await prisma.financeEntry.update({ where: { id }, data: { deletedAt: new Date() } });
+  await logAction(session!.user.id, "DELETE_FINANCE", entry.clientId ?? undefined, undefined, {
+    description: entry.description, value: entry.value,
+  });
   return NextResponse.json({ ok: true });
 }

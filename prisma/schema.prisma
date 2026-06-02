@@ -433,7 +433,8 @@ model MetaInsight {
 
   connection      MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
-  @@unique([connectionId, campaignId, dateStart, dateStop])
+  // adsetId incluído para não colapsar adsets diferentes da mesma campanha
+  @@unique([connectionId, campaignId, adsetId, dateStart, dateStop])
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────
@@ -501,6 +502,20 @@ model FinanceEntry {
   deletedAt   DateTime?
 
   client      Client?            @relation(fields: [clientId], references: [id])
+}
+
+// Status por mês de lançamentos recorrentes (recorrentes + custos de equipe).
+// refKey identifica a origem exibida: "rec-<financeEntryId>" ou "team-<teamMemberId>".
+model FinanceStatusOverride {
+  id        String             @id @default(cuid())
+  refKey    String
+  year      Int
+  month     Int
+  status    FinanceEntryStatus
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([refKey, year, month])
 }
 
 // ── Team Member (HR) ──────────────────────────────────────────────────────────

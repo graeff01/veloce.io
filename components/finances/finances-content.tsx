@@ -83,6 +83,8 @@ export function FinancesContent() {
   const [team, setTeam]           = useState<TeamMember[]>([]);
   const [clients, setClients]     = useState<Client[]>([]);
   const [loading, setLoading]     = useState(true);
+  // per-month status for recurring/team entries: { refKey: status }
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, Entry["status"]>>({});
   // qty for variable contractors this month: { teamMemberId: qty }
   const [hrQty, setHrQty]         = useState<Record<string, number>>({});
   const LS_QTY = `veloce-hr-qty-${year}-${month}`;
@@ -96,11 +98,12 @@ export function FinancesContent() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [avulsoRes, recRes, teamRes, clientsRes] = await Promise.all([
+    const [avulsoRes, recRes, teamRes, clientsRes, statusRes] = await Promise.all([
       fetch(`/api/finance?mode=AVULSO&month=${month}&year=${year}`),
       fetch(`/api/finance?mode=RECORRENTE`),
       fetch(`/api/team`),
       fetch(`/api/clients`),
+      fetch(`/api/finance/status?month=${month}&year=${year}`),
     ]);
     if (avulsoRes.ok) setEntries(await avulsoRes.json());
     if (recRes.ok)    setRecorrentes(await recRes.json());
@@ -109,6 +112,7 @@ export function FinancesContent() {
       const data = await clientsRes.json();
       setClients(Array.isArray(data) ? data : (data.clients ?? []));
     }
+    if (statusRes.ok) setStatusOverrides(await statusRes.json());
     setLoading(false);
   }, [month, year]);
 
@@ -135,7 +139,7 @@ export function FinancesContent() {
           category: "Pagamento PJ",
           value: qty * p.unitValue,
           date: `${monthPrefix}-05`,
-          status: "PENDENTE",
+          status: statusOverrides[`team-${p.id}`] ?? "PENDENTE",
           client: null,
           notes: `${qty}× ${p.unit || "entrega"} · ${p.role || ""}`.trim(),
         }];
@@ -148,7 +152,7 @@ export function FinancesContent() {
           category: p.type === "FUNCIONARIO" ? "Salário CLT" : "Pagamento PJ",
           value: p.salary,
           date: `${monthPrefix}-05`,
-          status: "PENDENTE",
+          status: statusOverrides[`team-${p.id}`] ?? "PENDENTE",
           client: null,
           notes: p.role || null,
         }];
@@ -156,11 +160,12 @@ export function FinancesContent() {
       return [];
     });
 
-  // Recorrentes stamped with current month date
+  // Recorrentes stamped with current month date + per-month status
   const recorrentesThisMonth: Entry[] = recorrentes.map(r => ({
     ...r,
     id: `rec-${r.id}`,
     date: `${monthPrefix}-01`,
+    status: statusOverrides[`rec-${r.id}`] ?? r.status,
   }));
 
   const allEntries = [...entries, ...recorrentesThisMonth, ...teamEntries];
@@ -210,7 +215,18 @@ export function FinancesContent() {
   }
 
   async function handleStatusChange(id: string, status: Entry["status"]) {
-    if (id.startsWith("rec-") || id.startsWith("team-")) return;
+    // Recorrentes e equipe: status por mês (não muda os outros meses)
+    if (id.startsWith("rec-") || id.startsWith("team-")) {
+      setStatusOverrides(prev => ({ ...prev, [id]: status })); // otimista
+      await fetch(`/api/finance/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refKey: id, year, month, status }),
+      });
+      load();
+      return;
+    }
+    // Avulsos: status no próprio lançamento
     await fetch(`/api/finance/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
