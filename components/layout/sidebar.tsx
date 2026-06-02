@@ -18,6 +18,7 @@ import {
   Wallet,
   Users,
   UserRound,
+  Brain,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -30,11 +31,12 @@ interface ClientRow {
 }
 
 const bottomNavItems = [
-  { href: "/",          icon: LayoutDashboard, label: "Visao geral" },
-  { href: "/calendar",  icon: CalendarDays,    label: "Calendario" },
-  { href: "/clients",   icon: UserRound,       label: "Clientes" },
-  { href: "/finances",  icon: Wallet,          label: "Financas" },
-  { href: "/hr",        icon: Users,           label: "Equipe" },
+  { href: "/",             icon: LayoutDashboard, label: "Visao geral" },
+  { href: "/calendar",     icon: CalendarDays,    label: "Calendario" },
+  { href: "/clients",      icon: UserRound,       label: "Clientes" },
+  { href: "/finances",     icon: Wallet,          label: "Financas" },
+  { href: "/hr",           icon: Users,           label: "Equipe" },
+  { href: "/intelligence", icon: Brain,           label: "Inteligencia" },
 ];
 
 const adminNavItems = [

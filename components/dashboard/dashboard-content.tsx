@@ -6,7 +6,7 @@ import {
   Users, AlertTriangle, CheckCircle2, Clock,
   TrendingDown, Activity, Zap, ArrowRight,
   BellRing, ChevronRight,
-  CalendarDays, Settings, Wallet,
+  CalendarDays, Settings, Wallet, Brain,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate } from "@/lib/utils";
@@ -285,7 +285,7 @@ const NAV_ITEMS = [
   {
     href: "/calendar",
     label: "Calendário",
-    description: "Movimentos e agenda",
+    description: "Tarefas e agenda",
     icon: CalendarDays,
     color: "#0891B2",
     soft: "rgba(8,145,178,0.08)",
@@ -307,6 +307,14 @@ const NAV_ITEMS = [
     soft: "rgba(217,119,6,0.08)",
   },
   {
+    href: "/intelligence",
+    label: "Inteligência",
+    description: "Campanhas e insights",
+    icon: Brain,
+    color: "#7C3AED",
+    soft: "rgba(124,58,237,0.08)",
+  },
+  {
     href: "/settings",
     label: "Configurações",
     description: "Time e permissões",
@@ -322,7 +330,7 @@ function QuickNav() {
       <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, opacity: 0.7 }}>
         Acesso rápido
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (

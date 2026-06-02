@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-const LS_KEY = "veloce-hr-people";
+import { useEffect, useState, useCallback } from "react";
 import {
   Users, Plus, X, Briefcase, DollarSign, Phone,
   Mail, Edit2, Trash2, UserCheck, UserX, Loader2,
@@ -22,12 +20,12 @@ interface Person {
   department: string;
   email: string;
   phone: string;
-  salary: number;        // for FUNCIONARIO: monthly fixed; for PRESTADOR: value per unit
-  unitValue?: number;    // PRESTADOR only: value per delivery unit
-  unit?: string;         // PRESTADOR only: e.g. "vídeo", "post", "hora"
+  salary: number;
+  unitValue?: number | null;
+  unit?: string | null;
   status: PersonStatus;
-  startDate: string;
-  notes: string;
+  startDate?: string | null;
+  notes?: string | null;
 }
 
 const DEPARTMENTS = ["Operações", "Criação", "Tráfego", "Comercial", "Gestão", "Financeiro", "Outro"];
@@ -49,19 +47,21 @@ function fmtBRL(v: number) {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export function HrContent() {
-  const [people, setPeople] = useState<Person[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { return JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") as Person[]; } catch { return []; }
-  });
+  const [people, setPeople]         = useState<Person[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [showForm, setShowForm]     = useState(false);
   const [editing, setEditing]       = useState<Person | null>(null);
   const [filterType, setFilterType] = useState<"TODOS" | PersonType>("TODOS");
   const [filterStatus, setFilterStatus] = useState<"TODOS" | PersonStatus>("TODOS");
 
-  // persist to localStorage whenever people changes
-  useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(people));
-  }, [people]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch("/api/team");
+    if (res.ok) setPeople(await res.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const filtered = people.filter(p => {
     if (filterType !== "TODOS" && p.type !== filterType) return false;
@@ -74,14 +74,23 @@ export function HrContent() {
   const prestadores  = ativos.filter(p => p.type === "PRESTADOR");
   const totalMensal  = ativos.reduce((s, p) => s + (p.type === "PRESTADOR" && p.unitValue ? 0 : p.salary), 0);
 
-  function handleSave(person: Omit<Person, "id">) {
+  async function handleSave(person: Omit<Person, "id">) {
     if (editing) {
-      setPeople(prev => prev.map(p => p.id === editing.id ? { ...person, id: editing.id } : p));
+      await fetch(`/api/team/${editing.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(person),
+      });
     } else {
-      setPeople(prev => [...prev, { ...person, id: crypto.randomUUID() }]);
+      await fetch("/api/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(person),
+      });
     }
     setShowForm(false);
     setEditing(null);
+    load();
   }
 
   function handleEdit(person: Person) {
@@ -89,15 +98,28 @@ export function HrContent() {
     setShowForm(true);
   }
 
-  function handleDelete(id: string) {
-    setPeople(prev => prev.filter(p => p.id !== id));
+  async function handleDelete(id: string) {
+    if (!confirm("Remover esta pessoa?")) return;
+    await fetch(`/api/team/${id}`, { method: "DELETE" });
+    load();
   }
 
-  function handleToggleStatus(id: string) {
-    setPeople(prev => prev.map(p =>
-      p.id === id ? { ...p, status: p.status === "ATIVO" ? "INATIVO" : "ATIVO" } : p
-    ));
+  async function handleToggleStatus(id: string) {
+    const person = people.find(p => p.id === id);
+    if (!person) return;
+    await fetch(`/api/team/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: person.status === "ATIVO" ? "INATIVO" : "ATIVO" }),
+    });
+    load();
   }
+
+  if (loading) return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+    </div>
+  );
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
@@ -262,7 +284,7 @@ function PersonRow({ person, last, onEdit, onDelete, onToggleStatus }: {
         )}
       </div>
       <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        {person.startDate ? new Date(person.startDate + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "numeric" }) : "—"}
+        {person.startDate ? new Date(person.startDate).toLocaleDateString("pt-BR", { month: "short", year: "numeric" }) : "—"}
       </span>
       <span style={{ fontSize: 10, fontWeight: 600, color: sc.color, background: sc.bg, padding: "3px 8px", borderRadius: 20, display: "inline-block" }}>
         {sc.label}
@@ -298,7 +320,7 @@ function PersonModal({ initial, onClose, onSave }: {
   const [unitValue, setUnitValue]   = useState(String(initial?.unitValue ?? ""));
   const [unit, setUnit]             = useState(initial?.unit ?? "vídeo");
   const [status, setStatus]     = useState<PersonStatus>(initial?.status ?? "ATIVO");
-  const [startDate, setStart]   = useState(initial?.startDate ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStart]   = useState(initial?.startDate ?? new Date().toISOString().slice(0, 10) ?? "");
   const [notes, setNotes]       = useState(initial?.notes ?? "");
   const [saving, setSaving]     = useState(false);
 

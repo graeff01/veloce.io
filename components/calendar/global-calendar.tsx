@@ -767,14 +767,9 @@ function AgendaView({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, padding: "60px 0", color: "var(--text-muted)" }}>
         <Calendar size={40} style={{ opacity: 0.3 }} />
         <p style={{ fontSize: 14 }}>Nenhum item em {MONTHS[month - 1]}</p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onNewMeeting} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", background: "#7C3AED", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            <Mic size={13} /> Agendar reunião
-          </button>
-          <button onClick={onNewMovement} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, cursor: "pointer" }}>
-            <Plus size={13} /> Movimentação
-          </button>
-        </div>
+        <button onClick={onNewMeeting} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", background: "#7C3AED", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <Mic size={13} /> Agendar reunião
+        </button>
       </div>
     );
   }
@@ -1068,20 +1063,6 @@ export function GlobalCalendar() {
           <button onClick={() => setView("month")}  style={btnStyle(view === "month")}><LayoutGrid size={13} /> Mês</button>
           <button onClick={() => setView("agenda")} style={btnStyle(view === "agenda")}><List size={13} /> Agenda</button>
         </div>
-
-        {/* New movement (subtle) */}
-        <button
-          onClick={() => setModal({})}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "7px 14px", borderRadius: 9,
-            border: "1px solid var(--border)",
-            background: "var(--bg-surface)", color: "var(--text-secondary)",
-            fontSize: 13, fontWeight: 500, cursor: "pointer",
-          }}
-        >
-          <Plus size={14} /> Movimentação
-        </button>
 
         {/* Schedule meeting — primary CTA */}
         <button

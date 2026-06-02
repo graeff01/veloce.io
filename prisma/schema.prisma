@@ -91,13 +91,14 @@ model Client {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
-  tasks         Task[]
-  movements     Movement[]
-  brains        Brain[]
-  clientPlans   ClientPlan[]
-  executionLogs ExecutionLog[]
-  campaigns     Campaign[]
-  meetings      Meeting[]
+  tasks          Task[]
+  movements      Movement[]
+  brains         Brain[]
+  clientPlans    ClientPlan[]
+  executionLogs  ExecutionLog[]
+  campaigns      Campaign[]
+  meetings       Meeting[]
+  financeEntries FinanceEntry[]
 }
 
 model Meeting {
@@ -385,6 +386,73 @@ model GlobalInsight {
   source      String?
 
   createdAt   DateTime    @default(now())
+}
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+
+enum FinanceEntryType {
+  RECEITA
+  DESPESA
+}
+
+enum FinanceEntryMode {
+  RECORRENTE
+  AVULSO
+}
+
+enum FinanceEntryStatus {
+  PAGO
+  PENDENTE
+  VENCIDO
+}
+
+model FinanceEntry {
+  id          String             @id @default(cuid())
+  type        FinanceEntryType
+  mode        FinanceEntryMode   @default(AVULSO)
+  description String
+  category    String
+  value       Float
+  date        DateTime
+  status      FinanceEntryStatus @default(PENDENTE)
+  clientId    String?
+  notes       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+
+  client      Client?            @relation(fields: [clientId], references: [id])
+}
+
+// ── Team Member (HR) ──────────────────────────────────────────────────────────
+
+enum TeamMemberType {
+  FUNCIONARIO
+  PRESTADOR
+}
+
+enum TeamMemberStatus {
+  ATIVO
+  INATIVO
+}
+
+model TeamMember {
+  id         String           @id @default(cuid())
+  type       TeamMemberType
+  name       String
+  role       String           @default("")
+  department String           @default("")
+  email      String           @default("")
+  phone      String           @default("")
+  salary     Float            @default(0)
+  unitValue  Float?
+  unit       String?
+  status     TeamMemberStatus @default(ATIVO)
+  startDate  DateTime?
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
 }
 
 // ── Execution log ─────────────────────────────────────────────────────────────
