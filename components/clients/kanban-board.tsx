@@ -14,6 +14,7 @@ type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
 interface Task {
   id: string;
   title: string;
+  description: string | null;
   type: string | null;
   status: Status;
   priority: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
@@ -88,10 +89,13 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [year, setYear]   = useState(now.getFullYear());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTitle, setNewTitle]     = useState("");
-  const [newType, setNewType]       = useState("");
-  const [saving, setSaving]         = useState(false);
+  const [showCreate, setShowCreate]         = useState(false);
+  const [newTitle, setNewTitle]             = useState("");
+  const [newType, setNewType]               = useState("");
+  const [newCustomTag, setNewCustomTag]     = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPriority, setNewPriority]       = useState<Task["priority"]>("NORMAL");
+  const [saving, setSaving]                 = useState(false);
 
   // Rollover: archive DONE tasks from past months once per session
   const rolloverDone = useRef(false);
@@ -133,6 +137,9 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   function openCreate() {
     setNewTitle("");
     setNewType("");
+    setNewCustomTag("");
+    setNewDescription("");
+    setNewPriority("NORMAL");
     setShowCreate(true);
   }
 
@@ -140,12 +147,15 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
     e.preventDefault();
     if (!newTitle.trim()) return;
     setSaving(true);
+    const effectiveType = newCustomTag.trim() || newType || undefined;
     const res = await fetch(`/api/clients/${clientId}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: newTitle.trim(),
-        type: newType || undefined,
+        type: effectiveType,
+        description: newDescription.trim() || undefined,
+        priority: newPriority,
         planMonth: month,
         planYear: year,
       }),
@@ -373,6 +383,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
             {/* Modal body */}
             <form onSubmit={handleCreateTask} style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+
               {/* Title */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -394,6 +405,41 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                 />
               </div>
 
+              {/* Priority */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Prioridade
+                </label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([
+                    { key: "LOW",      label: "Baixa",    color: "#64748B", bg: "rgba(100,116,139,0.12)" },
+                    { key: "NORMAL",   label: "Normal",   color: "#2563EB", bg: "rgba(37,99,235,0.12)"   },
+                    { key: "HIGH",     label: "Alta",     color: "#D97706", bg: "rgba(217,119,6,0.12)"   },
+                    { key: "CRITICAL", label: "Crítica",  color: "#DC2626", bg: "rgba(220,38,38,0.12)"   },
+                  ] as const).map(p => {
+                    const active = newPriority === p.key;
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => setNewPriority(p.key)}
+                        style={{
+                          flex: 1, padding: "7px 0", borderRadius: 9, fontSize: 11, fontWeight: 600,
+                          border: `1.5px solid ${active ? p.color : "var(--border)"}`,
+                          background: active ? p.bg : "var(--bg-elevated)",
+                          color: active ? p.color : "var(--text-muted)",
+                          cursor: "pointer", transition: "all 100ms ease",
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                        }}
+                      >
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: active ? p.color : "var(--border)", flexShrink: 0 }} />
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Tags */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -401,12 +447,12 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                 </label>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {TASK_TAGS.map(tag => {
-                    const active = newType === tag;
+                    const active = newType === tag && !newCustomTag.trim();
                     return (
                       <button
                         key={tag}
                         type="button"
-                        onClick={() => setNewType(active ? "" : tag)}
+                        onClick={() => { setNewType(active ? "" : tag); setNewCustomTag(""); }}
                         style={{
                           padding: "5px 12px", borderRadius: 20, fontSize: 11,
                           fontWeight: active ? 600 : 500,
@@ -421,6 +467,41 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                     );
                   })}
                 </div>
+                {/* Custom tag */}
+                <input
+                  value={newCustomTag}
+                  onChange={e => { setNewCustomTag(e.target.value); if (e.target.value) setNewType(""); }}
+                  placeholder="Ou digite uma tag personalizada..."
+                  style={{
+                    height: 34, padding: "0 10px",
+                    background: "var(--bg-base)",
+                    border: `1px solid ${newCustomTag.trim() ? "var(--accent)" : "var(--border)"}`,
+                    borderRadius: 8, fontSize: 12,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box", marginTop: 2,
+                  }}
+                />
+              </div>
+
+              {/* Description */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Descrição <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(opcional)</span>
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Contexto, briefing, observações..."
+                  style={{
+                    padding: "9px 12px", resize: "none",
+                    background: "var(--bg-base)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 9, fontSize: 13, lineHeight: 1.5,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
               </div>
 
               {/* Footer */}
@@ -689,16 +770,48 @@ function KanbanCard({
         </button>
       </div>
 
-      {/* Type badge — uses status color tint so it integrates visually */}
-      {task.type && (
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 4, alignSelf: "flex-start",
-          background: accentCol + "14", border: `1px solid ${accentCol}28`,
-          padding: "2px 8px", borderRadius: 20,
-          fontSize: 10, fontWeight: 600, color: accentCol,
+      {/* Type badge + priority dot */}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+        {task.type && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            background: accentCol + "14", border: `1px solid ${accentCol}28`,
+            padding: "2px 8px", borderRadius: 20,
+            fontSize: 10, fontWeight: 600, color: accentCol,
+          }}>
+            {task.type}
+          </div>
+        )}
+        {/* Priority badge — always visible, color-coded */}
+        {(() => {
+          const cfg = {
+            CRITICAL: { label: "Crítica", color: "#DC2626", bg: "rgba(220,38,38,0.12)" },
+            HIGH:     { label: "Alta",    color: "#D97706", bg: "rgba(217,119,6,0.12)"  },
+            NORMAL:   { label: "Normal",  color: "#2563EB", bg: "rgba(37,99,235,0.10)"  },
+            LOW:      { label: "Baixa",   color: "#64748B", bg: "rgba(100,116,139,0.10)"},
+          }[task.priority];
+          return (
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              background: cfg.bg, border: `1px solid ${cfg.color}30`,
+              padding: "2px 7px", borderRadius: 20,
+              fontSize: 10, fontWeight: 600, color: cfg.color,
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+              {cfg.label}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Description preview */}
+      {task.description && (
+        <p style={{
+          fontSize: 11, color: "var(--text-muted)", lineHeight: "15px", margin: 0,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
         }}>
-          {task.type}
-        </div>
+          {task.description}
+        </p>
       )}
 
       {/* Checklist mini bar */}
@@ -729,7 +842,7 @@ function KanbanCard({
           {fmtDate(task.dueDate)}
         </span>
 
-        {task.priority !== "NORMAL" && task.priority !== "LOW" && (
+        {false && (
           <span style={{
             display: "flex", alignItems: "center", gap: 3,
             fontSize: 10, fontWeight: 600,
