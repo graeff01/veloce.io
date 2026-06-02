@@ -384,15 +384,48 @@ function PerfilTab({
     onSaved();
   }
 
-  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+  // Resize/compress raster images in the browser so any upload size works and
+  // the stored data stays small. SVGs are kept as-is (already tiny/vector).
+  function resizeImage(dataUrl: string, maxDim = 512): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/png")); // PNG preserves transparency
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (logoInputRef.current) logoInputRef.current.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Selecione um arquivo de imagem."); return; }
-    if (file.size > 600 * 1024) { alert("Logo muito grande (máx. 600KB)."); return; }
-    const reader = new FileReader();
-    reader.onload = () => saveLogo(reader.result as string);
-    reader.readAsDataURL(file);
+    if (file.size > 20 * 1024 * 1024) { alert("Arquivo muito grande (máx. 20MB)."); return; }
+
+    const dataUrl = await new Promise<string>((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result as string);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+
+    // SVG: keep vector as-is. Raster: downscale to keep the stored size small.
+    const finalUrl = file.type === "image/svg+xml" ? dataUrl : await resizeImage(dataUrl);
+    await saveLogo(finalUrl);
   }
   const timelineLogs = client.recentLogs
     .filter(l => l.action !== "UPDATE_CLIENT")
@@ -483,7 +516,7 @@ function PerfilTab({
                   </button>
                 )}
               </div>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>PNG, JPG ou SVG — máx. 600KB</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>PNG, JPG ou SVG — redimensionada automaticamente</span>
             </div>
           </div>
         </section>
