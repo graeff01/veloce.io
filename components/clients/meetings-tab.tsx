@@ -45,6 +45,69 @@ function fmtDuration(secs: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// ── Audio preprocessing for transcription ───────────────────────────────────────
+// Groq Whisper rejects files over 25MB. We downsample the audio to 16kHz mono
+// (Whisper's internal rate — no quality loss) and split it into time-based
+// chunks that comfortably fit the limit, so meetings of any length work.
+const TARGET_RATE = 16000;       // Hz — Whisper's native sample rate
+const CHUNK_SECONDS = 600;       // 10 min ≈ 19MB per 16kHz mono WAV chunk
+
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);            // PCM
+  view.setUint16(22, 1, true);            // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);           // 16-bit
+  writeStr(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function prepareAudioChunks(file: File): Promise<Blob[]> {
+  const arrayBuf = await file.arrayBuffer();
+  const AC: typeof AudioContext =
+    window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const decodeCtx = new AC();
+  let decoded: AudioBuffer;
+  try {
+    decoded = await decodeCtx.decodeAudioData(arrayBuf);
+  } finally {
+    decodeCtx.close();
+  }
+  // Resample to 16kHz mono (OfflineAudioContext downmixes to its 1-channel destination)
+  const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * TARGET_RATE), TARGET_RATE);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  const samples = rendered.getChannelData(0);
+
+  const chunkSize = TARGET_RATE * CHUNK_SECONDS;
+  const chunks: Blob[] = [];
+  for (let start = 0; start < samples.length; start += chunkSize) {
+    chunks.push(encodeWav(samples.subarray(start, Math.min(start + chunkSize, samples.length)), TARGET_RATE));
+  }
+  return chunks;
+}
+
 export function MeetingsTab({ clientId }: { clientId: string }) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +121,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   const [newParticipants, setNewParticipants] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing]   = useState<string | null>(null);
+  const [transcribeMsg, setTranscribeMsg] = useState<string | null>(null);
   const [transcribeErr, setTranscribeErr] = useState<string | null>(null);
   const [analyzing, setAnalyzing]         = useState<string | null>(null);
   const [audioUrls, setAudioUrls]         = useState<Record<string, string>>({});
@@ -111,24 +175,68 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   async function handleTranscribe(meetingId: string, file: File) {
     setTranscribing(meetingId);
     setTranscribeErr(null);
-    const form = new FormData();
-    form.append("audio", file);
+    setTranscribeMsg("Preparando áudio...");
     try {
-      const res = await fetch(`/api/meetings/${meetingId}/transcribe`, {
-        method: "POST",
-        body: form,
+      // Downsample + split so large/long recordings fit Groq's 25MB limit.
+      // If decoding fails (unsupported format), fall back to the raw file.
+      let uploads: Blob[];
+      try {
+        uploads = await prepareAudioChunks(file);
+      } catch {
+        uploads = [file];
+      }
+      if (uploads.length === 0) uploads = [file];
+
+      let fullText = "";
+      let totalDuration = 0;
+
+      for (let i = 0; i < uploads.length; i++) {
+        setTranscribeMsg(uploads.length > 1 ? `Transcrevendo parte ${i + 1}/${uploads.length}...` : "Transcrevendo...");
+        const form = new FormData();
+        form.append("audio", uploads[i], `audio-${i}.wav`);
+        form.append("raw", "1");
+        const res = await fetch(`/api/meetings/${meetingId}/transcribe`, { method: "POST", body: form });
+        if (!res.ok) {
+          const d = await res.json().catch(() => null);
+          let detail: string = d?.detail ?? d?.error ?? "Erro ao transcrever.";
+          if (detail.includes("request_too_large") || detail.includes("Request Entity Too Large")) {
+            detail = "Áudio grande demais para transcrever, mesmo após compressão. Tente um trecho mais curto.";
+          }
+          setTranscribeErr(detail);
+          setTranscribing(null);
+          setTranscribeMsg(null);
+          return;
+        }
+        const d = await res.json() as { text?: string; duration?: number };
+        fullText += (fullText ? " " : "") + (d.text ?? "");
+        totalDuration += d.duration ?? 0;
+      }
+
+      // Persist the stitched transcript
+      setTranscribeMsg("Salvando transcrição...");
+      await fetch(`/api/meetings/${meetingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: fullText, duration: Math.round(totalDuration) }),
       });
-      if (res.ok) {
-        const updated: Meeting = await res.json();
-        setMeetings((prev) => prev.map((m) => (m.id === meetingId ? updated : m)));
+
+      // Generate the structured AI analysis from the full transcript
+      setTranscribeMsg("Analisando com IA...");
+      const ares = await fetch(`/api/meetings/${meetingId}/analyze`, { method: "POST" });
+      if (ares.ok) {
+        const updated: Meeting = await ares.json();
+        setMeetings((prev) => prev.map((m) => (m.id === meetingId ? { ...updated, linkedTaskTitles: m.linkedTaskTitles } : m)));
       } else {
-        const d = await res.json().catch(() => null);
-        setTranscribeErr(d?.detail ?? d?.error ?? "Erro ao transcrever. Verifique se GROQ_API_KEY está configurada no Railway.");
+        // Analysis failed but transcript is saved — reflect it locally
+        setMeetings((prev) => prev.map((m) => (m.id === meetingId ? { ...m, transcript: fullText, duration: Math.round(totalDuration) } : m)));
+        const d = await ares.json().catch(() => null);
+        setTranscribeErr(d?.detail ?? d?.error ?? "Transcrição salva, mas a análise falhou. Use 'Analisar' para tentar de novo.");
       }
     } catch {
-      setTranscribeErr("Falha de rede ao enviar áudio.");
+      setTranscribeErr("Falha ao processar o áudio.");
     }
     setTranscribing(null);
+    setTranscribeMsg(null);
   }
 
   async function handleAnalyze(meetingId: string) {
@@ -332,7 +440,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
               </button>
             )}
             <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-              Suporta MP3, M4A, WAV, WebM — máx. 25MB. A transcrição acontece ao salvar.
+              Suporta MP3, M4A, WAV, WebM. Áudios longos são comprimidos e divididos automaticamente. A transcrição acontece ao salvar.
             </p>
           </div>
 
@@ -383,6 +491,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
               meeting={meeting}
               expanded={expanded === meeting.id}
               transcribing={transcribing === meeting.id}
+              transcribeMsg={transcribing === meeting.id ? transcribeMsg : null}
               analyzing={analyzing === meeting.id}
               audioUrl={audioUrls[meeting.id]}
               onToggle={() => setExpanded((v) => (v === meeting.id ? null : meeting.id))}
@@ -448,6 +557,7 @@ function MeetingCard({
   meeting,
   expanded,
   transcribing,
+  transcribeMsg,
   analyzing,
   audioUrl,
   onToggle,
@@ -459,6 +569,7 @@ function MeetingCard({
   meeting: Meeting;
   expanded: boolean;
   transcribing: boolean;
+  transcribeMsg: string | null;
   analyzing: boolean;
   audioUrl?: string;
   onToggle: () => void;
@@ -636,7 +747,7 @@ function MeetingCard({
           {(transcribing || analyzing) && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--accent)" }}>
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
-              {transcribing ? "Transcrevendo..." : "Analisando..."}
+              {transcribing ? (transcribeMsg ?? "Transcrevendo...") : "Analisando..."}
             </span>
           )}
           <button

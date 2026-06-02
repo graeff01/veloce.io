@@ -158,21 +158,21 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   }
 
   async function handleDeleteTask(taskId: string) {
-    const snapshot = tasks;
     // Optimistic removal
     setTasks(prev => prev.filter(t => t.id !== taskId));
     try {
       const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
       const ct = res.headers.get("content-type") ?? "";
-      // The server confirms with JSON { ok: true }. If we get a non-OK status
-      // or an HTML response (e.g. an auth redirect to /login), the delete did
-      // NOT persist — restore the card so the UI matches the database.
+      // The server confirms with JSON { ok: true }. A non-OK status or an HTML
+      // response (e.g. an auth redirect to /login) means the delete did NOT
+      // persist — resync from the server so the UI matches the database
+      // (restoring only what is actually still there, never stale snapshots).
       if (!res.ok || !ct.includes("application/json")) {
-        setTasks(snapshot);
+        await load();
         alert("Não foi possível excluir a tarefa. Faça login novamente e tente de novo.");
       }
     } catch {
-      setTasks(snapshot);
+      await load();
       alert("Falha de rede ao excluir a tarefa. Tente novamente.");
     }
   }

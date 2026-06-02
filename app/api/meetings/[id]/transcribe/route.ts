@@ -11,6 +11,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const file = formData.get("audio") as File | null;
   if (!file) return NextResponse.json({ error: "Arquivo de áudio obrigatório" }, { status: 400 });
 
+  // When "raw" is set, the client is sending one of several downsampled chunks.
+  // We only transcribe and return the text — saving + AI analysis happen once
+  // the client has stitched every chunk together.
+  const rawMode = formData.get("raw") != null;
+
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return NextResponse.json({ error: "GROQ_API_KEY não configurada" }, { status: 500 });
 
@@ -35,6 +40,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const whisperData = await whisperRes.json() as { text: string; duration?: number };
   const transcript = whisperData.text;
   const duration = whisperData.duration ? Math.round(whisperData.duration) : undefined;
+
+  if (rawMode) {
+    return NextResponse.json({ text: transcript, duration: duration ?? 0 });
+  }
 
   // Generate structured analysis via Groq chat
   let summary = "";

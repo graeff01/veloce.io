@@ -26,6 +26,7 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
     "tasks:read",
     "tasks:create",
     "tasks:update",
+    "tasks:delete",
     "plans:read",
     "checklist:update",
   ] as Permission[],
