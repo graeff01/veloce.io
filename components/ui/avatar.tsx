@@ -17,6 +17,7 @@ function colorFromName(name: string): string {
 
 interface AvatarProps {
   name: string;
+  src?: string | null;
   size?: "xs" | "sm" | "md";
   className?: string;
 }
@@ -27,7 +28,18 @@ const sizeClasses = {
   md: "w-8 h-8 text-sm",
 };
 
-export function Avatar({ name, size = "sm", className }: AvatarProps) {
+export function Avatar({ name, src, size = "sm", className }: AvatarProps) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={name}
+        title={name}
+        className={cn("rounded-full object-cover flex-shrink-0", sizeClasses[size], className)}
+      />
+    );
+  }
   return (
     <div
       className={cn(

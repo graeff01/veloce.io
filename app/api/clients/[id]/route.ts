@@ -7,6 +7,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   brand: z.string().optional(),
+  logoUrl: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   primaryContact: z.string().optional(),
@@ -123,6 +124,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     data: {
       ...(parsed.data.name && { name: parsed.data.name }),
       ...(parsed.data.brand !== undefined && { brand: parsed.data.brand || null }),
+      ...(parsed.data.logoUrl !== undefined && { logoUrl: parsed.data.logoUrl || null }),
       ...(parsed.data.email !== undefined && { email: parsed.data.email || null }),
       ...(parsed.data.phone !== undefined && { phone: parsed.data.phone || null }),
       ...(parsed.data.primaryContact !== undefined && { primaryContact: parsed.data.primaryContact || null }),

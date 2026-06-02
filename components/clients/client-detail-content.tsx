@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, MessageSquarePlus,
-  CalendarDays, Columns3, User, Mic,
+  CalendarDays, Columns3, User, Mic, Upload, Trash2, Loader2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ interface ClientDetail {
   id: string;
   name: string;
   brand?: string;
+  logoUrl?: string | null;
   email?: string;
   phone?: string;
   primaryContact?: string;
@@ -200,7 +201,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         {/* Top row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            <Avatar name={client.name} size="md" />
+            <Avatar name={client.name} src={client.logoUrl} size="md" />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <h1 style={{
@@ -290,12 +291,14 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       {tab === "perfil" && (
         <PerfilTab
           client={client}
+          clientId={clientId}
           isAdmin={isAdmin}
           note={note}
           setNote={setNote}
           savingNote={savingNote}
           saveNote={saveNote}
           onEditOpen={() => setEditOpen(true)}
+          onSaved={load}
         />
       )}
 
@@ -348,21 +351,49 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
 function PerfilTab({
   client,
+  clientId,
   isAdmin,
   note,
   setNote,
   savingNote,
   saveNote,
   onEditOpen,
+  onSaved,
 }: {
   client: ClientDetail;
+  clientId: string;
   isAdmin: boolean;
   note: string;
   setNote: (v: string) => void;
   savingNote: boolean;
   saveNote: () => void;
   onEditOpen: () => void;
+  onSaved: () => void;
 }) {
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [savingLogo, setSavingLogo] = useState(false);
+
+  async function saveLogo(logoUrl: string | null) {
+    setSavingLogo(true);
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ logoUrl: logoUrl ?? "" }),
+    });
+    setSavingLogo(false);
+    onSaved();
+  }
+
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (logoInputRef.current) logoInputRef.current.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Selecione um arquivo de imagem."); return; }
+    if (file.size > 600 * 1024) { alert("Logo muito grande (máx. 600KB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => saveLogo(reader.result as string);
+    reader.readAsDataURL(file);
+  }
   const timelineLogs = client.recentLogs
     .filter(l => l.action !== "UPDATE_CLIENT")
     .slice(0, 8);
@@ -397,6 +428,65 @@ function PerfilTab({
 
       {/* ── Left ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* Logo do cliente */}
+        <section>
+          <Label>Logo do cliente</Label>
+          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 14, overflow: "hidden",
+              border: "1px solid var(--border)", background: "var(--bg-surface)",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              {client.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={client.logoUrl} alt={client.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Avatar name={client.name} size="md" />
+              )}
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleLogoFile}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={savingLogo}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "7px 12px", borderRadius: 8,
+                    background: "var(--bg-surface)", border: "1px solid var(--border)",
+                    color: "var(--text-primary)", fontSize: 12, fontWeight: 600,
+                    cursor: savingLogo ? "not-allowed" : "pointer", opacity: savingLogo ? 0.6 : 1,
+                  }}
+                >
+                  {savingLogo ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={12} />}
+                  {client.logoUrl ? "Trocar logo" : "Enviar logo"}
+                </button>
+                {client.logoUrl && !savingLogo && (
+                  <button
+                    onClick={() => saveLogo(null)}
+                    title="Remover logo"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "7px 12px", borderRadius: 8,
+                      background: "var(--bg-surface)", border: "1px solid var(--border)",
+                      color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    }}
+                  >
+                    <Trash2 size={12} /> Remover
+                  </button>
+                )}
+              </div>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>PNG, JPG ou SVG — máx. 600KB</span>
+            </div>
+          </div>
+        </section>
 
         {/* Observações internas */}
         <section>

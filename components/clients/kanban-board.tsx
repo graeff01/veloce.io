@@ -91,6 +91,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle]     = useState("");
   const [newType, setNewType]       = useState("");
+  const [newPriority, setNewPriority] = useState<Task["priority"]>("NORMAL");
   const [saving, setSaving]         = useState(false);
 
   // Rollover: archive DONE tasks from past months once per session
@@ -133,6 +134,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   function openCreate() {
     setNewTitle("");
     setNewType("");
+    setNewPriority("NORMAL");
     setShowCreate(true);
   }
 
@@ -146,6 +148,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       body: JSON.stringify({
         title: newTitle.trim(),
         type: newType || undefined,
+        priority: newPriority,
         planMonth: month,
         planYear: year,
       }),
@@ -446,6 +449,41 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                     boxSizing: "border-box",
                   }}
                 />
+              </div>
+
+              {/* Priority */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Prioridade
+                </label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {([
+                    { key: "LOW", label: "Baixa", color: "#64748B" },
+                    { key: "NORMAL", label: "Normal", color: "#64748B" },
+                    { key: "HIGH", label: "Alta", color: "#D97706" },
+                    { key: "CRITICAL", label: "Crítica", color: "#DC2626" },
+                  ] as const).map(p => {
+                    const active = newPriority === p.key;
+                    const color = p.color;
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => setNewPriority(p.key)}
+                        style={{
+                          padding: "5px 12px", borderRadius: 20, fontSize: 11,
+                          fontWeight: active ? 600 : 500,
+                          border: `1px solid ${active ? color : "var(--border)"}`,
+                          background: active ? color + "1a" : "var(--bg-elevated)",
+                          color: active ? color : "var(--text-muted)",
+                          cursor: "pointer", transition: "all 100ms ease",
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Footer */}

@@ -60,6 +60,7 @@ model Client {
   id           String       @id @default(cuid())
   name         String
   brand        String?
+  logoUrl      String?
   slug         String       @unique
   email        String?
   phone        String?
