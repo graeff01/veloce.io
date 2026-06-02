@@ -99,6 +99,7 @@ model Client {
   campaigns      Campaign[]
   meetings       Meeting[]
   financeEntries FinanceEntry[]
+  metaConnection MetaConnection?
 }
 
 model Meeting {
@@ -386,6 +387,52 @@ model GlobalInsight {
   source      String?
 
   createdAt   DateTime    @default(now())
+}
+
+// ── Meta Ads Integration ──────────────────────────────────────────────────────
+
+model MetaConnection {
+  id            String    @id @default(cuid())
+  clientId      String    @unique
+  adAccountId   String
+  accessToken   String
+  accountName   String?
+  currency      String?
+  lastSyncAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  client        Client    @relation(fields: [clientId], references: [id])
+  insights      MetaInsight[]
+}
+
+model MetaInsight {
+  id              String   @id @default(cuid())
+  connectionId    String
+  campaignId      String
+  campaignName    String
+  adsetId         String?
+  adsetName       String?
+  status          String
+  dateStart       DateTime
+  dateStop        DateTime
+  spend           Float    @default(0)
+  impressions     Int      @default(0)
+  reach           Int      @default(0)
+  clicks          Int      @default(0)
+  ctr             Float    @default(0)
+  cpm             Float    @default(0)
+  cpc             Float    @default(0)
+  leads           Int      @default(0)
+  cpl             Float    @default(0)
+  purchases       Int      @default(0)
+  roas            Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connection      MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, campaignId, dateStart, dateStop])
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────

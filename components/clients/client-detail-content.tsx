@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity,
-  CalendarDays, Columns3, User, Mic,
+  CalendarDays, Columns3, User, Mic, BarChart2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
+import { AdsTab } from "@/components/clients/ads-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes";
+type Tab = "operacao" | "perfil" | "reunioes" | "anuncios";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
+    { key: "anuncios",  label: "Anúncios",  icon: <BarChart2 size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -272,6 +274,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {tab === "reunioes" && (
         <MeetingsTab clientId={clientId} />
+      )}
+
+      {tab === "anuncios" && (
+        <AdsTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (
