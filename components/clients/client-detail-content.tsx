@@ -14,7 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
-import { AdsTab } from "@/components/clients/ads-tab";
+import { WinningCampaigns } from "@/components/clients/winning-campaigns";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -171,7 +171,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
-    { key: "anuncios",  label: "Anúncios",  icon: <BarChart2 size={13} /> },
+    { key: "anuncios",  label: "Campanhas", icon: <BarChart2 size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -277,7 +277,9 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       )}
 
       {tab === "anuncios" && (
-        <AdsTab clientId={clientId} />
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <WinningCampaigns clientId={clientId} />
+        </div>
       )}
 
       {tab === "perfil" && (

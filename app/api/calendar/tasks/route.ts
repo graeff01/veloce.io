@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       type: true,
       status: true,
       dueDate: true,
+      createdAt: true,
       client: { select: { id: true, name: true, brand: true } },
     },
     orderBy: { dueDate: "asc" },

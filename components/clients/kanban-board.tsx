@@ -158,6 +158,12 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
         priority: newPriority,
         planMonth: month,
         planYear: year,
+        // Vence no dia da criação (mês atual) — aparece nesse dia na agenda.
+        // Em outros meses, cai no dia 1 do mês exibido.
+        dueDate: (() => {
+          const d = isCurrentMonth ? new Date() : new Date(year, month - 1, 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        })(),
       }),
     });
     setSaving(false);

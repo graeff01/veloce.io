@@ -38,6 +38,7 @@ interface CalTask {
   type: string | null;
   status: "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
   dueDate: string;
+  createdAt: string;
   client?: { id: string; name: string; brand?: string | null };
 }
 
@@ -754,7 +755,9 @@ function AgendaView({
   });
   if (showTasks) {
     calTasks.forEach(t => {
-      const key = t.dueDate.slice(0, 10);
+      // Agenda agrupa pelo dia em que a tarefa foi criada (não pela data de
+      // vencimento) — é o "dia que eu criei" esperado.
+      const key = (t.createdAt ?? t.dueDate).slice(0, 10);
       if (!byDay[key]) byDay[key] = { mvs: [], tasks: [] };
       byDay[key].tasks.push(t);
     });

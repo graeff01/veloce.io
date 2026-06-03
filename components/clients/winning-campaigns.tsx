@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Trophy, Plus, X, Loader2, Edit2, Trash2,
   TrendingUp, Users, MousePointer, DollarSign,
-  ExternalLink, ChevronDown, ChevronUp, Tag,
+  ExternalLink, ChevronDown, ChevronUp, Tag, Sparkles, ClipboardPaste,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -308,6 +308,41 @@ function CampaignForm({ clientId, initial, onClose, onSaved }: {
   const [creativeUrl, setCreativeUrl] = useState(initial?.creativeUrl ?? "");
   const [nextSteps, setNextSteps]   = useState(initial?.nextSteps ?? "");
 
+  // Importar por IA (colar relatório/planilha)
+  const [pasteOpen, setPasteOpen]   = useState(false);
+  const [pasteText, setPasteText]   = useState("");
+  const [parsing, setParsing]       = useState(false);
+  const [parseErr, setParseErr]     = useState("");
+
+  async function handleParse() {
+    if (!pasteText.trim()) return;
+    setParsing(true);
+    setParseErr("");
+    try {
+      const res = await fetch("/api/winning-campaigns/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: pasteText }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setParseErr(d?.error ?? "Não consegui interpretar."); setParsing(false); return; }
+      if (d.name)              setName(String(d.name));
+      if (d.spend != null)     setSpend(String(d.spend));
+      if (d.leads != null)     setLeads(String(d.leads));
+      if (d.cpl != null)       setCpl(String(d.cpl));
+      if (d.ctr != null)       setCtr(String(d.ctr));
+      if (d.reach != null)     setReach(String(d.reach));
+      if (d.roas != null)      setRoas(String(d.roas));
+      if (d.audience)          setAudience(String(d.audience));
+      if (d.whatWorked)        setWhatWorked(String(d.whatWorked));
+      setPasteOpen(false);
+      setPasteText("");
+    } catch {
+      setParseErr("Falha de rede.");
+    }
+    setParsing(false);
+  }
+
   function toggleTag(t: string) {
     setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   }
@@ -370,6 +405,41 @@ function CampaignForm({ clientId, initial, onClose, onSaved }: {
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+          {/* Importar por IA — cola o relatório/planilha e preenche sozinho */}
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-elevated)", padding: pasteOpen ? "12px 14px" : "0" }}>
+            {!pasteOpen ? (
+              <button
+                type="button"
+                onClick={() => setPasteOpen(true)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 14px", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}
+              >
+                <Sparkles size={13} /> Colar dados e preencher com IA
+              </button>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-muted)", fontSize: 11 }}>
+                  <ClipboardPaste size={12} /> Cole o relatório do Meta, uma linha da planilha ou anotações — a IA extrai os números.
+                </div>
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  rows={4}
+                  autoFocus
+                  placeholder={"Ex: Campanha Lead Verão — Gasto R$ 1.240, 83 leads, CPL R$ 14,9, CTR 2,1%, alcance 38.000..."}
+                  style={{ ...ta, height: "auto" }}
+                />
+                {parseErr && <span style={{ fontSize: 11, color: "var(--red, #DC2626)" }}>{parseErr}</span>}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" onClick={() => { setPasteOpen(false); setPasteText(""); setParseErr(""); }} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+                  <button type="button" onClick={handleParse} disabled={parsing || !pasteText.trim()} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: parsing ? "default" : "pointer", opacity: parsing || !pasteText.trim() ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+                    {parsing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={12} />}
+                    {parsing ? "Lendo..." : "Preencher campos"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Name + platform + period */}
           <div>
