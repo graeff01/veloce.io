@@ -108,6 +108,7 @@ model Meeting {
   clientId     String
   title        String
   date         DateTime
+  description  String?
   duration     Int?
   audioUrl     String?
   transcript   String?

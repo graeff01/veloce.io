@@ -25,6 +25,7 @@ interface Meeting {
   id: string;
   title: string;
   date: string;
+  description: string | null;
   duration: number | null;
   transcript: string | null;
   summary: string | null;
@@ -143,6 +144,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newParticipants, setNewParticipants] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing]   = useState<string | null>(null);
   const [transcribeMsg, setTranscribeMsg] = useState<string | null>(null);
@@ -168,6 +170,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
         title: newTitle.trim(),
         date: new Date(newDate).toISOString(),
         participants: newParticipants.split(",").map((p) => p.trim()).filter(Boolean),
+        description: newDescription.trim() || undefined,
       }),
     });
     if (res.ok) {
@@ -183,6 +186,7 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
       setNewTitle("");
       setNewDate(new Date().toISOString().slice(0, 10));
       setNewParticipants("");
+      setNewDescription("");
       setAudioFile(null);
       setShowNew(false);
       setExpanded(meeting.id);
@@ -403,6 +407,19 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
               onChange={(e) => setNewParticipants(e.target.value)}
               placeholder="ex: João Silva, Maria Souza"
               style={inputStyle}
+            />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+              Descrição / contexto (opcional)
+            </label>
+            <textarea
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="Pauta, objetivo, observações..."
+              rows={3}
+              style={{ ...inputStyle, height: "auto", padding: "8px 10px", resize: "vertical" }}
             />
           </div>
 
@@ -807,6 +824,18 @@ function MeetingCard({
               Adicionar ao Google Agenda
             </a>
           </div>
+
+          {/* Description (ex.: contexto definido ao agendar) */}
+          {meeting.description && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabelStyle}>
+                <MessageSquare size={10} /> Descrição
+              </p>
+              <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>
+                {meeting.description}
+              </p>
+            </div>
+          )}
 
           {/* Audio player */}
           {audioUrl && (

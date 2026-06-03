@@ -53,7 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       title:        parsed.data.title,
       date:         new Date(parsed.data.date),
       participants: parsed.data.participants ?? [],
-      summary:      parsed.data.description || null,
+      description:  parsed.data.description || null,
     },
   });
 

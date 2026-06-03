@@ -6,6 +6,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   title:        z.string().min(1).optional(),
   date:         z.string().optional(),
+  description:  z.string().optional().nullable(),
   duration:     z.number().optional(),
   transcript:   z.string().optional(),
   summary:      z.string().optional(),
@@ -28,6 +29,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data: {
       ...(parsed.data.title        !== undefined && { title: parsed.data.title }),
       ...(parsed.data.date         !== undefined && { date: new Date(parsed.data.date) }),
+      ...(parsed.data.description  !== undefined && { description: parsed.data.description }),
       ...(parsed.data.duration     !== undefined && { duration: parsed.data.duration }),
       ...(parsed.data.transcript   !== undefined && { transcript: parsed.data.transcript }),
       ...(parsed.data.summary      !== undefined && { summary: parsed.data.summary }),
