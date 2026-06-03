@@ -74,6 +74,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return found ? parseFloat(found.value) : 0;
   }
 
+  // Limpa as linhas anteriores deste período antes de regravar. O "until" é a
+  // data de hoje e muda a cada dia, então re-sincronizar no mesmo mês criaria
+  // linhas novas (dateStop diferente) e os totais somariam em dobro.
+  await prisma.metaInsight.deleteMany({
+    where: { connectionId: conn.id, dateStart: new Date(since) },
+  });
+
   let synced = 0;
   for (const row of rows) {
     const spend      = parseFloat(row.spend ?? "0");

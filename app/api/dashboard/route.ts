@@ -19,8 +19,6 @@ export async function GET() {
     overdueTasks,
     completedThisMonth,
     allMonthTasks,
-    receitaMes,
-    receitaPendente,
   ] = await Promise.all([
     prisma.client.count({ where: { deletedAt: null, status: "ACTIVE" } }),
     prisma.task.count({
@@ -35,29 +33,37 @@ export async function GET() {
     prisma.task.count({
       where: { deletedAt: null, dueDate: { gte: startOfMonth, lte: endOfMonth } },
     }),
-    // receita paga este mês (avulso + recorrente)
+  ]);
+
+  // Receita do mês — recorrentes consideram o status POR MÊS (override), não o base.
+  const curMonth = now.getMonth() + 1;
+  const curYear  = now.getFullYear();
+  const [avulsoPaid, avulsoPend, recReceitas] = await Promise.all([
     prisma.financeEntry.aggregate({
-      where: {
-        deletedAt: null, type: "RECEITA", status: "PAGO",
-        OR: [
-          { mode: "AVULSO",     date: { gte: startOfMonth, lte: endOfMonth } },
-          { mode: "RECORRENTE" },
-        ],
-      },
+      where: { deletedAt: null, type: "RECEITA", status: "PAGO", mode: "AVULSO", date: { gte: startOfMonth, lte: endOfMonth } },
       _sum: { value: true },
     }),
-    // receita pendente este mês
     prisma.financeEntry.aggregate({
-      where: {
-        deletedAt: null, type: "RECEITA", status: "PENDENTE",
-        OR: [
-          { mode: "AVULSO",     date: { gte: startOfMonth, lte: endOfMonth } },
-          { mode: "RECORRENTE" },
-        ],
-      },
+      where: { deletedAt: null, type: "RECEITA", status: "PENDENTE", mode: "AVULSO", date: { gte: startOfMonth, lte: endOfMonth } },
       _sum: { value: true },
+    }),
+    prisma.financeEntry.findMany({
+      where: { deletedAt: null, type: "RECEITA", mode: "RECORRENTE" },
+      select: { id: true, value: true, status: true },
     }),
   ]);
+  const recOverrides = await prisma.financeStatusOverride.findMany({
+    where: { year: curYear, month: curMonth, refKey: { in: recReceitas.map(r => `rec-${r.id}`) } },
+  });
+  const recOvMap = new Map(recOverrides.map(o => [o.refKey, o.status as string]));
+  let recPaid = 0, recPend = 0;
+  for (const r of recReceitas) {
+    const st = recOvMap.get(`rec-${r.id}`) ?? r.status;
+    if (st === "PAGO") recPaid += r.value;
+    else if (st === "PENDENTE") recPend += r.value;
+  }
+  const receitaPagaValue     = (avulsoPaid._sum.value ?? 0) + recPaid;
+  const receitaPendenteValue = (avulsoPend._sum.value ?? 0) + recPend;
 
   // Client health stats
   const clients = await prisma.client.findMany({
@@ -165,8 +171,8 @@ export async function GET() {
       completedThisMonth,
       allMonthTasks,
       taxaConclusao,
-      receitaMes:      receitaMes._sum.value      ?? 0,
-      receitaPendente: receitaPendente._sum.value ?? 0,
+      receitaMes:      receitaPagaValue,
+      receitaPendente: receitaPendenteValue,
     },
     clientStats,
     overdueDetails,
