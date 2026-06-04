@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
-  Edit2, Activity,
+  Edit2, Activity, Loader2,
   CalendarDays, Columns3, User, Mic, BarChart2,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, ClientStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ interface ClientDetail {
   name: string;
   brand?: string;
   logoUrl?: string | null;
+  followUpAt?: string | null;
+  followUpNote?: string | null;
   email?: string;
   phone?: string;
   primaryContact?: string;
@@ -285,8 +288,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       {tab === "perfil" && (
         <PerfilTab
           client={client}
+          clientId={clientId}
           isAdmin={isAdmin}
           onEditOpen={() => setEditOpen(true)}
+          onSaved={load}
         />
       )}
 
@@ -344,13 +349,34 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
 function PerfilTab({
   client,
+  clientId,
   isAdmin,
   onEditOpen,
+  onSaved,
 }: {
   client: ClientDetail;
+  clientId: string;
   isAdmin: boolean;
   onEditOpen: () => void;
+  onSaved: () => void;
 }) {
+  const [fuDate, setFuDate] = useState(client.followUpAt ? client.followUpAt.slice(0, 10) : "");
+  const [fuNote, setFuNote] = useState(client.followUpNote ?? "");
+  const [savingFu, setSavingFu] = useState(false);
+  async function saveFollowUp() {
+    setSavingFu(true);
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        followUpAt: fuDate ? new Date(fuDate).toISOString() : null,
+        followUpNote: fuNote.trim() || null,
+      }),
+    });
+    setSavingFu(false);
+    onSaved();
+  }
+
   const timelineLogs = client.recentLogs
     .filter(l => l.action !== "UPDATE_CLIENT")
     .slice(0, 12);
@@ -443,8 +469,44 @@ function PerfilTab({
         )}
       </section>
 
-      {/* ── Right: Activity timeline ── */}
-      <div>
+      {/* ── Right: Follow-up + Activity timeline ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+
+        {/* Follow-up / próximo contato */}
+        <section>
+          <Label style={{ marginBottom: 10 }}>Próximo contato (follow-up)</Label>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <input
+              type="date"
+              value={fuDate}
+              onChange={(e) => setFuDate(e.target.value)}
+              style={{ height: 38, borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)", padding: "0 12px", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+            />
+            <textarea
+              value={fuNote}
+              onChange={(e) => setFuNote(e.target.value)}
+              placeholder="Ex: cobrar aprovação dos criativos, renovar contrato..."
+              rows={2}
+              style={{ borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)", padding: "9px 12px", fontSize: 13, outline: "none", resize: "vertical", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={saveFollowUp}
+                disabled={savingFu}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: savingFu ? "default" : "pointer", opacity: savingFu ? 0.6 : 1 }}
+              >
+                {savingFu && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />} Salvar
+              </button>
+            </div>
+            {client.followUpAt && (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                Agendado para {formatDate(client.followUpAt)}{client.followUpNote ? ` · ${client.followUpNote}` : ""}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <div>
         <Label style={{ marginBottom: 10 }}>Histórico de atividade</Label>
         <div style={{
           background: "var(--bg-surface)", border: "1px solid var(--border)",
@@ -485,6 +547,7 @@ function PerfilTab({
               );
             })
           )}
+        </div>
         </div>
       </div>
     </div>

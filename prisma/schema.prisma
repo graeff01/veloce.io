@@ -61,6 +61,8 @@ model Client {
   name         String
   brand        String?
   logoUrl      String?
+  followUpAt   DateTime?
+  followUpNote String?
   slug         String       @unique
   email        String?
   phone        String?

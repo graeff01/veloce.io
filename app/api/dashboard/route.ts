@@ -197,7 +197,7 @@ export async function GET() {
   const dayAfter = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
   const in3days  = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-  const [meetingsToday, tasksToday, meetingsTomorrow, billsDueSoon] = await Promise.all([
+  const [meetingsToday, tasksToday, meetingsTomorrow, billsDueSoon, followUps] = await Promise.all([
     prisma.meeting.findMany({
       where: { date: { gte: today, lt: tomorrow } },
       select: { id: true, title: true, date: true, clientId: true, client: { select: { name: true } } },
@@ -217,6 +217,11 @@ export async function GET() {
       where: { deletedAt: null, status: { in: ["PENDENTE", "VENCIDO"] }, date: { lte: in3days } },
       select: { id: true, description: true, value: true, date: true, type: true },
       orderBy: { date: "asc" }, take: 10,
+    }),
+    prisma.client.findMany({
+      where: { deletedAt: null, status: "ACTIVE", followUpAt: { not: null, lte: tomorrow } },
+      select: { id: true, name: true, followUpAt: true, followUpNote: true },
+      orderBy: { followUpAt: "asc" }, take: 10,
     }),
   ]);
 
@@ -245,6 +250,15 @@ export async function GET() {
   }
   if (lucroPrev > 0 && lucroMes < lucroPrev * 0.8)
     alerts.push({ type: "margin", severity: "warn", message: `Lucro ${Math.round((1 - lucroMes / lucroPrev) * 100)}% abaixo do mês passado`, href: "/finances" });
+  for (const c of followUps) {
+    const overdue = c.followUpAt ? c.followUpAt < today : false;
+    alerts.push({
+      type: "followup",
+      severity: overdue ? "high" : "info",
+      message: `Follow-up: ${c.name}${c.followUpNote ? ` — ${c.followUpNote}` : ""}`,
+      href: `/clients/${c.id}`,
+    });
+  }
 
   const sevRank = { high: 0, warn: 1, info: 2 };
   alerts.sort((a, b) => sevRank[a.severity] - sevRank[b.severity]);
