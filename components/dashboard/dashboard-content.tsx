@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Users, AlertTriangle, CheckCircle2, Clock,
   TrendingDown, TrendingUp, Activity, Zap, ArrowRight,
-  BellRing, ChevronRight,
+  BellRing, ChevronRight, Mic, ListChecks,
   CalendarDays, Settings, Wallet, Brain,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ function fmtBRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+interface Commitment { id: string; title: string; clientId: string; clientName: string; }
 interface DashboardData {
   summary: {
     activeClients: number;
@@ -26,7 +27,20 @@ interface DashboardData {
     taxaConclusao: number;
     receitaMes: number;
     receitaPendente: number;
+    lucroMes: number;
+    despesasMes: number;
+    custosEquipe: number;
+    margem: number;
+    aReceber: number;
+    aPagar: number;
+    receitaPrev: number;
+    lucroPrev: number;
   };
+  commitments?: {
+    meetings: Array<Commitment & { time: string }>;
+    tasks: Array<Commitment & { priority: string }>;
+  };
+  alerts?: Array<{ type: string; severity: "high" | "warn" | "info"; message: string; href?: string }>;
   clientStats: Array<{
     id: string;
     name: string;
@@ -58,7 +72,8 @@ interface DashboardData {
 }
 
 const EMPTY: DashboardData = {
-  summary: { activeClients: 0, dueTodayTasks: 0, overdueTasks: 0, completedThisMonth: 0, allMonthTasks: 0, taxaConclusao: 0, receitaMes: 0, receitaPendente: 0 },
+  summary: { activeClients: 0, dueTodayTasks: 0, overdueTasks: 0, completedThisMonth: 0, allMonthTasks: 0, taxaConclusao: 0, receitaMes: 0, receitaPendente: 0, lucroMes: 0, despesasMes: 0, custosEquipe: 0, margem: 0, aReceber: 0, aPagar: 0, receitaPrev: 0, lucroPrev: 0 },
+  commitments: { meetings: [], tasks: [] }, alerts: [],
   clientStats: [], overdueDetails: [], suggestions: [],
 };
 
@@ -117,16 +132,11 @@ export function DashboardContent({ userName }: { userName: string }) {
         {/* ── Quick nav ──────────────────────────────── */}
         <QuickNav />
 
-        {/* ── Metric blocks ──────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          <MetricBlock
-            label="Receita do mês"
-            value={fmtBRL(data.summary.receitaMes)}
-            sub={data.summary.receitaPendente > 0 ? `+${fmtBRL(data.summary.receitaPendente)} pendente` : "Tudo recebido"}
-            icon={TrendingUp}
-            accentColor="var(--green)"
-            softColor="var(--green-soft)"
-          />
+        {/* ── Faixa financeira (o número que importa) ── */}
+        <FinanceHero s={data.summary} />
+
+        {/* ── KPIs operacionais (suporte) ────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           <MetricBlock
             label="Entregam hoje"
             value={String(data.summary.dueTodayTasks)}
@@ -155,10 +165,16 @@ export function DashboardContent({ userName }: { userName: string }) {
           />
         </div>
 
-        {/* ── Two-column layout ──────────────────────── */}
+        {/* ── Compromissos de hoje + Alertas ─────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}>
+          <CommitmentsPanel commitments={data.commitments} />
+          <AlertsPanel alerts={data.alerts ?? []} />
+        </div>
 
-          {/* LEFT — Client health */}
+        {/* ── Saúde dos clientes ─────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20 }}>
+
+          {/* Client health */}
           <div>
             <div
               style={{
@@ -223,10 +239,136 @@ export function DashboardContent({ userName }: { userName: string }) {
               )}
             </div>
           </div>
-
-          {/* RIGHT — Radar operacional */}
-          <RadarPanel suggestions={data.suggestions} overdueDetails={data.overdueDetails} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Finance Hero ───────────────────────────────────── */
+
+function FinanceHero({ s }: { s: DashboardData["summary"] }) {
+  const lucroPos = s.lucroMes >= 0;
+  const delta = s.lucroPrev !== 0 ? Math.round(((s.lucroMes - s.lucroPrev) / Math.abs(s.lucroPrev)) * 100) : null;
+  const up = (delta ?? 0) >= 0;
+  return (
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: "20px 24px", display: "grid", gridTemplateColumns: "1.1fr 2fr", gap: 24, alignItems: "center" }}>
+      <div style={{ borderRight: "1px solid var(--border)", paddingRight: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
+          <Wallet size={14} style={{ color: lucroPos ? "var(--green)" : "var(--red)" }} />
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Lucro do mês</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em", color: lucroPos ? "var(--green)" : "var(--red)", lineHeight: 1 }}>{fmtBRL(s.lucroMes)}</span>
+          {delta !== null && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12, fontWeight: 700, color: up ? "var(--green)" : "var(--red)" }}>
+              {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{Math.abs(delta)}%
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginTop: 6 }}>
+          Margem {s.margem}% · mês passado {fmtBRL(s.lucroPrev)}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <SubStat label="Receita" value={fmtBRL(s.receitaMes)} color="var(--green)" />
+        <SubStat label="Despesas" value={fmtBRL(s.despesasMes)} color="var(--red)" hint={s.custosEquipe > 0 ? `Equipe ${fmtBRL(s.custosEquipe)}` : undefined} />
+        <SubStat label="A receber" value={fmtBRL(s.aReceber)} color="var(--amber)" />
+        <SubStat label="A pagar" value={fmtBRL(s.aPagar)} color="var(--amber)" />
+      </div>
+    </div>
+  );
+}
+
+function SubStat({ label, value, color, hint }: { label: string; value: string; color: string; hint?: string }) {
+  return (
+    <div>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 17, fontWeight: 700, color, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</p>
+      {hint && <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3, opacity: 0.8 }}>{hint}</p>}
+    </div>
+  );
+}
+
+/* ─── Commitments ────────────────────────────────────── */
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function CommitmentsPanel({ commitments }: { commitments?: DashboardData["commitments"] }) {
+  const meetings = commitments?.meetings ?? [];
+  const tasks = commitments?.tasks ?? [];
+  const empty = meetings.length === 0 && tasks.length === 0;
+  return (
+    <div>
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>Compromissos de hoje</h2>
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+        {empty ? (
+          <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            <CalendarDays size={28} style={{ margin: "0 auto 8px", opacity: 0.2 }} />
+            <p style={{ fontSize: 13 }}>Nada agendado para hoje</p>
+          </div>
+        ) : (
+          <>
+            {meetings.map((m, i) => (
+              <Link key={m.id} href={`/clients/${m.clientId}`} style={{ textDecoration: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderBottom: (i < meetings.length - 1 || tasks.length > 0) ? "1px solid var(--border)" : "none" }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Mic size={13} color="var(--accent)" /></span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</p>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{fmtTime(m.time)}{m.clientName ? ` · ${m.clientName}` : ""}</p>
+                  </div>
+                  <ChevronRight size={14} color="var(--text-muted)" />
+                </div>
+              </Link>
+            ))}
+            {tasks.map((t, i) => (
+              <Link key={t.id} href={`/clients/${t.clientId}`} style={{ textDecoration: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderBottom: i < tasks.length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--amber-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ListChecks size={13} color="var(--amber)" /></span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</p>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>Entrega hoje{t.clientName ? ` · ${t.clientName}` : ""}</p>
+                  </div>
+                  <ChevronRight size={14} color="var(--text-muted)" />
+                </div>
+              </Link>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Alerts ─────────────────────────────────────────── */
+
+function AlertsPanel({ alerts }: { alerts: NonNullable<DashboardData["alerts"]> }) {
+  const color = (s: string) => s === "high" ? "var(--red)" : s === "warn" ? "var(--amber)" : "var(--accent)";
+  const soft  = (s: string) => s === "high" ? "var(--red-soft)" : s === "warn" ? "var(--amber-soft)" : "var(--accent-soft)";
+  return (
+    <div>
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+        <BellRing size={13} /> Alertas
+      </h2>
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+        {alerts.length === 0 ? (
+          <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            <CheckCircle2 size={28} style={{ margin: "0 auto 8px", opacity: 0.25, color: "var(--green)" }} />
+            <p style={{ fontSize: 13 }}>Tudo sob controle</p>
+          </div>
+        ) : alerts.map((a, i) => {
+          const inner = (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "11px 14px", borderBottom: i < alerts.length - 1 ? "1px solid var(--border)" : "none" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: color(a.severity), marginTop: 5, flexShrink: 0, boxShadow: `0 0 0 3px ${soft(a.severity)}` }} />
+              <span style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.4 }}>{a.message}</span>
+            </div>
+          );
+          return a.href
+            ? <Link key={i} href={a.href} style={{ textDecoration: "none" }}>{inner}</Link>
+            : <div key={i}>{inner}</div>;
+        })}
       </div>
     </div>
   );
