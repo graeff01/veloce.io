@@ -97,6 +97,13 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [newPriority, setNewPriority]       = useState<Task["priority"]>("NORMAL");
   const [saving, setSaving]                 = useState(false);
 
+  // Task detail/edit
+  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [users, setUsers]       = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/users").then(r => r.ok ? r.json() : []).then((u: { id: string; name: string }[]) => setUsers(Array.isArray(u) ? u : [])).catch(() => {});
+  }, []);
+
   // Rollover: archive DONE tasks from past months once per session
   const rolloverDone = useRef(false);
 
@@ -573,10 +580,20 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onDelete={handleDeleteTask}
+                onOpen={setOpenTask}
               />
             );
           })}
         </div>
+      )}
+
+      {openTask && (
+        <TaskDetailModal
+          task={openTask}
+          users={users}
+          onClose={() => setOpenTask(null)}
+          onSaved={() => { setOpenTask(null); load(); }}
+        />
       )}
     </div>
   );
@@ -586,7 +603,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
 function Column({
   col, tasks, isDraggingOver, overIdx, draggingId,
-  onDragOver, onDrop, onDragStart, onDragEnd, onDelete,
+  onDragOver, onDrop, onDragStart, onDragEnd, onDelete, onOpen,
 }: {
   col: typeof COLUMNS[number];
   tasks: Task[];
@@ -598,6 +615,7 @@ function Column({
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
   onDelete: (id: string) => void;
+  onOpen: (task: Task) => void;
 }) {
   return (
     <div
@@ -664,6 +682,7 @@ function Column({
                 onDragOver(e, col.key, idx);
               }}
               onDelete={onDelete}
+              onOpen={onOpen}
             />
           </div>
         ))}
@@ -706,7 +725,7 @@ function DropLine({ color }: { color: string }) {
 // ── Kanban Card ────────────────────────────────────────────────────────────────
 
 function KanbanCard({
-  task, isDragging, colColor, onDragStart, onDragEnd, onDragOver, onDelete,
+  task, isDragging, colColor, onDragStart, onDragEnd, onDragOver, onDelete, onOpen,
 }: {
   task: Task;
   isDragging: boolean;
@@ -715,6 +734,7 @@ function KanbanCard({
   onDragEnd: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDelete: (id: string) => void;
+  onOpen: (task: Task) => void;
 }) {
   const [hover, setHover] = useState(false);
   const overdue  = isOverdue(task);
@@ -726,6 +746,7 @@ function KanbanCard({
   return (
     <div
       draggable
+      onClick={() => onOpen(task)}
       onDragStart={(e) => onDragStart(e, task.id)}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
@@ -882,6 +903,157 @@ function KanbanCard({
         )}
       </div>
     </div>
+  );
+}
+
+// ── Task detail / edit modal ─────────────────────────────────────────────────
+
+function TaskDetailModal({ task, users, onClose, onSaved }: {
+  task: Task;
+  users: { id: string; name: string }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle]           = useState(task.title);
+  const [type, setType]             = useState(task.type ?? "");
+  const [priority, setPriority]     = useState<Task["priority"]>(task.priority);
+  const [dueDate, setDueDate]       = useState(task.dueDate ? task.dueDate.slice(0, 10) : "");
+  const [assignedTo, setAssignedTo] = useState(task.assignee?.id ?? "");
+  const [blocker, setBlocker]       = useState(task.blocker ?? "");
+  const [checklists, setChecklists] = useState(task.checklists ?? []);
+  const [newItem, setNewItem]       = useState("");
+  const [saving, setSaving]         = useState(false);
+
+  const clDone = checklists.filter(c => c.done).length;
+
+  async function addItem() {
+    const text = newItem.trim();
+    if (!text) return;
+    const res = await fetch(`/api/tasks/${task.id}/checklist`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, order: checklists.length }),
+    });
+    if (res.ok) { const it = await res.json(); setChecklists(prev => [...prev, { id: it.id, text: it.text, done: it.done, order: it.order }]); setNewItem(""); }
+  }
+  async function toggleItem(id: string, done: boolean) {
+    setChecklists(prev => prev.map(c => c.id === id ? { ...c, done } : c));
+    await fetch(`/api/tasks/${task.id}/checklist/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done }) });
+  }
+  async function removeItem(id: string) {
+    setChecklists(prev => prev.filter(c => c.id !== id));
+    await fetch(`/api/tasks/${task.id}/checklist/${id}`, { method: "DELETE" });
+  }
+  async function save() {
+    setSaving(true);
+    await fetch(`/api/tasks/${task.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title.trim() || task.title,
+        type: type || null,
+        priority,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
+        assignedTo: assignedTo || null,
+        blocker: blocker.trim() || null,
+      }),
+    });
+    setSaving(false);
+    onSaved();
+  }
+
+  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 };
+  const fld: React.CSSProperties = { height: 38, width: "100%", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)", padding: "0 12px", fontSize: 13, outline: "none", boxSizing: "border-box" };
+
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(10px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 16px" }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Editar tarefa</p>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={lbl}>Título</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} style={fld} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={lbl}>Responsável</label>
+              <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)} style={fld}>
+                <option value="">— Ninguém</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Prazo</label>
+              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={fld} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={lbl}>Tag / Tipo</label>
+              <input value={type} onChange={e => setType(e.target.value)} placeholder="Ex: Post Feed" style={fld} />
+            </div>
+            <div>
+              <label style={lbl}>Prioridade</label>
+              <select value={priority} onChange={e => setPriority(e.target.value as Task["priority"])} style={fld}>
+                <option value="LOW">Baixa</option>
+                <option value="NORMAL">Normal</option>
+                <option value="HIGH">Alta</option>
+                <option value="CRITICAL">Crítica</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={lbl}>Bloqueio / impedimento</label>
+            <input value={blocker} onChange={e => setBlocker(e.target.value)} placeholder="Ex: aguardando material do cliente" style={fld} />
+          </div>
+
+          {/* Checklist */}
+          <div>
+            <label style={lbl}>Checklist {checklists.length > 0 && `· ${clDone}/${checklists.length}`}</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+              {checklists.map(c => (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                  <button
+                    onClick={() => toggleItem(c.id, !c.done)}
+                    style={{ width: 17, height: 17, borderRadius: 5, flexShrink: 0, cursor: "pointer", border: `1.5px solid ${c.done ? "#16A34A" : "var(--border-strong)"}`, background: c.done ? "#16A34A" : "transparent", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, lineHeight: 1 }}
+                  >
+                    {c.done ? "✓" : ""}
+                  </button>
+                  <span style={{ flex: 1, fontSize: 13, color: c.done ? "var(--text-muted)" : "var(--text-primary)", textDecoration: c.done ? "line-through" : "none" }}>{c.text}</span>
+                  <button onClick={() => removeItem(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}><Trash2 size={12} /></button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={newItem}
+                onChange={e => setNewItem(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+                placeholder="Adicionar passo..."
+                style={{ ...fld, height: 34 }}
+              />
+              <button onClick={addItem} style={{ flexShrink: 0, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}><Plus size={13} /></button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: "1px solid var(--border)" }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 9, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 13, cursor: "pointer" }}>Fechar</button>
+          <button onClick={save} disabled={saving} style={{ padding: "8px 22px", borderRadius: 9, background: "var(--accent)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+            {saving && <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />} Salvar
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
