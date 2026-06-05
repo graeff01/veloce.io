@@ -324,7 +324,7 @@ export function FinancesContent() {
                     entry={entry}
                     last={i === filtered.length - 1}
                     onDelete={entry.id.startsWith("team-") ? undefined : entry.id.startsWith("rec-") ? handleDeleteRec : handleDelete}
-                    onStatusChange={entry.id.startsWith("team-") || entry.id.startsWith("rec-") ? undefined : handleStatusChange}
+                    onStatusChange={handleStatusChange}
                     isTeam={entry.id.startsWith("team-")}
                   />
                 ))
