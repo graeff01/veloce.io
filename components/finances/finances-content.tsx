@@ -390,6 +390,8 @@ export function FinancesContent() {
         <NewEntryModal
           type={formType}
           clients={clients}
+          currentMonth={month}
+          currentYear={year}
           onClose={() => setShowForm(false)}
           onSave={handleSave}
         />
@@ -517,9 +519,11 @@ function CategoryBreakdown({ title, color, entries }: { title: string; color: st
 
 // ── New Entry Modal ────────────────────────────────────────────────────────────
 
-function NewEntryModal({ type, clients, onClose, onSave }: {
+function NewEntryModal({ type, clients, currentMonth, currentYear, onClose, onSave }: {
   type: EntryType;
   clients: Client[];
+  currentMonth: number;
+  currentYear: number;
   onClose: () => void;
   onSave: (data: {
     type: EntryType; mode: EntryMode; description: string; category: string;
@@ -530,24 +534,36 @@ function NewEntryModal({ type, clients, onClose, onSave }: {
   const [saving, setSaving]           = useState(false);
   const [description, setDescription] = useState("");
   const [value, setValue]             = useState("");
-  const [date, setDate]               = useState(new Date().toISOString().slice(0, 10));
+  // Para avulso: data editável. Para recorrente: não tem data relevante (sempre dia 1 do mês exibido)
+  const defaultDate = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+  const [date, setDate]               = useState(defaultDate);
   const [category, setCategory]       = useState(isReceita ? CATEGORIES_RECEITA[0] : EXPENSE_GROUPS[0].categories[0]);
   const [status, setStatus]           = useState<Entry["status"]>("PENDENTE");
   const [mode, setMode]               = useState<EntryMode>("AVULSO");
   const [clientId, setClientId]       = useState<string>("");
   const [notes, setNotes]             = useState("");
 
+  // Quando muda para recorrente, reseta status para Pendente (status por mês é gerenciado separado)
+  function handleModeChange(m: EntryMode) {
+    setMode(m);
+    if (m === "RECORRENTE") setStatus("PENDENTE");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!description.trim() || !value) return;
     setSaving(true);
+    // Recorrentes sempre iniciam como Pendente — o status por mês é controlado via statusOverride
+    const finalStatus: Entry["status"] = mode === "RECORRENTE" ? "PENDENTE" : status;
+    // Recorrentes não têm data relevante (é stampada no mês exibido) — salva dia 1
+    const finalDate = mode === "RECORRENTE" ? defaultDate : date;
     await onSave({
       type, mode,
       description: description.trim(),
       category,
       value: parseFloat(value),
-      date,
-      status,
+      date: finalDate,
+      status: finalStatus,
       clientId: clientId || null,
       notes: notes.trim() || undefined,
     });
@@ -571,30 +587,40 @@ function NewEntryModal({ type, clients, onClose, onSave }: {
         </div>
 
         {/* Mode toggle */}
-        <div style={{ display: "flex", background: "var(--bg-elevated)", borderRadius: 9, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
+        <div style={{ display: "flex", background: "var(--bg-elevated)", borderRadius: 9, padding: 3, border: "1px solid var(--border)", marginBottom: mode === "RECORRENTE" ? 10 : 18 }}>
           {(["RECORRENTE", "AVULSO"] as const).map(m => (
-            <button key={m} type="button" onClick={() => setMode(m)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "none", background: mode === m ? "var(--bg-surface)" : "transparent", color: mode === m ? "var(--text-primary)" : "var(--text-muted)", fontSize: 12, fontWeight: mode === m ? 600 : 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, transition: "all 120ms ease" }}>
+            <button key={m} type="button" onClick={() => handleModeChange(m)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "none", background: mode === m ? "var(--bg-surface)" : "transparent", color: mode === m ? "var(--text-primary)" : "var(--text-muted)", fontSize: 12, fontWeight: mode === m ? 600 : 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, transition: "all 120ms ease" }}>
               {m === "RECORRENTE" ? <RefreshCw size={11} /> : <Zap size={11} />}
               {m === "RECORRENTE" ? "Recorrente (todo mês)" : "Avulso (este mês)"}
             </button>
           ))}
         </div>
 
+        {/* Info recorrente */}
+        {mode === "RECORRENTE" && (
+          <div style={{ padding: "8px 12px", background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 8, marginBottom: 14, fontSize: 11, color: "var(--accent)", fontWeight: 500 }}>
+            Aparece em todos os meses. O status (Pago/Pendente) é independente por mês — mude direto na linha.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <FormField label="Descrição">
             <input autoFocus value={description} onChange={e => setDescription(e.target.value)} required placeholder={isReceita ? "Ex: Mensalidade — Cliente X" : "Ex: Plataforma de agendamento"} style={inputStyle} />
           </FormField>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: mode === "RECORRENTE" ? "1fr" : "1fr 1fr", gap: 12 }}>
             <FormField label="Valor (R$)">
               <input type="number" min="0" step="0.01" value={value} onChange={e => setValue(e.target.value)} required placeholder="0,00" style={inputStyle} />
             </FormField>
-            <FormField label="Data">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} required style={inputStyle} />
-            </FormField>
+            {/* Data e Status só para avulso */}
+            {mode === "AVULSO" && (
+              <FormField label="Data">
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} required style={inputStyle} />
+              </FormField>
+            )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: mode === "AVULSO" ? "1fr 1fr" : "1fr", gap: 12 }}>
             <FormField label="Categoria">
               {isReceita ? (
                 <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
@@ -610,13 +636,15 @@ function NewEntryModal({ type, clients, onClose, onSave }: {
                 </select>
               )}
             </FormField>
-            <FormField label="Status">
-              <select value={status} onChange={e => setStatus(e.target.value as Entry["status"])} style={inputStyle}>
-                <option value="PAGO">Pago</option>
-                <option value="PENDENTE">Pendente</option>
-                <option value="VENCIDO">Vencido</option>
-              </select>
-            </FormField>
+            {mode === "AVULSO" && (
+              <FormField label="Status">
+                <select value={status} onChange={e => setStatus(e.target.value as Entry["status"])} style={inputStyle}>
+                  <option value="PAGO">Pago</option>
+                  <option value="PENDENTE">Pendente</option>
+                  <option value="VENCIDO">Vencido</option>
+                </select>
+              </FormField>
+            )}
           </div>
 
           {/* Client link */}
