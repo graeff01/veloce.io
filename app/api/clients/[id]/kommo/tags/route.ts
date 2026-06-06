@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { getAccessToken, getLeadTags, KommoError } from "@/lib/kommo";
+import { getAccessToken, getLeadTags, getContactTags, KommoError } from "@/lib/kommo";
 
 // GET — lista todas as tags de lead da conta Kommo (para o usuário escolher
 // quais representam anúncios). Retorna também as já marcadas como anúncio.
@@ -15,9 +15,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   try {
     const token = await getAccessToken(conn);
-    const tags = await getLeadTags(conn, token);
+    // As tags de anúncio podem estar no lead ou no contato — junta as duas fontes.
+    const [leadTags, contactTags] = await Promise.all([
+      getLeadTags(conn, token),
+      getContactTags(conn, token),
+    ]);
+    const names = [...new Set([...leadTags, ...contactTags].map((t) => t.name))];
     return NextResponse.json({
-      tags: tags.map((t) => t.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
+      tags: names.sort((a, b) => a.localeCompare(b, "pt-BR")),
       adTags: conn.adTags,
     });
   } catch (e) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import {
-  getAccessToken, getStatusMap, getLeads, getContactPhones, KommoError,
+  getAccessToken, getStatusMap, getLeads, getContacts, KommoError,
 } from "@/lib/kommo";
 
 // Normaliza para comparar nomes de tag ("Anúncio Taos" ≈ "anuncio taos")
@@ -44,30 +44,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const tagsSeen = new Set<string>();
     let withAdTag = 0;
 
-    // 4. Telefones dos contatos principais (em lote)
+    // 3. Telefones + TAGS dos contatos principais (em lote). As tags de anúncio
+    //    costumam ficar no contato, não no lead.
     const mainContactIds = leads
       .map((l) => l._embedded?.contacts?.find((c) => c.is_main)?.id ?? l._embedded?.contacts?.[0]?.id)
       .filter((x): x is number => typeof x === "number");
-    const contacts = await getContactPhones(conn, token, mainContactIds);
+    const contacts = await getContacts(conn, token, mainContactIds);
 
-    // 5. Persiste
+    // 4. Persiste
     let synced = 0;
     for (const lead of leads) {
-      const leadTags = lead._embedded?.tags ?? [];
-      for (const t of leadTags) tagsSeen.add(t.name);
-      // Marca com a tag de anúncio do lead (se tiver); senão fica sem anúncio.
-      const adTag = leadTags.find((t) => isAdTagName(t.name))?.name ?? null;
-      if (adTag) withAdTag++;
-      const status = lead.status_id ? statusMap.get(lead.status_id) : undefined;
       const mainId = lead._embedded?.contacts?.find((c) => c.is_main)?.id ?? lead._embedded?.contacts?.[0]?.id;
       const contact = mainId ? contacts.get(mainId) : undefined;
+
+      // Tags do lead + tags do contato (de onde normalmente vem a tag do anúncio)
+      const allTagNames = [
+        ...(lead._embedded?.tags ?? []).map((t) => t.name),
+        ...(contact?.tags ?? []),
+      ];
+      const uniqueTags = [...new Set(allTagNames)];
+      for (const t of uniqueTags) tagsSeen.add(t);
+
+      const adTag = uniqueTags.find((t) => isAdTagName(t)) ?? null;
+      if (adTag) withAdTag++;
+      const status = lead.status_id ? statusMap.get(lead.status_id) : undefined;
 
       const data = {
         name: lead.name,
         contactName: contact?.name ?? null,
         phone: contact?.phone ?? null,
         adTag,
-        tags: leadTags.map((t) => t.name),
+        tags: uniqueTags,
         statusId: lead.status_id ?? null,
         statusName: status?.statusName ?? null,
         pipelineId: lead.pipeline_id ?? status?.pipelineId ?? null,

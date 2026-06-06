@@ -234,14 +234,17 @@ export async function getLeadNotes(conn: KommoConnection, token: string, leadId:
   return out;
 }
 
-// ── Contatos (telefone) ──────────────────────────────────────────────────────
-// O telefone vive como custom field do contato, não do lead. Busca em lote.
-export async function getContactPhones(
+// ── Contatos (telefone + tags) ───────────────────────────────────────────────
+// O telefone vive como custom field do contato, e as tags de anúncio costumam
+// ficar no contato (não no lead). Busca tudo em lote.
+export interface ContactInfo { name: string | null; phone: string | null; tags: string[] }
+
+export async function getContacts(
   conn: KommoConnection,
   token: string,
   contactIds: number[],
-): Promise<Map<number, { name: string | null; phone: string | null }>> {
-  const map = new Map<number, { name: string | null; phone: string | null }>();
+): Promise<Map<number, ContactInfo>> {
+  const map = new Map<number, ContactInfo>();
   const unique = [...new Set(contactIds)];
 
   // Kommo aceita filter[id][] múltiplo; pagina em lotes de 250.
@@ -254,14 +257,32 @@ export async function getContactPhones(
       _embedded?: { contacts?: Array<{
         id: number; name: string | null;
         custom_fields_values?: Array<{ field_code?: string; values?: Array<{ value: string }> }> | null;
+        _embedded?: { tags?: KommoTag[] };
       }> };
     }>(conn, token, `/api/v4/contacts?${qs}`);
 
     for (const c of data?._embedded?.contacts ?? []) {
       const phoneField = c.custom_fields_values?.find((f) => f.field_code === "PHONE");
       const phone = phoneField?.values?.[0]?.value ?? null;
-      map.set(c.id, { name: c.name ?? null, phone });
+      const tags = (c._embedded?.tags ?? []).map((t) => t.name);
+      map.set(c.id, { name: c.name ?? null, phone, tags });
     }
   }
   return map;
+}
+
+// Lista todas as tags de contato da conta (para o seletor de tags de anúncio).
+export async function getContactTags(conn: KommoConnection, token: string): Promise<KommoTag[]> {
+  const out: KommoTag[] = [];
+  let page = 1;
+  for (;;) {
+    const data = await kommoGet<{ _embedded?: { tags?: KommoTag[] } }>(
+      conn, token, `/api/v4/contacts/tags?page=${page}&limit=250`,
+    );
+    const tags = data?._embedded?.tags ?? [];
+    out.push(...tags.map((t) => ({ id: t.id, name: t.name })));
+    if (tags.length < 250) break;
+    page++;
+  }
+  return out;
 }
