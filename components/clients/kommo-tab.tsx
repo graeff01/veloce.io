@@ -55,7 +55,7 @@ export function KommoTab({ clientId }: { clientId: string }) {
   const [error, setError] = useState("");
   const [openLead, setOpenLead] = useState<ConversationLead | null>(null);
   const [tagPanel, setTagPanel] = useState(false);
-  const [syncInfo, setSyncInfo] = useState<{ synced: number; withAdTag: number; tagsSeen: string[] } | null>(null);
+  const [syncInfo, setSyncInfo] = useState<{ synced: number; scanned: number; tagsSeen: string[] } | null>(null);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -89,7 +89,7 @@ export function KommoTab({ clientId }: { clientId: string }) {
     const body = await res.json();
     if (!res.ok) setError(body.error ?? "Erro ao sincronizar");
     else {
-      setSyncInfo({ synced: body.synced ?? 0, withAdTag: body.withAdTag ?? 0, tagsSeen: body.tagsSeen ?? [] });
+      setSyncInfo({ synced: body.synced ?? 0, scanned: body.scanned ?? 0, tagsSeen: body.tagsSeen ?? [] });
       await loadConn();
       await loadData();
     }
@@ -151,13 +151,11 @@ export function KommoTab({ clientId }: { clientId: string }) {
 
       {syncInfo && (
         <div style={{ margin: "16px 28px 0", padding: "10px 14px", borderRadius: 9, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.18)", fontSize: 12, color: "var(--text-secondary)" }}>
-          <strong style={{ color: "var(--text-primary)" }}>{syncInfo.synced}</strong> leads sincronizados · <strong style={{ color: "var(--text-primary)" }}>{syncInfo.withAdTag}</strong> com tag de anúncio.
-          {syncInfo.tagsSeen.length > 0 ? (
-            <span> Tags encontradas nos leads: {syncInfo.tagsSeen.map((t) => (
+          <strong style={{ color: "var(--text-primary)" }}>{syncInfo.synced}</strong> leads de anúncio encontrados (de {syncInfo.scanned} verificados).
+          {syncInfo.tagsSeen.length > 0 && (
+            <span> Anúncios: {syncInfo.tagsSeen.map((t) => (
               <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--accent)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 20, margin: "0 2px" }}>{t}</span>
             ))}</span>
-          ) : (
-            <span> Nenhuma tag foi encontrada nos leads — as tags podem estar no <strong>contato</strong> em vez do lead.</span>
           )}
         </div>
       )}

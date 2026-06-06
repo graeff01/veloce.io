@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import {
-  getAccessToken, getStatusMap, getLeadTags, getContactTags, getContactsByTag, getLeadsByIds, KommoError,
+  getAccessToken, getStatusMap, getLeads, getUnsortedLeads, getLeadDetail, getContacts, mapLimit, KommoError,
 } from "@/lib/kommo";
 
 // Normaliza para comparar nomes de tag ("Anúncio Taos" ≈ "anuncio taos")
@@ -10,9 +10,10 @@ function norm(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
-// POST — sincroniza os leads de anúncio: dirige pelos CONTATOS filtrados pela
-// tag de anúncio (funciona para leads do funil E da fila de entrada) e cacheia.
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+// POST — sincroniza só os leads de anúncio. Junta a fila de entrada (unsorted,
+// onde caem os leads de WhatsApp recentes) com os leads já no funil, lê a tag
+// real de cada um (a listagem não traz tag) e guarda apenas os com tag de anúncio.
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:update");
   if (error) return error;
@@ -20,82 +21,98 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const conn = await prisma.kommoConnection.findUnique({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "Conexão Kommo não configurada" }, { status: 404 });
 
+  // Janela: padrão últimos 120 dias; override via body { since } (ISO).
+  const body = await req.json().catch(() => ({}));
+  const sinceUnix = body.since
+    ? Math.floor(new Date(body.since).getTime() / 1000)
+    : Math.floor((Date.now() - 120 * 24 * 60 * 60 * 1000) / 1000);
+
   try {
     const token = await getAccessToken(conn);
 
-    // Nomes que contam como "anúncio": os configurados ou, se vazio, os que contêm "anúncio".
     const configured = conn.adTags.map(norm);
     const isAdTagName = (name: string) =>
       configured.length ? configured.includes(norm(name)) : norm(name).includes("anuncio");
 
-    // 1. Tags de anúncio (em contatos e/ou leads). O filtro por tag funciona
-    //    mesmo quando as tags não vêm embutidas na listagem.
-    const [contactTags, leadTags] = await Promise.all([
-      getContactTags(conn, token),
-      getLeadTags(conn, token).catch(() => []),
-    ]);
-    const allTags = [...contactTags, ...leadTags];
-    const adTags = allTags.filter((t) => isAdTagName(t.name));
-    const tagsSeen = [...new Set(adTags.map((t) => t.name))].sort();
-
-    if (adTags.length === 0) {
-      return NextResponse.json(
-        { error: "Nenhuma tag de anúncio encontrada na conta. Configure em \"Tags de anúncio\".", tagsSeen: [] },
-        { status: 400 },
-      );
-    }
-
-    // 2. Mapa de status do funil
     const statusMap = await getStatusMap(conn, token);
 
-    // 3. Contatos por tag de anúncio (dedup; 1ª tag vence). Driver da auditoria.
-    const byContact = new Map<number, { name: string | null; phone: string | null; createdAt: number; leadId: number | null; adTag: string }>();
-    for (const tag of adTags) {
-      const contacts = await getContactsByTag(conn, token, tag.id);
-      for (const c of contacts) {
-        if (byContact.has(c.id)) continue;
-        byContact.set(c.id, { name: c.name, phone: c.phone, createdAt: c.createdAt, leadId: c.leadId, adTag: tag.name });
-      }
+    // 1. Candidatos: fila de entrada (recentes) + leads do funil (aceitos)
+    const candidates = new Map<number, { contactId: number | null; name: string | null; createdAt: number }>();
+
+    const incoming = await getUnsortedLeads(conn, token, { sinceUnix });
+    for (const u of incoming) {
+      if (!candidates.has(u.leadId)) candidates.set(u.leadId, { contactId: u.contactId, name: u.name, createdAt: u.createdAt });
     }
 
-    // 4. Status dos leads vinculados (em lote)
-    const leadIds = [...byContact.values()].map((v) => v.leadId).filter((x): x is number => typeof x === "number");
-    const leadInfo = await getLeadsByIds(conn, token, leadIds);
+    const sorted = await getLeads(conn, token, { from: sinceUnix });
+    for (const l of sorted) {
+      if (candidates.has(l.id)) continue;
+      const cid = l._embedded?.contacts?.find((c) => c.is_main)?.id ?? l._embedded?.contacts?.[0]?.id ?? null;
+      candidates.set(l.id, { contactId: cid, name: l.name, createdAt: l.created_at });
+    }
 
-    // 5. Refaz o cache deste cliente (full refresh) e grava
+    // 2. Lê o detalhe de cada candidato (em paralelo controlado) p/ pegar a tag real
+    const leadIds = [...candidates.keys()];
+    const details = await mapLimit(leadIds, 4, (lid) => getLeadDetail(conn, token, lid));
+
+    const tagsSeen = new Set<string>();
+    const adLeads: Array<{ leadId: number; contactId: number | null; name: string | null; createdAt: number; adTag: string; statusId: number | null; pipelineId: number | null }> = [];
+
+    for (const d of details) {
+      if (!d) continue;
+      for (const t of d.tags) tagsSeen.add(t);
+      const adTag = d.tags.find(isAdTagName);
+      if (!adTag) continue;
+      const cand = candidates.get(d.id)!;
+      adLeads.push({
+        leadId: d.id,
+        contactId: d.contactId ?? cand.contactId,
+        name: cand.name,
+        createdAt: cand.createdAt || d.createdAt,
+        adTag,
+        statusId: d.statusId,
+        pipelineId: d.pipelineId,
+      });
+    }
+
+    // 3. Telefone/nome do contato (em lote)
+    const contactIds = adLeads.map((a) => a.contactId).filter((x): x is number => typeof x === "number");
+    const contacts = await getContacts(conn, token, contactIds);
+
+    // 4. Full refresh do cache deste cliente
     await prisma.kommoLead.deleteMany({ where: { connectionId: conn.id } });
 
-    const rows = [...byContact.entries()].map(([contactId, v]) => {
-      const li = v.leadId ? leadInfo.get(v.leadId) : undefined;
-      const status = li?.statusId ? statusMap.get(li.statusId) : undefined;
+    const rows = adLeads.map((a) => {
+      const c = a.contactId ? contacts.get(a.contactId) : undefined;
+      const status = a.statusId ? statusMap.get(a.statusId) : undefined;
       return {
         connectionId: conn.id,
-        kommoId: contactId,
-        leadId: v.leadId,
-        name: v.name,
-        contactName: v.name,
-        phone: v.phone,
-        adTag: v.adTag,
-        tags: [v.adTag],
-        statusId: li?.statusId ?? null,
+        kommoId: a.contactId ?? a.leadId, // chave estável (contato); cai p/ leadId se faltar
+        leadId: a.leadId,
+        name: a.name ?? c?.name ?? null,
+        contactName: c?.name ?? a.name ?? null,
+        phone: c?.phone ?? null,
+        adTag: a.adTag,
+        tags: [a.adTag],
+        statusId: a.statusId,
         statusName: status?.statusName ?? "Lead de entrada",
-        pipelineId: li?.pipelineId ?? status?.pipelineId ?? null,
+        pipelineId: a.pipelineId ?? status?.pipelineId ?? null,
         pipelineName: status?.pipelineName ?? null,
         price: 0,
-        createdAtKommo: new Date(v.createdAt * 1000),
+        createdAtKommo: new Date(a.createdAt * 1000),
         updatedAtKommo: null,
       };
     });
 
     if (rows.length) await prisma.kommoLead.createMany({ data: rows });
-
     await prisma.kommoConnection.update({ where: { id: conn.id }, data: { lastSyncAt: new Date() } });
 
     const dates = rows.map((r) => r.createdAtKommo.getTime());
     return NextResponse.json({
       synced: rows.length,
       withAdTag: rows.length,
-      tagsSeen,
+      scanned: leadIds.length,
+      tagsSeen: [...tagsSeen].filter(isAdTagName).sort(),
       newest: dates.length ? new Date(Math.max(...dates)).toISOString() : null,
       oldest: dates.length ? new Date(Math.min(...dates)).toISOString() : null,
     });

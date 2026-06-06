@@ -60,27 +60,51 @@ export async function getAccessToken(conn: KommoConnection): Promise<string> {
   return data.access_token;
 }
 
-// GET autenticado. `path` começa com "/api/v4/...".
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// GET autenticado. `path` começa com "/api/v4/...". Repete em caso de 429 (rate limit).
 export async function kommoGet<T = unknown>(
   conn: KommoConnection,
   token: string,
   path: string,
 ): Promise<T | null> {
-  const res = await fetch(`${baseUrl(conn.subdomain)}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${baseUrl(conn.subdomain)}${path}`, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+
+    // 204 = sem conteúdo (ex: filtro sem resultados)
+    if (res.status === 204) return null;
+
+    // 429 = rate limit → espera e tenta de novo (até 4 vezes)
+    if (res.status === 429 && attempt < 4) {
+      await sleep(500 * (attempt + 1));
+      continue;
+    }
+
+    if (res.status === 401) {
+      throw new KommoError("Token do Kommo inválido ou expirado. Reconecte a conta.", 401, true);
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new KommoError(body?.detail ?? body?.title ?? `Erro Kommo (${res.status})`, res.status);
+    }
+    return (await res.json()) as T;
+  }
+}
+
+// Executa fn sobre items com no máximo `limit` em paralelo (controle de rate limit).
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const ret: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      ret[idx] = await fn(items[idx]);
+    }
   });
-
-  // 204 = sem conteúdo (ex: filtro sem resultados)
-  if (res.status === 204) return null;
-
-  if (res.status === 401) {
-    throw new KommoError("Token do Kommo inválido ou expirado. Reconecte a conta.", 401, true);
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new KommoError(body?.detail ?? body?.title ?? `Erro Kommo (${res.status})`, res.status);
-  }
-  return (await res.json()) as T;
+  await Promise.all(workers);
+  return ret;
 }
 
 // Verifica a conta (usado ao salvar a conexão). Retorna o nome da conta.
@@ -172,6 +196,62 @@ export async function getLeads(conn: KommoConnection, token: string, filter: Lea
     page++;
   }
   return out;
+}
+
+// ── Fila de entrada (unsorted) + detalhe do lead ─────────────────────────────
+// Onde vivem os leads de WhatsApp recém-chegados (antes de aceitos no funil).
+export interface IncomingLead { leadId: number; contactId: number | null; name: string | null; createdAt: number }
+
+export async function getUnsortedLeads(
+  conn: KommoConnection,
+  token: string,
+  opts: { sinceUnix?: number; maxPages?: number } = {},
+): Promise<IncomingLead[]> {
+  const out: IncomingLead[] = [];
+  const maxPages = opts.maxPages ?? 40;
+  let page = 1;
+  for (;;) {
+    const data = await kommoGet<{
+      _embedded?: { unsorted?: Array<{
+        created_at: number;
+        metadata?: { from?: string };
+        _embedded?: { leads?: Array<{ id: number }>; contacts?: Array<{ id: number }> };
+      }> };
+    }>(conn, token, `/api/v4/leads/unsorted?limit=250&page=${page}`);
+
+    const items = data?._embedded?.unsorted ?? [];
+    let stop = false;
+    for (const u of items) {
+      if (opts.sinceUnix && u.created_at < opts.sinceUnix) { stop = true; continue; }
+      const leadId = u._embedded?.leads?.[0]?.id;
+      if (!leadId) continue;
+      out.push({
+        leadId,
+        contactId: u._embedded?.contacts?.[0]?.id ?? null,
+        name: u.metadata?.from ?? null,
+        createdAt: u.created_at,
+      });
+    }
+    if (items.length < 250 || stop || page >= maxPages) break;
+    page++;
+  }
+  return out;
+}
+
+// Detalhe de um lead (traz as tags reais — a listagem não traz).
+export interface LeadDetail { id: number; tags: string[]; statusId: number | null; pipelineId: number | null; createdAt: number; contactId: number | null }
+
+export async function getLeadDetail(conn: KommoConnection, token: string, leadId: number): Promise<LeadDetail | null> {
+  const l = await kommoGet<RawLead>(conn, token, `/api/v4/leads/${leadId}?with=contacts`).catch(() => null);
+  if (!l) return null;
+  return {
+    id: l.id,
+    tags: (l._embedded?.tags ?? []).map((t) => t.name),
+    statusId: l.status_id ?? null,
+    pipelineId: l.pipeline_id ?? null,
+    createdAt: l.created_at,
+    contactId: l._embedded?.contacts?.find((c) => c.is_main)?.id ?? l._embedded?.contacts?.[0]?.id ?? null,
+  };
 }
 
 // ── Notas / conversa do lead ─────────────────────────────────────────────────
