@@ -457,10 +457,12 @@ model WaConnection {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   contacts      WaContact[]
   messages      WaMessage[]
   leads         WaLead[]
+  conversations WaConversation[]
+  events        WaEvent[]
 }
 
 model WaContact {
@@ -471,8 +473,9 @@ model WaContact {
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
-  connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection    WaConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   messages      WaMessage[]
+  conversation  WaConversation?
 
   @@unique([connectionId, waId])
   @@index([connectionId, lastMessageAt])
@@ -487,6 +490,8 @@ model WaMessage {
   type          String   // text, image, audio, ...
   text          String?
   timestamp     DateTime
+  deliveredAt   DateTime? // do evento "statuses" (entregue)
+  readAt        DateTime? // do evento "statuses" (lido)
   raw           Json?
   createdAt     DateTime @default(now())
 
@@ -518,6 +523,51 @@ model WaLead {
 
   @@index([connectionId, enteredAt])
   @@index([connectionId, adId])
+}
+
+// Conversa operacional (1 por contato). 100% INTERNA — nunca envia/altera nada
+// no WhatsApp da loja. É a base de SLA, alertas e funil.
+model WaConversation {
+  id               String    @id @default(cuid())
+  connectionId     String
+  contactId        String    @unique
+  status           String    @default("open") // open | waiting | closed (rótulo interno)
+  funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido (manual)
+  firstInboundAt   DateTime?
+  firstResponseAt  DateTime?
+  firstResponseSec Int?       // tempo da 1ª resposta (cache p/ métricas em escala)
+  lastInboundAt    DateTime?
+  lastOutboundAt   DateTime?
+  lastMessageAt    DateTime?
+  inboundCount     Int       @default(0)
+  outboundCount    Int       @default(0)
+  openedAt         DateTime?
+  closedAt         DateTime? // setado por inatividade (job interno) — não toca no WhatsApp
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  connection       WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  contact          WaContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, status])
+  @@index([connectionId, funnelStage])
+  @@index([connectionId, lastMessageAt])
+  @@index([connectionId, firstInboundAt])
+}
+
+// Log de eventos — observabilidade/auditoria da operação.
+model WaEvent {
+  id           String   @id @default(cuid())
+  connectionId String?
+  type         String   // lead.created | first.response | status.changed | integration.error | ...
+  refId        String?  // id relacionado (contato, mensagem, lead)
+  data         Json?
+  createdAt    DateTime @default(now())
+
+  connection   WaConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, type, createdAt])
+  @@index([type, createdAt])
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────

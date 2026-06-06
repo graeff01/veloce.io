@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Loader2, AlertTriangle, CheckCircle2, MessageSquare, Megaphone, Phone, Users, ExternalLink, Settings2,
+  Loader2, AlertTriangle, CheckCircle2, MessageSquare, Megaphone, Phone, Users, ExternalLink, Settings2, BarChart3,
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
+import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
 
 interface Connection {
   id: string;
@@ -38,7 +39,7 @@ function timeAgo(iso: string) {
 export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"conversas" | "leads">("leads");
+  const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
   const [convs, setConvs] = useState<ConvRow[]>([]);
   const [data, setData] = useState<AuditData | null>(null);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
@@ -114,7 +115,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
-          {([["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
+          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{
               padding: "8px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
               fontWeight: view === k ? 600 : 500, color: view === k ? "var(--text-primary)" : "var(--text-muted)",
@@ -125,22 +126,36 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
       </div>
 
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {view === "leads" ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={select}>
-                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-                <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={select}>
-                  {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
-                </select>
-              </div>
+        {view !== "conversas" && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={select}>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={select}>
+                {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
+              </select>
+            </div>
+            {view === "leads" && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)" }}>
                 <Users size={15} color="var(--accent)" />
                 <strong style={{ color: "var(--text-primary)" }}>{data?.totalLeads ?? 0}</strong> leads no mês
               </div>
-            </div>
+            )}
+          </div>
+        )}
+
+        {view === "painel" && (
+          <OperationDashboard
+            clientId={clientId}
+            year={year}
+            month={month}
+            onOpenContact={(c) => setOpen({ contactId: c.contactId, name: c.name, phone: c.phone, adTitle: null })}
+          />
+        )}
+
+        {view === "leads" && (
+          <>
             {!data || data.groups.length === 0 ? (
               <Empty text="Nenhum lead de anúncio nesse período. Eles aparecem aqui automaticamente quando entram pelo anúncio." />
             ) : data.groups.map((g) => (
@@ -162,7 +177,9 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
               </div>
             ))}
           </>
-        ) : (
+        )}
+
+        {view === "conversas" && (
           <div style={card}>
             {convs.length === 0 ? (
               <Empty text="Nenhuma conversa ainda. Elas aparecem aqui em tempo real quando chegam mensagens." />
@@ -184,7 +201,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onSent={() => { void loadConvs(); void loadConn(); }} />}
+      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConvs(); }} />}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { decryptSecret } from "@/lib/crypto";
 import {
   verifySignature, onlyDigits, messageText, type WaWebhookBody, type WaChangeValue, type WaReferral,
 } from "@/lib/whatsapp";
+import { applyMessageToConversation } from "@/lib/wa-conversation";
+import { logWaEvent } from "@/lib/wa-events";
 
 export const runtime = "nodejs";
 
@@ -20,36 +21,40 @@ export async function GET(req: Request) {
   return new NextResponse("forbidden", { status: 403 });
 }
 
-// POST — recebe eventos (mensagens) da Meta.
+// POST — recebe eventos (mensagens + status) da Meta. Somente leitura: nunca
+// responde nem altera nada no WhatsApp da loja.
 export async function POST(req: Request) {
   const raw = await req.text();
+
+  // Proteção principal: valida a assinatura do corpo (HMAC com o App Secret).
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (appSecret && !verifySignature(raw, req.headers.get("x-hub-signature-256"), appSecret)) {
+    return new NextResponse("invalid signature", { status: 401 });
+  }
 
   let body: WaWebhookBody;
   try {
     body = JSON.parse(raw);
   } catch {
-    return NextResponse.json({ ok: true }); // ignora corpo inválido
+    return NextResponse.json({ ok: true });
   }
 
-  // Processa cada mudança, roteando pelo phone_number_id → conexão do cliente.
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
       const phoneNumberId = value?.metadata?.phone_number_id;
-      if (!phoneNumberId || !value?.messages?.length) continue;
+      if (!phoneNumberId) continue;
 
       const conn = await prisma.waConnection.findUnique({ where: { phoneNumberId } });
       if (!conn) continue;
 
-      // Valida assinatura se houver appSecret configurado (env global ou da conexão)
-      const appSecret = process.env.WHATSAPP_APP_SECRET
-        ?? (conn.appSecret ? decryptSecret(conn.appSecret) : undefined);
-      if (appSecret && !verifySignature(raw, req.headers.get("x-hub-signature-256"), appSecret)) {
-        return new NextResponse("invalid signature", { status: 401 });
+      try {
+        if (value?.messages?.length) await processMessages(conn.id, conn.displayPhone, value);
+        if (value?.statuses?.length) await processStatuses(conn.id, value);
+        await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
+      } catch (e) {
+        await logWaEvent(conn.id, "integration.error", null, { message: String(e) });
       }
-
-      await processChange(conn.id, conn.displayPhone, value);
-      await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
     }
   }
 
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-async function processChange(connectionId: string, displayPhone: string | null, value: WaChangeValue) {
+async function processMessages(connectionId: string, displayPhone: string | null, value: WaChangeValue) {
   const businessNumber = onlyDigits(displayPhone ?? value.metadata?.display_phone_number);
   const nameByWaId = new Map<string, string>();
   for (const c of value.contacts ?? []) {
@@ -67,52 +72,68 @@ async function processChange(connectionId: string, displayPhone: string | null, 
   for (const m of value.messages ?? []) {
     const fromDigits = onlyDigits(m.from);
     const outbound = businessNumber !== "" && fromDigits === businessNumber;
-    // O contato é sempre o cliente (no inbound = remetente; no outbound o webhook
-    // de coexistência ainda traz o cliente em contacts/from conforme o caso).
-    const customerWaId = outbound ? (value.contacts?.[0]?.wa_id ? onlyDigits(value.contacts[0].wa_id) : fromDigits) : fromDigits;
+    const customerWaId = outbound
+      ? (value.contacts?.[0]?.wa_id ? onlyDigits(value.contacts[0].wa_id) : fromDigits)
+      : fromDigits;
     if (!customerWaId) continue;
 
     const ts = new Date(Number(m.timestamp) * 1000);
 
-    // Upsert do contato
     const contact = await prisma.waContact.upsert({
       where: { connectionId_waId: { connectionId, waId: customerWaId } },
       create: { connectionId, waId: customerWaId, name: nameByWaId.get(customerWaId) || null, lastMessageAt: ts },
-      update: {
-        lastMessageAt: ts,
-        ...(nameByWaId.get(customerWaId) ? { name: nameByWaId.get(customerWaId) } : {}),
-      },
+      update: { lastMessageAt: ts, ...(nameByWaId.get(customerWaId) ? { name: nameByWaId.get(customerWaId) } : {}) },
     });
 
-    // Insere a mensagem (dedup por waMessageId)
-    await prisma.waMessage.upsert({
+    // Idempotência: se já processamos essa mensagem, não recontabiliza.
+    const exists = await prisma.waMessage.findUnique({
       where: { connectionId_waMessageId: { connectionId, waMessageId: m.id } },
-      create: {
+      select: { id: true },
+    });
+    if (exists) continue;
+
+    await prisma.waMessage.create({
+      data: {
         connectionId, contactId: contact.id, waMessageId: m.id,
         direction: outbound ? "out" : "in",
         type: m.type, text: messageText(m), timestamp: ts, raw: m as object,
       },
-      update: {},
     });
+
+    await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
     // Lead de anúncio: 1ª mensagem com "referral" (Click-to-WhatsApp)
     const ref: WaReferral | undefined = m.referral;
     if (ref && (ref.source_id || ref.source_type === "ad")) {
-      await prisma.waLead.upsert({
-        where: { contactId: contact.id },
-        create: {
-          connectionId, contactId: contact.id, waId: customerWaId,
-          name: contact.name,
-          adId: ref.source_id ?? null,
-          adTitle: ref.headline ?? null,
-          adBody: ref.body ?? null,
-          sourceType: ref.source_type ?? null,
-          sourceUrl: ref.source_url ?? null,
-          ctwaClid: ref.ctwa_clid ?? null,
-          enteredAt: ts,
-        },
-        update: {}, // mantém a 1ª atribuição
-      });
+      const existingLead = await prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { id: true } });
+      if (!existingLead) {
+        await prisma.waLead.create({
+          data: {
+            connectionId, contactId: contact.id, waId: customerWaId,
+            name: contact.name,
+            adId: ref.source_id ?? null,
+            adTitle: ref.headline ?? null,
+            adBody: ref.body ?? null,
+            sourceType: ref.source_type ?? null,
+            sourceUrl: ref.source_url ?? null,
+            ctwaClid: ref.ctwa_clid ?? null,
+            enteredAt: ts,
+          },
+        });
+        await logWaEvent(connectionId, "lead.created", contact.id, { adId: ref.source_id, adTitle: ref.headline });
+      }
     }
+  }
+}
+
+// Atualiza entrega/leitura das mensagens (evento "statuses").
+async function processStatuses(connectionId: string, value: WaChangeValue) {
+  const statuses = (value.statuses ?? []) as Array<{ id?: string; status?: string; timestamp?: string }>;
+  for (const s of statuses) {
+    if (!s.id || !s.status) continue;
+    const ts = s.timestamp ? new Date(Number(s.timestamp) * 1000) : new Date();
+    const data = s.status === "read" ? { readAt: ts } : s.status === "delivered" ? { deliveredAt: ts } : null;
+    if (!data) continue;
+    await prisma.waMessage.updateMany({ where: { connectionId, waMessageId: s.id }, data });
   }
 }
