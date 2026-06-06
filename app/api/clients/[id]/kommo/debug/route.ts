@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { getAccessToken, getContactTags, getLeadTags, kommoGet, KommoError } from "@/lib/kommo";
+import { getAccessToken, getLeads, kommoGet, KommoError } from "@/lib/kommo";
 
-// GET — diagnóstico do filtro por tag e de onde as tags são legíveis.
-// ?leadId=14998016 (opcional) para inspecionar um lead específico.
+// GET — diagnóstico final: recência da listagem, filtro por funil/etapa e tag no lead novo.
+// ?leadId=15007912  (um lead novo, do anúncio) — opcional.
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
@@ -14,63 +14,60 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!conn) return NextResponse.json({ error: "Conexão Kommo não configurada" }, { status: 404 });
 
   const url = new URL(req.url);
-  const probeLeadId = url.searchParams.get("leadId");
+  const probe = url.searchParams.get("leadId");
+  const cx = conn;
 
-  type WithTags = { id: number; _embedded?: { tags?: Array<{ id: number; name: string }> } };
-  const tagsOf = (x: WithTags | null | undefined) => (x?._embedded?.tags ?? []).map((t) => t.name);
+  type Lead = { id: number; status_id?: number; pipeline_id?: number; created_at: number; _embedded?: { tags?: Array<{ name: string }> } };
 
   try {
     const token = await getAccessToken(conn);
+    const fmt = (s: number) => new Date(s * 1000).toLocaleString("pt-BR");
 
-    const [contactTags, leadTags] = await Promise.all([
-      getContactTags(conn, token).catch(() => []),
-      getLeadTags(conn, token).catch(() => []),
-    ]);
-    const adTag = [...contactTags, ...leadTags].find((t) => t.name.toLowerCase().includes("an"));
+    // 1) A listagem traz os leads recentes? (puxa várias páginas e olha datas)
+    const all = await getLeads(conn, token, { maxPages: 10 });
+    const dates = all.map((l) => l.created_at);
+    const probeNum = probe ? Number(probe) : null;
 
-    const cx = conn;
-    // Helper: conta itens de um filtro de contatos (1 página)
-    async function countContacts(qs: string) {
-      const d = await kommoGet<{ _embedded?: { contacts?: WithTags[] } }>(cx, token, `/api/v4/contacts?limit=250&${qs}`);
-      return d?._embedded?.contacts?.length ?? 0;
-    }
+    // 2) Filtro por funil/etapa funciona? (usa pipeline/status de um lead existente)
+    const ref = all[0];
     async function countLeads(qs: string) {
-      const d = await kommoGet<{ _embedded?: { leads?: WithTags[] } }>(cx, token, `/api/v4/leads?limit=250&${qs}`);
+      const d = await kommoGet<{ _embedded?: { leads?: Lead[] } }>(cx, token, `/api/v4/leads?limit=250&${qs}`);
       return d?._embedded?.leads?.length ?? 0;
     }
+    const pipelineTest = ref?.pipeline_id ? {
+      pipelineUsado: ref.pipeline_id,
+      leadsComPipelineReal: await countLeads(`filter[pipeline_id]=${ref.pipeline_id}`),
+      leadsComPipelineFALSO: await countLeads(`filter[pipeline_id]=999999999`),
+      semFiltro: all.length >= 250 ? 250 : all.length,
+    } : "sem pipeline de referência";
 
-    // TESTE 1 — filtro por tag funciona? (tag real vs. tag falsa)
-    const filterTest = adTag ? {
-      tagUsada: adTag.name,
-      contatosComTagReal: await countContacts(`filter[tags][]=${adTag.id}`),
-      contatosComTagFALSA: await countContacts(`filter[tags][]=999999999`),
-      leadsComTagReal: await countLeads(`filter[tags][]=${adTag.id}`),
-      leadsComTagFALSA: await countLeads(`filter[tags][]=999999999`),
-      semFiltro: await countContacts(`page=1`),
-    } : "nenhuma tag de anúncio encontrada";
+    // 3) Fila de entrada (unsorted) — os leads de hoje estão aqui?
+    const unsorted = await kommoGet<{ _embedded?: { unsorted?: Array<{ uid: string; category: string; created_at: number }> }, _total_items?: number }>(
+      cx, token, `/api/v4/leads/unsorted?limit=5`,
+    ).catch((e) => ({ erro: String(e) } as unknown));
 
-    // TESTE 2 — ler um lead específico direto (detalhe) traz as tags?
-    let leadProbe: unknown = "passe ?leadId=NUMERO para testar";
-    if (probeLeadId) {
-      const lead = await kommoGet<WithTags & { name?: string; status_id?: number; _embedded?: { tags?: Array<{ id: number; name: string }>; contacts?: Array<{ id: number }> } }>(
-        conn, token, `/api/v4/leads/${probeLeadId}?with=contacts`,
-      ).catch((e) => ({ erro: String(e) } as unknown as null));
-      const cid = (lead as { _embedded?: { contacts?: Array<{ id: number }> } })?._embedded?.contacts?.[0]?.id;
-      const contact = cid ? await kommoGet<WithTags & { name?: string }>(conn, token, `/api/v4/contacts/${cid}`).catch(() => null) : null;
-      leadProbe = {
-        leadEncontrado: !!lead && !("erro" in (lead as object)),
-        tagsNoLead: tagsOf(lead as WithTags),
-        contatoId: cid ?? null,
-        tagsNoContato: tagsOf(contact),
-        raw: lead,
+    // 4) O lead novo (bot novo marca o LEAD) — a tag aparece no detalhe do lead?
+    let novoLead: unknown = "passe ?leadId=NUMERO de um lead novo do anúncio";
+    if (probeNum) {
+      const l = await kommoGet<Lead & { name?: string }>(cx, token, `/api/v4/leads/${probeNum}`).catch((e) => ({ erro: String(e) } as unknown as null));
+      novoLead = {
+        achado: !!l && !("erro" in (l as object)),
+        tagsNoLead: ((l as Lead)?._embedded?.tags ?? []).map((t) => t.name),
+        statusId: (l as Lead)?.status_id,
+        pipelineId: (l as Lead)?.pipeline_id,
+        apareceNaListagem: probeNum ? all.some((x) => x.id === probeNum) : null,
       };
     }
 
     return NextResponse.json({
-      tagsDeContato: contactTags.map((t) => t.name),
-      tagsDeLead: leadTags.map((t) => t.name),
-      filterTest,
-      leadProbe,
+      listagem: {
+        totalPuxado: all.length,
+        maisRecente: dates.length ? fmt(Math.max(...dates)) : null,
+        maisAntigo: dates.length ? fmt(Math.min(...dates)) : null,
+      },
+      pipelineTest,
+      unsorted,
+      novoLead,
     });
   } catch (e) {
     if (e instanceof KommoError) return NextResponse.json({ error: e.message }, { status: e.status });
