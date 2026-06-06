@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Loader2, X, AlertTriangle, CheckCircle2, MessageSquare, Megaphone, Phone, Users, ExternalLink,
+  Loader2, AlertTriangle, CheckCircle2, MessageSquare, Megaphone, Phone, Users, ExternalLink, Settings2,
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 
@@ -42,6 +42,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [convs, setConvs] = useState<ConvRow[]>([]);
   const [data, setData] = useState<AuditData | null>(null);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -75,7 +76,20 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
     </div>
   );
 
-  if (!conn) return <Setup clientId={clientId} onSaved={loadConn} />;
+  if (!conn || editing) return (
+    <Setup
+      clientId={clientId}
+      initial={conn ? {
+        wabaId: conn.wabaId,
+        phoneNumberId: conn.phoneNumberId,
+        accessToken: "",
+        appSecret: "",
+        displayPhone: conn.displayPhone ?? "",
+      } : undefined}
+      onSaved={() => { setEditing(false); void loadConn(); }}
+      onCancel={conn ? () => setEditing(false) : undefined}
+    />
+  );
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
@@ -94,6 +108,9 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
               </p>
             </div>
           </div>
+          <button onClick={() => setEditing(true)} title="Atualizar conexão" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            <Settings2 size={13} /> Atualizar conexão
+          </button>
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
@@ -167,7 +184,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} />}
+      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onSent={() => { void loadConvs(); void loadConn(); }} />}
     </div>
   );
 }
@@ -191,8 +208,13 @@ function Empty({ text }: { text: string }) {
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
-function Setup({ clientId, onSaved }: { clientId: string; onSaved: () => void }) {
-  const [f, setF] = useState({ wabaId: "", phoneNumberId: "", accessToken: "", appSecret: "", displayPhone: "" });
+function Setup({ clientId, initial, onSaved, onCancel }: {
+  clientId: string;
+  initial?: { wabaId: string; phoneNumberId: string; accessToken: string; appSecret: string; displayPhone: string };
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const [f, setF] = useState(initial ?? { wabaId: "", phoneNumberId: "", accessToken: "", appSecret: "", displayPhone: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -216,7 +238,7 @@ function Setup({ clientId, onSaved }: { clientId: string; onSaved: () => void })
           <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(37,211,102,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <MessageSquare size={26} color="#25D366" />
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Conectar WhatsApp (Cloud API)</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>{initial ? "Atualizar WhatsApp" : "Conectar WhatsApp (Cloud API)"}</h2>
           <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
             Cole os dados do app da Meta. As mensagens passam a chegar aqui em tempo real, com o anúncio de origem identificado automaticamente.
           </p>
@@ -234,9 +256,16 @@ function Setup({ clientId, onSaved }: { clientId: string; onSaved: () => void })
 
           {error && <div style={{ padding: "10px 14px", borderRadius: 9, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", fontSize: 12, color: "#DC2626", display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={13} /> {error}</div>}
 
-          <button type="submit" disabled={saving} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 20px", borderRadius: 9, border: "none", background: "#25D366", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            {saving ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={13} />} Conectar
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            {onCancel && (
+              <button type="button" onClick={onCancel} style={{ flex: 1, padding: "10px 20px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Cancelar
+              </button>
+            )}
+            <button type="submit" disabled={saving} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 20px", borderRadius: 9, border: "none", background: "#25D366", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              {saving ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={13} />} {initial ? "Salvar conexão" : "Conectar"}
+            </button>
+          </div>
         </form>
       </div>
     </div>
