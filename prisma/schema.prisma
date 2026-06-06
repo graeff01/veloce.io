@@ -103,6 +103,7 @@ model Client {
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
   kommoConnection   KommoConnection?
+  waConnection      WaConnection?
   winningCampaigns  WinningCampaign[]
 }
 
@@ -489,6 +490,85 @@ model KommoLead {
   @@unique([connectionId, kommoId])
   @@index([connectionId, createdAtKommo])
   @@index([connectionId, adTag])
+}
+
+// ── WhatsApp Cloud API (oficial) ─────────────────────────────────────────────
+// Espelho do WhatsApp do cliente: recebe mensagens via webhook da Meta, guarda
+// conversas e identifica leads de anúncio pelo "referral" (Click-to-WhatsApp).
+model WaConnection {
+  id            String    @id @default(cuid())
+  clientId      String    @unique
+  wabaId        String    // ID da conta WhatsApp Business
+  phoneNumberId String    @unique // ID do número (roteia os eventos do webhook)
+  displayPhone  String?   // número exibido (ex: +55 54 ...)
+  accessToken   String    // cifrado — token do System User
+  appSecret     String?   // cifrado — valida a assinatura do webhook
+  name          String?
+  lastEventAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contacts      WaContact[]
+  messages      WaMessage[]
+  leads         WaLead[]
+}
+
+model WaContact {
+  id            String    @id @default(cuid())
+  connectionId  String
+  waId          String    // telefone E.164 sem "+"
+  name          String?
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  messages      WaMessage[]
+
+  @@unique([connectionId, waId])
+  @@index([connectionId, lastMessageAt])
+}
+
+model WaMessage {
+  id            String   @id @default(cuid())
+  connectionId  String
+  contactId     String
+  waMessageId   String   // id da mensagem no WhatsApp (dedup)
+  direction     String   // "in" (recebida) | "out" (enviada)
+  type          String   // text, image, audio, ...
+  text          String?
+  timestamp     DateTime
+  raw           Json?
+  createdAt     DateTime @default(now())
+
+  connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  contact       WaContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, waMessageId])
+  @@index([connectionId, timestamp])
+  @@index([contactId, timestamp])
+}
+
+// Lead de anúncio: criado quando a 1ª mensagem traz o "referral" (Click-to-WhatsApp).
+model WaLead {
+  id            String   @id @default(cuid())
+  connectionId  String
+  contactId     String   @unique
+  waId          String
+  name          String?
+  adId          String?  // ID do anúncio na Meta (source_id)
+  adTitle       String?  // headline do anúncio
+  adBody        String?
+  sourceType    String?  // "ad" | "post" | ...
+  sourceUrl     String?
+  ctwaClid      String?
+  enteredAt     DateTime // data da 1ª mensagem do anúncio
+  createdAt     DateTime @default(now())
+
+  connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, enteredAt])
+  @@index([connectionId, adId])
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────
