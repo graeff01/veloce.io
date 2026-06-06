@@ -7,7 +7,7 @@ export interface ReportLead {
   name: string | null;
   phone: string | null;
   statusName: string | null;
-  createdAtKommo: string;
+  enteredAt: string;
 }
 export interface ReportGroup { adTag: string; total: number; leads: ReportLead[] }
 export interface ReportData {
@@ -110,7 +110,7 @@ function ReportDocument({ data }: { data: ReportData }) {
                 <Text style={[s.td, s.cPhone]}>{l.phone ?? "—"}</Text>
                 <Text style={[s.td, s.cStatus]}>{l.statusName ?? "—"}</Text>
                 <Text style={[s.td, s.cDate]}>
-                  {new Date(l.createdAtKommo).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                  {new Date(l.enteredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
                 </Text>
               </View>
             ))}

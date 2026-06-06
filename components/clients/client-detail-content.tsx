@@ -16,7 +16,7 @@ import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WinningCampaigns } from "@/components/clients/winning-campaigns";
-import { KommoTab } from "@/components/clients/kommo-tab";
+import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -176,7 +176,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "anuncios",  label: "Campanhas", icon: <BarChart2 size={13} /> },
-    { key: "leads",     label: "Leads",     icon: <Megaphone size={13} /> },
+    { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -288,7 +288,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       )}
 
       {tab === "leads" && (
-        <KommoTab clientId={clientId} />
+        <WhatsAppTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (

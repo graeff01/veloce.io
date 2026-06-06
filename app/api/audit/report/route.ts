@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-// GET /api/audit/report?clientId=&year=&month=  → PDF de auditoria de leads
+// GET /api/audit/report?clientId=&year=&month=  → PDF de leads de anúncio (WhatsApp)
 export async function GET(req: Request) {
   const { error } = await requireAuth("clients:read");
   if (error) return error;
@@ -20,24 +20,23 @@ export async function GET(req: Request) {
   const year = Number(url.searchParams.get("year")) || new Date().getFullYear();
   const monthParam = url.searchParams.get("month");
   const month = monthParam ? Number(monthParam) : null;
-
   const start = month ? new Date(year, month - 1, 1) : new Date(year, 0, 1);
   const end = month ? new Date(year, month, 1) : new Date(year + 1, 0, 1);
 
-  const conn = await prisma.kommoConnection.findUnique({
+  const conn = await prisma.waConnection.findUnique({
     where: { clientId },
     include: { client: { select: { name: true } } },
   });
-  if (!conn) return NextResponse.json({ error: "Cliente sem conexão Kommo" }, { status: 404 });
+  if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
 
-  const leads = await prisma.kommoLead.findMany({
-    where: { connectionId: conn.id, createdAtKommo: { gte: start, lt: end } },
-    orderBy: { createdAtKommo: "desc" },
+  const leads = await prisma.waLead.findMany({
+    where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } },
+    orderBy: { enteredAt: "desc" },
   });
 
   const groupsMap = new Map<string, typeof leads>();
   for (const lead of leads) {
-    const key = lead.adTag ?? "Sem anúncio";
+    const key = lead.adTitle ?? "Anúncio (sem título)";
     if (!groupsMap.has(key)) groupsMap.set(key, []);
     groupsMap.get(key)!.push(lead);
   }
@@ -46,18 +45,18 @@ export async function GET(req: Request) {
       adTag,
       total: items.length,
       leads: items.map((l) => ({
-        contactName: l.contactName,
+        contactName: l.name,
         name: l.name,
-        phone: l.phone,
-        statusName: l.statusName,
-        createdAtKommo: l.createdAtKommo.toISOString(),
+        phone: l.waId,
+        statusName: null,
+        enteredAt: l.enteredAt.toISOString(),
       })),
     }))
     .sort((a, b) => b.total - a.total);
 
   const data: ReportData = {
     clientName: conn.client.name,
-    accountName: conn.accountName,
+    accountName: conn.displayPhone ? `WhatsApp ${conn.displayPhone}` : "WhatsApp",
     periodLabel: month ? `${MONTHS[month - 1]} de ${year}` : `Ano de ${year}`,
     totalLeads: leads.length,
     groups,
