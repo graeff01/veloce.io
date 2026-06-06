@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { rebuildConversations, closeInactiveConversations } from "@/lib/wa-conversation";
+import { rebuildConversations, closeInactiveConversations, backfillAdLeads } from "@/lib/wa-conversation";
 import { WA_THRESHOLDS } from "@/lib/wa-metrics";
 
 // POST — reconstrói as conversas a partir das mensagens já armazenadas.
@@ -16,5 +16,6 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
   const rebuilt = await rebuildConversations(conn.id);
   const closed = await closeInactiveConversations(conn.id, WA_THRESHOLDS.closeAfterHours);
-  return NextResponse.json({ rebuilt, closed });
+  const adLeads = await backfillAdLeads(conn.id);
+  return NextResponse.json({ rebuilt, closed, adLeads });
 }

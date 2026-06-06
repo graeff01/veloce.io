@@ -51,7 +51,7 @@ export async function GET(req: Request) {
 
   const groupsMap = new Map<string, typeof leads>();
   for (const lead of leads) {
-    const key = lead.adTitle ?? "Anúncio (sem título)";
+    const key = lead.adModel ?? lead.adTitle ?? "Anúncio (sem título)";
     if (!groupsMap.has(key)) groupsMap.set(key, []);
     groupsMap.get(key)!.push(lead);
   }

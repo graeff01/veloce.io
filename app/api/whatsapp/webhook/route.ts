@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  verifySignature, onlyDigits, messageText, type WaWebhookBody, type WaChangeValue, type WaReferral,
+  verifySignature, onlyDigits, messageText, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
+import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 
 export const runtime = "nodejs";
@@ -102,25 +103,31 @@ async function processMessages(connectionId: string, displayPhone: string | null
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
-    // Lead de anúncio: 1ª mensagem com "referral" (Click-to-WhatsApp)
-    const ref: WaReferral | undefined = m.referral;
-    if (ref && (ref.source_id || ref.source_type === "ad")) {
-      const existingLead = await prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { id: true } });
-      if (!existingLead) {
+    // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo
+    // detectado na mensagem de abertura ("anúncio do {modelo}").
+    const ref = m.referral;
+    const adModel = outbound ? null : detectAdModel(messageText(m));
+    const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel;
+    if (isAdLead) {
+      const lead = await prisma.waLead.findUnique({ where: { contactId: contact.id } });
+      if (!lead) {
         await prisma.waLead.create({
           data: {
             connectionId, contactId: contact.id, waId: customerWaId,
             name: contact.name,
-            adId: ref.source_id ?? null,
-            adTitle: ref.headline ?? null,
-            adBody: ref.body ?? null,
-            sourceType: ref.source_type ?? null,
-            sourceUrl: ref.source_url ?? null,
-            ctwaClid: ref.ctwa_clid ?? null,
+            adId: ref?.source_id ?? null,
+            adTitle: ref?.headline ?? adModel ?? null,
+            adModel: adModel ?? null,
+            adBody: ref?.body ?? null,
+            sourceType: ref?.source_type ?? (adModel ? "message" : null),
+            sourceUrl: ref?.source_url ?? null,
+            ctwaClid: ref?.ctwa_clid ?? null,
             enteredAt: ts,
           },
         });
-        await logWaEvent(connectionId, "lead.created", contact.id, { adId: ref.source_id, adTitle: ref.headline });
+        await logWaEvent(connectionId, "lead.created", contact.id, { adId: ref?.source_id, adModel, adTitle: ref?.headline });
+      } else if (adModel && !lead.adModel) {
+        await prisma.waLead.update({ where: { contactId: contact.id }, data: { adModel } });
       }
     }
   }

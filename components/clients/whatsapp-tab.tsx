@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
+import { ConversationsView } from "@/components/whatsapp/conversations-view";
 
 interface Connection {
   id: string;
@@ -15,11 +16,6 @@ interface Connection {
   name: string | null;
   lastEventAt: string | null;
   _count?: { contacts: number; leads: number; messages: number };
-}
-interface ConvRow {
-  contactId: string; waId: string; name: string | null;
-  lastMessageAt: string | null; lastText: string | null; lastDirection: string | null;
-  fromAd: boolean; adTitle: string | null;
 }
 interface AuditLead { id: string; contactId: string; name: string | null; phone: string | null; enteredAt: string }
 interface AuditGroup { adTitle: string; total: number; leads: AuditLead[] }
@@ -40,7 +36,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
-  const [convs, setConvs] = useState<ConvRow[]>([]);
   const [data, setData] = useState<AuditData | null>(null);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
   const [editing, setEditing] = useState(false);
@@ -56,11 +51,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
     setLoading(false);
   }, [clientId]);
 
-  const loadConvs = useCallback(async () => {
-    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations`);
-    if (r.ok) setConvs(await r.json());
-  }, [clientId]);
-
   const loadLeads = useCallback(async () => {
     const r = await fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`);
     if (r.ok) setData(await r.json());
@@ -69,7 +59,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadConn(); }, [loadConn]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (conn) { loadConvs(); loadLeads(); } }, [conn, loadConvs, loadLeads]);
+  useEffect(() => { if (conn) loadLeads(); }, [conn, loadLeads]);
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
@@ -180,28 +170,11 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         )}
 
         {view === "conversas" && (
-          <div style={card}>
-            {convs.length === 0 ? (
-              <Empty text="Nenhuma conversa ainda. Elas aparecem aqui em tempo real quando chegam mensagens." />
-            ) : convs.map((c, i) => (
-              <Row key={c.contactId} onClick={() => setOpen({ contactId: c.contactId, name: c.name, phone: c.waId, adTitle: c.adTitle })} last={i === convs.length - 1}>
-                <div style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
-                    {c.name ?? `+${c.waId}`}
-                    {c.fromAd && <Megaphone size={11} color="var(--accent)" />}
-                  </span>
-                  <span style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
-                    {c.lastDirection === "out" ? "Você: " : ""}{c.lastText ?? "—"}
-                  </span>
-                </div>
-                <span style={{ fontSize: 10.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{c.lastMessageAt ? timeAgo(c.lastMessageAt) : ""}</span>
-              </Row>
-            ))}
-          </div>
+          <ConversationsView clientId={clientId} />
         )}
       </div>
 
-      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConvs(); }} />}
+      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConn(); }} />}
     </div>
   );
 }

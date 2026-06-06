@@ -49,7 +49,7 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     }),
     prisma.waLead.findMany({
       where: { connectionId, enteredAt: { gte: start, lt: end } },
-      select: { contactId: true, adTitle: true },
+      select: { contactId: true, adTitle: true, adModel: true },
     }),
     prisma.waConversation.count({ where: { connectionId, status: "waiting" } }),
     prisma.waConversation.findMany({
@@ -91,7 +91,7 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
 
   const byAdMap = new Map<string, number>();
   for (const l of adLeads) {
-    const key = l.adTitle ?? "Anúncio (sem título)";
+    const key = l.adModel ?? l.adTitle ?? "Anúncio (sem título)";
     byAdMap.set(key, (byAdMap.get(key) ?? 0) + 1);
   }
 
@@ -208,7 +208,7 @@ export async function computeAttendanceMetrics(
     const firstReply = outs.find((t) => t.getTime() >= lead.enteredAt.getTime());
     const sec = firstReply ? (firstReply.getTime() - lead.enteredAt.getTime()) / 1000 : null;
 
-    const key = lead.adTitle ?? "Anúncio (sem título)";
+    const key = lead.adModel ?? lead.adTitle ?? "Anúncio (sem título)";
     const ad = perAdMap.get(key) ?? { total: 0, responded: 0, times: [] };
     ad.total++;
 

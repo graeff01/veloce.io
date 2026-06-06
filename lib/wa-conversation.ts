@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logWaEvent } from "@/lib/wa-events";
+import { detectAdModel } from "@/lib/wa-ad-detect";
 
 // ── Domínio da conversa operacional ──────────────────────────────────────────
 // Mantém o estado por contato (SLA, status, contadores) de forma incremental.
@@ -120,4 +121,38 @@ export async function rebuildConversations(connectionId: string): Promise<number
   const rows = [...acc.entries()].map(([contactId, a]) => ({ connectionId, contactId, ...a }));
   if (rows.length) await prisma.waConversation.createMany({ data: rows });
   return rows.length;
+}
+
+// Detecta leads de anúncio a partir das mensagens já armazenadas (1ª mensagem
+// que casa "anúncio do {modelo}"). Cria/atualiza o WaLead com o modelo.
+export async function backfillAdLeads(connectionId: string): Promise<number> {
+  const messages = await prisma.waMessage.findMany({
+    where: { connectionId, direction: "in" },
+    select: { contactId: true, text: true, timestamp: true },
+    orderBy: { timestamp: "asc" },
+  });
+
+  const firstMatch = new Map<string, { model: string; ts: Date }>();
+  for (const m of messages) {
+    if (firstMatch.has(m.contactId)) continue;
+    const model = detectAdModel(m.text);
+    if (model) firstMatch.set(m.contactId, { model, ts: m.timestamp });
+  }
+
+  let n = 0;
+  for (const [contactId, { model, ts }] of firstMatch) {
+    const contact = await prisma.waContact.findUnique({ where: { id: contactId }, select: { waId: true, name: true } });
+    if (!contact) continue;
+    const lead = await prisma.waLead.findUnique({ where: { contactId } });
+    if (!lead) {
+      await prisma.waLead.create({
+        data: { connectionId, contactId, waId: contact.waId, name: contact.name, adModel: model, adTitle: model, sourceType: "message", enteredAt: ts },
+      });
+      n++;
+    } else if (!lead.adModel) {
+      await prisma.waLead.update({ where: { contactId }, data: { adModel: model } });
+      n++;
+    }
+  }
+  return n;
 }

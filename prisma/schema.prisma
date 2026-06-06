@@ -511,7 +511,8 @@ model WaLead {
   waId          String
   name          String?
   adId          String?  // ID do anúncio na Meta (source_id)
-  adTitle       String?  // headline do anúncio
+  adTitle       String?  // headline do anúncio (do referral)
+  adModel       String?  // modelo detectado na mensagem ("Taos Highline") — chave de agrupamento
   adBody        String?
   sourceType    String?  // "ad" | "post" | ...
   sourceUrl     String?
