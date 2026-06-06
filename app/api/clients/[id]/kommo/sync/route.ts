@@ -19,31 +19,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const conn = await prisma.kommoConnection.findUnique({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "Conexão Kommo não configurada" }, { status: 404 });
 
-  // Janela: por padrão últimos 12 meses; override via body { since, until } (ISO)
+  // Opcional: { since } (ISO) limita quão para trás buscar. Sem date filter por
+  // padrão — puxamos os leads mais recentes e o dashboard filtra por mês.
   const body = await req.json().catch(() => ({}));
-  const now = new Date();
-  const since = body.since ? new Date(body.since) : new Date(now.getFullYear() - 1, now.getMonth(), 1);
-  const until = body.until ? new Date(body.until) : now;
-  const fromUnix = Math.floor(since.getTime() / 1000);
-  const toUnix = Math.floor(until.getTime() / 1000);
+  const fromUnix = body.since ? Math.floor(new Date(body.since).getTime() / 1000) : undefined;
 
   try {
     const token = await getAccessToken(conn);
 
-    // 1. Resolve as tags de anúncio → IDs. Usa as configuradas; se vazio, infere
-    //    pelas tags que contêm "anúncio".
     // Conjunto de nomes que contam como "anúncio": as configuradas pelo usuário
     // ou, se vazio, qualquer tag que contenha "anúncio".
     const configured = conn.adTags.map(norm);
     const isAdTagName = (name: string) =>
       configured.length ? configured.includes(norm(name)) : norm(name).includes("anuncio");
 
-    // 2. Mapa de status do funil
+    // 1. Mapa de status do funil
     const statusMap = await getStatusMap(conn, token);
 
-    // 3. Puxa TODOS os leads do período (sem filtrar por tag) — assim nada se
-    //    perde e marcamos cada um com a tag de anúncio que ele realmente tem.
-    const leads = await getLeads(conn, token, { from: fromUnix, to: toUnix });
+    // 2. Puxa os leads (mais recentes primeiro), sem filtro de tag — assim nada
+    //    se perde e marcamos cada um com a tag de anúncio que ele realmente tem.
+    const leads = await getLeads(conn, token, { from: fromUnix });
 
     // Conjunto de todas as tags vistas (diagnóstico + futura seleção na UI)
     const tagsSeen = new Set<string>();
@@ -99,7 +94,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       synced,
       withAdTag,
       tagsSeen: [...tagsSeen].sort(),
-      period: { since: since.toISOString(), until: until.toISOString() },
     });
   } catch (e) {
     if (e instanceof KommoError) {

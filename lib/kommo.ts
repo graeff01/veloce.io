@@ -146,29 +146,29 @@ export interface RawLead {
 
 interface LeadsFilter {
   tagIds?: number[];
-  from?: number; // unix seconds
-  to?: number;   // unix seconds
+  from?: number;     // unix seconds (opcional)
+  to?: number;       // unix seconds (opcional)
+  maxPages?: number; // teto de páginas (250 leads cada). Padrão 20 = 5000 leads.
 }
 
-// Busca paginada de leads com filtro por tag e por data de criação.
-export async function getLeads(conn: KommoConnection, token: string, filter: LeadsFilter): Promise<RawLead[]> {
+// Busca paginada de leads, do mais recente para o mais antigo.
+// Os parâmetros de filtro do Kommo (filter[...] e order[...]) usam colchetes
+// literais — NÃO podem passar por URLSearchParams (que os percent-encoda e o
+// Kommo ignora). Por isso montamos a query manualmente.
+export async function getLeads(conn: KommoConnection, token: string, filter: LeadsFilter = {}): Promise<RawLead[]> {
   const out: RawLead[] = [];
+  const maxPages = filter.maxPages ?? 20;
   let page = 1;
   for (;;) {
-    const params = new URLSearchParams();
-    params.set("with", "contacts");
-    params.set("page", String(page));
-    params.set("limit", "250");
-    if (filter.from) params.set("filter[created_at][from]", String(filter.from));
-    if (filter.to) params.set("filter[created_at][to]", String(filter.to));
-    let qs = params.toString();
-    // filter[tags][] precisa repetir a chave por id
+    let qs = `with=contacts&limit=250&page=${page}&order[created_at]=desc`;
+    if (filter.from) qs += `&filter[created_at][from]=${filter.from}`;
+    if (filter.to) qs += `&filter[created_at][to]=${filter.to}`;
     for (const id of filter.tagIds ?? []) qs += `&filter[tags][]=${id}`;
 
     const data = await kommoGet<{ _embedded?: { leads?: RawLead[] } }>(conn, token, `/api/v4/leads?${qs}`);
     const leads = data?._embedded?.leads ?? [];
     out.push(...leads);
-    if (leads.length < 250) break;
+    if (leads.length < 250 || page >= maxPages) break;
     page++;
   }
   return out;

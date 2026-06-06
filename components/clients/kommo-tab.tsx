@@ -54,6 +54,7 @@ export function KommoTab({ clientId }: { clientId: string }) {
   const [error, setError] = useState("");
   const [openLead, setOpenLead] = useState<ConversationLead | null>(null);
   const [tagPanel, setTagPanel] = useState(false);
+  const [syncInfo, setSyncInfo] = useState<{ synced: number; withAdTag: number; tagsSeen: string[] } | null>(null);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -80,12 +81,17 @@ export function KommoTab({ clientId }: { clientId: string }) {
   async function handleSync() {
     setSyncing(true);
     setError("");
+    setSyncInfo(null);
     const res = await fetch(`/api/clients/${clientId}/kommo/sync`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     });
     const body = await res.json();
     if (!res.ok) setError(body.error ?? "Erro ao sincronizar");
-    else { await loadConn(); await loadData(); }
+    else {
+      setSyncInfo({ synced: body.synced ?? 0, withAdTag: body.withAdTag ?? 0, tagsSeen: body.tagsSeen ?? [] });
+      await loadConn();
+      await loadData();
+    }
     setSyncing(false);
   }
 
@@ -139,6 +145,19 @@ export function KommoTab({ clientId }: { clientId: string }) {
       {error && (
         <div style={{ margin: "16px 28px 0", padding: "10px 14px", borderRadius: 9, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", fontSize: 12, color: "#DC2626", display: "flex", alignItems: "center", gap: 8 }}>
           <AlertTriangle size={13} /> {error}
+        </div>
+      )}
+
+      {syncInfo && (
+        <div style={{ margin: "16px 28px 0", padding: "10px 14px", borderRadius: 9, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.18)", fontSize: 12, color: "var(--text-secondary)" }}>
+          <strong style={{ color: "var(--text-primary)" }}>{syncInfo.synced}</strong> leads sincronizados · <strong style={{ color: "var(--text-primary)" }}>{syncInfo.withAdTag}</strong> com tag de anúncio.
+          {syncInfo.tagsSeen.length > 0 ? (
+            <span> Tags encontradas nos leads: {syncInfo.tagsSeen.map((t) => (
+              <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--accent)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 20, margin: "0 2px" }}>{t}</span>
+            ))}</span>
+          ) : (
+            <span> Nenhuma tag foi encontrada nos leads — as tags podem estar no <strong>contato</strong> em vez do lead.</span>
+          )}
         </div>
       )}
 
@@ -216,9 +235,18 @@ function AdGroup({ group, onOpen }: { group: AuditGroup; onOpen: (l: Conversatio
               onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}
             >
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {l.contactName ?? l.name ?? "—"}
-              </span>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
+                  {l.contactName ?? l.name ?? "—"}
+                </span>
+                {l.tags && l.tags.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
+                    {l.tags.map((t) => (
+                      <span key={t} style={{ fontSize: 9.5, color: "var(--text-muted)", background: "var(--bg-elevated)", padding: "1px 6px", borderRadius: 20 }}>{t}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <span style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
                 {l.phone ? <><Phone size={11} /> {l.phone}</> : "—"}
               </span>
