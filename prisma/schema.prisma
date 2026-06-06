@@ -102,6 +102,7 @@ model Client {
   meetings          Meeting[]
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
+  kommoConnection   KommoConnection?
   winningCampaigns  WinningCampaign[]
 }
 
@@ -438,6 +439,55 @@ model MetaInsight {
 
   // adsetId incluído para não colapsar adsets diferentes da mesma campanha
   @@unique([connectionId, campaignId, adsetId, dateStart, dateStop])
+}
+
+// ── Kommo CRM (Auditoria de Leads) ───────────────────────────────────────────
+// Conexão por cliente. Tokens guardados cifrados (lib/crypto). O sync puxa os
+// leads do Kommo via /api/v4 e cacheia em KommoLead para auditoria e relatório.
+model KommoConnection {
+  id            String    @id @default(cuid())
+  clientId      String    @unique
+  subdomain     String    // ex: "contatograeff1" → contatograeff1.kommo.com
+  accessToken   String    // cifrado (token de longa duração ou OAuth2 access)
+  refreshToken  String?   // cifrado — usado só no fluxo OAuth2
+  expiresAt     DateTime? // null = token de longa duração (não expira sozinho)
+  oauthClientId String?   // cifrado — para refresh OAuth2
+  oauthSecret   String?   // cifrado — para refresh OAuth2
+  accountName   String?
+  adTags        String[]  @default([]) // tags consideradas "anúncio" (filtro do sync)
+  lastSyncAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  leads         KommoLead[]
+}
+
+model KommoLead {
+  id             String   @id @default(cuid())
+  connectionId   String
+  kommoId        Int      // id do lead no Kommo
+  name           String?
+  contactName    String?
+  phone          String?
+  adTag          String?  // tag de anúncio que originou o lead (agrupamento)
+  tags           Json?    // todas as tags do lead
+  statusId       Int?
+  statusName     String?
+  pipelineId     Int?
+  pipelineName   String?
+  price          Float    @default(0)
+  createdAtKommo DateTime // data de entrada do lead no Kommo
+  updatedAtKommo DateTime?
+  timeline       Json?    // notas/eventos expostos pela API (acompanhamento)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  connection     KommoConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, kommoId])
+  @@index([connectionId, createdAtKommo])
+  @@index([connectionId, adTag])
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────

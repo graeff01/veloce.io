@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2,
-  CalendarDays, Columns3, User, Mic, BarChart2,
+  CalendarDays, Columns3, User, Mic, BarChart2, Megaphone,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WinningCampaigns } from "@/components/clients/winning-campaigns";
+import { KommoTab } from "@/components/clients/kommo-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "anuncios";
+type Tab = "operacao" | "perfil" | "reunioes" | "anuncios" | "leads";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -175,6 +176,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "anuncios",  label: "Campanhas", icon: <BarChart2 size={13} /> },
+    { key: "leads",     label: "Leads",     icon: <Megaphone size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -283,6 +285,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         <div style={{ flex: 1, overflowY: "auto" }}>
           <WinningCampaigns clientId={clientId} />
         </div>
+      )}
+
+      {tab === "leads" && (
+        <KommoTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (

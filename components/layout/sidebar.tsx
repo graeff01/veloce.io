@@ -19,6 +19,8 @@ import {
   Users,
   UserRound,
   Brain,
+  ListChecks,
+  ClipboardCheck,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -32,8 +34,10 @@ interface ClientRow {
 
 const bottomNavItems = [
   { href: "/",             icon: LayoutDashboard, label: "Visao geral" },
+  { href: "/tasks",        icon: ListChecks,      label: "Tarefas" },
   { href: "/calendar",     icon: CalendarDays,    label: "Calendario" },
   { href: "/clients",      icon: UserRound,       label: "Clientes" },
+  { href: "/audit",        icon: ClipboardCheck,  label: "Auditoria" },
   { href: "/finances",     icon: Wallet,          label: "Financas" },
   { href: "/hr",           icon: Users,           label: "Equipe" },
   { href: "/intelligence", icon: Brain,           label: "Inteligencia" },
