@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import {
-  getAccessToken, getLeadTags, getStatusMap, getLeads, getContactPhones, KommoError,
+  getAccessToken, getStatusMap, getLeads, getContactPhones, KommoError,
 } from "@/lib/kommo";
 
 // Normaliza para comparar nomes de tag ("Anúncio Taos" ≈ "anuncio taos")
@@ -32,26 +32,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // 1. Resolve as tags de anúncio → IDs. Usa as configuradas; se vazio, infere
     //    pelas tags que contêm "anúncio".
-    const allTags = await getLeadTags(conn, token);
+    // Conjunto de nomes que contam como "anúncio": as configuradas pelo usuário
+    // ou, se vazio, qualquer tag que contenha "anúncio".
     const configured = conn.adTags.map(norm);
-    const adTags = configured.length
-      ? allTags.filter((t) => configured.includes(norm(t.name)))
-      : allTags.filter((t) => norm(t.name).includes("anuncio"));
-
-    if (adTags.length === 0) {
-      return NextResponse.json(
-        { error: "Nenhuma tag de anúncio encontrada. Configure as tags na conexão." },
-        { status: 400 },
-      );
-    }
-    const adTagIds = new Set(adTags.map((t) => t.id));
-    const tagIds = adTags.map((t) => t.id);
+    const isAdTagName = (name: string) =>
+      configured.length ? configured.includes(norm(name)) : norm(name).includes("anuncio");
 
     // 2. Mapa de status do funil
     const statusMap = await getStatusMap(conn, token);
 
-    // 3. Leads filtrados por tag + período
-    const leads = await getLeads(conn, token, { tagIds, from: fromUnix, to: toUnix });
+    // 3. Puxa TODOS os leads do período (sem filtrar por tag) — assim nada se
+    //    perde e marcamos cada um com a tag de anúncio que ele realmente tem.
+    const leads = await getLeads(conn, token, { from: fromUnix, to: toUnix });
+
+    // Conjunto de todas as tags vistas (diagnóstico + futura seleção na UI)
+    const tagsSeen = new Set<string>();
+    let withAdTag = 0;
 
     // 4. Telefones dos contatos principais (em lote)
     const mainContactIds = leads
@@ -63,7 +59,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let synced = 0;
     for (const lead of leads) {
       const leadTags = lead._embedded?.tags ?? [];
-      const adTag = leadTags.find((t) => adTagIds.has(t.id))?.name ?? leadTags[0]?.name ?? null;
+      for (const t of leadTags) tagsSeen.add(t.name);
+      // Marca com a tag de anúncio do lead (se tiver); senão fica sem anúncio.
+      const adTag = leadTags.find((t) => isAdTagName(t.name))?.name ?? null;
+      if (adTag) withAdTag++;
       const status = lead.status_id ? statusMap.get(lead.status_id) : undefined;
       const mainId = lead._embedded?.contacts?.find((c) => c.is_main)?.id ?? lead._embedded?.contacts?.[0]?.id;
       const contact = mainId ? contacts.get(mainId) : undefined;
@@ -98,7 +97,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({
       synced,
-      tags: adTags.map((t) => t.name),
+      withAdTag,
+      tagsSeen: [...tagsSeen].sort(),
       period: { since: since.toISOString(), until: until.toISOString() },
     });
   } catch (e) {

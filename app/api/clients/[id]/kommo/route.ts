@@ -77,6 +77,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
+// PATCH — atualiza só as tags de anúncio (sem reenviar o token)
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { error } = await requireAuth("clients:update");
+  if (error) return error;
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = z.object({ adTags: z.array(z.string()) }).safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+
+  const conn = await prisma.kommoConnection.findUnique({ where: { clientId: id } });
+  if (!conn) return NextResponse.json({ error: "Conexão Kommo não configurada" }, { status: 404 });
+
+  const updated = await prisma.kommoConnection.update({
+    where: { clientId: id },
+    data: { adTags: parsed.data.adTags },
+    include: { _count: { select: { leads: true } } },
+  });
+  return NextResponse.json(safe(updated));
+}
+
 // DELETE — remove conexão e leads cacheados
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

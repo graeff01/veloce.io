@@ -65,9 +65,11 @@ export async function GET(req: Request) {
       total: items.length,
       leads: items.map((l) => ({
         id: l.id,
+        kommoId: l.kommoId,
         name: l.name,
         contactName: l.contactName,
         phone: l.phone,
+        tags: l.tags,
         statusName: l.statusName,
         pipelineName: l.pipelineName,
         createdAtKommo: l.createdAtKommo,

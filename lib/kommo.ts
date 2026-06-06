@@ -174,6 +174,66 @@ export async function getLeads(conn: KommoConnection, token: string, filter: Lea
   return out;
 }
 
+// ── Notas / conversa do lead ─────────────────────────────────────────────────
+export interface LeadNote {
+  id: number;
+  type: string;
+  text: string | null;
+  incoming: boolean | null; // true=recebida, false=enviada, null=evento/sistema
+  createdAt: number;        // unix seconds
+  author: string | null;
+}
+
+// Extrai um texto legível dos params heterogêneos das notas do Kommo.
+function noteText(noteType: string, params: Record<string, unknown> | null | undefined): string | null {
+  if (!params) return null;
+  const p = params as Record<string, string | undefined>;
+  // Mensagens de chat/whatsapp normalmente trazem o texto em "text"
+  if (p.text) return p.text;
+  // Chamadas
+  if (noteType.startsWith("call")) {
+    const dur = p.duration ? ` (${p.duration}s)` : "";
+    return `Ligação${p.phone ? ` ${p.phone}` : ""}${dur}`;
+  }
+  if (p.service) return p.service;
+  return null;
+}
+
+// Lê a timeline de notas do lead (mensagens registradas + eventos expostos pela API).
+export async function getLeadNotes(conn: KommoConnection, token: string, leadId: number): Promise<LeadNote[]> {
+  const out: LeadNote[] = [];
+  let page = 1;
+  for (;;) {
+    const data = await kommoGet<{
+      _embedded?: { notes?: Array<{
+        id: number; note_type: string; created_at: number; created_by?: number;
+        params?: Record<string, unknown> | null;
+      }> };
+    }>(conn, token, `/api/v4/leads/${leadId}/notes?page=${page}&limit=250&order[created_at]=asc`);
+
+    const notes = data?._embedded?.notes ?? [];
+    for (const n of notes) {
+      const p = (n.params ?? {}) as Record<string, unknown>;
+      // Heurística de direção: alguns tipos trazem "income"/"in" booleano
+      const inc = typeof p.income === "boolean" ? (p.income as boolean)
+        : n.note_type.includes("_in") ? true
+        : n.note_type.includes("_out") ? false
+        : null;
+      out.push({
+        id: n.id,
+        type: n.note_type,
+        text: noteText(n.note_type, n.params),
+        incoming: inc,
+        createdAt: n.created_at,
+        author: (p.author as { name?: string } | undefined)?.name ?? null,
+      });
+    }
+    if (notes.length < 250) break;
+    page++;
+  }
+  return out;
+}
+
 // ── Contatos (telefone) ──────────────────────────────────────────────────────
 // O telefone vive como custom field do contato, não do lead. Busca em lote.
 export async function getContactPhones(

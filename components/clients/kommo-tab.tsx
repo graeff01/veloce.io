@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   RefreshCw, Loader2, X, AlertTriangle, CheckCircle2,
-  Users, Megaphone, Phone, ExternalLink,
+  Users, Megaphone, Phone, ExternalLink, Tag, Check,
 } from "lucide-react";
+import { LeadConversation, type ConversationLead } from "@/components/clients/lead-conversation";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Connection {
@@ -18,9 +19,11 @@ interface Connection {
 
 interface AuditLead {
   id: string;
+  kommoId: number;
   name: string | null;
   contactName: string | null;
   phone: string | null;
+  tags?: string[] | null;
   statusName: string | null;
   pipelineName: string | null;
   createdAtKommo: string;
@@ -49,6 +52,8 @@ export function KommoTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
+  const [openLead, setOpenLead] = useState<ConversationLead | null>(null);
+  const [tagPanel, setTagPanel] = useState(false);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -118,6 +123,9 @@ export function KommoTab({ clientId }: { clientId: string }) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setTagPanel(true)} style={btn}>
+            <Tag size={12} /> Tags de anúncio
+          </button>
           <button onClick={handleSync} disabled={syncing} style={btn}>
             {syncing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={12} />}
             {syncing ? "Sincronizando..." : "Sincronizar"}
@@ -159,15 +167,27 @@ export function KommoTab({ clientId }: { clientId: string }) {
             </p>
           </div>
         ) : (
-          data.groups.map((g) => <AdGroup key={g.adTag} group={g} />)
+          data.groups.map((g) => <AdGroup key={g.adTag} group={g} onOpen={setOpenLead} />)
         )}
       </div>
+
+      {openLead && (
+        <LeadConversation clientId={clientId} lead={openLead} onClose={() => setOpenLead(null)} />
+      )}
+      {tagPanel && (
+        <TagPanel
+          clientId={clientId}
+          selected={conn.adTags}
+          onClose={() => setTagPanel(false)}
+          onSaved={async () => { setTagPanel(false); await loadConn(); await handleSync(); }}
+        />
+      )}
     </div>
   );
 }
 
 // ── Ad group (collapsible card) ─────────────────────────────────────────────────
-function AdGroup({ group }: { group: AuditGroup }) {
+function AdGroup({ group, onOpen }: { group: AuditGroup; onOpen: (l: ConversationLead) => void }) {
   const [open, setOpen] = useState(true);
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
@@ -188,7 +208,14 @@ function AdGroup({ group }: { group: AuditGroup }) {
             ))}
           </div>
           {group.leads.map((l, i) => (
-            <div key={l.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1.2fr 90px", padding: "10px 16px", borderBottom: i < group.leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
+            <div
+              key={l.id}
+              onClick={() => onOpen(l)}
+              title="Ver conversa"
+              style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1.2fr 90px", padding: "10px 16px", borderBottom: i < group.leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", cursor: "pointer" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}
+            >
               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {l.contactName ?? l.name ?? "—"}
               </span>
@@ -203,6 +230,98 @@ function AdGroup({ group }: { group: AuditGroup }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Tag panel: descobre as tags reais da conta e marca quais são "anúncio" ──────
+function TagPanel({ clientId, selected, onClose, onSaved }: {
+  clientId: string;
+  selected: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [tags, setTags] = useState<string[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set(selected));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/clients/${clientId}/kommo/tags`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!active) return;
+        if (!ok) setError(d.error ?? "Erro ao buscar tags");
+        else setTags(d.tags);
+      })
+      .catch(() => active && setError("Erro ao buscar tags"));
+    return () => { active = false; };
+  }, [clientId]);
+
+  function toggle(t: string) {
+    setPicked((prev) => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
+  }
+
+  async function save() {
+    setSaving(true); setError("");
+    const res = await fetch(`/api/clients/${clientId}/kommo`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adTags: [...picked] }),
+    });
+    if (!res.ok) { const d = await res.json(); setError(d.error ?? "Erro ao salvar"); setSaving(false); return; }
+    onSaved();
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: "100%", maxHeight: "80vh", background: "var(--bg-surface)", borderRadius: 14, border: "1px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Tags de anúncio</p>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0" }}>Marque quais tags representam anúncios. Os leads com elas são agrupados por anúncio.</p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={16} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 18px" }}>
+          {error && <p style={{ fontSize: 12, color: "#DC2626", marginBottom: 8 }}>{error}</p>}
+          {!tags && !error && (
+            <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+              <Loader2 size={18} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+            </div>
+          )}
+          {tags && tags.length === 0 && (
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>Nenhuma tag encontrada na conta Kommo.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {tags?.map((t) => {
+              const on = picked.has(t);
+              return (
+                <button key={t} onClick={() => toggle(t)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid " + (on ? "var(--accent)" : "var(--border)"), background: on ? "rgba(124,58,237,0.08)" : "transparent", cursor: "pointer", textAlign: "left" }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 5, border: "1px solid " + (on ? "var(--accent)" : "var(--border-strong)"), background: on ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {on && <Check size={12} color="#fff" />}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Tag size={11} color="var(--text-muted)" /> {t}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{picked.size} selecionada{picked.size !== 1 ? "s" : ""}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onClose} style={{ ...btn, border: "1px solid var(--border)" }}>Cancelar</button>
+            <button onClick={save} disabled={saving} style={{ ...btn, background: "var(--accent)", color: "#fff", border: "none" }}>
+              {saving ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Check size={13} />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

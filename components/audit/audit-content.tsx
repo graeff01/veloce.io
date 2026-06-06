@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ClipboardCheck, Loader2, Users, Megaphone, Phone, FileDown, RefreshCw, AlertTriangle,
 } from "lucide-react";
+import { LeadConversation, type ConversationLead } from "@/components/clients/lead-conversation";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -15,8 +16,8 @@ interface ConnClient {
   leadCount: number;
 }
 interface AuditLead {
-  id: string; name: string | null; contactName: string | null; phone: string | null;
-  statusName: string | null; pipelineName: string | null; createdAtKommo: string;
+  id: string; kommoId: number; name: string | null; contactName: string | null; phone: string | null;
+  tags?: string[] | null; statusName: string | null; pipelineName: string | null; createdAtKommo: string;
 }
 interface AuditGroup { adTag: string; total: number; leads: AuditLead[] }
 interface AuditData {
@@ -37,6 +38,7 @@ export function AuditContent() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
+  const [openLead, setOpenLead] = useState<ConversationLead | null>(null);
 
   useEffect(() => {
     fetch("/api/audit")
@@ -168,7 +170,14 @@ export function AuditContent() {
                 ))}
               </div>
               {g.leads.map((l, i) => (
-                <div key={l.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1.4fr 90px", padding: "10px 16px", borderBottom: i < g.leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
+                <div
+                  key={l.id}
+                  onClick={() => setOpenLead(l)}
+                  title="Ver conversa"
+                  style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1.4fr 90px", padding: "10px 16px", borderBottom: i < g.leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", cursor: "pointer" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}
+                >
                   <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.contactName ?? l.name ?? "—"}</span>
                   <span style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
                     {l.phone ? <><Phone size={11} /> {l.phone}</> : "—"}
@@ -181,6 +190,10 @@ export function AuditContent() {
           ))
         )}
       </div>
+
+      {openLead && (
+        <LeadConversation clientId={clientId} lead={openLead} onClose={() => setOpenLead(null)} />
+      )}
     </div>
   );
 }
