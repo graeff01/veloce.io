@@ -1,15 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardCheck, Loader2, Users, Megaphone, Phone, FileDown, RefreshCw } from "lucide-react";
+import { ClipboardCheck, Loader2, Users, Megaphone, Phone, FileDown, RefreshCw, MessageSquare, Clock, AlertCircle } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+// Formata segundos em texto curto (versão client-safe).
+function fmtDuration(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const rem = min % 60;
+  if (h < 24) return rem ? `${h}h ${rem}min` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d} dia${d > 1 ? "s" : ""}`;
+}
 
 interface ConnClient { clientId: string; name: string; displayPhone: string | null; lastEventAt: string | null; leadCount: number }
 interface AuditLead { id: string; contactId: string; name: string | null; phone: string | null; enteredAt: string }
 interface AuditGroup { adTitle: string; total: number; leads: AuditLead[] }
 interface AuditData { client: { id: string; name: string }; displayPhone: string | null; totalLeads: number; groups: AuditGroup[] }
+interface Metrics {
+  total: number; responded: number; unanswered: number; responseRate: number;
+  avgFirstResponseSec: number | null; medianFirstResponseSec: number | null;
+  buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
+}
 
 export function AuditContent() {
   const now = new Date();
@@ -18,6 +36,7 @@ export function AuditContent() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [data, setData] = useState<AuditData | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
 
@@ -35,8 +54,12 @@ export function AuditContent() {
 
   const loadData = useCallback(async () => {
     if (!clientId) return;
-    const res = await fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`);
-    if (res.ok) setData(await res.json());
+    const [aRes, mRes] = await Promise.all([
+      fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`),
+      fetch(`/api/audit/metrics?clientId=${clientId}&year=${year}&month=${month}`),
+    ]);
+    if (aRes.ok) setData(await aRes.json());
+    if (mRes.ok) setMetrics(await mRes.json());
   }, [clientId, year, month]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -93,10 +116,25 @@ export function AuditContent() {
       </div>
 
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Kpi icon={<Users size={15} color="var(--accent)" />} label="Total de leads" value={String(data?.totalLeads ?? 0)} />
-          <Kpi icon={<Megaphone size={15} color="#2563EB" />} label="Anúncios ativos" value={String(data?.groups.length ?? 0)} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+          <Kpi icon={<Users size={15} color="var(--accent)" />} label="Leads de anúncio" value={String(data?.totalLeads ?? 0)} />
+          <Kpi icon={<MessageSquare size={15} color="#16A34A" />} label="Taxa de resposta" value={metrics ? `${Math.round(metrics.responseRate * 100)}%` : "—"}
+            sub={metrics ? `${metrics.responded} respondidos` : undefined} />
+          <Kpi icon={<AlertCircle size={15} color="#DC2626" />} label="Sem resposta" value={String(metrics?.unanswered ?? 0)}
+            sub={metrics && metrics.unanswered > 0 ? "leads ignorados" : undefined} danger={!!metrics && metrics.unanswered > 0} />
+          <Kpi icon={<Clock size={15} color="#D97706" />} label="1ª resposta (média)" value={fmtDuration(metrics?.avgFirstResponseSec ?? null)}
+            sub={metrics?.medianFirstResponseSec != null ? `mediana ${fmtDuration(metrics.medianFirstResponseSec)}` : undefined} />
         </div>
+
+        {/* Distribuição do tempo de 1ª resposta */}
+        {metrics && metrics.total > 0 && (
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 18px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 12px" }}>
+              Velocidade de atendimento
+            </p>
+            <DistBar metrics={metrics} />
+          </div>
+        )}
 
         {!data || data.groups.length === 0 ? (
           <div style={{ textAlign: "center", padding: "48px 0" }}>
@@ -131,13 +169,42 @@ export function AuditContent() {
   );
 }
 
-function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Kpi({ icon, label, value, sub, danger }: { icon: React.ReactNode; label: string; value: string; sub?: string; danger?: boolean }) {
   return (
-    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, minWidth: 180 }}>
+    <div style={{ background: "var(--bg-surface)", border: `1px solid ${danger ? "rgba(220,38,38,0.3)" : "var(--border)"}`, borderRadius: 10, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
-      <div>
-        <p style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1, margin: 0 }}>{value}</p>
+      <div style={{ minWidth: 0 }}>
+        <p style={{ fontSize: 20, fontWeight: 700, color: danger ? "#DC2626" : "var(--text-primary)", lineHeight: 1, margin: 0 }}>{value}</p>
         <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{label}</p>
+        {sub && <p style={{ fontSize: 10, color: danger ? "#DC2626" : "var(--text-muted)", marginTop: 2, opacity: 0.85 }}>{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function DistBar({ metrics }: { metrics: Metrics }) {
+  const segs = [
+    { label: "≤ 5 min", val: metrics.buckets.upTo5min, color: "#16A34A" },
+    { label: "5–30 min", val: metrics.buckets.upTo30min, color: "#65A30D" },
+    { label: "30 min–1h", val: metrics.buckets.upTo1h, color: "#D97706" },
+    { label: "> 1h", val: metrics.buckets.over1h, color: "#EA580C" },
+    { label: "Sem resposta", val: metrics.buckets.unanswered, color: "#DC2626" },
+  ].filter((s) => s.val > 0);
+  const total = metrics.total || 1;
+  return (
+    <div>
+      <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", background: "var(--bg-elevated)" }}>
+        {segs.map((s) => (
+          <div key={s.label} title={`${s.label}: ${s.val}`} style={{ width: `${(s.val / total) * 100}%`, background: s.color }} />
+        ))}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginTop: 10 }}>
+        {segs.map((s) => (
+          <span key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-secondary)" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color }} />
+            {s.label} · <strong style={{ color: "var(--text-primary)" }}>{s.val}</strong>
+          </span>
+        ))}
       </div>
     </div>
   );

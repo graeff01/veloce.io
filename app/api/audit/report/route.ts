@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { buildReport, type ReportData } from "@/components/audit/report-document";
+import { computeAttendanceMetrics } from "@/lib/wa-metrics";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,8 @@ export async function GET(req: Request) {
     }))
     .sort((a, b) => b.total - a.total);
 
+  const m = await computeAttendanceMetrics(conn.id, start, end);
+
   const data: ReportData = {
     clientName: conn.client.name,
     accountName: conn.displayPhone ? `WhatsApp ${conn.displayPhone}` : "WhatsApp",
@@ -61,6 +64,13 @@ export async function GET(req: Request) {
     totalLeads: leads.length,
     groups,
     generatedAt: new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
+    metrics: {
+      responded: m.responded,
+      unanswered: m.unanswered,
+      responseRate: m.responseRate,
+      avgFirstResponseSec: m.avgFirstResponseSec,
+      medianFirstResponseSec: m.medianFirstResponseSec,
+    },
   };
 
   const buffer = await renderToBuffer(buildReport(data));

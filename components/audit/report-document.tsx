@@ -10,6 +10,13 @@ export interface ReportLead {
   enteredAt: string;
 }
 export interface ReportGroup { adTag: string; total: number; leads: ReportLead[] }
+export interface ReportMetrics {
+  responded: number;
+  unanswered: number;
+  responseRate: number;
+  avgFirstResponseSec: number | null;
+  medianFirstResponseSec: number | null;
+}
 export interface ReportData {
   clientName: string;
   accountName: string | null;
@@ -17,6 +24,18 @@ export interface ReportData {
   totalLeads: number;
   groups: ReportGroup[];
   generatedAt: string;
+  metrics?: ReportMetrics | null;
+}
+
+function fmtDur(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const rem = min % 60;
+  if (h < 24) return rem ? `${h}h ${rem}min` : `${h}h`;
+  return `${Math.floor(h / 24)} dias`;
 }
 
 const ACCENT = "#7C3AED";
@@ -89,7 +108,31 @@ function ReportDocument({ data }: { data: ReportData }) {
             <Text style={s.cardValue}>{data.groups.length}</Text>
             <Text style={s.cardLabel}>Anúncios com leads</Text>
           </View>
+          {data.metrics && (
+            <>
+              <View style={s.card}>
+                <Text style={s.cardValue}>{Math.round(data.metrics.responseRate * 100)}%</Text>
+                <Text style={s.cardLabel}>Taxa de resposta</Text>
+              </View>
+              <View style={s.card}>
+                <Text style={[s.cardValue, data.metrics.unanswered > 0 ? { color: "#DC2626" } : {}]}>{data.metrics.unanswered}</Text>
+                <Text style={s.cardLabel}>Leads sem resposta</Text>
+              </View>
+              <View style={s.card}>
+                <Text style={s.cardValue}>{fmtDur(data.metrics.avgFirstResponseSec)}</Text>
+                <Text style={s.cardLabel}>1ª resposta (média)</Text>
+              </View>
+            </>
+          )}
         </View>
+
+        {data.metrics && (
+          <Text style={{ fontSize: 8.5, color: MUTED, marginTop: -8, marginBottom: 14, lineHeight: 1.4 }}>
+            {data.totalLeads} leads chegaram pelos anúncios. {data.metrics.responded} foram atendidos
+            {data.metrics.unanswered > 0 ? ` e ${data.metrics.unanswered} ficaram sem resposta` : ""}.
+            Tempo mediano de 1ª resposta: {fmtDur(data.metrics.medianFirstResponseSec)}.
+          </Text>
+        )}
 
         {/* Groups */}
         {data.groups.map((g, gi) => (
