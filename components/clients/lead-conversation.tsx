@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { X, Loader2, Phone, MessageSquare, Tag } from "lucide-react";
 
 export interface ConversationLead {
-  kommoId: number;
+  kommoId: number;        // id do contato (chave do cache)
+  leadId?: number | null; // id do lead no funil, se houver
   name: string | null;
   contactName: string | null;
   phone: string | null;
@@ -25,7 +26,8 @@ export function LeadConversation({ clientId, lead, onClose }: {
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/clients/${clientId}/kommo/leads/${lead.kommoId}`)
+    const qs = `contactId=${lead.kommoId}&leadId=${lead.leadId ?? ""}`;
+    fetch(`/api/clients/${clientId}/kommo/conversation?${qs}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!active) return;
@@ -34,7 +36,7 @@ export function LeadConversation({ clientId, lead, onClose }: {
       })
       .catch(() => active && setError("Erro ao carregar conversa"));
     return () => { active = false; };
-  }, [clientId, lead.kommoId]);
+  }, [clientId, lead.kommoId, lead.leadId]);
 
   const title = lead.contactName ?? lead.name ?? "Lead";
 

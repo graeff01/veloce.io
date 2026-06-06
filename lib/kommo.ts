@@ -271,6 +271,87 @@ export async function getContacts(
   return map;
 }
 
+// Contato vindo da busca por tag (driver da auditoria de leads de anúncio).
+export interface TaggedContact {
+  id: number;
+  name: string | null;
+  phone: string | null;
+  createdAt: number;     // unix seconds
+  leadId: number | null; // lead vinculado no funil, se houver
+}
+
+// Busca paginada de contatos que têm uma tag específica (filter[tags][]),
+// do mais recente para o mais antigo. Inclui o lead vinculado (with=leads).
+export async function getContactsByTag(conn: KommoConnection, token: string, tagId: number): Promise<TaggedContact[]> {
+  const out: TaggedContact[] = [];
+  let page = 1;
+  for (;;) {
+    const data = await kommoGet<{
+      _embedded?: { contacts?: Array<{
+        id: number; name: string | null; created_at: number;
+        custom_fields_values?: Array<{ field_code?: string; values?: Array<{ value: string }> }> | null;
+        _embedded?: { leads?: Array<{ id: number }> };
+      }> };
+    }>(conn, token, `/api/v4/contacts?with=leads&limit=250&page=${page}&order[created_at]=desc&filter[tags][]=${tagId}`);
+
+    const contacts = data?._embedded?.contacts ?? [];
+    for (const c of contacts) {
+      const phone = c.custom_fields_values?.find((f) => f.field_code === "PHONE")?.values?.[0]?.value ?? null;
+      out.push({
+        id: c.id,
+        name: c.name ?? null,
+        phone,
+        createdAt: c.created_at,
+        leadId: c._embedded?.leads?.[0]?.id ?? null,
+      });
+    }
+    if (contacts.length < 250) break;
+    page++;
+  }
+  return out;
+}
+
+// Busca leads por id (em lote) para resolver status/funil.
+export async function getLeadsByIds(
+  conn: KommoConnection,
+  token: string,
+  leadIds: number[],
+): Promise<Map<number, { statusId: number | null; pipelineId: number | null; createdAt: number }>> {
+  const map = new Map<number, { statusId: number | null; pipelineId: number | null; createdAt: number }>();
+  const unique = [...new Set(leadIds)];
+  for (let i = 0; i < unique.length; i += 250) {
+    const batch = unique.slice(i, i + 250);
+    let qs = "limit=250";
+    for (const id of batch) qs += `&filter[id][]=${id}`;
+    const data = await kommoGet<{ _embedded?: { leads?: RawLead[] } }>(conn, token, `/api/v4/leads?${qs}`);
+    for (const l of data?._embedded?.leads ?? []) {
+      map.set(l.id, { statusId: l.status_id ?? null, pipelineId: l.pipeline_id ?? null, createdAt: l.created_at });
+    }
+  }
+  return map;
+}
+
+// Notas/conversa de um CONTATO (fallback p/ leads de entrada sem lead no funil).
+export async function getContactNotes(conn: KommoConnection, token: string, contactId: number): Promise<LeadNote[]> {
+  const out: LeadNote[] = [];
+  let page = 1;
+  for (;;) {
+    const data = await kommoGet<{
+      _embedded?: { notes?: Array<{ id: number; note_type: string; created_at: number; params?: Record<string, unknown> | null }> };
+    }>(conn, token, `/api/v4/contacts/${contactId}/notes?page=${page}&limit=250&order[created_at]=asc`);
+    const notes = data?._embedded?.notes ?? [];
+    for (const n of notes) {
+      const p = (n.params ?? {}) as Record<string, unknown>;
+      const inc = typeof p.income === "boolean" ? (p.income as boolean)
+        : n.note_type.includes("_in") ? true : n.note_type.includes("_out") ? false : null;
+      out.push({ id: n.id, type: n.note_type, text: noteText(n.note_type, n.params), incoming: inc, createdAt: n.created_at, author: null });
+    }
+    if (notes.length < 250) break;
+    page++;
+  }
+  return out;
+}
+
 // Lista todas as tags de contato da conta (para o seletor de tags de anúncio).
 export async function getContactTags(conn: KommoConnection, token: string): Promise<KommoTag[]> {
   const out: KommoTag[] = [];

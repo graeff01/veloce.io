@@ -20,6 +20,7 @@ interface Connection {
 interface AuditLead {
   id: string;
   kommoId: number;
+  leadId?: number | null;
   name: string | null;
   contactName: string | null;
   phone: string | null;

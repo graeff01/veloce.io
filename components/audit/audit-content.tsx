@@ -16,7 +16,7 @@ interface ConnClient {
   leadCount: number;
 }
 interface AuditLead {
-  id: string; kommoId: number; name: string | null; contactName: string | null; phone: string | null;
+  id: string; kommoId: number; leadId?: number | null; name: string | null; contactName: string | null; phone: string | null;
   tags?: string[] | null; statusName: string | null; pipelineName: string | null; createdAtKommo: string;
 }
 interface AuditGroup { adTag: string; total: number; leads: AuditLead[] }

@@ -466,7 +466,8 @@ model KommoConnection {
 model KommoLead {
   id             String   @id @default(cuid())
   connectionId   String
-  kommoId        Int      // id do lead no Kommo
+  kommoId        Int      // id do CONTATO no Kommo (chave estável, vale p/ leads de entrada e do funil)
+  leadId         Int?     // id do lead no Kommo (quando já está no funil)
   name           String?
   contactName    String?
   phone          String?
