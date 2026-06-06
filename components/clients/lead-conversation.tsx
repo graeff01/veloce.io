@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2, Phone, MessageSquare, Tag } from "lucide-react";
+import { X, Loader2, Phone, MessageSquare, Tag, ExternalLink } from "lucide-react";
 
 export interface ConversationLead {
   kommoId: number;        // id do contato (chave do cache)
@@ -22,6 +22,7 @@ export function LeadConversation({ clientId, lead, onClose }: {
   onClose: () => void;
 }) {
   const [items, setItems] = useState<Msg[] | null>(null);
+  const [kommoUrl, setKommoUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function LeadConversation({ clientId, lead, onClose }: {
       .then(({ ok, d }) => {
         if (!active) return;
         if (!ok) setError(d.error ?? "Erro ao carregar conversa");
-        else setItems(d.items);
+        else { setItems(d.items); setKommoUrl(d.kommoUrl ?? null); }
       })
       .catch(() => active && setError("Erro ao carregar conversa"));
     return () => { active = false; };
@@ -86,11 +87,16 @@ export function LeadConversation({ clientId, lead, onClose }: {
             </div>
           )}
           {items && items.length === 0 && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, textAlign: "center", padding: "0 20px" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, textAlign: "center", padding: "0 20px" }}>
               <MessageSquare size={28} style={{ color: "var(--text-muted)", opacity: 0.3 }} />
               <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                O Kommo não expôs mensagens de texto para este lead via API. As conversas completas do WhatsApp ficam na camada de chat do Kommo, fora do alcance da API pública.
+                O WhatsApp do Kommo não disponibiliza o histórico de mensagens pela API. Abra a conversa completa direto no Kommo:
               </p>
+              {kommoUrl && (
+                <a href={kommoUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                  <ExternalLink size={14} /> Abrir conversa no Kommo
+                </a>
+              )}
             </div>
           )}
           {items?.map((m) => {

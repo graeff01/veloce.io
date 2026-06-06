@@ -21,11 +21,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const conn = await prisma.kommoConnection.findUnique({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "Conexão Kommo não configurada" }, { status: 404 });
 
-  // Janela: padrão últimos 120 dias; override via body { since } (ISO).
+  // Janela: padrão últimos 35 dias (cobre o mês); override via body { since } (ISO).
+  // Mantido curto de propósito p/ respeitar o limite de API do Kommo.
   const body = await req.json().catch(() => ({}));
   const sinceUnix = body.since
     ? Math.floor(new Date(body.since).getTime() / 1000)
-    : Math.floor((Date.now() - 120 * 24 * 60 * 60 * 1000) / 1000);
+    : Math.floor((Date.now() - 35 * 24 * 60 * 60 * 1000) / 1000);
 
   try {
     const token = await getAccessToken(conn);
@@ -51,9 +52,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       candidates.set(l.id, { contactId: cid, name: l.name, createdAt: l.created_at });
     }
 
-    // 2. Lê o detalhe de cada candidato (em paralelo controlado) p/ pegar a tag real
+    // 2. Lê o detalhe de cada candidato p/ pegar a tag real. Concorrência baixa
+    //    + pequena pausa por chamada para respeitar o limite de API do Kommo.
     const leadIds = [...candidates.keys()];
-    const details = await mapLimit(leadIds, 4, (lid) => getLeadDetail(conn, token, lid));
+    const details = await mapLimit(leadIds, 2, async (lid) => {
+      const d = await getLeadDetail(conn, token, lid);
+      await new Promise((r) => setTimeout(r, 120));
+      return d;
+    });
 
     const tagsSeen = new Set<string>();
     const adLeads: Array<{ leadId: number; contactId: number | null; name: string | null; createdAt: number; adTag: string; statusId: number | null; pipelineId: number | null }> = [];

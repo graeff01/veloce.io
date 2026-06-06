@@ -30,7 +30,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .map((n) => ({ id: n.id, text: n.text, incoming: n.incoming, createdAt: n.createdAt, author: n.author }))
       .sort((a, b) => a.createdAt - b.createdAt);
 
-    return NextResponse.json({ items, total: contactNotes.length + leadNotes.length });
+    const kommoUrl = Number.isFinite(leadId) && leadId
+      ? `https://${conn.subdomain}.kommo.com/leads/detail/${leadId}`
+      : `https://${conn.subdomain}.kommo.com`;
+
+    return NextResponse.json({ items, total: contactNotes.length + leadNotes.length, kommoUrl });
   } catch (e) {
     if (e instanceof KommoError) return NextResponse.json({ error: e.message, reconnect: e.reconnect }, { status: e.status });
     return NextResponse.json({ error: "Erro ao buscar a conversa" }, { status: 500 });
