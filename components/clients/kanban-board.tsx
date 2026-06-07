@@ -73,7 +73,13 @@ function fmtDate(iso: string) {
 }
 
 function isOverdue(task: Task) {
-  return task.status !== "DONE" && new Date(task.dueDate) < new Date();
+  if (task.status === "DONE") return false;
+  // Compara por DIA (não por horário): vencer "hoje" não é atraso.
+  const due = new Date(task.dueDate);
+  const today = new Date();
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return dueDay < todayDay;
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -95,6 +101,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
   const [newCustomTag, setNewCustomTag]     = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority]       = useState<Task["priority"]>("NORMAL");
+  const [newDueDate, setNewDueDate]         = useState("");
   const [saving, setSaving]                 = useState(false);
 
   // Task detail/edit
@@ -147,6 +154,9 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
     setNewCustomTag("");
     setNewDescription("");
     setNewPriority("NORMAL");
+    // Data padrão: hoje (mês atual) ou dia 1 do mês exibido. O usuário pode ajustar.
+    const d = isCurrentMonth ? new Date() : new Date(year, month - 1, 1);
+    setNewDueDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
     setShowCreate(true);
   }
 
@@ -165,12 +175,8 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
         priority: newPriority,
         planMonth: month,
         planYear: year,
-        // Vence no dia da criação (mês atual) — aparece nesse dia na agenda.
-        // Em outros meses, cai no dia 1 do mês exibido.
-        dueDate: (() => {
-          const d = isCurrentMonth ? new Date() : new Date(year, month - 1, 1);
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        })(),
+        // Data definida pelo usuário no modal (aparece nesse dia na agenda).
+        dueDate: newDueDate || `${year}-${String(month).padStart(2, "0")}-01`,
       }),
     });
     setSaving(false);
@@ -407,6 +413,26 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
                   placeholder="Ex: Post Feed — Lançamento..."
+                  style={{
+                    height: 40, padding: "0 12px",
+                    background: "var(--bg-base)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 9, fontSize: 13,
+                    color: "var(--text-primary)", outline: "none", width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              {/* Data de entrega */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Data de entrega
+                </label>
+                <input
+                  type="date"
+                  value={newDueDate}
+                  onChange={e => setNewDueDate(e.target.value)}
                   style={{
                     height: 40, padding: "0 12px",
                     background: "var(--bg-base)",

@@ -81,7 +81,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   }
 
   return (
-    <div style={{ display: "flex", height: "calc(100vh - 230px)", minHeight: 460, border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--bg-surface)" }}>
+    <div style={{ display: "flex", height: "100%", minHeight: 0, border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--bg-surface)" }}>
       {/* Lista */}
       <div style={{ width: 320, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>

@@ -83,9 +83,9 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   );
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-base)" }}>
       {/* Header */}
-      <div style={{ padding: "18px 28px 0", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+      <div style={{ padding: "18px 28px 0", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(37,211,102,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -115,25 +115,28 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {view !== "conversas" && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={select}>
-                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-              <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={select}>
-                {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
-              </select>
-            </div>
-            {view === "leads" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)" }}>
-                <Users size={15} color="var(--accent)" />
-                <strong style={{ color: "var(--text-primary)" }}>{data?.totalLeads ?? 0}</strong> leads no mês
-              </div>
-            )}
+      {view === "conversas" ? (
+        <div style={{ flex: 1, minHeight: 0, padding: "16px 28px" }}>
+          <ConversationsView clientId={clientId} />
+        </div>
+      ) : (
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={select}>
+              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={select}>
+              {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
+            </select>
           </div>
-        )}
+          {view === "leads" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)" }}>
+              <Users size={15} color="var(--accent)" />
+              <strong style={{ color: "var(--text-primary)" }}>{data?.totalLeads ?? 0}</strong> leads no mês
+            </div>
+          )}
+        </div>
 
         {view === "painel" && (
           <OperationDashboard
@@ -169,10 +172,8 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
           </>
         )}
 
-        {view === "conversas" && (
-          <ConversationsView clientId={clientId} />
-        )}
       </div>
+      )}
 
       {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConn(); }} />}
     </div>
