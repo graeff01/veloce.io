@@ -103,6 +103,7 @@ model Client {
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
   waConnection      WaConnection?
+  visits            Visit[]
   winningCampaigns  WinningCampaign[]
 }
 
@@ -572,6 +573,28 @@ model WaEvent {
 
   @@index([connectionId, type, createdAt])
   @@index([type, createdAt])
+}
+
+// Visita do lead à loja (agendada pela IA fora do horário ou manualmente).
+// É a "agenda" do cliente, estilo Google Agenda.
+model Visit {
+  id          String   @id @default(cuid())
+  clientId    String
+  contactId   String?  // vínculo opcional ao lead do WhatsApp (WaContact)
+  leadName    String
+  leadPhone   String?
+  car         String?  // carro de interesse
+  scheduledAt DateTime // data + hora da visita
+  durationMin Int      @default(30)
+  status      String   @default("agendada") // agendada|confirmada|compareceu|faltou|cancelada
+  source      String   @default("manual")   // manual|ia
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, scheduledAt])
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────

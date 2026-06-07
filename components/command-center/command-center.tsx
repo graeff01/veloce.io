@@ -51,7 +51,6 @@ const quickActions = [
 const navigationItems: SearchItem[] = [
   { id: "nav-home",     type: "nav", title: "Visão geral",  subtitle: "Dashboard principal",         href: "/",          meta: "Navegar" },
   { id: "nav-clients",  type: "nav", title: "Clientes",     subtitle: "Contas ativas e contexto",    href: "/clients",   meta: "Navegar" },
-  { id: "nav-calendar", type: "nav", title: "Calendário",   subtitle: "Agenda de entregas",          href: "/calendar",  meta: "Navegar" },
   { id: "nav-finances", type: "nav", title: "Financeiro",   subtitle: "Receitas e despesas",         href: "/finances",  meta: "Navegar" },
   { id: "nav-hr",       type: "nav", title: "Equipe",       subtitle: "Funcionários e prestadores",  href: "/hr",        meta: "Navegar" },
 ];

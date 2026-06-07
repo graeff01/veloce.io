@@ -232,9 +232,9 @@ export async function GET() {
 
   const alerts: { type: string; severity: "high" | "warn" | "info"; message: string; href?: string }[] = [];
   if (overdueTasks > 0)
-    alerts.push({ type: "overdue", severity: "high", message: `${overdueTasks} tarefa(s) em atraso`, href: "/calendar" });
+    alerts.push({ type: "overdue", severity: "high", message: `${overdueTasks} tarefa(s) em atraso`, href: "/tasks" });
   for (const m of meetingsTomorrow)
-    alerts.push({ type: "meeting", severity: "info", message: `Reunião amanhã: ${m.title}${m.client?.name ? ` · ${m.client.name}` : ""}`, href: m.clientId ? `/clients/${m.clientId}` : "/calendar" });
+    alerts.push({ type: "meeting", severity: "info", message: `Reunião amanhã: ${m.title}${m.client?.name ? ` · ${m.client.name}` : ""}`, href: m.clientId ? `/clients/${m.clientId}` : "/" });
   for (const b of billsDueSoon) {
     const venc = b.date < today;
     alerts.push({

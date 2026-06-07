@@ -16,6 +16,7 @@ import { ClientForm } from "@/components/clients/client-form";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
+import { VisitsCalendar } from "@/components/calendar/visits-calendar";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "agenda";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -175,6 +176,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
+    { key: "agenda",    label: "Agenda",    icon: <CalendarDays size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -235,11 +237,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                 <Edit2 size={12} /> Editar
               </Button>
             )}
-            <Link href={`/clients/${clientId}/calendar`} style={{ textDecoration: "none" }}>
-              <Button variant="ghost" size="sm">
-                <CalendarDays size={12} /> Calendário
-              </Button>
-            </Link>
           </div>
         </div>
 
@@ -281,6 +278,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {tab === "leads" && (
         <WhatsAppTab clientId={clientId} />
+      )}
+
+      {tab === "agenda" && (
+        <VisitsCalendar clientId={clientId} />
       )}
 
       {tab === "perfil" && (

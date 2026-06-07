@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
-  CalendarDays,
   Settings,
   LogOut,
   AlertTriangle,
@@ -18,9 +17,6 @@ import {
   Wallet,
   Users,
   UserRound,
-  Brain,
-  ListChecks,
-  ClipboardCheck,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -34,8 +30,6 @@ interface ClientRow {
 
 const bottomNavItems = [
   { href: "/",             icon: LayoutDashboard, label: "Visao geral" },
-  { href: "/tasks",        icon: ListChecks,      label: "Tarefas" },
-  { href: "/calendar",     icon: CalendarDays,    label: "Calendario" },
   { href: "/clients",      icon: UserRound,       label: "Clientes" },
   { href: "/finances",     icon: Wallet,          label: "Financas" },
   { href: "/hr",           icon: Users,           label: "Equipe" },
