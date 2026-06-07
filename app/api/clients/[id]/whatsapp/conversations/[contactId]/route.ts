@@ -35,6 +35,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, enteredAt: lead.enteredAt } : null,
     funnelStage: conversation?.funnelStage ?? null,
     status: conversation?.status ?? null,
+    aiSummary: conversation?.aiSummary ?? null,
+    aiSuggestedStage: conversation?.aiSuggestedStage ?? null,
     items: messages.map((m) => ({
       id: m.id, text: m.text, direction: m.direction, type: m.type,
       timestamp: m.timestamp, deliveredAt: m.deliveredAt, readAt: m.readAt,

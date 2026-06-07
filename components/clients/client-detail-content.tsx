@@ -147,7 +147,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     setLoading(false);
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [clientId]);
 
   const isAdmin    = session?.user.role === "ADMIN";
@@ -379,26 +379,34 @@ function PerfilTab({
     .filter(l => l.action !== "UPDATE_CLIENT")
     .slice(0, 12);
 
-  const dataRows = [
-    { label: "Nicho",             value: client.niche },
-    { label: "Objetivo",          value: client.mainGoal },
-    { label: "Frequência",        value: client.operationalFrequency },
-    { label: "Tom de comunicação",value: client.communicationTone },
-    { label: "Restrições",        value: client.restrictions },
-    { label: "Preferências",      value: client.preferences },
-    { label: "Comportamento",     value: client.clientBehavior },
-    { label: "Notas estratégicas",value: client.strategicNotes },
-    { label: "Links",             value: client.importantLinks },
-    { label: "SLA esperado",      value: client.expectedSla },
-    { label: "Reuniões",          value: client.meetingFrequency },
-    { label: "Rotina aprovação",  value: client.approvalRoutine },
-    { label: "Contato",           value: client.primaryContact },
-    { label: "Email",             value: client.email },
-    { label: "Telefone",          value: client.phone },
-    { label: "Cidade",            value: client.city },
-    { label: "Instagram",         value: client.instagram },
-    { label: "Website",           value: client.website },
-  ].filter(r => r.value);
+  const groups = [
+    { title: "Contato", rows: [
+      { label: "Responsável", value: client.primaryContact },
+      { label: "E-mail", value: client.email },
+      { label: "Telefone", value: client.phone },
+      { label: "Instagram", value: client.instagram },
+      { label: "Website", value: client.website },
+      { label: "Cidade", value: client.city },
+    ] },
+    { title: "Operação", rows: [
+      { label: "Frequência", value: client.operationalFrequency },
+      { label: "Reuniões", value: client.meetingFrequency },
+      { label: "SLA esperado", value: client.expectedSla },
+      { label: "Rotina de aprovação", value: client.approvalRoutine },
+    ] },
+    { title: "Estratégia", rows: [
+      { label: "Nicho", value: client.niche },
+      { label: "Objetivo", value: client.mainGoal },
+      { label: "Tom de comunicação", value: client.communicationTone },
+      { label: "Restrições", value: client.restrictions },
+      { label: "Preferências", value: client.preferences },
+      { label: "Comportamento", value: client.clientBehavior },
+      { label: "Notas estratégicas", value: client.strategicNotes },
+    ] },
+    { title: "Links", rows: [
+      { label: "Links importantes", value: client.importantLinks },
+    ] },
+  ].map((g) => ({ ...g, rows: g.rows.filter((r) => r.value) })).filter((g) => g.rows.length > 0);
 
   return (
     <div style={{
@@ -407,64 +415,41 @@ function PerfilTab({
       gap: 28, alignItems: "start",
     }}>
 
-      {/* ── Left: Client data ── */}
-      <section>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      {/* ── Left: Client data (agrupado) ── */}
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Label>Dados do cliente</Label>
           {isAdmin && (
-            <button
-              onClick={onEditOpen}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                border: "1px solid var(--border)", background: "transparent",
-                borderRadius: 7, padding: "3px 10px",
-                fontSize: 11, color: "var(--text-muted)", cursor: "pointer",
-              }}
-            >
+            <button onClick={onEditOpen}
+              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--border)", background: "transparent", borderRadius: 7, padding: "4px 12px", fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>
               <Edit2 size={10} /> Editar
             </button>
           )}
         </div>
-        {dataRows.length === 0 ? (
-          <div style={{
-            background: "var(--bg-surface)", border: "1px solid var(--border)",
-            borderRadius: 10, padding: "28px 18px", textAlign: "center",
-          }}>
+
+        {groups.length === 0 ? (
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "32px 18px", textAlign: "center" }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhum dado cadastrado</p>
             {isAdmin && (
-              <button
-                onClick={onEditOpen}
-                style={{
-                  marginTop: 10, padding: "6px 14px", borderRadius: 8,
-                  border: "1px solid var(--border)", background: "var(--bg-elevated)",
-                  fontSize: 12, color: "var(--text-secondary)", cursor: "pointer",
-                }}
-              >
+              <button onClick={onEditOpen}
+                style={{ marginTop: 10, padding: "7px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
                 Preencher dados
               </button>
             )}
           </div>
-        ) : (
-          <div style={{
-            background: "var(--bg-surface)", border: "1px solid var(--border)",
-            borderRadius: 10, padding: "14px 18px",
-            display: "flex", flexDirection: "column", gap: 9,
-          }}>
-            {dataRows.map(row => (
-              <div key={row.label} style={{ display: "flex", gap: 10 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 600, color: "var(--text-muted)",
-                  minWidth: 140, flexShrink: 0,
-                }}>
-                  {row.label}
-                </span>
-                <span style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: "18px" }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
+        ) : groups.map((g) => (
+          <div key={g.title} style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--shadow-card)" }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", margin: 0 }}>{g.title}</p>
+            <div style={{ padding: "6px 0" }}>
+              {g.rows.map((row) => (
+                <div key={row.label} style={{ display: "flex", gap: 14, padding: "8px 18px", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 500, color: "var(--text-muted)", minWidth: 150, flexShrink: 0 }}>{row.label}</span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5 }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        ))}
       </section>
 
       {/* ── Right: Follow-up + Activity timeline ── */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Loader2, Phone, Megaphone, Check, CheckCheck, MessageSquare } from "lucide-react";
+import { Search, Loader2, Phone, Megaphone, Check, CheckCheck, MessageSquare, Sparkles } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
 
 interface ConvRow {
@@ -10,7 +10,7 @@ interface ConvRow {
   fromAd: boolean; adTitle: string | null;
 }
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; deliveredAt: string | null; readAt: string | null }
-interface Detail { contact: { id: string; waId: string; name: string | null }; lead: { adTitle: string | null } | null; funnelStage: string | null; items: Msg[] }
+interface Detail { contact: { id: string; waId: string; name: string | null }; lead: { adTitle: string | null } | null; funnelStage: string | null; items: Msg[]; aiSummary: string | null; aiSuggestedStage: string | null }
 
 const STAGES = ["recebido", "respondido", "qualificado", "negociacao", "perdido", "convertido"];
 
@@ -42,6 +42,8 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [ai, setAi] = useState<{ summary: string; suggestedStage: string | null } | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
 
   const loadList = useCallback(async () => {
     const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations`);
@@ -58,12 +60,27 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingDetail(true);
     setDetail(null);
+    setAi(null);
     fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (active) { setDetail(d); setLoadingDetail(false); } })
+      .then((d: Detail | null) => {
+        if (!active) return;
+        setDetail(d);
+        setLoadingDetail(false);
+        if (d?.aiSummary) setAi({ summary: d.aiSummary, suggestedStage: d.aiSuggestedStage });
+      })
       .catch(() => active && setLoadingDetail(false));
     return () => { active = false; };
   }, [clientId, selected]);
+
+  async function summarize() {
+    if (!selected || summarizing) return;
+    setSummarizing(true);
+    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}/summarize`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    setSummarizing(false);
+    if (r.ok) setAi({ summary: d.summary, suggestedStage: d.suggestedStage });
+  }
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -138,12 +155,39 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   </p>
                 </div>
               </div>
-              <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
-                style={{ height: 30, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12, outline: "none", cursor: "pointer", flexShrink: 0 }}>
-                <option value="">Funil: —</option>
-                {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
-              </select>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <button onClick={summarize} disabled={summarizing} title="Resumir com IA"
+                  style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: summarizing ? "default" : "pointer" }}>
+                  {summarizing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={12} />}
+                  {summarizing ? "Analisando..." : "Resumo IA"}
+                </button>
+                <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
+                  style={{ height: 30, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12, outline: "none", cursor: "pointer" }}>
+                  <option value="">Funil: —</option>
+                  {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
+                </select>
+              </div>
             </div>
+
+            {/* Resumo IA */}
+            {ai && (
+              <div style={{ margin: "12px 16px 0", padding: "12px 14px", borderRadius: 10, background: "var(--accent-soft)", border: "1px solid var(--accent)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <Sparkles size={12} color="var(--accent)" />
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Resumo da IA</span>
+                </div>
+                <p style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5, whiteSpace: "pre-wrap", margin: 0 }}>{ai.summary}</p>
+                {ai.suggestedStage && ai.suggestedStage !== detail?.funnelStage && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                    <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>Etapa sugerida: <strong>{FUNNEL_LABELS[ai.suggestedStage] ?? ai.suggestedStage}</strong></span>
+                    <button onClick={() => changeStage(ai.suggestedStage!)}
+                      style={{ height: 26, padding: "0 12px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                      Aplicar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Mensagens */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 4 }}>

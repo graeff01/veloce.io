@@ -534,6 +534,9 @@ model WaConversation {
   contactId        String    @unique
   status           String    @default("open") // open | waiting | closed (rótulo interno)
   funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido (manual)
+  aiSummary        String?    // resumo da conversa gerado por IA
+  aiSuggestedStage String?    // etapa de funil sugerida pela IA
+  aiUpdatedAt      DateTime?
   firstInboundAt   DateTime?
   firstResponseAt  DateTime?
   firstResponseSec Int?       // tempo da 1ª resposta (cache p/ métricas em escala)
