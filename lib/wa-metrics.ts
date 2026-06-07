@@ -22,7 +22,8 @@ export interface Overview {
   medianFirstResponseSec: number | null;
   buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
   byOrigin: { ad: number; organic: number };
-  byAd: { adTitle: string; total: number }[];
+  byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
+  converted: number;
   series: { date: string; leads: number }[];
   funnel: Record<(typeof FUNNEL_STAGES)[number], number>;
   waitingNow: number;
@@ -89,14 +90,24 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   const adContactIds = new Set(adLeads.map((l) => l.contactId));
   const adCount = convs.filter((c) => adContactIds.has(c.contactId)).length;
 
-  const byAdMap = new Map<string, number>();
+  // Agrupa por modelo de anúncio + conta conversões (funil = "convertido")
+  const modelByContact = new Map<string, string>();
+  const byAdMap = new Map<string, { leads: number; converted: number }>();
   for (const l of adLeads) {
     const key = l.adModel ?? l.adTitle ?? "Anúncio (sem título)";
-    byAdMap.set(key, (byAdMap.get(key) ?? 0) + 1);
+    modelByContact.set(l.contactId, key);
+    const e = byAdMap.get(key) ?? { leads: 0, converted: 0 };
+    e.leads++;
+    byAdMap.set(key, e);
+  }
+  for (const c of convs) {
+    const model = modelByContact.get(c.contactId);
+    if (model && c.funnelStage === "convertido") byAdMap.get(model)!.converted++;
   }
 
   const total = convs.length;
   return {
+    converted: funnel.convertido,
     leads: total,
     responded,
     unanswered: total - responded,
@@ -105,7 +116,9 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     medianFirstResponseSec: median(times),
     buckets,
     byOrigin: { ad: adCount, organic: total - adCount },
-    byAd: [...byAdMap.entries()].map(([adTitle, total]) => ({ adTitle, total })).sort((a, b) => b.total - a.total),
+    byAd: [...byAdMap.entries()]
+      .map(([adTitle, v]) => ({ adTitle, total: v.leads, converted: v.converted, conversionRate: v.leads ? v.converted / v.leads : 0 }))
+      .sort((a, b) => b.total - a.total),
     series: [...seriesMap.entries()].map(([date, leads]) => ({ date, leads })).sort((a, b) => a.date.localeCompare(b.date)),
     funnel,
     waitingNow,

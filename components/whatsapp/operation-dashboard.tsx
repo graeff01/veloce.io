@@ -2,20 +2,40 @@
 
 import { useEffect, useState } from "react";
 import {
-  Loader2, Users, MessageSquare, Clock, AlertCircle, AlertTriangle, Megaphone, Hourglass, Filter,
+  Loader2, Users, MessageSquare, Clock, AlertCircle, AlertTriangle, Megaphone, Hourglass, Filter, Target, DollarSign,
 } from "lucide-react";
 import { fmtDuration, timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
 
 interface Overview {
-  leads: number; responded: number; unanswered: number; responseRate: number;
+  leads: number; responded: number; unanswered: number; responseRate: number; converted: number;
   avgFirstResponseSec: number | null; medianFirstResponseSec: number | null;
   buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
   byOrigin: { ad: number; organic: number };
-  byAd: { adTitle: string; total: number }[];
+  byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
   series: { date: string; leads: number }[];
   funnel: Record<string, number>;
   waitingNow: number;
   alerts: { waiting: number; abandoned: number; sample: { contactId: string; name: string | null; waId: string; waitingSince: string | null }[] };
+  previous: { leads: number; responseRate: number; avgFirstResponseSec: number | null; unanswered: number; converted: number };
+  cpl: { model: string; realLeads: number; spend: number; cplReal: number | null; metaLeads: number; cplMeta: number | null }[];
+}
+
+function fmtBRL(v: number): string {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// Variação relativa vs período anterior. goodWhenUp define a cor.
+function Delta({ curr, prev, goodWhenUp }: { curr: number; prev: number; goodWhenUp: boolean }) {
+  if (prev === 0) return null;
+  const pct = ((curr - prev) / Math.abs(prev)) * 100;
+  if (Math.abs(pct) < 1) return <span style={{ fontSize: 10, color: "var(--text-muted)" }}>estável</span>;
+  const up = pct > 0;
+  const good = up === goodWhenUp;
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, color: good ? "#16A34A" : "#DC2626" }}>
+      {up ? "▲" : "▼"} {Math.abs(Math.round(pct))}%
+    </span>
+  );
 }
 
 export interface OpenContact { contactId: string; name: string | null; phone: string | null }
@@ -73,14 +93,43 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
         </div>
       )}
 
-      {/* KPIs */}
+      {/* KPIs (com comparativo vs período anterior) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <Kpi icon={<Users size={15} color="var(--accent)" />} label="Leads recebidos" value={String(data.leads)} />
-        <Kpi icon={<MessageSquare size={15} color="#16A34A" />} label="Taxa de resposta" value={`${Math.round(data.responseRate * 100)}%`} sub={`${data.responded} respondidos`} />
-        <Kpi icon={<AlertCircle size={15} color="#DC2626" />} label="Sem resposta" value={String(data.unanswered)} danger={data.unanswered > 0} sub={data.unanswered > 0 ? "leads ignorados" : undefined} />
-        <Kpi icon={<Clock size={15} color="#D97706" />} label="1ª resposta (média)" value={fmtDuration(data.avgFirstResponseSec)} sub={data.medianFirstResponseSec != null ? `mediana ${fmtDuration(data.medianFirstResponseSec)}` : undefined} />
+        <Kpi icon={<Users size={15} color="var(--accent)" />} label="Leads recebidos" value={String(data.leads)}
+          delta={<Delta curr={data.leads} prev={data.previous.leads} goodWhenUp />} />
+        <Kpi icon={<MessageSquare size={15} color="#16A34A" />} label="Taxa de resposta" value={`${Math.round(data.responseRate * 100)}%`} sub={`${data.responded} respondidos`}
+          delta={<Delta curr={data.responseRate} prev={data.previous.responseRate} goodWhenUp />} />
+        <Kpi icon={<AlertCircle size={15} color="#DC2626" />} label="Sem resposta" value={String(data.unanswered)} danger={data.unanswered > 0} sub={data.unanswered > 0 ? "leads ignorados" : undefined}
+          delta={<Delta curr={data.unanswered} prev={data.previous.unanswered} goodWhenUp={false} />} />
+        <Kpi icon={<Clock size={15} color="#D97706" />} label="1ª resposta (média)" value={fmtDuration(data.avgFirstResponseSec)} sub={data.medianFirstResponseSec != null ? `mediana ${fmtDuration(data.medianFirstResponseSec)}` : undefined}
+          delta={data.avgFirstResponseSec != null && data.previous.avgFirstResponseSec != null ? <Delta curr={data.avgFirstResponseSec} prev={data.previous.avgFirstResponseSec} goodWhenUp={false} /> : undefined} />
+        <Kpi icon={<Target size={15} color="#7C3AED" />} label="Convertidos" value={String(data.converted)} sub={data.leads ? `${Math.round((data.converted / data.leads) * 100)}% dos leads` : undefined} />
         <Kpi icon={<Hourglass size={15} color="#2563EB" />} label="Aguardando agora" value={String(data.waitingNow)} />
       </div>
+
+      {/* CPL real — gasto Meta × leads reais */}
+      {data.cpl.length > 0 && (
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px", display: "flex", alignItems: "center", gap: 6 }}>
+            <DollarSign size={13} color="#16A34A" /> Custo por lead real vs. Meta
+          </p>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 12px" }}>O Meta cobra pelos leads que ele conta; aqui está o custo pelos leads que de fato chegaram.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
+            {["Anúncio", "Gasto", "Leads reais", "CPL real", "CPL Meta"].map((h, i) => (
+              <span key={h} style={{ fontSize: 9.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
+            ))}
+          </div>
+          {data.cpl.map((r) => (
+            <div key={r.model} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", padding: "9px 8px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.model}</span>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{fmtBRL(r.spend)}</span>
+              <span style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 600, textAlign: "right" }}>{r.realLeads}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "#16A34A", textAlign: "right" }}>{r.cplReal != null ? fmtBRL(r.cplReal) : "—"}</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right", textDecoration: r.cplReal != null && r.cplMeta != null && r.cplReal > r.cplMeta ? "line-through" : "none" }}>{r.cplMeta != null ? fmtBRL(r.cplMeta) : "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
         {/* Leads no tempo */}
@@ -105,7 +154,7 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
 
         {/* Por anúncio */}
         {data.byAd.length > 0 && (
-          <Card title="Leads por anúncio">
+          <Card title="Leads e conversão por anúncio">
             <ByAd items={data.byAd} max={Math.max(...data.byAd.map((a) => a.total))} />
           </Card>
         )}
@@ -118,12 +167,12 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
 }
 
 // ── Subcomponentes ───────────────────────────────────────────────────────────
-function Kpi({ icon, label, value, sub, danger }: { icon: React.ReactNode; label: string; value: string; sub?: string; danger?: boolean }) {
+function Kpi({ icon, label, value, sub, danger, delta }: { icon: React.ReactNode; label: string; value: string; sub?: string; danger?: boolean; delta?: React.ReactNode }) {
   return (
     <div style={{ background: "var(--bg-surface)", border: `1px solid ${danger ? "rgba(220,38,38,0.3)" : "var(--border)"}`, borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
       <div style={{ minWidth: 0 }}>
-        <p style={{ fontSize: 19, fontWeight: 700, color: danger ? "#DC2626" : "var(--text-primary)", lineHeight: 1, margin: 0 }}>{value}</p>
+        <p style={{ fontSize: 19, fontWeight: 700, color: danger ? "#DC2626" : "var(--text-primary)", lineHeight: 1, margin: 0, display: "flex", alignItems: "center", gap: 6 }}>{value} {delta}</p>
         <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{label}</p>
         {sub && <p style={{ fontSize: 10, color: danger ? "#DC2626" : "var(--text-muted)", marginTop: 2, opacity: 0.85 }}>{sub}</p>}
       </div>
@@ -204,11 +253,24 @@ function Funnel({ funnel }: { funnel: Record<string, number> }) {
   );
 }
 
-function ByAd({ items, max }: { items: { adTitle: string; total: number }[]; max: number }) {
+function ByAd({ items, max }: { items: { adTitle: string; total: number; converted: number; conversionRate: number }[]; max: number }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {items.slice(0, 8).map((a) => (
-        <Line key={a.adTitle} label={a.adTitle} val={a.total} pct={Math.round((a.total / max) * 100)} color="var(--accent)" icon={<Megaphone size={11} color="var(--accent)" />} />
+        <div key={a.adTitle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <Megaphone size={11} color="var(--accent)" /> {a.adTitle}
+            </span>
+            <span style={{ fontSize: 11, flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+              <strong style={{ color: "var(--text-primary)", fontSize: 12 }}>{a.total}</strong>
+              {a.converted > 0 && <span style={{ color: "#16A34A", fontWeight: 600 }}>· {a.converted} venda{a.converted > 1 ? "s" : ""} ({Math.round(a.conversionRate * 100)}%)</span>}
+            </span>
+          </div>
+          <div style={{ height: 6, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
+            <div style={{ width: `${Math.round((a.total / max) * 100)}%`, height: "100%", background: "var(--accent)", opacity: 0.85 }} />
+          </div>
+        </div>
       ))}
     </div>
   );
