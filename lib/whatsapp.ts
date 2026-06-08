@@ -54,6 +54,8 @@ export interface WaChangeValue {
   metadata?: { display_phone_number?: string; phone_number_id?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
   messages?: WaIncomingMessage[];
+  // Coexistência: mensagens enviadas pelo vendedor PELO APP do celular (echo).
+  message_echoes?: WaIncomingMessage[];
   statuses?: unknown[];
 }
 

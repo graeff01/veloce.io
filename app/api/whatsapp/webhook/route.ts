@@ -54,6 +54,7 @@ export async function POST(req: Request) {
 
       try {
         if (value?.messages?.length) await processMessages(conn, value);
+        if (value?.message_echoes?.length) await processMessageEchoes(conn, value);
         if (value?.statuses?.length) await processStatuses(conn.id, value);
         await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
       } catch (e) {
@@ -148,6 +149,39 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
         await prisma.waLead.update({ where: { contactId: contact.id }, data: { adModel } });
       }
     }
+  }
+}
+
+// Coexistência: mensagens que o VENDEDOR enviou pelo app do celular (echo).
+// São tratadas como outbound — alimentam a conversa e as métricas de resposta.
+// Nunca disparam o agente nem criam lead.
+async function processMessageEchoes(conn: WaConnection, value: WaChangeValue) {
+  const connectionId = conn.id;
+  for (const m of value.message_echoes ?? []) {
+    // No echo: from = número do negócio, to = cliente.
+    const customerWaId = m.to ? onlyDigits(m.to) : "";
+    if (!customerWaId) continue;
+    const ts = new Date(Number(m.timestamp) * 1000);
+
+    const contact = await prisma.waContact.upsert({
+      where: { connectionId_waId: { connectionId, waId: customerWaId } },
+      create: { connectionId, waId: customerWaId, lastMessageAt: ts },
+      update: { lastMessageAt: ts },
+    });
+
+    const exists = await prisma.waMessage.findUnique({
+      where: { connectionId_waMessageId: { connectionId, waMessageId: m.id } },
+      select: { id: true },
+    });
+    if (exists) continue;
+
+    await prisma.waMessage.create({
+      data: {
+        connectionId, contactId: contact.id, waMessageId: m.id,
+        direction: "out", type: m.type, text: messageText(m), timestamp: ts, raw: m as object,
+      },
+    });
+    await applyMessageToConversation({ connectionId, contactId: contact.id, direction: "out", timestamp: ts });
   }
 }
 
