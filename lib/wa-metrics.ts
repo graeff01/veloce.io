@@ -32,6 +32,15 @@ export interface Overview {
     abandoned: number;   // sem retorno há > abandonedHours
     sample: { contactId: string; name: string | null; waId: string; waitingSince: string | null }[];
   };
+  // ── Métricas baseadas só em mensagens RECEBIDAS (não dependem de resposta) ──
+  messagesReceived: number;
+  avgMessagesPerLead: number;
+  messagesSeries: { date: string; messages: number }[];
+  noStage: number;
+  mostActiveLeads: {
+    contactId: string; name: string | null; waId: string;
+    messages: number; fromAd: boolean; lastMessageAt: string | null; funnelStage: string | null;
+  }[];
 }
 
 function dayKey(d: Date): string {
@@ -43,10 +52,10 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   const waitingCut = new Date(now - WA_THRESHOLDS.waitingAlertHours * 3_600_000);
   const abandonedCut = new Date(now - WA_THRESHOLDS.abandonedHours * 3_600_000);
 
-  const [convs, adLeads, waitingNow, alertRows] = await Promise.all([
+  const [convs, adLeads, waitingNow, alertRows, inboundMsgs] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId, firstInboundAt: { gte: start, lt: end } },
-      select: { contactId: true, firstInboundAt: true, firstResponseSec: true, funnelStage: true },
+      select: { contactId: true, firstInboundAt: true, firstResponseSec: true, funnelStage: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
     }),
     prisma.waLead.findMany({
       where: { connectionId, enteredAt: { gte: start, lt: end } },
@@ -58,6 +67,10 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
       orderBy: { lastMessageAt: "asc" },
       take: 50,
       select: { contactId: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
+    }),
+    prisma.waMessage.findMany({
+      where: { connectionId, direction: "in", timestamp: { gte: start, lt: end } },
+      select: { contactId: true, timestamp: true },
     }),
   ]);
 
@@ -105,10 +118,38 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     if (model && c.funnelStage === "convertido") byAdMap.get(model)!.converted++;
   }
 
+  // Mensagens recebidas: total, por dia e por contato (para "leads mais ativos").
+  const msgByContact = new Map<string, number>();
+  const msgSeriesMap = new Map<string, number>();
+  for (const m of inboundMsgs) {
+    msgByContact.set(m.contactId, (msgByContact.get(m.contactId) ?? 0) + 1);
+    const k = dayKey(m.timestamp);
+    msgSeriesMap.set(k, (msgSeriesMap.get(k) ?? 0) + 1);
+  }
+  const noStage = convs.filter((c) => !c.funnelStage).length;
+  const mostActiveLeads = convs
+    .map((c) => ({
+      contactId: c.contactId,
+      name: c.contact?.name ?? null,
+      waId: c.contact?.waId ?? "",
+      messages: msgByContact.get(c.contactId) ?? 0,
+      fromAd: adContactIds.has(c.contactId),
+      lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
+      funnelStage: c.funnelStage,
+    }))
+    .filter((l) => l.messages > 0)
+    .sort((a, b) => b.messages - a.messages)
+    .slice(0, 8);
+
   const total = convs.length;
   return {
     converted: funnel.convertido,
     leads: total,
+    messagesReceived: inboundMsgs.length,
+    avgMessagesPerLead: total ? inboundMsgs.length / total : 0,
+    messagesSeries: [...msgSeriesMap.entries()].map(([date, messages]) => ({ date, messages })).sort((a, b) => a.date.localeCompare(b.date)),
+    noStage,
+    mostActiveLeads,
     responded,
     unanswered: total - responded,
     responseRate: total ? responded / total : 0,

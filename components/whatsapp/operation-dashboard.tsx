@@ -2,86 +2,101 @@
 
 import { useEffect, useState } from "react";
 import {
-  Loader2, Users, MessageSquare, AlertTriangle, Megaphone,
-  Target, DollarSign, TrendingUp, TrendingDown, BarChart2,
+  Loader2, Users, Megaphone, MessageSquare, Layers, Target, Tag,
+  TrendingUp, TrendingDown, BarChart2, DollarSign, CheckCircle2,
+  AlertCircle, ShieldCheck, Inbox, Sparkles, Phone, Hash,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface MostActive {
+  contactId: string; name: string | null; waId: string;
+  messages: number; fromAd: boolean; lastMessageAt: string | null; funnelStage: string | null;
+}
 interface Overview {
   leads: number; converted: number;
   byOrigin: { ad: number; organic: number };
   byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
   series: { date: string; leads: number }[];
+  messagesSeries: { date: string; messages: number }[];
   funnel: Record<string, number>;
+  messagesReceived: number; avgMessagesPerLead: number; noStage: number;
+  mostActiveLeads: MostActive[];
+  campaignsWithLeads: number;
   previous: { leads: number; converted: number };
   cpl: { model: string; realLeads: number; spend: number; cplReal: number | null; metaLeads: number; cplMeta: number | null }[];
-  // campos legados ignorados (dependem de outbound)
   [key: string]: unknown;
 }
 export interface OpenContact { contactId: string; name: string | null; phone: string | null }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
-function fmtBRL(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function fmtBRL(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function pct(n: number, total: number) { return total ? Math.round((n / total) * 100) : 0; }
+function fmtDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
-function pct(n: number, total: number) {
-  return total ? Math.round((n / total) * 100) : 0;
+function timeAgoShort(iso: string | null) {
+  if (!iso) return "—";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "agora";
+  if (mins < 60) return `há ${mins}min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
 }
+const MONTH_NAMES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const STAGE_COLORS: Record<string, string> = {
+  recebido: "#3B82F6", respondido: "#8B5CF6", qualificado: "#F59E0B",
+  negociacao: "#10B981", convertido: "#16A34A", perdido: "#EF4444",
+};
 
-// ─── Delta chip ───────────────────────────────────────────────────────────────
-function Delta({ curr, prev, goodWhenUp }: { curr: number; prev: number; goodWhenUp: boolean }) {
-  if (prev === 0 || Math.abs(curr - prev) < 0.001) return <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>estável</span>;
+// ─── Delta ────────────────────────────────────────────────────────────────────
+function Delta({ curr, prev }: { curr: number; prev: number }) {
+  if (prev === 0 || curr === prev) return null;
   const up = curr > prev;
-  const good = up === goodWhenUp;
   const Icon = up ? TrendingUp : TrendingDown;
-  const pctVal = Math.abs(Math.round(((curr - prev) / Math.abs(prev)) * 100));
+  const v = Math.abs(Math.round(((curr - prev) / Math.abs(prev)) * 100));
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10.5, fontWeight: 700, color: good ? "#16A34A" : "#DC2626", background: good ? "rgba(22,163,74,0.08)" : "rgba(220,38,38,0.08)", padding: "2px 6px", borderRadius: 20 }}>
-      <Icon size={9} /> {pctVal}%
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10.5, fontWeight: 700, color: up ? "#16A34A" : "#DC2626", background: up ? "rgba(22,163,74,0.08)" : "rgba(220,38,38,0.08)", padding: "2px 6px", borderRadius: 20 }}>
+      <Icon size={9} /> {v}%
     </span>
   );
 }
 
-// ─── KPI card ─────────────────────────────────────────────────────────────────
-function Kpi({ icon, label, value, sub, accentColor, delta, alert }: {
-  icon: React.ReactNode; label: string; value: string; sub?: string;
-  accentColor: string; delta?: React.ReactNode; alert?: boolean;
+// ─── Metric card ──────────────────────────────────────────────────────────────
+function MetricCard({ icon, label, value, sub, accent, delta, attention }: {
+  icon: React.ReactNode; label: string; value: string | number; sub?: string;
+  accent: string; delta?: React.ReactNode; attention?: boolean;
 }) {
   return (
     <div style={{
       background: "var(--bg-surface)", borderRadius: 14,
-      border: alert ? `1px solid rgba(220,38,38,0.25)` : "1px solid var(--border)",
-      borderLeft: `3px solid ${alert ? "#DC2626" : accentColor}`,
-      padding: "16px 18px",
+      border: attention ? "1px solid rgba(217,119,6,0.3)" : "1px solid var(--border)",
+      borderLeft: `3px solid ${attention ? "#D97706" : accent}`,
+      padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12,
       boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
-      display: "flex", flexDirection: "column", gap: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: alert ? "rgba(220,38,38,0.08)" : `color-mix(in srgb, ${accentColor} 10%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {icon}
-        </div>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: attention ? "rgba(217,119,6,0.1)" : `color-mix(in srgb, ${accent} 10%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
         {delta}
       </div>
       <div>
-        <p style={{ fontSize: 28, fontWeight: 800, color: alert ? "#DC2626" : "var(--text-primary)", lineHeight: 1, margin: 0, letterSpacing: "-0.5px" }}>{value}</p>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, marginBottom: 0, fontWeight: 500 }}>{label}</p>
-        {sub && <p style={{ fontSize: 11, color: alert ? "#DC2626" : "var(--text-muted)", marginTop: 2, marginBottom: 0 }}>{sub}</p>}
+        <p style={{ fontSize: 27, fontWeight: 800, color: attention ? "#B45309" : "var(--text-primary)", lineHeight: 1, margin: 0, letterSpacing: "-0.5px" }}>{value}</p>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 5, marginBottom: 0, fontWeight: 500 }}>{label}</p>
+        {sub && <p style={{ fontSize: 11, color: attention ? "#B45309" : "var(--text-muted)", marginTop: 2, marginBottom: 0 }}>{sub}</p>}
       </div>
     </div>
   );
 }
 
 // ─── Section card ─────────────────────────────────────────────────────────────
-function SectionCard({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{title}</p>
-          {subtitle && <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "3px 0 0" }}>{subtitle}</p>}
-        </div>
-        {action}
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{title}</p>
+        {subtitle && <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "3px 0 0" }}>{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -89,26 +104,26 @@ function SectionCard({ title, subtitle, action, children }: { title: string; sub
 }
 
 // ─── Bar chart ────────────────────────────────────────────────────────────────
-function LeadsByDay({ series }: { series: { date: string; leads: number }[] }) {
-  if (series.length === 0) return <EmptyState label="Nenhum lead no período" />;
-  const max = Math.max(...series.map((s) => s.leads), 1);
-  const total = series.reduce((a, s) => a + s.leads, 0);
-  const avg = total / series.length;
+function BarChart({ data, color, unit }: { data: { date: string; value: number }[]; color: string; unit: string }) {
+  if (data.length === 0) return <EmptyChart label={`Sem ${unit} no período`} />;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const total = data.reduce((a, d) => a + d.value, 0);
+  const avg = total / data.length;
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 100, paddingBottom: 4 }}>
-        {series.map((s) => {
-          const h = Math.max((s.leads / max) * 84, s.leads > 0 ? 4 : 2);
-          const isAbove = s.leads > avg;
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 96, paddingBottom: 4 }}>
+        {data.map((d) => {
+          const h = Math.max((d.value / max) * 80, d.value > 0 ? 4 : 2);
+          const above = d.value > avg;
           return (
-            <div key={s.date} title={`${s.date}: ${s.leads} leads`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-              <div style={{ width: "100%", maxWidth: 18, height: h, background: isAbove ? "var(--accent)" : "color-mix(in srgb, var(--accent) 40%, transparent)", borderRadius: "3px 3px 2px 2px", transition: "height 0.3s" }} />
-              {series.length <= 15 && <span style={{ fontSize: 8, color: "var(--text-muted)", lineHeight: 1 }}>{s.date.slice(8)}</span>}
+            <div key={d.date} title={`${d.date}: ${d.value} ${unit}`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              <div style={{ width: "100%", maxWidth: 18, height: h, background: above ? color : `color-mix(in srgb, ${color} 40%, transparent)`, borderRadius: "3px 3px 2px 2px", transition: "height 0.3s" }} />
+              {data.length <= 16 && <span style={{ fontSize: 8, color: "var(--text-muted)", lineHeight: 1 }}>{d.date.slice(8)}</span>}
             </div>
           );
         })}
       </div>
-      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0", textAlign: "right" }}>Média: {avg.toFixed(1)} leads/dia</p>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0", textAlign: "right" }}>Total: {total} · média {avg.toFixed(1)}/dia</p>
     </div>
   );
 }
@@ -118,28 +133,28 @@ function Origin({ ad, organic }: { ad: number; organic: number }) {
   const total = ad + organic || 1;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <OriginLine icon={<Megaphone size={13} color="var(--accent)" />} label="Meta Ads" sub="Click-to-WhatsApp" val={ad} pct={pct(ad, total)} color="var(--accent)" />
-      <OriginLine icon={<MessageSquare size={13} color="#64748B" />} label="Orgânico" sub="Direto ou indicação" val={organic} pct={pct(organic, total)} color="#64748B" />
+      <OriginLine icon={<Megaphone size={13} color="var(--accent)" />} label="Meta Ads" sub="referral capturado" val={ad} p={pct(ad, total)} color="var(--accent)" />
+      <OriginLine icon={<MessageSquare size={13} color="#64748B" />} label="Orgânico / sem referral" sub="direto ou origem não identificada" val={organic} p={pct(organic, total)} color="#64748B" />
       {ad > 0 && organic > 0 && (
         <div style={{ display: "flex", height: 8, borderRadius: 99, overflow: "hidden", background: "var(--bg-elevated)" }}>
-          <div style={{ width: `${pct(ad, total)}%`, background: "var(--accent)", transition: "width 0.4s" }} />
+          <div style={{ width: `${pct(ad, total)}%`, background: "var(--accent)" }} />
           <div style={{ flex: 1, background: "#64748B", opacity: 0.4 }} />
         </div>
       )}
     </div>
   );
 }
-function OriginLine({ icon, label, sub, val, pct: p, color }: { icon: React.ReactNode; label: string; sub: string; val: number; pct: number; color: string }) {
+function OriginLine({ icon, label, sub, val, p, color }: { icon: React.ReactNode; label: string; sub: string; val: number; p: number; color: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{ width: 36, height: 36, borderRadius: 10, background: `color-mix(in srgb, ${color} 10%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{label}</span>
             <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>{sub}</span>
           </div>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{val}<span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", marginLeft: 4 }}>{p}%</span></span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", flexShrink: 0 }}>{val}<span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", marginLeft: 4 }}>{p}%</span></span>
         </div>
         <div style={{ height: 5, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
           <div style={{ width: `${p}%`, height: "100%", background: color, opacity: 0.7, transition: "width 0.4s" }} />
@@ -150,45 +165,40 @@ function OriginLine({ icon, label, sub, val, pct: p, color }: { icon: React.Reac
 }
 
 // ─── Funnel ───────────────────────────────────────────────────────────────────
-const FUNNEL_ORDER = ["recebido","respondido","qualificado","negociacao","convertido"];
-const FUNNEL_COLORS: Record<string, string> = {
-  recebido: "#3B82F6", respondido: "#8B5CF6", qualificado: "#F59E0B",
-  negociacao: "#10B981", convertido: "#16A34A", perdido: "#EF4444",
-};
-function Funnel({ funnel }: { funnel: Record<string, number> }) {
-  const max = Math.max(funnel.recebido ?? 0, 1);
-  const keys = [...FUNNEL_ORDER, ...(funnel.perdido ? ["perdido"] : [])];
+const FUNNEL_ORDER = ["recebido","qualificado","negociacao","convertido","perdido"];
+function Funnel({ funnel, noStage }: { funnel: Record<string, number>; noStage: number }) {
+  const rows: { key: string; label: string; val: number; color: string }[] = [
+    { key: "__none__", label: "Sem etapa", val: noStage, color: "#94A3B8" },
+    ...FUNNEL_ORDER.map((k) => ({ key: k, label: FUNNEL_LABELS[k], val: funnel[k] ?? 0, color: STAGE_COLORS[k] })),
+  ];
+  const max = Math.max(...rows.map((r) => r.val), 1);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {keys.map((k) => {
-        const val = funnel[k] ?? 0;
-        const w = Math.max(pct(val, max), val > 0 ? 4 : 0);
-        return (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 11.5, color: "var(--text-secondary)", width: 88, flexShrink: 0, fontWeight: 500 }}>{FUNNEL_LABELS[k]}</span>
-            <div style={{ flex: 1, height: 8, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
-              <div style={{ width: `${w}%`, height: "100%", background: FUNNEL_COLORS[k] ?? "var(--accent)", opacity: 0.8, transition: "width 0.4s" }} />
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", width: 28, textAlign: "right", flexShrink: 0 }}>{val}</span>
+      {rows.map((r) => (
+        <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 11.5, color: "var(--text-secondary)", width: 92, flexShrink: 0, fontWeight: 500 }}>{r.label}</span>
+          <div style={{ flex: 1, height: 8, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
+            <div style={{ width: `${Math.max(pct(r.val, max), r.val > 0 ? 4 : 0)}%`, height: "100%", background: r.color, opacity: 0.8, transition: "width 0.4s" }} />
           </div>
-        );
-      })}
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", width: 28, textAlign: "right", flexShrink: 0 }}>{r.val}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
 // ─── Ad ranking ───────────────────────────────────────────────────────────────
 function AdRanking({ items, maxLeads }: { items: Overview["byAd"]; maxLeads: number }) {
-  if (items.length === 0) return <EmptyState label="Nenhum lead de anúncio no período" />;
+  if (items.length === 0) return <EmptyChart label="Nenhum anúncio gerou leads neste período" />;
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 64px 80px 80px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
-        {["Anúncio", "Leads", "Convertidos", "Taxa"].map((h, i) => (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 64px 90px 70px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
+        {["Anúncio","Leads","Convertidos","% total"].map((h, i) => (
           <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
         ))}
       </div>
       {items.slice(0, 8).map((a, i) => (
-        <div key={a.adTitle} style={{ display: "grid", gridTemplateColumns: "1fr 64px 80px 80px", padding: "10px 4px", borderBottom: i < Math.min(items.length, 8) - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8 }}>
+        <div key={a.adTitle} style={{ display: "grid", gridTemplateColumns: "1fr 64px 90px 70px", padding: "10px 4px", borderBottom: i < Math.min(items.length, 8) - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
               <Megaphone size={11} style={{ color: "var(--accent)", flexShrink: 0 }} />
@@ -199,11 +209,39 @@ function AdRanking({ items, maxLeads }: { items: Overview["byAd"]; maxLeads: num
             </div>
           </div>
           <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{a.total}</span>
-          <span style={{ fontSize: 13, fontWeight: a.converted > 0 ? 700 : 400, color: a.converted > 0 ? "#16A34A" : "var(--text-muted)", textAlign: "right" }}>{a.converted > 0 ? a.converted : "—"}</span>
-          <span style={{ fontSize: 12, color: a.conversionRate > 0.1 ? "#16A34A" : "var(--text-secondary)", textAlign: "right", fontWeight: 600 }}>
-            {a.conversionRate > 0 ? `${Math.round(a.conversionRate * 100)}%` : "—"}
-          </span>
+          <span style={{ fontSize: 13, fontWeight: a.converted ? 700 : 400, color: a.converted ? "#16A34A" : "var(--text-muted)", textAlign: "right" }}>{a.converted || "—"}</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{pct(a.total, maxLeads === 1 ? 1 : items.reduce((s, x) => s + x.total, 0))}%</span>
         </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Most active leads ────────────────────────────────────────────────────────
+function MostActiveTable({ leads, onOpen }: { leads: MostActive[]; onOpen?: (c: OpenContact) => void }) {
+  if (leads.length === 0) return <EmptyChart label="Nenhuma mensagem recebida no período" />;
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 90px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
+        {["Lead","Mensagens","Origem","Última"].map((h, i) => (
+          <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 1 ? "right" : "left" }}>{h}</span>
+        ))}
+      </div>
+      {leads.map((l, i) => (
+        <button key={l.contactId} onClick={() => onOpen?.({ contactId: l.contactId, name: l.name, phone: l.waId })}
+          style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 90px", padding: "10px 4px", borderBottom: i < leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8, background: "none", border: "none", cursor: onOpen ? "pointer" : "default", textAlign: "left" }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name ?? "Sem nome"}</p>
+            <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>+{l.waId}</p>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", textAlign: "right" }}>{l.messages}</span>
+          <span style={{ fontSize: 11.5 }}>
+            {l.fromAd
+              ? <span style={{ color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3 }}><Megaphone size={10} /> Anúncio</span>
+              : <span style={{ color: "var(--text-muted)" }}>Orgânico</span>}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "left" }}>{timeAgoShort(l.lastMessageAt)}</span>
+        </button>
       ))}
     </div>
   );
@@ -211,9 +249,8 @@ function AdRanking({ items, maxLeads }: { items: Overview["byAd"]; maxLeads: num
 
 // ─── CPL table ────────────────────────────────────────────────────────────────
 function CplTable({ rows }: { rows: Overview["cpl"] }) {
-  if (rows.length === 0) return null;
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div>
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 80px 90px 90px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
         {["Anúncio","Gasto","Leads reais","CPL real","CPL Meta"].map((h, i) => (
           <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
@@ -225,20 +262,26 @@ function CplTable({ rows }: { rows: Overview["cpl"] }) {
           <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{fmtBRL(r.spend)}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{r.realLeads}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#16A34A", textAlign: "right" }}>{r.cplReal != null ? fmtBRL(r.cplReal) : "—"}</span>
-          <span style={{ fontSize: 12, color: r.cplReal != null && r.cplMeta != null && r.cplReal > r.cplMeta ? "#DC2626" : "var(--text-muted)", textAlign: "right", textDecoration: r.cplReal != null && r.cplMeta != null && r.cplReal > r.cplMeta ? "line-through" : "none" }}>
-            {r.cplMeta != null ? fmtBRL(r.cplMeta) : "—"}
-          </span>
+          <span style={{ fontSize: 12, color: r.cplReal != null && r.cplMeta != null && r.cplReal > r.cplMeta ? "#DC2626" : "var(--text-muted)", textAlign: "right", textDecoration: r.cplReal != null && r.cplMeta != null && r.cplReal > r.cplMeta ? "line-through" : "none" }}>{r.cplMeta != null ? fmtBRL(r.cplMeta) : "—"}</span>
         </div>
       ))}
-      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "10px 0 0", fontStyle: "italic" }}>
-        CPL real = gasto ÷ leads que chegaram. CPL Meta = gasto ÷ leads que o Meta contou.
-      </p>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "10px 0 0", fontStyle: "italic" }}>CPL real = gasto ÷ leads que chegaram. CPL Meta = gasto ÷ leads que o Meta contou.</p>
     </div>
   );
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
-function EmptyState({ label }: { label: string }) {
+// ─── Validation ───────────────────────────────────────────────────────────────
+function ValidationRow({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      {ok ? <CheckCircle2 size={16} style={{ color: "#16A34A", flexShrink: 0 }} /> : <AlertCircle size={16} style={{ color: "#D97706", flexShrink: 0 }} />}
+      <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
+    </div>
+  );
+}
+
+// ─── Empty ────────────────────────────────────────────────────────────────────
+function EmptyChart({ label }: { label: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 0", color: "var(--text-muted)" }}>
       <BarChart2 size={16} style={{ opacity: 0.3 }} />
@@ -274,83 +317,127 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
     <div style={{ textAlign: "center", padding: "64px 20px" }}>
       <BarChart2 size={32} style={{ color: "var(--text-muted)", opacity: 0.2, margin: "0 auto 12px", display: "block" }} />
       <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>Sem dados disponíveis para este período.</p>
-      <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, opacity: 0.7 }}>Conecte o WhatsApp e aguarde as primeiras mensagens chegarem.</p>
+    </div>
+  );
+
+  if (data.leads === 0) return (
+    <div style={{ textAlign: "center", padding: "56px 24px", background: "var(--bg-surface)", border: "1px dashed var(--border)", borderRadius: 16 }}>
+      <div style={{ width: 64, height: 64, borderRadius: 18, background: "color-mix(in srgb, var(--accent) 8%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+        <Inbox size={28} style={{ color: "var(--accent)", opacity: 0.7 }} />
+      </div>
+      <p style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Nenhum lead encontrado neste período</p>
+      <p style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.6, maxWidth: 440, margin: "8px auto 0" }}>
+        Quando novos contatos chegarem pelo WhatsApp, eles aparecerão aqui com origem, mensagens e dados para relatório.
+      </p>
     </div>
   );
 
   const adCount = data.byOrigin.ad;
   const maxAdLeads = data.byAd.length ? Math.max(...data.byAd.map((a) => a.total)) : 1;
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+  // Resumo textual do período (sem IA).
+  const monthName = MONTH_NAMES[month - 1];
+  const topAd = data.byAd[0];
+  const resumo = `Em ${monthName}, foram ${data.leads} ${data.leads === 1 ? "contato recebido" : "contatos recebidos"} pelo WhatsApp — `
+    + `${adCount} ${adCount === 1 ? "veio" : "vieram"} de anúncio Meta Ads e ${data.byOrigin.organic} de forma orgânica ou sem referral identificado. `
+    + `Os leads enviaram ${data.messagesReceived} ${data.messagesReceived === 1 ? "mensagem" : "mensagens"} no total`
+    + (topAd ? `, e o anúncio "${topAd.adTitle}" gerou ${topAd.total} ${topAd.total === 1 ? "conversa" : "conversas"}.` : ".");
 
-      {/* ── KPIs ── */}
+  const alerts: string[] = [];
+  if (data.noStage > 0) alerts.push(`${data.noStage} lead${data.noStage > 1 ? "s" : ""} sem etapa no funil`);
+  if (adCount === 0) alerts.push("Nenhum lead de anúncio identificado no período");
+  if (data.byOrigin.organic > 0 && adCount === 0) alerts.push("Existem conversas sem origem identificada");
+
+  // Validação
+  const v = {
+    contabilizados: data.leads,
+    comReferral: adCount,
+    comCampanha: data.campaignsWithLeads,
+    comAnuncio: data.byAd.length,
+    semReferral: data.byOrigin.organic,
+    semEtapa: data.noStage,
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+      {/* ── Cards principais ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-        <Kpi
-          icon={<Users size={16} color="#3B82F6" />}
-          label="Leads recebidos"
-          value={String(data.leads)}
-          sub={data.leads === 0 ? "Nenhum lead no período" : `${pct(data.byOrigin.ad, data.leads)}% de anúncios`}
-          accentColor="#3B82F6"
-          delta={data.previous.leads > 0 ? <Delta curr={data.leads} prev={data.previous.leads} goodWhenUp /> : undefined}
-        />
-        <Kpi
-          icon={<Megaphone size={16} color="var(--accent)" />}
-          label="Leads de anúncio"
-          value={String(adCount)}
-          sub={data.leads > 0 ? `${pct(adCount, data.leads)}% do total` : undefined}
-          accentColor="var(--accent)"
-        />
-        <Kpi
-          icon={<MessageSquare size={16} color="#06B6D4" />}
-          label="Leads orgânicos"
-          value={String(data.byOrigin.organic)}
-          sub={data.leads > 0 ? `${pct(data.byOrigin.organic, data.leads)}% do total` : undefined}
-          accentColor="#06B6D4"
-        />
-        <Kpi
-          icon={<Target size={16} color="#7C3AED" />}
-          label="Convertidos"
-          value={String(data.converted)}
-          sub={data.leads ? `${pct(data.converted, data.leads)}% dos leads` : undefined}
-          accentColor="#7C3AED"
-          delta={data.previous.converted > 0 ? <Delta curr={data.converted} prev={data.previous.converted} goodWhenUp /> : undefined}
-        />
+        <MetricCard icon={<Users size={16} color="#3B82F6" />} label="Leads recebidos" value={data.leads} sub="contatos únicos no período" accent="#3B82F6" delta={data.previous.leads > 0 ? <Delta curr={data.leads} prev={data.previous.leads} /> : undefined} />
+        <MetricCard icon={<Megaphone size={16} color="var(--accent)" />} label="Leads de anúncio" value={adCount} sub={`${pct(adCount, data.leads)}% · origem Meta Ads`} accent="var(--accent)" />
+        <MetricCard icon={<MessageSquare size={16} color="#06B6D4" />} label="Leads orgânicos" value={data.byOrigin.organic} sub={`${pct(data.byOrigin.organic, data.leads)}% · sem referral`} accent="#06B6D4" />
+        <MetricCard icon={<Inbox size={16} color="#0EA5E9" />} label="Mensagens recebidas" value={data.messagesReceived} sub={`${data.avgMessagesPerLead.toFixed(1)} por lead`} accent="#0EA5E9" />
+        <MetricCard icon={<Layers size={16} color="#8B5CF6" />} label="Campanhas com leads" value={data.campaignsWithLeads} sub="identificadas no período" accent="#8B5CF6" />
+        <MetricCard icon={<Hash size={16} color="#EC4899" />} label="Anúncios com leads" value={data.byAd.length} sub="criativos com conversas" accent="#EC4899" />
+        <MetricCard icon={<Tag size={16} color="#D97706" />} label="Leads sem etapa" value={data.noStage} sub="precisam de classificação" accent="#D97706" attention={data.noStage > 0} />
+        <MetricCard icon={<Target size={16} color="#16A34A" />} label="Convertidos" value={data.converted} sub={`${pct(data.converted, data.leads)}% · marcados no funil`} accent="#16A34A" delta={data.previous.converted > 0 ? <Delta curr={data.converted} prev={data.previous.converted} /> : undefined} />
+      </div>
+
+      {/* ── Resumo do período ── */}
+      <div style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--bg-surface)), var(--bg-surface))", border: "1px solid var(--border)", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+          <Sparkles size={14} color="var(--accent)" />
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Resumo do período</span>
+        </div>
+        <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.6, margin: 0 }}>{resumo}</p>
+        {alerts.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+            {alerts.map((a) => (
+              <span key={a} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#92600A", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)", padding: "5px 11px", borderRadius: 99 }}>
+                <AlertCircle size={12} color="#D97706" /> {a}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Gráficos ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+        <Section title="Leads por dia" subtitle="Volume diário de contatos recebidos">
+          <BarChart data={data.series.map((s) => ({ date: s.date, value: s.leads }))} color="var(--accent)" unit="leads" />
+        </Section>
+        <Section title="Mensagens por dia" subtitle="Quantidade de mensagens enviadas pelos leads">
+          <BarChart data={data.messagesSeries.map((s) => ({ date: s.date, value: s.messages }))} color="#0EA5E9" unit="mensagens" />
+        </Section>
+        <Section title="Origem dos contatos" subtitle="Meta Ads vs. orgânico / sem referral">
+          <Origin ad={data.byOrigin.ad} organic={data.byOrigin.organic} />
+        </Section>
+        <Section title="Funil comercial" subtitle="Classificação manual dos leads por etapa">
+          <Funnel funnel={data.funnel} noStage={data.noStage} />
+        </Section>
+      </div>
+
+      {/* ── Leads mais ativos + Anúncios ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
+        <Section title="Leads mais ativos" subtitle="Quem mais enviou mensagens no período">
+          <MostActiveTable leads={data.mostActiveLeads} onOpen={onOpenContact} />
+        </Section>
+        <Section title="Anúncios que geraram conversas" subtitle="Leads e conversão por anúncio">
+          <AdRanking items={data.byAd} maxLeads={maxAdLeads} />
+        </Section>
       </div>
 
       {/* ── CPL ── */}
       {data.cpl.length > 0 && (
-        <SectionCard
-          title="Custo por lead real"
-          subtitle="Gasto Meta × leads que realmente chegaram no WhatsApp"
-        >
+        <Section title="Custo por lead real" subtitle="Gasto Meta × leads que realmente chegaram no WhatsApp">
           <CplTable rows={data.cpl} />
-        </SectionCard>
+        </Section>
       )}
 
-      {/* ── Charts grid ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-        <SectionCard title="Leads por dia" subtitle={`${data.series.reduce((a, s) => a + s.leads, 0)} leads no período`}>
-          <LeadsByDay series={data.series} />
-        </SectionCard>
-        <SectionCard title="Origem dos leads" subtitle="Meta Ads vs. orgânico / direto">
-          <Origin ad={data.byOrigin.ad} organic={data.byOrigin.organic} />
-        </SectionCard>
-        <SectionCard title="Funil comercial" subtitle="Progresso das etapas de negociação">
-          <Funnel funnel={data.funnel} />
-        </SectionCard>
-      </div>
+      {/* ── Validação para relatório ── */}
+      <Section title="Validação para relatório mensal" subtitle="Confira os números antes de entregar ao cliente">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px 24px" }}>
+          <ValidationRow ok label={`${v.contabilizados} leads contabilizados`} />
+          <ValidationRow ok={v.comReferral > 0} label={`${v.comReferral} com referral Meta Ads`} />
+          <ValidationRow ok={v.comCampanha > 0} label={`${v.comCampanha} campanha${v.comCampanha !== 1 ? "s" : ""} identificada${v.comCampanha !== 1 ? "s" : ""}`} />
+          <ValidationRow ok={v.comAnuncio > 0} label={`${v.comAnuncio} anúncio${v.comAnuncio !== 1 ? "s" : ""} identificado${v.comAnuncio !== 1 ? "s" : ""}`} />
+          <ValidationRow ok={v.semReferral === 0} label={`${v.semReferral} sem referral de anúncio`} />
+          <ValidationRow ok={v.semEtapa === 0} label={`${v.semEtapa} sem etapa no funil`} />
+        </div>
+      </Section>
 
-      {/* ── Ad ranking ── */}
-      {data.byAd.length > 0 && (
-        <SectionCard title="Performance por anúncio" subtitle="Leads e conversão por criativo / anúncio">
-          <AdRanking items={data.byAd} maxLeads={maxAdLeads} />
-        </SectionCard>
-      )}
-
-      {/* Footer */}
       <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", margin: 0 }}>
-        {data.leads} leads no período · atualização em tempo real
+        {data.leads} leads · {data.messagesReceived} mensagens recebidas · atualização em tempo real
       </p>
     </div>
   );

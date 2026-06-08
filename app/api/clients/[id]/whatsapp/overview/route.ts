@@ -46,14 +46,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const cpl = await computeCplByModel(id, overview.byAd);
 
+  // Campanhas com leads (best-effort): nomes de campanha do Meta que casam com
+  // os modelos de anúncio que geraram lead no período.
+  let campaignsWithLeads = 0;
+  if (overview.byAd.length) {
+    const meta = await prisma.metaConnection.findUnique({
+      where: { clientId: id },
+      include: { insights: { select: { campaignName: true, adsetName: true } } },
+    }).catch(() => null);
+    if (meta) {
+      const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      const names = new Set<string>();
+      for (const a of overview.byAd) {
+        const key = norm(a.adTitle);
+        if (!key) continue;
+        for (const ins of meta.insights) {
+          const name = `${norm(ins.campaignName ?? "")} ${norm(ins.adsetName ?? "")}`;
+          if (name.includes(key) && ins.campaignName) { names.add(ins.campaignName); break; }
+        }
+      }
+      campaignsWithLeads = names.size;
+    }
+  }
+
   return NextResponse.json({
     ...overview,
     cpl,
+    campaignsWithLeads,
     previous: {
       leads: prev.leads,
-      responseRate: prev.responseRate,
-      avgFirstResponseSec: prev.avgFirstResponseSec,
-      unanswered: prev.unanswered,
       converted: prev.converted,
     },
   });
