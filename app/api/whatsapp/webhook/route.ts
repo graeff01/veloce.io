@@ -6,6 +6,8 @@ import {
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
+import { maybeRespondWithAgent } from "@/lib/ai-agent/respond";
+import type { WaConnection } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -50,7 +52,7 @@ export async function POST(req: Request) {
       if (!conn) continue;
 
       try {
-        if (value?.messages?.length) await processMessages(conn.id, conn.displayPhone, value);
+        if (value?.messages?.length) await processMessages(conn, value);
         if (value?.statuses?.length) await processStatuses(conn.id, value);
         await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
       } catch (e) {
@@ -63,8 +65,9 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-async function processMessages(connectionId: string, displayPhone: string | null, value: WaChangeValue) {
-  const businessNumber = onlyDigits(displayPhone ?? value.metadata?.display_phone_number);
+async function processMessages(conn: WaConnection, value: WaChangeValue) {
+  const connectionId = conn.id;
+  const businessNumber = onlyDigits(conn.displayPhone ?? value.metadata?.display_phone_number);
   const nameByWaId = new Map<string, string>();
   for (const c of value.contacts ?? []) {
     if (c.wa_id) nameByWaId.set(onlyDigits(c.wa_id), c.profile?.name ?? "");
@@ -102,6 +105,16 @@ async function processMessages(connectionId: string, displayPhone: string | null
     });
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
+
+    // Veloce AI Agent: responde leads recebidos (decide internamente se atua —
+    // só fora do horário e se habilitado). Fire-and-forget para não atrasar o 200.
+    if (!outbound) {
+      void maybeRespondWithAgent(
+        { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken },
+        { id: contact.id, name: contact.name, waId: customerWaId },
+        messageText(m) ?? "",
+      );
+    }
 
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo
     // detectado na mensagem de abertura ("anúncio do {modelo}").

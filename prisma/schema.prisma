@@ -104,6 +104,10 @@ model Client {
   metaConnection    MetaConnection?
   waConnection      WaConnection?
   visits            Visit[]
+  aiAgentConfig     AiAgentConfig?
+  visitConfig       VisitConfig?
+  catalogItems      CatalogItem[]
+  knowledgeChunks   KnowledgeChunk[]
   winningCampaigns  WinningCampaign[]
 }
 
@@ -595,6 +599,115 @@ model Visit {
   client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId, scheduledAt])
+}
+
+// ── Veloce AI Agent ──────────────────────────────────────────────────────────
+// Motor único, configurável por cliente (multi-tenant). A IA atende leads fora
+// do horário, qualifica, consulta conhecimento e agenda visitas. Nunca negocia.
+model AiAgentConfig {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  enabled         Boolean  @default(false)
+  model           String   @default("gpt-4o-mini")
+  persona         String?  // tom de voz / personalidade
+  goals           String?  // objetivos do atendimento
+  rules           String?  // regras específicas do cliente (entram no prompt)
+  businessHours   Json     @default("[]") // [{weekday,start,end}] — IA atua FORA disso
+  timezone        String   @default("America/Sao_Paulo")
+  language        String   @default("pt-BR")
+  fallbackMessage String?  // mensagem quando não sabe / vai escalar
+  handoffAfter    Int      @default(0) // escalar após N idas sem avanço (0 = desligado)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// Catálogo genérico (produto) por cliente — multi-segmento (carro/imóvel/serviço).
+model CatalogItem {
+  id          String   @id @default(cuid())
+  clientId    String
+  externalId  String?  // id na fonte (feed/site)
+  title       String
+  price       Float?
+  available   Boolean  @default(true)
+  attributes  Json?    // ano, km, cor... (genérico por segmento)
+  url         String?
+  imageUrl    String?
+  syncedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, available])
+  @@index([clientId, externalId])
+}
+
+// Conhecimento (FAQ/políticas) por cliente — RAG (embedding em Float[], cosseno no app).
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  clientId   String
+  title      String?
+  content    String
+  embedding  Float[]
+  createdAt  DateTime @default(now())
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+// Perfil do lead (memória estruturada + scoring).
+model LeadProfile {
+  id              String   @id @default(cuid())
+  connectionId    String
+  contactId       String   @unique
+  productInterest String?
+  budget          String?
+  hasTradeIn      Boolean?
+  wantsFinancing  Boolean?
+  score           Int      @default(0)
+  qualified       Boolean  @default(false)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([connectionId])
+}
+
+// Log de cada turno da IA (auditoria/observabilidade).
+model AiInteraction {
+  id         String   @id @default(cuid())
+  clientId   String
+  contactId  String?
+  inbound    String?
+  outbound   String?
+  toolCalls  Json?
+  decision   String?  // respondeu_duvida | sugeriu_visita | agendou | escalou | bloqueado | sem_fonte
+  model      String?
+  tokensIn   Int      @default(0)
+  tokensOut  Int      @default(0)
+  latencyMs  Int      @default(0)
+  status     String   @default("ok") // ok | blocked | error | skipped
+  createdAt  DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([contactId, createdAt])
+}
+
+// Disponibilidade de visitas por cliente (janelas/slot/capacidade) — agendamento seguro.
+model VisitConfig {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  slotMinutes     Int      @default(60)
+  capacityPerSlot Int      @default(1)
+  windows         Json     @default("[]") // [{weekday,start,end}]
+  timezone        String   @default("America/Sao_Paulo")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 // ── Winning Campaigns (acervo curado manualmente) ────────────────────────────

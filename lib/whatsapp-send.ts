@@ -1,0 +1,23 @@
+import { decryptSecret } from "@/lib/crypto";
+
+// Envio de texto pela Cloud API. Usado SOMENTE pelo agente (controlado e logado).
+export async function sendWhatsAppText(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  text: string,
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${decryptSecret(conn.accessToken)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toWaId,
+      type: "text",
+      text: { preview_url: false, body: text },
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}
