@@ -5,6 +5,14 @@ export const ALLOWED_AUDIO_MIME = new Set([
   "audio/ogg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/amr", "audio/wav", "audio/webm",
 ]);
 
+// Mimes que o operador pode VISUALIZAR no espelhamento (não vão para terceiros).
+export const ALLOWED_MEDIA_MIME = new Set([
+  ...ALLOWED_AUDIO_MIME,
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "video/mp4", "video/3gpp",
+  "application/pdf",
+]);
+
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);

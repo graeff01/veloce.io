@@ -7,6 +7,9 @@ import {
   ShieldCheck, AlertCircle, MessageSquare, Hash, ExternalLink, Clock,
 } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
+import { MediaContent } from "@/components/whatsapp/wa-media";
+
+const MEDIA_TYPES = new Set(["image", "sticker", "audio", "video", "document"]);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface FirstMsg { text: string | null; type: string }
@@ -526,7 +529,7 @@ function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead:
             ) : !detail || detail.items.length === 0 ? (
               <p style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: 16 }}>Nenhuma mensagem registrada.</p>
             ) : (
-              <Timeline items={detail.items} />
+              <Timeline items={detail.items} clientId={clientId} />
             )}
             <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0", display: "flex", alignItems: "center", gap: 5, fontStyle: "italic" }}>
               <Clock size={11} /> Mostramos apenas as mensagens recebidas. As respostas continuam no WhatsApp do vendedor.
@@ -539,14 +542,13 @@ function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead:
   );
 }
 
-function Timeline({ items }: { items: DetailMsg[] }) {
+function Timeline({ items, clientId }: { items: DetailMsg[]; clientId: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {items.map((m, i) => {
         const incoming = m.direction !== "out";
         const prev = i > 0 ? items[i - 1] : null;
         const showDay = !prev || dayLabel(prev.timestamp) !== dayLabel(m.timestamp);
-        const isMedia = !m.text || m.text.startsWith("[");
         return (
           <div key={m.id}>
             {showDay && (
@@ -561,8 +563,8 @@ function Timeline({ items }: { items: DetailMsg[] }) {
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{fmtTime(m.timestamp)}</span>
                 </div>
                 <div style={{ padding: "8px 12px", borderRadius: 12, borderTopLeftRadius: incoming ? 3 : 12, borderTopRightRadius: incoming ? 12 : 3, background: incoming ? "var(--bg-surface)" : "color-mix(in srgb, #16A34A 10%, var(--bg-surface))", border: `1px solid ${incoming ? "var(--border)" : "color-mix(in srgb, #16A34A 20%, var(--border))"}`, fontSize: 13, lineHeight: 1.45, color: "var(--text-primary)" }}>
-                  {isMedia ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontStyle: "italic", color: "var(--text-secondary)" }}>{mediaIcon(m.type)} {mediaLabel(m.type)}</span>
+                  {MEDIA_TYPES.has(m.type) ? (
+                    <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} />
                   ) : (
                     <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
                   )}

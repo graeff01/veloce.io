@@ -8,6 +8,7 @@ import {
   Clock, Hash,
 } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
+import { MediaContent } from "@/components/whatsapp/wa-media";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ConvRow {
@@ -33,6 +34,7 @@ const STAGE_COLORS: Record<string, string> = {
   negociacao: "#10B981", convertido: "#16A34A", perdido: "#EF4444",
 };
 const AVATAR_PALETTE = ["#7C3AED","#3B82F6","#10B981","#F59E0B","#EF4444","#EC4899","#06B6D4","#8B5CF6","#0EA5E9","#D946EF"];
+const MEDIA_TYPES = new Set(["image", "sticker", "audio", "video", "document"]);
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function avatarColor(seed: string) {
@@ -412,7 +414,6 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                     const prev = i > 0 ? detail.items[i - 1] : null;
                     const next = i < detail.items.length - 1 ? detail.items[i + 1] : null;
                     const showDay = !prev || dayLabel(prev.timestamp) !== dayLabel(m.timestamp);
-                    const isMedia = !m.text || m.text.startsWith("[");
                     // Grouping: same direction, same day, within 3 minutes
                     const sameAsPrev = prev && prev.direction === m.direction && !showDay && (new Date(m.timestamp).getTime() - new Date(prev.timestamp).getTime() < 180000);
                     const sameAsNext = next && next.direction === m.direction && dayLabel(next.timestamp) === dayLabel(m.timestamp) && (new Date(next.timestamp).getTime() - new Date(m.timestamp).getTime() < 180000);
@@ -448,11 +449,8 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                             fontSize: 13.5, lineHeight: 1.5,
                             ...br,
                           }}>
-                            {isMedia ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontStyle: "italic", color: "var(--text-secondary)" }}>
-                                {mediaIcon(m.type)}
-                                {mediaLabel(m.type)}
-                              </span>
+                            {MEDIA_TYPES.has(m.type) ? (
+                              <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} />
                             ) : (
                               <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
                             )}
