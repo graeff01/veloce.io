@@ -30,6 +30,7 @@ interface WaMediaRef { id?: string; mime_type?: string; caption?: string; filena
 
 export interface WaIncomingMessage {
   from: string;
+  to?: string;
   id: string;
   timestamp: string; // unix seconds (string)
   type: string;

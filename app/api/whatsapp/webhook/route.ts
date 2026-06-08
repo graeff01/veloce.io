@@ -77,8 +77,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
   for (const m of value.messages ?? []) {
     const fromDigits = onlyDigits(m.from);
     const outbound = businessNumber !== "" && fromDigits === businessNumber;
+    // Para mensagens enviadas pelo negócio, o destinatário vem em m.to.
+    // value.contacts pode estar vazio em mensagens outbound da API ou do app nativo.
     const customerWaId = outbound
-      ? (value.contacts?.[0]?.wa_id ? onlyDigits(value.contacts[0].wa_id) : fromDigits)
+      ? (m.to ? onlyDigits(m.to) : value.contacts?.[0]?.wa_id ? onlyDigits(value.contacts[0].wa_id) : null)
       : fromDigits;
     if (!customerWaId) continue;
 
