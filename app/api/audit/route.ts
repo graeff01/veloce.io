@@ -120,6 +120,7 @@ export async function GET(req: Request) {
       funnelStage: stageByContact.get(l.contactId) ?? null,
       firstMessage: firstMsgByContact.get(l.contactId) ?? null,
       messageCount: msgCountByContact.get(l.contactId) ?? 0,
+      imported: l.imported,
     };
   });
 

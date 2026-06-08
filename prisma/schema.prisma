@@ -523,6 +523,7 @@ model WaLead {
   sourceUrl     String?
   ctwaClid      String?
   enteredAt     DateTime // data da 1ª mensagem do anúncio
+  imported      Boolean  @default(false) // veio de import (ex: CSV Kommo) — sem mensagens próprias
   createdAt     DateTime @default(now())
 
   connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)

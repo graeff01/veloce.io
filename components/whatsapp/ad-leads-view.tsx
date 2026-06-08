@@ -16,6 +16,7 @@ interface AdLead {
   adBody: string | null; sourceType: string | null; sourceUrl: string | null; ctwaClid: string | null;
   campaignName: string | null; funnelStage: string | null;
   firstMessage: FirstMsg | null; messageCount: number;
+  imported?: boolean;
 }
 interface AdGroup { adTitle: string; campaignName: string | null; total: number; lastEnteredAt: string | null; negociacao: number; convertido: number }
 interface CampaignGroup { name: string; total: number; ads: number; negociacao: number; convertido: number }
@@ -151,8 +152,10 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
     });
   }, [leads, q, campaignFilter, adFilter, stageFilter]);
 
-  // Validação: leads com dados incompletos para o relatório.
-  const validationLeads = useMemo(() => leads.filter((l) => !l.adId || !l.campaignName || !l.adTitle || l.messageCount === 0), [leads]);
+  // Validação: leads com dados incompletos para o relatório. Importados do Kommo
+  // são categoria conhecida (histórico, sem mensagens próprias) → fora da validação.
+  const validationLeads = useMemo(() => leads.filter((l) => !l.imported && (!l.adId || !l.campaignName || !l.adTitle || l.messageCount === 0)), [leads]);
+  const importedCount = useMemo(() => leads.filter((l) => l.imported).length, [leads]);
 
   const negociacao = leads.filter((l) => l.funnelStage === "negociacao").length;
   const convertido = leads.filter((l) => l.funnelStage === "convertido").length;
@@ -188,6 +191,15 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
           <SummaryCard icon={<CheckCircle2 size={16} color="#16A34A" />} label="Convertidos" value={convertido} accent="#16A34A" />
           <SummaryCard icon={<ShieldCheck size={16} color={validationLeads.length ? "#D97706" : "#16A34A"} />} label="Validados p/ relatório" value={`${fullyValidated}/${leads.length}`} accent={validationLeads.length ? "#D97706" : "#16A34A"} />
         </div>
+
+        {importedCount > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 10, background: "color-mix(in srgb, #8B5CF6 6%, transparent)", border: "1px solid color-mix(in srgb, #8B5CF6 20%, var(--border))" }}>
+            <span style={{ fontSize: 13, color: "#8B5CF6", fontWeight: 600 }}>↓</span>
+            <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+              {importedCount} {importedCount === 1 ? "lead importado" : "leads importados"} do Kommo (histórico) — contam no relatório, mas não têm conversa ao vivo no veloce.io.
+            </span>
+          </div>
+        )}
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)" }}>
@@ -280,7 +292,11 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
                 <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.campaignName ?? "Campanha não identificada"}</p>
               </div>
               {/* Primeira mensagem */}
-              <span style={{ fontSize: 12.5, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{msgPreview(l.firstMessage)}</span>
+              <span style={{ fontSize: 12.5, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {l.imported
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8B5CF6", background: "color-mix(in srgb, #8B5CF6 10%, transparent)", padding: "2px 8px", borderRadius: 99 }}>↓ Importado do Kommo</span>
+                  : msgPreview(l.firstMessage)}
+              </span>
               {/* Entrada */}
               <div>
                 <p style={{ fontSize: 12.5, color: "var(--text-primary)", margin: 0 }}>{fmtDate(l.enteredAt)}, {fmtTime(l.enteredAt)}</p>
@@ -417,13 +433,20 @@ function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead:
     return () => { active = false; };
   }, [clientId, lead.contactId]);
 
-  const checks = [
-    { label: "Referral capturado", ok: !!lead.ctwaClid || !!lead.adId },
-    { label: "Campanha identificada", ok: !!lead.campaignName },
-    { label: "Anúncio identificado", ok: !!lead.adTitle },
-    { label: "Mensagem recebida", ok: lead.messageCount > 0 },
-  ];
-  const allOk = checks.every((c) => c.ok);
+  const checks = lead.imported
+    ? [
+        { label: "Origem do anúncio (tag Kommo)", ok: !!lead.adTitle },
+        { label: "Importado do histórico Kommo", ok: true },
+        { label: "Conversa ao vivo no veloce.io", ok: lead.messageCount > 0 },
+      ]
+    : [
+        { label: "Referral capturado", ok: !!lead.ctwaClid || !!lead.adId },
+        { label: "Campanha identificada", ok: !!lead.campaignName },
+        { label: "Anúncio identificado", ok: !!lead.adTitle },
+        { label: "Mensagem recebida", ok: lead.messageCount > 0 },
+      ];
+  // Importado é histórico válido para o relatório, mesmo sem conversa ao vivo.
+  const allOk = lead.imported ? !!lead.adTitle : checks.every((c) => c.ok);
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", backdropFilter: "blur(2px)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }}>
@@ -438,6 +461,7 @@ function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead:
               <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "3px 0 0", display: "flex", alignItems: "center", gap: 4 }}><Phone size={11} /> +{lead.phone}</p>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)", padding: "3px 9px", borderRadius: 99, display: "inline-flex", alignItems: "center", gap: 4 }}><Megaphone size={10} /> Lead de anúncio</span>
+                {lead.imported && <span style={{ fontSize: 11, fontWeight: 600, color: "#8B5CF6", background: "color-mix(in srgb, #8B5CF6 10%, transparent)", padding: "3px 9px", borderRadius: 99 }}>Importado do Kommo</span>}
                 <StageChip stage={lead.funnelStage} />
               </div>
             </div>
@@ -477,7 +501,9 @@ function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead:
             <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: allOk ? "color-mix(in srgb, #16A34A 8%, transparent)" : "color-mix(in srgb, #D97706 8%, transparent)", display: "flex", alignItems: "center", gap: 8 }}>
               {allOk ? <CheckCircle2 size={15} color="#16A34A" /> : <AlertCircle size={15} color="#D97706" />}
               <span style={{ fontSize: 12.5, fontWeight: 600, color: allOk ? "#16A34A" : "#92600A" }}>
-                {allOk ? "Contabilizado no relatório mensal" : "Dados incompletos — conferir antes do fechamento"}
+                {allOk
+                  ? (lead.imported ? "Contabilizado no relatório (histórico importado)" : "Contabilizado no relatório mensal")
+                  : "Dados incompletos — conferir antes do fechamento"}
               </span>
             </div>
           </DetailCard>
