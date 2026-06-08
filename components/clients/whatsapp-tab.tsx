@@ -50,6 +50,14 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadConn(); }, [loadConn]);
 
+  // Atualiza o cabeçalho (contatos, leads, última atividade) periodicamente.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch(`/api/clients/${clientId}/whatsapp`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setConn(c); }).catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [clientId]);
+
   if (loading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
       <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />

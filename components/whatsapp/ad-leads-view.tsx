@@ -132,6 +132,17 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
     return () => { active = false; };
   }, [clientId, year, month]);
 
+  // Atualização automática (novos leads) sem recarregar a página.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setData(d); })
+        .catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [clientId, year, month]);
+
   const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); };
   const hasFilters = q || campaignFilter || adFilter || stageFilter;
 
