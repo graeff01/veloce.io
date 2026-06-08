@@ -10,6 +10,7 @@ interface RunInput {
   contact: { id: string; name: string | null; waId: string };
   inboundText: string;
   idempotencyKey?: string; // ex: waMessageId — dedupe p/ a fila durável futura
+  inboundMediaType?: string; // text|audio|image|document|... (proveniência)
 }
 
 interface RunOpts {
@@ -29,7 +30,7 @@ interface PromptCfg { language: string; persona: string | null; goals: string | 
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-06-08.1";
+const PROMPT_VERSION = "2026-06-08.2";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const DEFAULT_FALLBACK = "Sobre isso, quem te ajuda melhor é um vendedor — já registrei aqui pra ele te dar os detalhes. 😊";
 const DISCLOSURE = "🤖 Atendimento automático (fora do horário). Posso tirar dúvidas e agendar sua visita — e a qualquer momento chamo um vendedor, tá?";
@@ -61,6 +62,7 @@ function buildSystemPrompt(cfg: PromptCfg, perfil: string, knowledge: string): s
 - Use consultar_disponibilidade antes de oferecer horários; só marque com marcar_visita usando horários livres retornados.
 - Sempre avise que a disponibilidade do produto será confirmada na visita.
 - Registre o que descobrir do lead com atualizar_perfil.
+- MÍDIA: áudios já chegam transcritos (trate como texto normal). Mensagens entre colchetes como "[O lead enviou uma imagem/documento/...]" indicam mídia que você NÃO pode analisar — reconheça que recebeu, NÃO extraia dados nem avalie nada (ex: não estime troca por foto, não leia documentos), e ofereça seguir por texto ou que um vendedor verá no atendimento.
 - Mensagens curtas e naturais, como no WhatsApp.`,
     cfg.rules ? `REGRAS DO CLIENTE:\n${cfg.rules}` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
@@ -92,6 +94,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
       decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
       latencyMs: Date.now() - start, status: fields.status,
       promptVersion: PROMPT_VERSION, idempotencyKey: input.idempotencyKey ?? undefined,
+      inboundMediaType: input.inboundMediaType ?? undefined,
       contextUsed: fields.contextUsed ? (fields.contextUsed as Prisma.InputJsonValue) : undefined,
     } }).catch(() => {});
 

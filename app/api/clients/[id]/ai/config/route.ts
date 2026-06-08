@@ -10,6 +10,7 @@ const putSchema = z.object({
   status: z.enum(["draft", "test", "live"]).optional(),
   vertical: z.string().max(40).optional(),
   blockedTopics: z.array(z.object({ pattern: z.string().max(400), reason: z.string().max(200) })).optional(),
+  audioTranscription: z.boolean().optional(),
   model: z.string().optional(),
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),

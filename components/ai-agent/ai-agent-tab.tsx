@@ -37,7 +37,7 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string }
+interface Cfg { enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean }
 
 const STATUS_OPTS: { key: string; label: string; hint: string }[] = [
   { key: "draft", label: "Rascunho", hint: "configurando — não atende" },
@@ -54,7 +54,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini" });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -112,6 +112,16 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <textarea style={{ ...input, minHeight: 70, resize: "vertical" }} value={cfg.rules ?? ""} onChange={(e) => set({ rules: e.target.value })} placeholder="Ex: sempre oferecer visita; horário da loja; nunca falar de concorrentes..." />
         <label style={{ ...label, marginTop: 14 }}>Mensagem de fallback (quando escala / não pode responder)</label>
         <input style={input} value={cfg.fallbackMessage ?? ""} onChange={(e) => set({ fallbackMessage: e.target.value })} placeholder="Ex: Vou pedir para um vendedor te dar os detalhes, tá? 😊" />
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Transcrever áudios do lead</div>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Converte áudio em texto (não analisa documentos nem imagens). Recomendado.</p>
+          </div>
+          <button onClick={() => set({ audioTranscription: !cfg.audioTranscription })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.audioTranscription ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+            <span style={{ position: "absolute", top: 3, left: cfg.audioTranscription ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

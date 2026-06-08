@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  verifySignature, onlyDigits, messageText, type WaWebhookBody, type WaChangeValue,
+  verifySignature, onlyDigits, messageText, mediaRef, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
@@ -113,9 +113,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     if (!outbound) {
       const connInfo = { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken };
       const contactInfo = { id: contact.id, name: contact.name, waId: customerWaId };
-      const text = messageText(m) ?? "";
+      const ref = mediaRef(m);
+      const msgInfo = { text: messageText(m), type: m.type, mediaId: ref?.id, mime: ref?.mime };
       const idempotencyKey = m.id; // waMessageId — dedupe estável p/ a fila durável futura
-      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, text, idempotencyKey));
+      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, msgInfo, idempotencyKey));
     }
 
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo

@@ -26,13 +26,26 @@ export interface WaReferral {
   ctwa_clid?: string;
 }
 
+interface WaMediaRef { id?: string; mime_type?: string; caption?: string; filename?: string }
+
 export interface WaIncomingMessage {
   from: string;
   id: string;
   timestamp: string; // unix seconds (string)
   type: string;
   text?: { body?: string };
+  audio?: WaMediaRef;
+  image?: WaMediaRef;
+  document?: WaMediaRef;
+  video?: WaMediaRef;
+  sticker?: WaMediaRef;
   referral?: WaReferral;
+}
+
+// Metadados de mídia (sem baixar o conteúdo) — usado p/ o agente reconhecer o tipo.
+export function mediaRef(m: WaIncomingMessage): { id?: string; mime?: string } | null {
+  const ref = m.audio ?? m.image ?? m.document ?? m.video ?? m.sticker;
+  return ref ? { id: ref.id, mime: ref.mime_type } : null;
 }
 
 export interface WaChangeValue {
@@ -48,8 +61,17 @@ export interface WaWebhookBody {
   entry?: Array<{ id?: string; changes?: Array<{ value?: WaChangeValue; field?: string }> }>;
 }
 
-// Texto legível por tipo de mensagem (best-effort).
+// Texto legível por tipo de mensagem. Para mídia, devolve a legenda (se houver) ou um
+// marcador explícito — que o agente reconhece SEM analisar o conteúdo. Áudio é placeholder
+// (substituído pela transcrição quando o agente atua).
 export function messageText(m: WaIncomingMessage): string | null {
-  if (m.type === "text") return m.text?.body ?? null;
-  return `[${m.type}]`;
+  switch (m.type) {
+    case "text": return m.text?.body ?? null;
+    case "image": return m.image?.caption || "[O lead enviou uma imagem]";
+    case "document": return m.document?.caption || "[O lead enviou um documento]";
+    case "video": return m.video?.caption || "[O lead enviou um vídeo]";
+    case "sticker": return "[O lead enviou uma figurinha]";
+    case "audio": return "[O lead enviou um áudio]";
+    default: return `[O lead enviou um(a) ${m.type}]`;
+  }
 }
