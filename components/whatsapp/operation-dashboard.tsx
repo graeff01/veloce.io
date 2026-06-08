@@ -2,25 +2,22 @@
 
 import { useEffect, useState } from "react";
 import {
-  Loader2, Users, MessageSquare, Clock, AlertTriangle, Megaphone,
-  Hourglass, Target, DollarSign, TrendingUp, TrendingDown,
-  Zap, BarChart2, ArrowRight, CheckCircle2, XCircle, Circle,
+  Loader2, Users, MessageSquare, AlertTriangle, Megaphone,
+  Target, DollarSign, TrendingUp, TrendingDown, BarChart2,
 } from "lucide-react";
-import { fmtDuration, timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
+import { FUNNEL_LABELS } from "@/lib/wa-format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Overview {
-  leads: number; responded: number; unanswered: number; responseRate: number; converted: number;
-  avgFirstResponseSec: number | null; medianFirstResponseSec: number | null;
-  buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
+  leads: number; converted: number;
   byOrigin: { ad: number; organic: number };
   byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
   series: { date: string; leads: number }[];
   funnel: Record<string, number>;
-  waitingNow: number;
-  alerts: { waiting: number; abandoned: number; sample: { contactId: string; name: string | null; waId: string; waitingSince: string | null }[] };
-  previous: { leads: number; responseRate: number; avgFirstResponseSec: number | null; unanswered: number; converted: number };
+  previous: { leads: number; converted: number };
   cpl: { model: string; realLeads: number; spend: number; cplReal: number | null; metaLeads: number; cplMeta: number | null }[];
+  // campos legados ignorados (dependem de outbound)
+  [key: string]: unknown;
 }
 export interface OpenContact { contactId: string; name: string | null; phone: string | null }
 
@@ -112,37 +109,6 @@ function LeadsByDay({ series }: { series: { date: string; leads: number }[] }) {
         })}
       </div>
       <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0", textAlign: "right" }}>Média: {avg.toFixed(1)} leads/dia</p>
-    </div>
-  );
-}
-
-// ─── Response speed ───────────────────────────────────────────────────────────
-function ResponseSpeed({ data }: { data: Overview }) {
-  const segs = [
-    { label: "≤ 5 min", val: data.buckets.upTo5min, color: "#16A34A" },
-    { label: "5–30 min", val: data.buckets.upTo30min, color: "#65A30D" },
-    { label: "30min–1h", val: data.buckets.upTo1h, color: "#D97706" },
-    { label: "> 1h", val: data.buckets.over1h, color: "#EA580C" },
-    { label: "Sem resposta", val: data.buckets.unanswered, color: "#DC2626" },
-  ].filter((s) => s.val > 0);
-  const total = data.leads || 1;
-  if (segs.length === 0) return <EmptyState label="Sem dados de resposta" />;
-  const fastPct = pct(data.buckets.upTo5min + data.buckets.upTo30min, total);
-  return (
-    <div>
-      <div style={{ display: "flex", height: 10, borderRadius: 99, overflow: "hidden", background: "var(--bg-elevated)", marginBottom: 14 }}>
-        {segs.map((s) => <div key={s.label} title={`${s.label}: ${s.val}`} style={{ width: `${(s.val / total) * 100}%`, background: s.color, transition: "width 0.4s" }} />)}
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-        {segs.map((s) => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{s.label}</span>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-primary)" }}>{s.val}</span>
-          </div>
-        ))}
-      </div>
-      {fastPct > 0 && <p style={{ fontSize: 11, color: "#16A34A", margin: "10px 0 0", fontWeight: 600 }}>{fastPct}% respondidos em até 30 min</p>}
     </div>
   );
 }
@@ -318,42 +284,6 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── Alert band ── */}
-      {data.alerts.waiting > 0 && (
-        <div style={{ borderRadius: 14, border: "1px solid rgba(220,38,38,0.2)", background: "rgba(220,38,38,0.04)", padding: "16px 20px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: data.alerts.sample.length ? 14 : 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(220,38,38,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <AlertTriangle size={16} color="#DC2626" />
-              </div>
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: "#DC2626", margin: 0 }}>
-                  {data.alerts.waiting} lead{data.alerts.waiting !== 1 ? "s" : ""} aguardando resposta há mais de 2h
-                </p>
-                {data.alerts.abandoned > 0 && (
-                  <p style={{ fontSize: 12, color: "#DC2626", opacity: 0.8, margin: "2px 0 0" }}>
-                    {data.alerts.abandoned} sem retorno há mais de 24h — em risco de abandono
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          {data.alerts.sample.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {data.alerts.sample.map((a) => (
-                <button key={a.contactId} onClick={() => onOpenContact?.({ contactId: a.contactId, name: a.name, phone: a.waId })}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1px solid rgba(220,38,38,0.2)", background: "var(--bg-surface)", cursor: "pointer", fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
-                  <Hourglass size={11} color="#DC2626" />
-                  {a.name ?? `+${a.waId}`}
-                  <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>{timeAgo(a.waitingSince)}</span>
-                  <ArrowRight size={10} color="#DC2626" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── KPIs ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
         <Kpi
@@ -365,38 +295,18 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
           delta={data.previous.leads > 0 ? <Delta curr={data.leads} prev={data.previous.leads} goodWhenUp /> : undefined}
         />
         <Kpi
-          icon={<MessageSquare size={16} color="#16A34A" />}
-          label="Taxa de resposta"
-          value={`${Math.round(data.responseRate * 100)}%`}
-          sub={`${data.responded} de ${data.leads} respondidos`}
-          accentColor="#16A34A"
-          delta={data.previous.responseRate > 0 ? <Delta curr={data.responseRate} prev={data.previous.responseRate} goodWhenUp /> : undefined}
-        />
-        <Kpi
-          icon={<AlertTriangle size={16} color={data.unanswered > 0 ? "#DC2626" : "#94A3B8"} />}
-          label="Sem resposta"
-          value={String(data.unanswered)}
-          sub={data.unanswered > 0 ? `${pct(data.unanswered, data.leads)}% dos leads ignorados` : "Nenhum lead ignorado"}
-          accentColor={data.unanswered > 0 ? "#DC2626" : "#94A3B8"}
-          alert={data.unanswered > 0}
-          delta={data.previous.unanswered > 0 ? <Delta curr={data.unanswered} prev={data.previous.unanswered} goodWhenUp={false} /> : undefined}
-        />
-        <Kpi
-          icon={<Clock size={16} color="#D97706" />}
-          label="1ª resposta (média)"
-          value={fmtDuration(data.avgFirstResponseSec)}
-          sub={data.medianFirstResponseSec != null ? `Mediana: ${fmtDuration(data.medianFirstResponseSec)}` : undefined}
-          accentColor="#D97706"
-          delta={data.avgFirstResponseSec != null && data.previous.avgFirstResponseSec != null
-            ? <Delta curr={data.avgFirstResponseSec} prev={data.previous.avgFirstResponseSec} goodWhenUp={false} />
-            : undefined}
-        />
-        <Kpi
           icon={<Megaphone size={16} color="var(--accent)" />}
           label="Leads de anúncio"
           value={String(adCount)}
           sub={data.leads > 0 ? `${pct(adCount, data.leads)}% do total` : undefined}
           accentColor="var(--accent)"
+        />
+        <Kpi
+          icon={<MessageSquare size={16} color="#06B6D4" />}
+          label="Leads orgânicos"
+          value={String(data.byOrigin.organic)}
+          sub={data.leads > 0 ? `${pct(data.byOrigin.organic, data.leads)}% do total` : undefined}
+          accentColor="#06B6D4"
         />
         <Kpi
           icon={<Target size={16} color="#7C3AED" />}
@@ -423,9 +333,6 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
         <SectionCard title="Leads por dia" subtitle={`${data.series.reduce((a, s) => a + s.leads, 0)} leads no período`}>
           <LeadsByDay series={data.series} />
         </SectionCard>
-        <SectionCard title="Velocidade de atendimento" subtitle="Distribuição do tempo até a 1ª resposta">
-          <ResponseSpeed data={data} />
-        </SectionCard>
         <SectionCard title="Origem dos leads" subtitle="Meta Ads vs. orgânico / direto">
           <Origin ad={data.byOrigin.ad} organic={data.byOrigin.organic} />
         </SectionCard>
@@ -443,7 +350,7 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
 
       {/* Footer */}
       <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", margin: 0 }}>
-        {pct(data.responded, data.leads)}% dos leads respondidos · atualização em tempo real
+        {data.leads} leads no período · atualização em tempo real
       </p>
     </div>
   );

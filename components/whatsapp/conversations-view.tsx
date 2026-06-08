@@ -513,12 +513,8 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
 
             {/* Service stats */}
             {stats && (
-              <PanelCard icon={<Clock size={13} />} title="Atendimento">
-                <InfoRow label="Mensagens recebidas" value={String(stats.inbound)} />
-                <InfoRow label="Mensagens enviadas" value={String(stats.outbound)} />
-                {stats.firstResponseMs !== null && (
-                  <InfoRow label="1ª resposta em" value={fmtMs(stats.firstResponseMs)} />
-                )}
+              <PanelCard icon={<Clock size={13} />} title="Conversa">
+                <InfoRow label="Mensagens do lead" value={String(stats.inbound)} />
                 {detail?.items.length ? (
                   <InfoRow label="Última mensagem" value={timeAgo(detail.items[detail.items.length - 1].timestamp)} />
                 ) : null}
