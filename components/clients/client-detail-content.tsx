@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2,
-  CalendarDays, Columns3, User, Mic, Megaphone,
+  CalendarDays, Columns3, User, Mic, Megaphone, Bot,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -17,6 +17,7 @@ import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
 import { VisitsCalendar } from "@/components/calendar/visits-calendar";
+import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "agenda";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "agenda" | "ia";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -177,6 +178,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
     { key: "agenda",    label: "Agenda",    icon: <CalendarDays size={13} /> },
+    { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -282,6 +284,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {tab === "agenda" && (
         <VisitsCalendar clientId={clientId} />
+      )}
+
+      {tab === "ia" && (
+        <AiAgentTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (
