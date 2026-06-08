@@ -7,6 +7,7 @@ import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { maybeRespondWithAgent } from "@/lib/ai-agent/respond";
+import { scheduleAgentRun } from "@/lib/ai-agent/scheduler";
 import type { WaConnection } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -106,14 +107,14 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
-    // Veloce AI Agent: responde leads recebidos (decide internamente se atua —
-    // só fora do horário e se habilitado). Fire-and-forget para não atrasar o 200.
+    // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
+    // Debounce + lock por contato evitam respostas duplicadas/concorrentes; o 200
+    // não espera o agente.
     if (!outbound) {
-      void maybeRespondWithAgent(
-        { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken },
-        { id: contact.id, name: contact.name, waId: customerWaId },
-        messageText(m) ?? "",
-      );
+      const connInfo = { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken };
+      const contactInfo = { id: contact.id, name: contact.name, waId: customerWaId };
+      const text = messageText(m) ?? "";
+      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, text));
     }
 
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo

@@ -7,6 +7,7 @@ const windowSchema = z.object({ weekday: z.number().int().min(0).max(6), start: 
 
 const putSchema = z.object({
   enabled: z.boolean().optional(),
+  status: z.enum(["draft", "test", "live"]).optional(),
   model: z.string().optional(),
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),

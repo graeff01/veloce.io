@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { ToolDef } from "@/lib/openai";
-import { slotsForDate, isSlotAvailable, DEFAULT_WINDOWS, type VisitCfg } from "@/lib/visit-availability";
+import { slotsForDate, isSlotAvailable, DEFAULT_WINDOWS, type VisitCfg, type Window } from "@/lib/visit-availability";
+import { wallToInstant } from "@/lib/tz";
 
 export interface ToolCtx {
   clientId: string;
@@ -59,15 +61,21 @@ export const TOOL_DEFS: ToolDef[] = [
   },
 ];
 
-async function getVisitCfg(clientId: string): Promise<VisitCfg> {
+async function getVisitCfg(clientId: string): Promise<{ cfg: VisitCfg; tz: string }> {
   const c = await prisma.visitConfig.findUnique({ where: { clientId } });
-  if (!c) return { slotMinutes: 60, capacityPerSlot: 1, windows: DEFAULT_WINDOWS };
-  return { slotMinutes: c.slotMinutes, capacityPerSlot: c.capacityPerSlot, windows: (c.windows as unknown as VisitCfg["windows"]) ?? DEFAULT_WINDOWS };
+  if (!c) return { cfg: { slotMinutes: 60, capacityPerSlot: 1, windows: DEFAULT_WINDOWS }, tz: "America/Sao_Paulo" };
+  return {
+    cfg: { slotMinutes: c.slotMinutes, capacityPerSlot: c.capacityPerSlot, windows: (c.windows as unknown as Window[]) ?? DEFAULT_WINDOWS },
+    tz: c.timezone || "America/Sao_Paulo",
+  };
 }
 
 export interface ToolResult { result: string; decision?: string }
 
 export async function executeTool(name: string, args: Record<string, unknown>, ctx: ToolCtx): Promise<ToolResult> {
+  // Isolamento multi-tenant: toda query abaixo é escopada por ctx.clientId/contactId.
+  if (!ctx.clientId || !ctx.contactId) throw new Error("tenant ausente no contexto da tool");
+
   switch (name) {
     case "buscar_estoque": {
       const termo = String(args.termo ?? "").trim();
@@ -85,33 +93,43 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     case "consultar_disponibilidade": {
       const dateStr = String(args.data ?? "");
-      const date = new Date(`${dateStr}T12:00:00`);
-      if (isNaN(date.getTime())) return { result: "Data inválida." };
-      const cfg = await getVisitCfg(ctx.clientId);
-      const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart); dayEnd.setDate(dayStart.getDate() + 1);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return { result: "Data inválida (use AAAA-MM-DD)." };
+      const { cfg, tz } = await getVisitCfg(ctx.clientId);
+      const dayStart = wallToInstant(dateStr, "00:00", tz);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
       const booked = await prisma.visit.findMany({ where: { clientId: ctx.clientId, scheduledAt: { gte: dayStart, lt: dayEnd } }, select: { scheduledAt: true } });
-      const slots = slotsForDate(cfg, date, booked.map((b) => b.scheduledAt));
+      const slots = slotsForDate(cfg, dateStr, booked.map((b) => b.scheduledAt), tz);
       return { result: slots.length ? `Horários livres em ${dateStr}: ${slots.join(", ")}` : `Sem horários livres em ${dateStr}. Ofereça outra data.` };
     }
 
     case "marcar_visita": {
-      const dt = new Date(`${String(args.data)}T${String(args.hora)}:00`);
-      if (isNaN(dt.getTime())) return { result: "Data/hora inválida." };
-      const cfg = await getVisitCfg(ctx.clientId);
-      const booked = await prisma.visit.findMany({ where: { clientId: ctx.clientId, scheduledAt: dt }, select: { id: true } });
-      if (!isSlotAvailable(cfg, dt, booked.length)) return { result: "Esse horário não está disponível. Consulte a disponibilidade e ofereça outro." };
-      const visit = await prisma.$transaction(async (tx) => {
-        const count = await tx.visit.count({ where: { clientId: ctx.clientId, scheduledAt: dt } });
-        if (count >= cfg.capacityPerSlot) return null;
-        return tx.visit.create({ data: {
-          clientId: ctx.clientId, contactId: ctx.contactId, leadName: String(args.nome ?? ctx.contactName ?? "Lead"),
-          leadPhone: (args.telefone as string) || ctx.contactWaId, car: (args.carro as string) || null,
-          scheduledAt: dt, durationMin: cfg.slotMinutes, status: "agendada", source: "ia",
-        } });
-      });
-      if (!visit) return { result: "Horário acabou de ser ocupado. Ofereça outro." };
-      return { result: `Visita agendada para ${dt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}. Confirme com o lead.`, decision: "agendou" };
+      const dateStr = String(args.data ?? "");
+      const timeStr = String(args.hora ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) return { result: "Data/hora inválida (AAAA-MM-DD e HH:MM)." };
+      const { cfg, tz } = await getVisitCfg(ctx.clientId);
+      const dt = wallToInstant(dateStr, timeStr, tz);
+      if (dt.getTime() <= Date.now()) return { result: "Esse horário já passou. Ofereça um horário futuro." };
+      if (dt.getTime() > Date.now() + 90 * 24 * 3600 * 1000) return { result: "Data muito distante. Sugira algo nas próximas semanas." };
+
+      // Anti-spam: limite de agendamentos por contato em 24h.
+      const recent = await prisma.visit.count({ where: { contactId: ctx.contactId, source: "ia", createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
+      if (recent >= 3) return { result: "Já há agendamentos recentes para este contato. Sugira confirmar com um vendedor." };
+
+      try {
+        const visit = await prisma.$transaction(async (tx) => {
+          const count = await tx.visit.count({ where: { clientId: ctx.clientId, scheduledAt: dt } });
+          if (!isSlotAvailable(cfg, dateStr, timeStr, count)) return null;
+          return tx.visit.create({ data: {
+            clientId: ctx.clientId, contactId: ctx.contactId, leadName: String(args.nome ?? ctx.contactName ?? "Lead"),
+            leadPhone: (args.telefone as string) || ctx.contactWaId, car: (args.carro as string) || null,
+            scheduledAt: dt, durationMin: cfg.slotMinutes, status: "agendada", source: "ia",
+          } });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        if (!visit) return { result: "Esse horário não está disponível. Consulte a disponibilidade e ofereça outro." };
+        return { result: `Visita agendada para ${dateStr} às ${timeStr}. Confirme com o lead.`, decision: "agendou" };
+      } catch {
+        return { result: "Esse horário acabou de ser ocupado. Ofereça outro." };
+      }
     }
 
     case "atualizar_perfil": {

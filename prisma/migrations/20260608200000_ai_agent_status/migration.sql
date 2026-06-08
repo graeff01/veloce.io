@@ -1,0 +1,1 @@
+ALTER TABLE "AiAgentConfig" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'draft';

@@ -1,4 +1,6 @@
-// Disponibilidade de visitas (slots) — base do agendamento seguro.
+// Disponibilidade de visitas (slots) — base do agendamento seguro, ciente de fuso.
+import { tzParts, weekdayOf } from "@/lib/tz";
+
 export type Window = { weekday: number; start: string; end: string }; // weekday 0=Dom..6=Sáb, "HH:MM"
 export interface VisitCfg { slotMinutes: number; capacityPerSlot: number; windows: Window[] }
 
@@ -6,14 +8,15 @@ const toMin = (s: string) => { const [h, m] = s.split(":").map(Number); return h
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-// Slots livres ("HH:MM") de uma data, considerando janelas + capacidade.
-export function slotsForDate(cfg: VisitCfg, date: Date, bookedTimes: Date[]): string[] {
-  const wd = date.getDay();
+// Slots livres ("HH:MM", relógio de parede do tenant) de uma data, com janelas + capacidade.
+export function slotsForDate(cfg: VisitCfg, dateStr: string, bookedInstants: Date[], tz: string): string[] {
+  const wd = weekdayOf(dateStr);
   const wins = (cfg.windows ?? []).filter((w) => w.weekday === wd);
   const used = new Map<number, number>();
-  for (const b of bookedTimes) {
-    const k = b.getHours() * 60 + b.getMinutes();
-    used.set(k, (used.get(k) ?? 0) + 1);
+  for (const b of bookedInstants) {
+    const p = tzParts(b, tz);
+    if (p.ymd !== dateStr) continue;
+    used.set(p.minutes, (used.get(p.minutes) ?? 0) + 1);
   }
   const out: string[] = [];
   for (const w of wins) {
@@ -24,10 +27,10 @@ export function slotsForDate(cfg: VisitCfg, date: Date, bookedTimes: Date[]): st
   return out;
 }
 
-// Valida que um horário cai num slot válido (dentro da janela, alinhado, com vaga).
-export function isSlotAvailable(cfg: VisitCfg, dt: Date, sameSlotBookedCount: number): boolean {
-  const wd = dt.getDay();
-  const minute = dt.getHours() * 60 + dt.getMinutes();
+// Valida que (data, hora) cai num slot válido: dentro da janela, alinhado, com vaga.
+export function isSlotAvailable(cfg: VisitCfg, dateStr: string, timeStr: string, sameSlotBookedCount: number): boolean {
+  const wd = weekdayOf(dateStr);
+  const minute = toMin(timeStr);
   const inWindow = (cfg.windows ?? []).some(
     (w) => w.weekday === wd
       && minute >= toMin(w.start)

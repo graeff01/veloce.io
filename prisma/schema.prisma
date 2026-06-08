@@ -608,6 +608,7 @@ model AiAgentConfig {
   id              String   @id @default(cuid())
   clientId        String   @unique
   enabled         Boolean  @default(false)
+  status          String   @default("draft") // draft | test | live — só "live" responde em produção
   model           String   @default("gpt-4o-mini")
   persona         String?  // tom de voz / personalidade
   goals           String?  // objetivos do atendimento

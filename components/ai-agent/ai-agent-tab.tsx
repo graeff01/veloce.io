@@ -37,7 +37,13 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string }
+interface Cfg { enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string }
+
+const STATUS_OPTS: { key: string; label: string; hint: string }[] = [
+  { key: "draft", label: "Rascunho", hint: "configurando — não atende" },
+  { key: "test", label: "Teste", hint: "validação — não envia no WhatsApp real" },
+  { key: "live", label: "Produção", hint: "atende leads de verdade (fora do horário)" },
+];
 
 function ConfigSection({ clientId }: { clientId: string }) {
   const [cfg, setCfg] = useState<Cfg | null>(null);
@@ -48,7 +54,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini" });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini" });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -80,7 +86,20 @@ function ConfigSection({ clientId }: { clientId: string }) {
       </div>
 
       <div style={card}>
-        <label style={label}>Horário comercial (a IA atua FORA disto)</label>
+        <label style={label}>Estágio do agente</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {STATUS_OPTS.map((s) => (
+            <button key={s.key} onClick={() => set({ status: s.key })} style={{ ...btn(cfg.status === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.status === s.key ? "var(--accent)" : "var(--border)" }}>
+              <span>{s.label}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>{s.hint}</span>
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>Só <b>Produção</b> envia mensagens reais. Use <b>Teste</b> para validar antes de ativar com leads.</p>
+      </div>
+
+      <div style={card}>
+        <label style={label}>Horário comercial — a IA atua FORA disto (no fuso do cliente)</label>
         <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
       </div>
 
