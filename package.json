@@ -11,8 +11,10 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "prisma db push",
+    "db:migrate:dev": "prisma migrate dev",
     "db:migrate": "prisma migrate resolve --rolled-back 20260526011313_add_movement_brain 2>/dev/null || true && prisma migrate deploy",
+    "db:check": "prisma migrate diff --from-config-datasource prisma.config.ts --to-schema prisma/schema.prisma --exit-code",
+    "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"

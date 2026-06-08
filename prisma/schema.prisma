@@ -609,6 +609,8 @@ model AiAgentConfig {
   clientId        String   @unique
   enabled         Boolean  @default(false)
   status          String   @default("draft") // draft | test | live — só "live" responde em produção
+  vertical        String   @default("automotivo") // segmento: define regras/guardrail padrão
+  blockedTopics   Json     @default("[]") // override por tenant: [{pattern,reason}] (vazio = padrão do vertical)
   model           String   @default("gpt-4o-mini")
   persona         String?  // tom de voz / personalidade
   goals           String?  // objetivos do atendimento
@@ -687,12 +689,16 @@ model AiInteraction {
   toolCalls  Json?
   decision   String?  // respondeu_duvida | sugeriu_visita | agendou | escalou | bloqueado | sem_fonte
   model      String?
+  promptVersion  String?  // versão do prompt/contrato que produziu a resposta (rastreabilidade)
+  contextUsed    Json?    // trechos de conhecimento (RAG) usados na resposta
+  idempotencyKey String?  // chave de dedupe (ex: waMessageId) — contrato p/ fila durável futura
   tokensIn   Int      @default(0)
   tokensOut  Int      @default(0)
   latencyMs  Int      @default(0)
   status     String   @default("ok") // ok | blocked | error | skipped
   createdAt  DateTime @default(now())
 
+  @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
   @@index([contactId, createdAt])
 }

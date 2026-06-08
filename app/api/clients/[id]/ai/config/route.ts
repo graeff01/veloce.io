@@ -8,6 +8,8 @@ const windowSchema = z.object({ weekday: z.number().int().min(0).max(6), start: 
 const putSchema = z.object({
   enabled: z.boolean().optional(),
   status: z.enum(["draft", "test", "live"]).optional(),
+  vertical: z.string().max(40).optional(),
+  blockedTopics: z.array(z.object({ pattern: z.string().max(400), reason: z.string().max(200) })).optional(),
   model: z.string().optional(),
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),

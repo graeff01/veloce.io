@@ -120,7 +120,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       }
 
       // Anti-spam: limite de agendamentos por contato em 24h.
-      const recent = await prisma.visit.count({ where: { contactId: ctx.contactId, source: "ia", createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
+      const recent = await prisma.visit.count({ where: { clientId: ctx.clientId, contactId: ctx.contactId, source: "ia", createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
       if (recent >= 3) return { result: "Já há agendamentos recentes para este contato. Sugira confirmar com um vendedor." };
 
       try {

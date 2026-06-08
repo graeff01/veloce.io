@@ -24,12 +24,19 @@ async function sendWithRetry(conn: Conn, to: string, text: string) {
 // Chamado pelo webhook (via scheduler) após uma mensagem recebida. Decide (gatekeeper),
 // gera resposta (orquestrador), envia (Cloud API, com retry) e registra a saída.
 // A IA só atua fora do horário, em produção e habilitada. Nunca deixa o lead no vácuo.
-export async function maybeRespondWithAgent(conn: Conn, contact: Contact, inboundText: string): Promise<void> {
+export async function maybeRespondWithAgent(conn: Conn, contact: Contact, inboundText: string, idempotencyKey?: string): Promise<void> {
   try {
     if (!inboundText?.trim()) return;
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: conn.clientId } });
     const gate = shouldRespond(cfg);
     if (!gate.respond) return;
+
+    // Contrato de idempotência: se esta mensagem já foi processada, não reprocessa
+    // (dormente hoje pela serialização; pré-requisito da fila durável do N2).
+    if (idempotencyKey) {
+      const already = await prisma.aiInteraction.findFirst({ where: { clientId: conn.clientId, idempotencyKey }, select: { id: true } });
+      if (already) return;
+    }
 
     if (await globalSpendExceeded()) {
       await logWaEvent(conn.id, "integration.error", contact.id, { message: "agente pausado: teto de gasto diário global atingido" });
@@ -38,7 +45,7 @@ export async function maybeRespondWithAgent(conn: Conn, contact: Contact, inboun
 
     const out = await runAgent({
       clientId: conn.clientId, connectionId: conn.id,
-      contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText,
+      contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText, idempotencyKey,
     });
     if (!out.reply) return; // limite/desligado — nada a enviar
 

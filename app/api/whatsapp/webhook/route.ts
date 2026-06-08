@@ -114,7 +114,8 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       const connInfo = { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken };
       const contactInfo = { id: contact.id, name: contact.name, waId: customerWaId };
       const text = messageText(m) ?? "";
-      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, text));
+      const idempotencyKey = m.id; // waMessageId — dedupe estável p/ a fila durável futura
+      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, text, idempotencyKey));
     }
 
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo

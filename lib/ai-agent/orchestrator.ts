@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { openaiChat, embed, cosine, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { TOOL_DEFS, executeTool, type ToolCtx } from "./tools";
-import { checkReply } from "./guardrail";
+import { checkReply, resolveBlockRules } from "./guardrail";
 import { Prisma } from "@prisma/client";
 
 interface RunInput {
@@ -9,6 +9,7 @@ interface RunInput {
   connectionId: string;
   contact: { id: string; name: string | null; waId: string };
   inboundText: string;
+  idempotencyKey?: string; // ex: waMessageId — dedupe p/ a fila durável futura
 }
 
 interface RunOpts {
@@ -26,6 +27,9 @@ export interface RunOutput {
 // Subconjunto estrutural usado para montar o prompt — AiAgentConfig satisfaz isto.
 interface PromptCfg { language: string; persona: string | null; goals: string | null; rules: string | null; timezone: string }
 
+// Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
+// permite comparar respostas entre versões (rastreabilidade).
+const PROMPT_VERSION = "2026-06-08.1";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const DEFAULT_FALLBACK = "Sobre isso, quem te ajuda melhor é um vendedor — já registrei aqui pra ele te dar os detalhes. 😊";
 const DISCLOSURE = "🤖 Atendimento automático (fora do horário). Posso tirar dúvidas e agendar sua visita — e a qualquer momento chamo um vendedor, tá?";
@@ -81,17 +85,19 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo",
   };
 
-  const log = (fields: { outbound: string | null; decision: string; status: RunOutput["status"]; tokensIn?: number; tokensOut?: number; toolCalls?: unknown[] }) =>
+  const log = (fields: { outbound: string | null; decision: string; status: RunOutput["status"]; tokensIn?: number; tokensOut?: number; toolCalls?: unknown[]; contextUsed?: unknown }) =>
     prisma.aiInteraction.create({ data: {
       clientId: input.clientId, contactId: input.contact.id, inbound: input.inboundText,
       outbound: fields.outbound, toolCalls: fields.toolCalls?.length ? (fields.toolCalls as unknown as Prisma.InputJsonValue) : undefined,
       decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
       latencyMs: Date.now() - start, status: fields.status,
+      promptVersion: PROMPT_VERSION, idempotencyKey: input.idempotencyKey ?? undefined,
+      contextUsed: fields.contextUsed ? (fields.contextUsed as Prisma.InputJsonValue) : undefined,
     } }).catch(() => {});
 
   // Memória: live lê do banco; test usa o transcript efêmero. Mesmo mecanismo, fonte distinta.
   const turns = mode === "live"
-    ? await prisma.aiInteraction.count({ where: { contactId: input.contact.id } })
+    ? await prisma.aiInteraction.count({ where: { clientId: input.clientId, contactId: input.contact.id } })
     : (opts.transcript ?? []).filter((m) => m.role === "assistant").length;
   const isFirst = turns === 0;
 
@@ -104,7 +110,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Escalonamento por regra (só produção — depende do histórico de decisões).
   if (mode === "live" && handoffAfter > 0) {
     const since = new Date(Date.now() - 24 * 3600 * 1000);
-    const unresolved = await prisma.aiInteraction.count({ where: { contactId: input.contact.id, createdAt: { gte: since }, decision: { notIn: ["agendou", "escalou", "limite"] } } });
+    const unresolved = await prisma.aiInteraction.count({ where: { clientId: input.clientId, contactId: input.contact.id, createdAt: { gte: since }, decision: { notIn: ["agendou", "escalou", "limite"] } } });
     if (unresolved >= handoffAfter) {
       const reply = disclose(fallback, isFirst);
       await log({ outbound: reply, decision: "escalou", status: "ok" });
@@ -134,12 +140,17 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   // RAG: igual nos dois modos (lê o conhecimento real do cliente).
   let knowledge = "";
+  let contextUsed: unknown = undefined;
   try {
     const chunks = await prisma.knowledgeChunk.findMany({ where: { clientId: input.clientId }, take: 300 });
     if (chunks.length) {
       const [q] = await embed([input.inboundText]);
       const ranked = chunks.map((c) => ({ c, s: cosine(q, c.embedding) })).sort((a, b) => b.s - a.s).slice(0, 3).filter((x) => x.s > 0.2);
-      if (ranked.length) knowledge = ranked.map((r) => `- ${r.c.title ? `${r.c.title}: ` : ""}${r.c.content}`).join("\n");
+      if (ranked.length) {
+        knowledge = ranked.map((r) => `- ${r.c.title ? `${r.c.title}: ` : ""}${r.c.content}`).join("\n");
+        // Rastreabilidade: registra QUAIS trechos embasaram a resposta.
+        contextUsed = { chunks: ranked.map((r) => ({ id: r.c.id, title: r.c.title, score: Number(r.s.toFixed(3)) })) };
+      }
     }
   } catch { /* conhecimento é opcional */ }
 
@@ -181,11 +192,13 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   if (!final || !final.trim()) { final = fallback; if (decision === "respondeu_duvida") decision = "sem_fonte"; }
 
-  const g = checkReply(final);
+  // Guardrail desacoplado por vertical (padrão do segmento ou override do tenant).
+  const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
+  const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; }
 
   final = disclose(final, isFirst);
 
-  if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog });
+  if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed });
   return { reply: final, status, decision, toolCalls: toolLog };
 }
