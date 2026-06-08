@@ -59,7 +59,7 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     }),
     prisma.waLead.findMany({
       where: { connectionId, enteredAt: { gte: start, lt: end } },
-      select: { contactId: true, adTitle: true, adModel: true },
+      select: { contactId: true, adTitle: true, adModel: true, enteredAt: true },
     }),
     prisma.waConversation.count({ where: { connectionId, status: "waiting" } }),
     prisma.waConversation.findMany({
@@ -101,7 +101,17 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   }
 
   const adContactIds = new Set(adLeads.map((l) => l.contactId));
-  const adCount = convs.filter((c) => adContactIds.has(c.contactId)).length;
+  // Leads de anúncio SEM conversa ao vivo (ex: importados do Kommo) também são
+  // leads do período: entram no total, na origem (anúncio), na série e no funil
+  // como "sem etapa". Sem isso o painel mostraria menos que a aba Leads de anúncio.
+  const convContactIds = new Set(convs.map((c) => c.contactId));
+  const extraAdLeads = adLeads.filter((l) => !convContactIds.has(l.contactId));
+  for (const l of extraAdLeads) {
+    funnel.recebido++;
+    if (l.enteredAt) seriesMap.set(dayKey(l.enteredAt), (seriesMap.get(dayKey(l.enteredAt)) ?? 0) + 1);
+  }
+  // Todos os contatos de anúncio do período (com ou sem conversa).
+  const adCount = adContactIds.size;
 
   // Agrupa por modelo de anúncio + conta conversões (funil = "convertido")
   const modelByContact = new Map<string, string>();
@@ -126,7 +136,8 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     const k = dayKey(m.timestamp);
     msgSeriesMap.set(k, (msgSeriesMap.get(k) ?? 0) + 1);
   }
-  const noStage = convs.filter((c) => !c.funnelStage).length;
+  // Sem etapa: conversas sem funil + leads importados (que não têm conversa/etapa).
+  const noStage = convs.filter((c) => !c.funnelStage).length + extraAdLeads.length;
   const mostActiveLeads = convs
     .map((c) => ({
       contactId: c.contactId,
@@ -141,12 +152,15 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     .sort((a, b) => b.messages - a.messages)
     .slice(0, 8);
 
-  const total = convs.length;
+  // Total de leads = conversas ao vivo + leads de anúncio sem conversa (importados).
+  const total = convs.length + extraAdLeads.length;
+  // Média de mensagens só faz sentido sobre quem realmente conversou ao vivo.
+  const liveLeads = convs.length;
   return {
     converted: funnel.convertido,
     leads: total,
     messagesReceived: inboundMsgs.length,
-    avgMessagesPerLead: total ? inboundMsgs.length / total : 0,
+    avgMessagesPerLead: liveLeads ? inboundMsgs.length / liveLeads : 0,
     messagesSeries: [...msgSeriesMap.entries()].map(([date, messages]) => ({ date, messages })).sort((a, b) => a.date.localeCompare(b.date)),
     noStage,
     mostActiveLeads,
