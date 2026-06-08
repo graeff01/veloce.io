@@ -10,6 +10,7 @@ export interface ToolCtx {
   contactId: string;
   contactName: string | null;
   contactWaId: string;
+  mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
 }
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -111,6 +112,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (dt.getTime() <= Date.now()) return { result: "Esse horário já passou. Ofereça um horário futuro." };
       if (dt.getTime() > Date.now() + 90 * 24 * 3600 * 1000) return { result: "Data muito distante. Sugira algo nas próximas semanas." };
 
+      // Modo teste: valida disponibilidade real, mas NÃO grava visita.
+      if (ctx.mode === "test") {
+        const count = await prisma.visit.count({ where: { clientId: ctx.clientId, scheduledAt: dt } });
+        if (!isSlotAvailable(cfg, dateStr, timeStr, count)) return { result: "(teste) Horário indisponível — ofereça outro." };
+        return { result: `(teste) Agendaria para ${dateStr} às ${timeStr} (não gravado).`, decision: "agendou" };
+      }
+
       // Anti-spam: limite de agendamentos por contato em 24h.
       const recent = await prisma.visit.count({ where: { contactId: ctx.contactId, source: "ia", createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
       if (recent >= 3) return { result: "Já há agendamentos recentes para este contato. Sugira confirmar com um vendedor." };
@@ -133,6 +141,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     }
 
     case "atualizar_perfil": {
+      if (ctx.mode === "test") return { result: "(teste) Perfil seria atualizado (não gravado)." };
       const data = {
         productInterest: (args.produto as string) || undefined,
         budget: (args.orcamento as string) || undefined,

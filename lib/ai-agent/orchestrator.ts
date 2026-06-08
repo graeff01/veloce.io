@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { openaiChat, embed, cosine, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { TOOL_DEFS, executeTool, type ToolCtx } from "./tools";
 import { checkReply } from "./guardrail";
-import { Prisma, type AiAgentConfig, type LeadProfile } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 interface RunInput {
   clientId: string;
@@ -11,9 +11,22 @@ interface RunInput {
   inboundText: string;
 }
 
-export interface RunOutput { reply: string | null; status: "ok" | "blocked" | "error" | "skipped"; decision: string }
+interface RunOpts {
+  mode?: "live" | "test";
+  transcript?: ChatMessage[]; // memória efêmera (apenas no modo test)
+}
 
-const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40); // teto de custo por contato (abuso/loop)
+export interface RunOutput {
+  reply: string | null;
+  status: "ok" | "blocked" | "error" | "skipped";
+  decision: string;
+  toolCalls?: { name: string; args: unknown; result: string }[]; // exposto p/ o console
+}
+
+// Subconjunto estrutural usado para montar o prompt — AiAgentConfig satisfaz isto.
+interface PromptCfg { language: string; persona: string | null; goals: string | null; rules: string | null; timezone: string }
+
+const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const DEFAULT_FALLBACK = "Sobre isso, quem te ajuda melhor é um vendedor — já registrei aqui pra ele te dar os detalhes. 😊";
 const DISCLOSURE = "🤖 Atendimento automático (fora do horário). Posso tirar dúvidas e agendar sua visita — e a qualquer momento chamo um vendedor, tá?";
 
@@ -28,20 +41,9 @@ async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; too
   throw lastErr;
 }
 
-function disclose(text: string, isFirst: boolean): string {
-  return isFirst ? `${DISCLOSURE}\n\n${text}` : text;
-}
+const disclose = (text: string, isFirst: boolean) => (isFirst ? `${DISCLOSURE}\n\n${text}` : text);
 
-function buildSystemPrompt(cfg: AiAgentConfig, profile: LeadProfile | null, knowledge: string): string {
-  const perfil = profile
-    ? [
-        profile.productInterest && `interesse: ${profile.productInterest}`,
-        profile.budget && `orçamento: ${profile.budget}`,
-        profile.wantsFinancing != null && `financiamento: ${profile.wantsFinancing ? "sim" : "não"}`,
-        profile.hasTradeIn != null && `troca: ${profile.hasTradeIn ? "sim" : "não"}`,
-      ].filter(Boolean).join("; ")
-    : "";
-
+function buildSystemPrompt(cfg: PromptCfg, perfil: string, knowledge: string): string {
   return [
     `Você é o atendente virtual de uma loja, atendendo leads pelo WhatsApp FORA do horário comercial. Idioma: ${cfg.language}. Tom: ${cfg.persona || "cordial, objetivo e humano"}.`,
     cfg.goals
@@ -63,72 +65,89 @@ function buildSystemPrompt(cfg: AiAgentConfig, profile: LeadProfile | null, know
   ].filter(Boolean).join("\n\n");
 }
 
-async function logInteraction(input: RunInput, model: string, fields: {
-  outbound: string | null; decision: string; status: RunOutput["status"];
-  tokensIn?: number; tokensOut?: number; latencyMs: number; toolCalls?: unknown[];
-}) {
-  await prisma.aiInteraction.create({ data: {
-    clientId: input.clientId, contactId: input.contact.id, inbound: input.inboundText,
-    outbound: fields.outbound, toolCalls: fields.toolCalls?.length ? (fields.toolCalls as unknown as Prisma.InputJsonValue) : undefined,
-    decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
-    latencyMs: fields.latencyMs, status: fields.status,
-  } }).catch(() => {});
-}
-
-export async function runAgent(input: RunInput): Promise<RunOutput> {
+// Único motor. mode="live": envia/grava/agenda de verdade. mode="test": mesmo prompt,
+// tools, guardrail, RAG e fluxo — apenas responde, sem gravar nada (memória efêmera).
+export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<RunOutput> {
+  const mode = opts.mode ?? "live";
   const start = Date.now();
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: input.clientId } });
-  if (!cfg || !cfg.enabled) return { reply: null, status: "skipped", decision: "desligado" };
+  if (mode === "live" && (!cfg || !cfg.enabled)) return { reply: null, status: "skipped", decision: "desligado" };
 
-  const fallback = cfg.fallbackMessage || DEFAULT_FALLBACK;
-  const turns = await prisma.aiInteraction.count({ where: { contactId: input.contact.id } });
+  const model = cfg?.model ?? "gpt-4o-mini";
+  const fallback = cfg?.fallbackMessage || DEFAULT_FALLBACK;
+  const handoffAfter = cfg?.handoffAfter ?? 0;
+  const promptCfg: PromptCfg = {
+    language: cfg?.language ?? "pt-BR", persona: cfg?.persona ?? null, goals: cfg?.goals ?? null,
+    rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo",
+  };
+
+  const log = (fields: { outbound: string | null; decision: string; status: RunOutput["status"]; tokensIn?: number; tokensOut?: number; toolCalls?: unknown[] }) =>
+    prisma.aiInteraction.create({ data: {
+      clientId: input.clientId, contactId: input.contact.id, inbound: input.inboundText,
+      outbound: fields.outbound, toolCalls: fields.toolCalls?.length ? (fields.toolCalls as unknown as Prisma.InputJsonValue) : undefined,
+      decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
+      latencyMs: Date.now() - start, status: fields.status,
+    } }).catch(() => {});
+
+  // Memória: live lê do banco; test usa o transcript efêmero. Mesmo mecanismo, fonte distinta.
+  const turns = mode === "live"
+    ? await prisma.aiInteraction.count({ where: { contactId: input.contact.id } })
+    : (opts.transcript ?? []).filter((m) => m.role === "assistant").length;
   const isFirst = turns === 0;
 
-  // Teto de custo por contato (proteção contra loop/abuso). Não envia nada.
-  if (turns >= MAX_TURNS) {
-    await logInteraction(input, cfg.model, { outbound: null, decision: "limite", status: "skipped", latencyMs: Date.now() - start });
+  // Teto de custo por contato (só produção).
+  if (mode === "live" && turns >= MAX_TURNS) {
+    await log({ outbound: null, decision: "limite", status: "skipped" });
     return { reply: null, status: "skipped", decision: "limite" };
   }
 
-  // Escalonamento por regra: após N idas sem agendar/escalar, passa para humano.
-  if (cfg.handoffAfter > 0) {
+  // Escalonamento por regra (só produção — depende do histórico de decisões).
+  if (mode === "live" && handoffAfter > 0) {
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const unresolved = await prisma.aiInteraction.count({ where: { contactId: input.contact.id, createdAt: { gte: since }, decision: { notIn: ["agendou", "escalou", "limite"] } } });
-    if (unresolved >= cfg.handoffAfter) {
+    if (unresolved >= handoffAfter) {
       const reply = disclose(fallback, isFirst);
-      await logInteraction(input, cfg.model, { outbound: reply, decision: "escalou", status: "ok", latencyMs: Date.now() - start });
+      await log({ outbound: reply, decision: "escalou", status: "ok" });
       return { reply, status: "ok", decision: "escalou" };
     }
   }
 
-  const profile = await prisma.leadProfile.findUnique({ where: { contactId: input.contact.id } });
-  const history = await prisma.waMessage.findMany({
-    where: { contactId: input.contact.id },
-    orderBy: { timestamp: "desc" }, take: 14, select: { direction: true, text: true },
-  });
+  let perfil = "";
+  let priorMessages: ChatMessage[];
+  if (mode === "live") {
+    const profile = await prisma.leadProfile.findUnique({ where: { contactId: input.contact.id } });
+    perfil = profile
+      ? [
+          profile.productInterest && `interesse: ${profile.productInterest}`,
+          profile.budget && `orçamento: ${profile.budget}`,
+          profile.wantsFinancing != null && `financiamento: ${profile.wantsFinancing ? "sim" : "não"}`,
+          profile.hasTradeIn != null && `troca: ${profile.hasTradeIn ? "sim" : "não"}`,
+        ].filter(Boolean).join("; ")
+      : "";
+    const history = await prisma.waMessage.findMany({
+      where: { contactId: input.contact.id }, orderBy: { timestamp: "desc" }, take: 14, select: { direction: true, text: true },
+    });
+    priorMessages = [...history].reverse().filter((m) => m.text).map((m) => ({ role: m.direction === "in" ? "user" : "assistant", content: m.text } as ChatMessage));
+  } else {
+    priorMessages = opts.transcript ?? [];
+  }
 
-  // RAG: trechos do conhecimento mais próximos da pergunta (cosseno).
+  // RAG: igual nos dois modos (lê o conhecimento real do cliente).
   let knowledge = "";
   try {
     const chunks = await prisma.knowledgeChunk.findMany({ where: { clientId: input.clientId }, take: 300 });
     if (chunks.length) {
       const [q] = await embed([input.inboundText]);
-      const ranked = chunks
-        .map((c) => ({ c, s: cosine(q, c.embedding) }))
-        .sort((a, b) => b.s - a.s).slice(0, 3).filter((x) => x.s > 0.2);
+      const ranked = chunks.map((c) => ({ c, s: cosine(q, c.embedding) })).sort((a, b) => b.s - a.s).slice(0, 3).filter((x) => x.s > 0.2);
       if (ranked.length) knowledge = ranked.map((r) => `- ${r.c.title ? `${r.c.title}: ` : ""}${r.c.content}`).join("\n");
     }
   } catch { /* conhecimento é opcional */ }
 
-  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt(cfg, profile, knowledge) }];
-  for (const m of [...history].reverse()) {
-    if (!m.text) continue;
-    messages.push({ role: m.direction === "in" ? "user" : "assistant", content: m.text });
-  }
+  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt(promptCfg, perfil, knowledge) }, ...priorMessages];
 
   const ctx: ToolCtx = {
     clientId: input.clientId, connectionId: input.connectionId,
-    contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId,
+    contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
   };
 
   let decision = "respondeu_duvida";
@@ -139,9 +158,8 @@ export async function runAgent(input: RunInput): Promise<RunOutput> {
 
   try {
     for (let i = 0; i < 5; i++) {
-      const { message, usage } = await chatWithRetry({ model: cfg.model, messages, tools: TOOL_DEFS });
+      const { message, usage } = await chatWithRetry({ model, messages, tools: TOOL_DEFS });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
-
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
         for (const tc of message.tool_calls) {
@@ -158,19 +176,16 @@ export async function runAgent(input: RunInput): Promise<RunOutput> {
       break;
     }
   } catch {
-    // Falha persistente da OpenAI: NÃO deixa o lead no vácuo — manda fallback.
     final = fallback; status = "error"; decision = "erro";
   }
 
-  // Resposta vazia também vira fallback (nunca silêncio).
   if (!final || !final.trim()) { final = fallback; if (decision === "respondeu_duvida") decision = "sem_fonte"; }
 
-  // Guardrail de saída.
   const g = checkReply(final);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; }
 
   final = disclose(final, isFirst);
 
-  await logInteraction(input, cfg.model, { outbound: final, decision, status, tokensIn, tokensOut, latencyMs: Date.now() - start, toolCalls: toolLog });
-  return { reply: final, status, decision };
+  if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog });
+  return { reply: final, status, decision, toolCalls: toolLog };
 }

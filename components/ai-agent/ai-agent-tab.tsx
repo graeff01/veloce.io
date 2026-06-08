@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
-  CalendarClock, Activity, Check,
+  CalendarClock, Activity, Check, FlaskConical, Send, RotateCcw,
 } from "lucide-react";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
@@ -327,13 +327,77 @@ function ActivitySection({ clientId }: { clientId: string }) {
   );
 }
 
+// ── Console (dry-run) ─────────────────────────────────────────────────────────
+interface ConsoleMsg { role: "user" | "assistant"; content: string; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
+
+function ConsoleSection({ clientId }: { clientId: string }) {
+  const [msgs, setMsgs] = useState<ConsoleMsg[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function send() {
+    const t = text.trim();
+    if (!t || loading) return;
+    const next: ConsoleMsg[] = [...msgs, { role: "user", content: t }];
+    setMsgs(next); setText(""); setLoading(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/ai/console`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next.map((m) => ({ role: m.role, content: m.content })) }),
+      });
+      const d = await res.json();
+      setMsgs([...next, d.reply
+        ? { role: "assistant", content: d.reply, meta: { decision: d.decision, status: d.status, toolCalls: d.toolCalls } }
+        : { role: "assistant", content: d.error || "(sem resposta)", meta: { status: "error" } }]);
+    } catch {
+      setMsgs([...next, { role: "assistant", content: "Erro de rede.", meta: { status: "error" } }]);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ ...card, background: "var(--accent-soft)", borderColor: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
+          <b>Mesmo motor da produção</b> (prompt, tools, guardrails, RAG e decisão) em <b>modo teste</b>: não envia WhatsApp, não cria visita, não altera dados. Conversa efêmera. <i>Salve a configuração antes de testar.</i>
+        </p>
+        {msgs.length > 0 && <button onClick={() => setMsgs([])} style={{ ...btn(), flexShrink: 0 }}><RotateCcw size={13} /> Limpar</button>}
+      </div>
+
+      <div style={{ ...card, minHeight: 280, maxHeight: 460, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+        {msgs.length === 0 && <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "auto" }}>Mande uma mensagem como se fosse o lead.</p>}
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+            <div style={{ padding: "8px 12px", borderRadius: 12, fontSize: 13, whiteSpace: "pre-wrap", background: m.role === "user" ? "var(--accent)" : "var(--bg-base)", color: m.role === "user" ? "#fff" : "var(--text-primary)", border: m.role === "user" ? "none" : "1px solid var(--border)" }}>
+              {m.content}
+            </div>
+            {m.meta && (m.meta.decision || m.meta.toolCalls?.length) && (
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {m.meta.decision && <span style={{ padding: "1px 6px", borderRadius: 999, background: m.meta.status === "blocked" ? "var(--red)" : "var(--accent-soft)", color: m.meta.status === "blocked" ? "#fff" : "var(--accent)" }}>{m.meta.decision}</span>}
+                {m.meta.toolCalls?.map((tc, j) => <span key={j} style={{ opacity: 0.8 }}>🔧 {tc.name}</span>)}
+              </div>
+            )}
+          </div>
+        ))}
+        {loading && <div style={{ alignSelf: "flex-start", fontSize: 12, color: "var(--text-muted)" }}><Loader2 size={14} className="animate-spin" /></div>}
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input style={{ ...input, flex: 1 }} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Ex: oi, vi o anúncio do Taos, ainda tem?" />
+        <button onClick={send} disabled={loading} style={btn(true)}><Send size={14} /> Enviar</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
-type Section = "config" | "catalogo" | "conhecimento" | "agendamento" | "atividade";
+type Section = "config" | "console" | "catalogo" | "conhecimento" | "agendamento" | "atividade";
 
 export function AiAgentTab({ clientId }: { clientId: string }) {
   const [section, setSection] = useState<Section>("config");
   const sections: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: "config", label: "Configuração", icon: <Bot size={13} /> },
+    { key: "console", label: "Console", icon: <FlaskConical size={13} /> },
     { key: "catalogo", label: "Estoque", icon: <Package size={13} /> },
     { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={13} /> },
     { key: "agendamento", label: "Agendamento", icon: <CalendarClock size={13} /> },
@@ -350,6 +414,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         ))}
       </div>
       {section === "config" && <ConfigSection clientId={clientId} />}
+      {section === "console" && <ConsoleSection clientId={clientId} />}
       {section === "catalogo" && <CatalogSection clientId={clientId} />}
       {section === "conhecimento" && <KnowledgeSection clientId={clientId} />}
       {section === "agendamento" && <SchedulingSection clientId={clientId} />}
