@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Loader2, Phone, Megaphone, Check, CheckCheck,
   MessageSquare, Sparkles, X, ChevronRight, ChevronLeft,
-  Calendar, Tag, Info, Mic, Image, FileText, Video,
+  Calendar, Mic, Image, FileText, Video, Tag, MoreHorizontal,
+  Clock, Hash,
 } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
 
@@ -25,12 +26,19 @@ interface Detail {
   aiSummary: string | null; aiSuggestedStage: string | null;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const STAGES = ["recebido","respondido","qualificado","negociacao","perdido","convertido"];
+const STAGE_COLORS: Record<string, string> = {
+  recebido: "#3B82F6", respondido: "#8B5CF6", qualificado: "#F59E0B",
+  negociacao: "#10B981", convertido: "#16A34A", perdido: "#EF4444",
+};
+const AVATAR_PALETTE = ["#7C3AED","#3B82F6","#10B981","#F59E0B","#EF4444","#EC4899","#06B6D4","#8B5CF6","#0EA5E9","#D946EF"];
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
-const AVATAR_COLORS = ["#7C3AED","#3B82F6","#10B981","#F59E0B","#EF4444","#EC4899","#06B6D4","#8B5CF6"];
 function avatarColor(seed: string) {
   let h = 0;
-  for (const ch of seed) h = (h + ch.charCodeAt(0)) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[h];
+  for (const ch of seed) h = (h + ch.charCodeAt(0)) % AVATAR_PALETTE.length;
+  return AVATAR_PALETTE[h];
 }
 function initials(name: string | null, wa: string) {
   const s = (name ?? wa).trim();
@@ -56,29 +64,47 @@ function listTime(iso: string | null) {
   if (d.toDateString() === yest.toDateString()) return "Ontem";
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
-function mediaPreview(type: string, text: string | null) {
-  if (text && !text.startsWith("[")) return text;
-  const map: Record<string, { icon: React.ReactNode; label: string }> = {
-    audio:    { icon: <Mic size={11} />,      label: "Áudio" },
-    image:    { icon: <Image size={11} />,    label: "Imagem" },
-    document: { icon: <FileText size={11} />, label: "Documento" },
-    video:    { icon: <Video size={11} />,    label: "Vídeo" },
+function mediaIcon(type: string) {
+  const map: Record<string, React.ReactNode> = {
+    audio: <Mic size={11} />, image: <Image size={11} />,
+    document: <FileText size={11} />, video: <Video size={11} />,
   };
-  const m = map[type];
-  if (!m) return text ?? `[${type}]`;
-  return <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>{m.icon}{m.label}</span>;
+  return map[type] ?? null;
+}
+function mediaLabel(type: string) {
+  const map: Record<string, string> = {
+    audio: "Áudio", image: "Imagem", document: "Documento", video: "Vídeo", sticker: "Figurinha",
+  };
+  return map[type] ?? type;
+}
+function computeStats(items: Msg[]) {
+  const inbound = items.filter((m) => m.direction !== "out").length;
+  const outbound = items.filter((m) => m.direction === "out").length;
+  let firstResponseMs: number | null = null;
+  const firstIn = items.find((m) => m.direction !== "out");
+  if (firstIn) {
+    const firstOut = items.find((m) => m.direction === "out" && new Date(m.timestamp) > new Date(firstIn.timestamp));
+    if (firstOut) firstResponseMs = new Date(firstOut.timestamp).getTime() - new Date(firstIn.timestamp).getTime();
+  }
+  return { inbound, outbound, firstResponseMs };
+}
+function fmtMs(ms: number | null) {
+  if (ms === null) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min`;
+  return `${Math.floor(m / 60)}h ${m % 60}min`;
 }
 
-const STAGES = ["recebido","respondido","qualificado","negociacao","perdido","convertido"];
-
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
-function SkeletonRow() {
+function SkeletonConv() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--wa-border)" }}>
-      <div style={{ width: 46, height: 46, borderRadius: "50%", background: "var(--wa-skeleton)", flexShrink: 0 }} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ height: 13, borderRadius: 4, background: "var(--wa-skeleton)", width: "60%" }} />
-        <div style={{ height: 11, borderRadius: 4, background: "var(--wa-skeleton)", width: "80%" }} />
+    <div style={{ display: "flex", gap: 12, padding: "14px 16px", borderBottom: "1px solid var(--border)", alignItems: "center" }} className="wa-pulse">
+      <div style={{ width: 46, height: 46, borderRadius: "50%", background: "var(--bg-elevated)", flexShrink: 0 }} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ height: 12, borderRadius: 6, background: "var(--bg-elevated)", width: "55%" }} />
+        <div style={{ height: 11, borderRadius: 6, background: "var(--bg-elevated)", width: "75%" }} />
       </div>
     </div>
   );
@@ -86,14 +112,37 @@ function SkeletonRow() {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 function Avatar({ name, wa, size = 46 }: { name: string | null; wa: string; size?: number }) {
+  const color = avatarColor(wa || "x");
   return (
     <div style={{
-      width: size, height: size, borderRadius: "50%", flexShrink: 0,
-      background: avatarColor(wa || "x"),
+      width: size, height: size, borderRadius: "50%", flexShrink: 0, background: color,
       display: "flex", alignItems: "center", justifyContent: "center",
-      color: "#fff", fontSize: size * 0.35, fontWeight: 600, letterSpacing: "-0.5px",
+      color: "#fff", fontSize: Math.round(size * 0.34), fontWeight: 700, letterSpacing: "-0.5px",
+      boxShadow: `0 0 0 2px color-mix(in srgb, ${color} 20%, transparent)`,
     }}>
       {initials(name, wa)}
+    </div>
+  );
+}
+
+// ─── Panel card ───────────────────────────────────────────────────────────────
+function PanelCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ borderBottom: "1px solid var(--border)", padding: "14px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <span style={{ color: "var(--text-muted)" }}>{icon}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
+      <span style={{ fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: accent ?? "var(--text-primary)", textAlign: "right", wordBreak: "break-word", fontWeight: accent ? 600 : 400 }}>{value}</span>
     </div>
   );
 }
@@ -123,15 +172,12 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   useEffect(() => {
     if (!selected) return;
     let active = true;
-    setLoadingDetail(true);
-    setDetail(null);
-    setAi(null);
+    setLoadingDetail(true); setDetail(null); setAi(null);
     fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: Detail | null) => {
         if (!active) return;
-        setDetail(d);
-        setLoadingDetail(false);
+        setDetail(d); setLoadingDetail(false);
         if (d?.aiSummary) setAi({ summary: d.aiSummary, suggestedStage: d.aiSuggestedStage });
       })
       .catch(() => active && setLoadingDetail(false));
@@ -139,9 +185,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   }, [clientId, selected]);
 
   useEffect(() => {
-    if (detail?.items.length) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (detail?.items.length) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
   }, [detail?.items.length]);
 
   async function summarize() {
@@ -152,7 +196,6 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     setSummarizing(false);
     if (r.ok) setAi({ summary: d.summary, suggestedStage: d.suggestedStage });
   }
-
   async function changeStage(value: string) {
     if (!selected) return;
     setDetail((d) => (d ? { ...d, funnelStage: value || null } : d));
@@ -172,106 +215,104 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   }, [list, q, filter]);
 
   const selectedConv = list.find((c) => c.contactId === selected);
+  const stats = detail ? computeStats(detail.items) : null;
 
   return (
     <>
       <style>{`
-        :root {
-          --wa-bg-left: var(--bg-surface);
-          --wa-bg-header: var(--bg-elevated);
-          --wa-bg-search: var(--bg-base);
-          --wa-bg-chat: var(--bg-base);
-          --wa-bg-bubble-in: var(--bg-surface);
-          --wa-bg-bubble-out: color-mix(in srgb, var(--accent) 15%, var(--bg-surface));
-          --wa-border: var(--border);
-          --wa-text-primary: var(--text-primary);
-          --wa-text-secondary: var(--text-secondary);
-          --wa-text-meta: var(--text-muted);
-          --wa-selected: var(--bg-hover);
-          --wa-hover: var(--bg-hover);
-          --wa-skeleton: var(--bg-elevated);
-          --wa-unread: var(--accent);
-          --wa-right: var(--bg-elevated);
-        }
-        .wa-conv-item { transition: background 0.12s; }
-        .wa-conv-item:hover { background: var(--wa-hover) !important; }
-        .wa-filter-pill { transition: all 0.15s; cursor: pointer; }
-        .wa-filter-pill:hover { opacity: 0.85; }
-        .wa-summarize-btn { transition: opacity 0.15s; }
-        .wa-summarize-btn:hover { opacity: 0.85; }
         @keyframes wa-spin { to { transform: rotate(360deg); } }
         .wa-spin { animation: wa-spin 1s linear infinite; }
         @keyframes wa-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
         .wa-pulse { animation: wa-pulse 1.5s ease-in-out infinite; }
+        .wa-conv-row { transition: background 0.1s; }
+        .wa-conv-row:hover { background: var(--bg-hover) !important; }
+        .wa-btn-ghost { transition: opacity 0.12s; }
+        .wa-btn-ghost:hover { opacity: 0.75; }
+        /* Custom scrollbar */
+        .wa-scroll::-webkit-scrollbar { width: 4px; }
+        .wa-scroll::-webkit-scrollbar-track { background: transparent; }
+        .wa-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--border) 80%, transparent); border-radius: 99px; }
       `}</style>
 
-      <div style={{ display: "flex", height: "100%", minHeight: 0, border: "1px solid var(--wa-border)", borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ display: "flex", height: "100%", minHeight: 0, border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 24px rgba(15,23,42,0.05)" }}>
 
-        {/* ── LEFT: conversation list ────────────────────────────────────── */}
-        <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--wa-border)", background: "var(--wa-bg-left)" }}>
+        {/* ── LEFT: inbox ────────────────────────────────────────────────── */}
+        <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--bg-surface)" }}>
 
-          {/* Search */}
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--wa-border)", background: "var(--wa-bg-header)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, borderRadius: 20, background: "var(--wa-bg-search)", padding: "0 14px", border: "1px solid var(--wa-border)" }}>
-              <Search size={14} style={{ color: "var(--wa-text-meta)", flexShrink: 0 }} />
+          {/* Search bar */}
+          <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, borderRadius: 12, background: "var(--bg-surface)", padding: "0 14px", border: "1px solid var(--border)" }}>
+              <Search size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               <input
                 value={q} onChange={(e) => setQ(e.target.value)}
-                placeholder="Pesquisar ou começar uma nova conversa"
-                style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--wa-text-primary)", fontSize: 13.5 }}
+                placeholder="Pesquisar conversa..."
+                style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontSize: 13.5 }}
               />
-              {q && <button onClick={() => setQ("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--wa-text-meta)", display: "flex", padding: 0 }}><X size={14} /></button>}
+              {q && <button onClick={() => setQ("")} className="wa-btn-ghost" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", padding: 0 }}><X size={13} /></button>}
             </div>
           </div>
 
-          {/* Filters */}
-          <div style={{ display: "flex", gap: 6, padding: "8px 12px", borderBottom: "1px solid var(--wa-border)", background: "var(--wa-bg-header)" }}>
-            {(["all", "ads"] as const).map((f) => (
-              <button key={f} className="wa-filter-pill" onClick={() => setFilter(f)} style={{
-                height: 26, padding: "0 12px", borderRadius: 20, border: "none", fontSize: 12, fontWeight: 500, cursor: "pointer",
-                background: filter === f ? "var(--accent)" : "var(--wa-bg-search)",
-                color: filter === f ? "#fff" : "var(--wa-text-secondary)",
-              }}>
-                {f === "all" ? "Todas" : "Anúncios"}
-                {f === "ads" && list.filter((c) => c.fromAd).length > 0 && (
-                  <span style={{ marginLeft: 5, background: filter === "ads" ? "rgba(255,255,255,0.25)" : "var(--accent)", color: "#fff", borderRadius: 10, fontSize: 10, padding: "0 5px" }}>
-                    {list.filter((c) => c.fromAd).length}
+          {/* Filter pills */}
+          <div style={{ display: "flex", gap: 6, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+            {(["all","ads"] as const).map((f) => {
+              const count = f === "ads" ? list.filter((c) => c.fromAd).length : list.length;
+              const active = filter === f;
+              return (
+                <button key={f} onClick={() => setFilter(f)} style={{
+                  height: 28, padding: "0 12px", borderRadius: 99, border: active ? "none" : "1px solid var(--border)",
+                  background: active ? "var(--accent)" : "transparent",
+                  color: active ? "#fff" : "var(--text-secondary)",
+                  fontSize: 12, fontWeight: active ? 600 : 400, cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+                }}>
+                  {f === "all" ? "Todas" : "Meta Ads"}
+                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 5px", borderRadius: 99, background: active ? "rgba(255,255,255,0.2)" : "var(--bg-elevated)", color: active ? "#fff" : "var(--text-muted)" }}>
+                    {count}
                   </span>
-                )}
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
-          {/* List */}
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          {/* Conversation list */}
+          <div className="wa-scroll" style={{ flex: 1, overflowY: "auto" }}>
             {loadingList ? (
-              Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+              Array.from({ length: 6 }).map((_, i) => <SkeletonConv key={i} />)
             ) : filtered.length === 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 40, color: "var(--wa-text-meta)" }}>
-                <MessageSquare size={28} style={{ opacity: 0.3 }} />
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "48px 20px", color: "var(--text-muted)" }}>
+                <MessageSquare size={28} style={{ opacity: 0.2 }} />
                 <p style={{ fontSize: 13, margin: 0 }}>Nenhuma conversa encontrada</p>
               </div>
             ) : filtered.map((c) => {
               const isSelected = selected === c.contactId;
+              const isMedia = c.lastText?.startsWith("[") ?? false;
+              const mIcon = isMedia && c.lastText ? mediaIcon(c.lastText.slice(1, -1).split(" ")[3] ?? "") : null;
               return (
-                <button key={c.contactId} className="wa-conv-item" onClick={() => setSelected(c.contactId)}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "none", cursor: "pointer", textAlign: "left", background: isSelected ? "var(--wa-selected)" : "transparent", borderBottom: "1px solid var(--wa-border)" }}>
+                <button key={c.contactId} className="wa-conv-row" onClick={() => setSelected(c.contactId)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
+                    border: "none", cursor: "pointer", textAlign: "left",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 6%, var(--bg-surface))" : "transparent",
+                    borderBottom: "1px solid var(--border)",
+                    borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
+                  }}>
                   <Avatar name={c.name} wa={c.waId} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, marginBottom: 3 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--wa-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {c.name ?? `+${c.waId}`}
                       </span>
-                      <span style={{ fontSize: 11, color: "var(--wa-text-meta)", flexShrink: 0 }}>{listTime(c.lastMessageAt)}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, letterSpacing: "0.01em" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                      <span style={{ fontSize: 12.5, color: "var(--wa-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 12.5, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, display: "flex", alignItems: "center", gap: 4, fontStyle: isMedia ? "italic" : "normal" }}>
                         {c.lastDirection === "out" && <CheckCheck size={13} style={{ color: "var(--accent)", flexShrink: 0 }} />}
-                        {c.lastText ? mediaPreview("text", c.lastText) : <span style={{ fontStyle: "italic" }}>—</span>}
+                        {mIcon}
+                        {c.lastText ? (isMedia ? mediaLabel(c.lastText.replace(/[\[\]]/g, "")) : c.lastText) : <span style={{ opacity: 0.5 }}>—</span>}
                       </span>
                       {c.fromAd && (
-                        <span title={c.adTitle ?? "Lead de anúncio"} style={{ flexShrink: 0, display: "flex", alignItems: "center", background: "color-mix(in srgb, var(--accent) 12%, transparent)", borderRadius: 10, padding: "1px 6px", gap: 3 }}>
+                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 10%, transparent)", borderRadius: 99, padding: "2px 7px" }}>
                           <Megaphone size={9} style={{ color: "var(--accent)" }} />
-                          <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 500 }}>anúncio</span>
+                          <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>Meta</span>
                         </span>
                       )}
                     </div>
@@ -289,88 +330,124 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
           ) : (
             <>
               {/* Chat header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 16px", borderBottom: "1px solid var(--wa-border)", background: "var(--wa-bg-header)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                   <Avatar name={detail?.contact.name ?? selectedConv?.name ?? null} wa={detail?.contact.waId ?? selectedConv?.waId ?? ""} size={40} />
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: "var(--wa-text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {detail?.contact.name ?? selectedConv?.name ?? `+${detail?.contact.waId ?? ""}`}
                     </p>
-                    <p style={{ fontSize: 12, color: "var(--wa-text-meta)", margin: 0, display: "flex", alignItems: "center", gap: 6 }}>
-                      <Phone size={10} />
-                      +{detail?.contact.waId ?? selectedConv?.waId}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 3 }}>
+                        <Phone size={10} /> +{detail?.contact.waId ?? selectedConv?.waId}
+                      </span>
                       {detail?.lead?.adTitle && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--accent)" }}>
-                          · <Megaphone size={10} /> {detail.lead.adTitle}
+                        <span style={{ fontSize: 11, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 8%, transparent)", padding: "1px 7px", borderRadius: 99 }}>
+                          <Megaphone size={9} /> {detail.lead.adTitle}
                         </span>
                       )}
-                    </p>
+                      {detail?.funnelStage && (
+                        <span style={{ fontSize: 10.5, fontWeight: 600, color: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", background: `color-mix(in srgb, ${STAGE_COLORS[detail.funnelStage] ?? "#64748B"} 10%, transparent)`, padding: "1px 7px", borderRadius: 99 }}>
+                          {FUNNEL_LABELS[detail.funnelStage]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
-                    style={{ height: 32, borderRadius: 8, border: "1px solid var(--wa-border)", background: "var(--wa-bg-search)", color: "var(--wa-text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer" }}>
+                    style={{ height: 32, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer" }}>
                     <option value="">Funil: —</option>
                     {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
                   </select>
-                  <button onClick={() => setRightOpen((v) => !v)} title={rightOpen ? "Fechar painel" : "Abrir painel"} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--wa-border)", background: "var(--wa-bg-search)", color: "var(--wa-text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <button onClick={() => setRightOpen((v) => !v)} className="wa-btn-ghost"
+                    style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                     {rightOpen ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
                   </button>
                 </div>
               </div>
 
               {/* Messages */}
-              <div style={{
-                flex: 1, overflowY: "auto", padding: "16px 8%", display: "flex", flexDirection: "column", gap: 2,
-                background: "var(--wa-bg-chat)",
-                backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px)",
-                backgroundSize: "20px 20px",
+              <div className="wa-scroll" style={{
+                flex: 1, overflowY: "auto", padding: "20px 5%",
+                display: "flex", flexDirection: "column", gap: 2,
+                background: "var(--bg-base)",
+                backgroundImage: [
+                  "radial-gradient(ellipse at 15% 40%, color-mix(in srgb, var(--accent) 3%, transparent) 0%, transparent 55%)",
+                  "radial-gradient(ellipse at 85% 70%, color-mix(in srgb, var(--accent) 2%, transparent) 0%, transparent 45%)",
+                  "radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--border) 50%, transparent) 1px, transparent 1px)",
+                ].join(", "),
+                backgroundSize: "100% 100%, 100% 100%, 22px 22px",
               }}>
                 {loadingDetail ? (
                   <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Loader2 size={22} className="wa-spin" style={{ color: "var(--wa-text-meta)" }} />
+                    <Loader2 size={22} className="wa-spin" style={{ color: "var(--text-muted)" }} />
                   </div>
                 ) : !detail || detail.items.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "var(--wa-text-meta)", textAlign: "center", marginTop: 32 }}>Nenhuma mensagem registrada.</p>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--text-muted)" }}>
+                    <MessageSquare size={28} style={{ opacity: 0.2 }} />
+                    <p style={{ fontSize: 13, margin: 0 }}>Nenhuma mensagem registrada.</p>
+                  </div>
                 ) : (
                   detail.items.map((m, i) => {
                     const incoming = m.direction !== "out";
-                    const prev = detail.items[i - 1];
+                    const prev = i > 0 ? detail.items[i - 1] : null;
+                    const next = i < detail.items.length - 1 ? detail.items[i + 1] : null;
                     const showDay = !prev || dayLabel(prev.timestamp) !== dayLabel(m.timestamp);
                     const isMedia = !m.text || m.text.startsWith("[");
+                    // Grouping: same direction, same day, within 3 minutes
+                    const sameAsPrev = prev && prev.direction === m.direction && !showDay && (new Date(m.timestamp).getTime() - new Date(prev.timestamp).getTime() < 180000);
+                    const sameAsNext = next && next.direction === m.direction && dayLabel(next.timestamp) === dayLabel(m.timestamp) && (new Date(next.timestamp).getTime() - new Date(m.timestamp).getTime() < 180000);
+                    const isFirstInGroup = !sameAsPrev;
+                    const marginTop = showDay ? 0 : sameAsPrev ? 2 : 10;
+                    const br = {
+                      borderRadius: 16,
+                      borderTopLeftRadius: incoming ? (isFirstInGroup ? 4 : 16) : 16,
+                      borderTopRightRadius: !incoming ? (isFirstInGroup ? 4 : 16) : 16,
+                      borderBottomLeftRadius: incoming && !sameAsNext ? 4 : 16,
+                      borderBottomRightRadius: !incoming && !sameAsNext ? 4 : 16,
+                    };
                     return (
-                      <div key={m.id}>
+                      <div key={m.id} style={{ marginTop }}>
                         {showDay && (
-                          <div style={{ display: "flex", justifyContent: "center", margin: "14px 0 10px" }}>
-                            <span style={{ fontSize: 11.5, color: "var(--wa-text-secondary)", background: "var(--wa-bg-left)", padding: "4px 14px", borderRadius: 20, border: "1px solid var(--wa-border)", fontWeight: 500 }}>
+                          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 14px" }}>
+                            <span style={{ fontSize: 11.5, color: "var(--text-secondary)", background: "var(--bg-surface)", padding: "5px 16px", borderRadius: 99, border: "1px solid var(--border)", boxShadow: "0 1px 4px rgba(15,23,42,0.06)", fontWeight: 500 }}>
                               {dayLabel(m.timestamp)}
                             </span>
                           </div>
                         )}
-                        <div style={{ display: "flex", justifyContent: incoming ? "flex-start" : "flex-end", marginBottom: 1 }}>
+                        <div style={{ display: "flex", justifyContent: incoming ? "flex-start" : "flex-end" }}>
                           <div style={{
-                            maxWidth: "68%", padding: "7px 11px 6px", borderRadius: 10,
-                            borderTopLeftRadius: incoming ? 3 : 10,
-                            borderTopRightRadius: incoming ? 10 : 3,
-                            background: incoming ? "var(--wa-bg-bubble-in)" : "var(--wa-bg-bubble-out)",
-                            border: incoming ? "1px solid var(--wa-border)" : "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-                            color: "var(--wa-text-primary)",
-                            fontSize: 13.5, lineHeight: 1.45,
+                            maxWidth: "70%", padding: "8px 12px 6px",
+                            background: incoming
+                              ? "var(--bg-surface)"
+                              : "color-mix(in srgb, var(--accent) 14%, var(--bg-surface))",
+                            border: incoming
+                              ? "1px solid var(--border)"
+                              : "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
+                            boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
+                            color: "var(--text-primary)",
+                            fontSize: 13.5, lineHeight: 1.5,
+                            ...br,
                           }}>
-                            <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", display: "block", fontStyle: isMedia ? "italic" : "normal", color: isMedia ? "var(--wa-text-secondary)" : undefined }}>
-                              {isMedia ? mediaPreview(m.type, m.text) : m.text}
-                            </span>
-                            <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 3 }}>
-                              <span style={{ fontSize: 10.5, color: "var(--wa-text-meta)" }}>{msgTime(m.timestamp)}</span>
+                            {isMedia ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontStyle: "italic", color: "var(--text-secondary)" }}>
+                                {mediaIcon(m.type)}
+                                {mediaLabel(m.type)}
+                              </span>
+                            ) : (
+                              <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
+                            )}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 4 }}>
+                              <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{msgTime(m.timestamp)}</span>
                               {!incoming && (
                                 m.readAt
                                   ? <CheckCheck size={13} style={{ color: "var(--accent)" }} />
                                   : m.deliveredAt
-                                    ? <CheckCheck size={13} style={{ color: "var(--wa-text-meta)" }} />
-                                    : <Check size={13} style={{ color: "var(--wa-text-meta)" }} />
+                                    ? <CheckCheck size={13} style={{ color: "var(--text-muted)" }} />
+                                    : <Check size={13} style={{ color: "var(--text-muted)" }} />
                               )}
-                            </span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -380,9 +457,12 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Bottom bar */}
-              <div style={{ flexShrink: 0, borderTop: "1px solid var(--wa-border)", padding: "10px 20px", fontSize: 12, color: "var(--wa-text-meta)", textAlign: "center", background: "var(--wa-bg-header)", letterSpacing: "0.01em" }}>
-                🔒 Somente leitura · as respostas são feitas pelo WhatsApp no celular
+              {/* Read-only bar */}
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--bg-elevated)" }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                  🔒
+                  <span>Espelhamento em tempo real · atendimento continua pelo WhatsApp Business no celular</span>
+                </span>
               </div>
             </>
           )}
@@ -390,69 +470,104 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
 
         {/* ── RIGHT: intelligence panel ──────────────────────────────────── */}
         {selected && rightOpen && (
-          <div style={{ width: 300, flexShrink: 0, borderLeft: "1px solid var(--wa-border)", background: "var(--wa-right)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+          <div className="wa-scroll" style={{ width: 296, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--bg-elevated)", overflowY: "auto" }}>
 
-            {/* Contact */}
-            <div style={{ padding: "20px 16px 14px", borderBottom: "1px solid var(--wa-border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <Avatar name={detail?.contact.name ?? null} wa={detail?.contact.waId ?? ""} size={64} />
+            {/* Contact card */}
+            <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "var(--bg-surface)" }}>
+              <Avatar name={detail?.contact.name ?? null} wa={detail?.contact.waId ?? ""} size={62} />
               <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 15, fontWeight: 700, color: "var(--wa-text-primary)", margin: 0 }}>
+                <p style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
                   {detail?.contact.name ?? `+${detail?.contact.waId ?? ""}`}
                 </p>
-                <p style={{ fontSize: 12, color: "var(--wa-text-meta)", margin: "3px 0 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                   <Phone size={10} /> +{detail?.contact.waId}
                 </p>
               </div>
             </div>
 
-            {/* Lead info */}
-            {detail?.lead && (
-              <PanelSection icon={<Megaphone size={13} />} title="Lead de Anúncio">
-                {detail.lead.adTitle && <InfoRow label="Anúncio" value={detail.lead.adTitle} />}
-                {detail.lead.sourceType && <InfoRow label="Origem" value={detail.lead.sourceType} />}
-                {detail.lead.enteredAt && (
-                  <InfoRow label="Entrada" value={new Date(detail.lead.enteredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} />
-                )}
-              </PanelSection>
-            )}
-
-            {/* Funil */}
-            <PanelSection icon={<Tag size={13} />} title="Funil de atendimento">
+            {/* Funnel card */}
+            <PanelCard icon={<Hash size={13} />} title="Funil de atendimento">
               <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
-                style={{ width: "100%", height: 34, borderRadius: 8, border: "1px solid var(--wa-border)", background: "var(--wa-bg-search)", color: "var(--wa-text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" }}>
-                <option value="">Sem etapa</option>
+                style={{ width: "100%", height: 36, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" }}>
+                <option value="">Sem etapa definida</option>
                 {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
               </select>
-            </PanelSection>
+              {detail?.funnelStage && (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", fontWeight: 600 }}>{FUNNEL_LABELS[detail.funnelStage]}</span>
+                </div>
+              )}
+            </PanelCard>
 
-            {/* AI Summary */}
-            <PanelSection icon={<Sparkles size={13} />} title="Inteligência IA">
+            {/* Lead origin */}
+            {detail?.lead && (
+              <PanelCard icon={<Megaphone size={13} />} title="Origem · Meta Ads">
+                {detail.lead.adTitle && <InfoRow label="Anúncio" value={detail.lead.adTitle} accent="var(--accent)" />}
+                {detail.lead.sourceType && <InfoRow label="Tipo" value={detail.lead.sourceType} />}
+                {detail.lead.enteredAt && (
+                  <InfoRow label="Entrou em" value={new Date(detail.lead.enteredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} />
+                )}
+              </PanelCard>
+            )}
+
+            {/* Service stats */}
+            {stats && (
+              <PanelCard icon={<Clock size={13} />} title="Atendimento">
+                <InfoRow label="Mensagens recebidas" value={String(stats.inbound)} />
+                <InfoRow label="Mensagens enviadas" value={String(stats.outbound)} />
+                {stats.firstResponseMs !== null && (
+                  <InfoRow label="1ª resposta em" value={fmtMs(stats.firstResponseMs)} />
+                )}
+                {detail?.items.length ? (
+                  <InfoRow label="Última mensagem" value={timeAgo(detail.items[detail.items.length - 1].timestamp)} />
+                ) : null}
+              </PanelCard>
+            )}
+
+            {/* AI card */}
+            <PanelCard icon={<Sparkles size={13} />} title="Inteligência IA">
               {!ai ? (
-                <button className="wa-summarize-btn" onClick={summarize} disabled={summarizing}
-                  style={{ width: "100%", height: 36, borderRadius: 8, border: "1px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 8%, transparent)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: summarizing ? "default" : "pointer" }}>
-                  {summarizing ? <><Loader2 size={13} className="wa-spin" /> Analisando...</> : <><Sparkles size={13} /> Gerar Resumo</>}
-                </button>
+                <div>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
+                    Resumo, intenção do lead e próximos passos.
+                  </p>
+                  <button onClick={summarize} disabled={summarizing}
+                    style={{ width: "100%", height: 36, borderRadius: 10, border: "1px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: summarizing ? "default" : "pointer" }}>
+                    {summarizing ? <><Loader2 size={13} className="wa-spin" /> Analisando...</> : <><Sparkles size={13} /> Gerar análise do lead</>}
+                  </button>
+                </div>
               ) : (
                 <div>
-                  <p style={{ fontSize: 12.5, color: "var(--wa-text-primary)", lineHeight: 1.5, whiteSpace: "pre-wrap", margin: "0 0 10px" }}>{ai.summary}</p>
+                  <p style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.6, whiteSpace: "pre-wrap", margin: "0 0 10px" }}>{ai.summary}</p>
                   {ai.suggestedStage && ai.suggestedStage !== detail?.funnelStage && (
-                    <div style={{ background: "color-mix(in srgb, var(--accent) 8%, transparent)", borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "var(--wa-text-secondary)" }}>
-                        Sugerido: <strong style={{ color: "var(--wa-text-primary)" }}>{FUNNEL_LABELS[ai.suggestedStage] ?? ai.suggestedStage}</strong>
-                      </span>
+                    <div style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+                      <p style={{ fontSize: 11.5, color: "var(--text-secondary)", margin: "0 0 8px" }}>
+                        Etapa sugerida: <strong style={{ color: STAGE_COLORS[ai.suggestedStage] ?? "var(--text-primary)" }}>{FUNNEL_LABELS[ai.suggestedStage] ?? ai.suggestedStage}</strong>
+                      </p>
                       <button onClick={() => changeStage(ai.suggestedStage!)}
-                        style={{ height: 26, padding: "0 10px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
-                        Aplicar
+                        style={{ width: "100%", height: 30, borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                        Aplicar etapa
                       </button>
                     </div>
                   )}
-                  <button className="wa-summarize-btn" onClick={summarize} disabled={summarizing}
-                    style={{ marginTop: 8, fontSize: 11.5, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Sparkles size={11} /> Atualizar resumo
+                  <button onClick={summarize} disabled={summarizing} className="wa-btn-ghost"
+                    style={{ fontSize: 11.5, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Sparkles size={11} /> Atualizar análise
                   </button>
                 </div>
               )}
-            </PanelSection>
+            </PanelCard>
+
+            {/* Tags placeholder */}
+            <PanelCard icon={<Tag size={13} />} title="Tags">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {["SUV","Financiamento","Troca","Test Drive","Urgente"].map((t) => (
+                  <span key={t} style={{ fontSize: 11.5, padding: "3px 10px", borderRadius: 99, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", cursor: "pointer" }}>{t}</span>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>Tags em breve</p>
+            </PanelCard>
 
           </div>
         )}
@@ -462,38 +577,26 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// ─── Empty state ──────────────────────────────────────────────────────────────
 function EmptyState() {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--wa-text-meta)", background: "var(--wa-bg-chat)", backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px)", backgroundSize: "20px 20px" }}>
-      <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--wa-bg-left)", border: "1px solid var(--wa-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <MessageSquare size={32} style={{ opacity: 0.25 }} />
+    <div style={{
+      flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14,
+      color: "var(--text-muted)", background: "var(--bg-base)",
+      backgroundImage: [
+        "radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--border) 50%, transparent) 1px, transparent 1px)",
+      ].join(", "),
+      backgroundSize: "22px 22px",
+    }}>
+      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--bg-surface)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 16px rgba(15,23,42,0.06)" }}>
+        <MessageSquare size={28} style={{ opacity: 0.25 }} />
       </div>
       <div style={{ textAlign: "center" }}>
-        <p style={{ fontSize: 18, fontWeight: 600, color: "var(--wa-text-secondary)", margin: "0 0 6px" }}>Selecione uma conversa</p>
-        <p style={{ fontSize: 13, margin: 0, opacity: 0.6 }}>Escolha na lista à esquerda para visualizar</p>
+        <p style={{ fontSize: 17, fontWeight: 600, color: "var(--text-secondary)", margin: "0 0 6px" }}>Selecione uma conversa</p>
+        <p style={{ fontSize: 13, margin: 0, color: "var(--text-muted)", maxWidth: 280, lineHeight: 1.5 }}>
+          Escolha um lead na lista ao lado para visualizar o histórico e a origem da conversa.
+        </p>
       </div>
-    </div>
-  );
-}
-
-function PanelSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--wa-border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <span style={{ color: "var(--wa-text-meta)" }}>{icon}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--wa-text-meta)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-      <span style={{ fontSize: 12, color: "var(--wa-text-meta)", flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12.5, color: "var(--wa-text-primary)", textAlign: "right", wordBreak: "break-word" }}>{value}</span>
     </div>
   );
 }
