@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Loader2, AlertTriangle, CheckCircle2, MessageSquare, Megaphone, Phone, Users, ExternalLink, Settings2, BarChart3,
+  Loader2, AlertTriangle, CheckCircle2, MessageSquare, ExternalLink, Settings2,
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
 import { ConversationsView } from "@/components/whatsapp/conversations-view";
+import { AdLeadsView } from "@/components/whatsapp/ad-leads-view";
 
 interface Connection {
   id: string;
@@ -17,10 +18,6 @@ interface Connection {
   lastEventAt: string | null;
   _count?: { contacts: number; leads: number; messages: number };
 }
-interface AuditLead { id: string; contactId: string; name: string | null; phone: string | null; enteredAt: string }
-interface AuditGroup { adTitle: string; total: number; leads: AuditLead[] }
-interface AuditData { totalLeads: number; groups: AuditGroup[] }
-
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function timeAgo(iso: string) {
@@ -36,7 +33,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
-  const [data, setData] = useState<AuditData | null>(null);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
   const [editing, setEditing] = useState(false);
 
@@ -51,15 +47,8 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
     setLoading(false);
   }, [clientId]);
 
-  const loadLeads = useCallback(async () => {
-    const r = await fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`);
-    if (r.ok) setData(await r.json());
-  }, [clientId, year, month]);
-
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadConn(); }, [loadConn]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (conn) loadLeads(); }, [conn, loadLeads]);
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
@@ -130,12 +119,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
               {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
             </select>
           </div>
-          {view === "leads" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)" }}>
-              <Users size={15} color="var(--accent)" />
-              <strong style={{ color: "var(--text-primary)" }}>{data?.totalLeads ?? 0}</strong> leads no mês
-            </div>
-          )}
         </div>
 
         {view === "painel" && (
@@ -147,53 +130,12 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
           />
         )}
 
-        {view === "leads" && (
-          <>
-            {!data || data.groups.length === 0 ? (
-              <Empty text="Nenhum lead de anúncio nesse período. Eles aparecem aqui automaticamente quando entram pelo anúncio." />
-            ) : data.groups.map((g) => (
-              <div key={g.adTitle} style={card}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--bg-elevated)" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Megaphone size={14} color="var(--accent)" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{g.adTitle}</span>
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", background: "rgba(124,58,237,0.1)", padding: "2px 10px", borderRadius: 20 }}>{g.total} lead{g.total !== 1 ? "s" : ""}</span>
-                </div>
-                {g.leads.map((l, i) => (
-                  <Row key={l.id} onClick={() => setOpen({ contactId: l.contactId, name: l.name, phone: l.phone, adTitle: g.adTitle })} last={i === g.leads.length - 1}>
-                    <span style={cellName}>{l.name ?? "—"}</span>
-                    <span style={cellPhone}>{l.phone ? <><Phone size={11} /> +{l.phone}</> : "—"}</span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(l.enteredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
-                  </Row>
-                ))}
-              </div>
-            ))}
-          </>
-        )}
+        {view === "leads" && <AdLeadsView clientId={clientId} year={year} month={month} />}
 
       </div>
       )}
 
       {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConn(); }} />}
-    </div>
-  );
-}
-
-function Row({ children, onClick, last }: { children: React.ReactNode; onClick: () => void; last: boolean }) {
-  return (
-    <div onClick={onClick} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "11px 16px", borderBottom: last ? "none" : "1px solid var(--border)", cursor: "pointer" }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)")}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "transparent")}>
-      {children}
-    </div>
-  );
-}
-function Empty({ text }: { text: string }) {
-  return (
-    <div style={{ textAlign: "center", padding: "48px 20px" }}>
-      <MessageSquare size={30} style={{ color: "var(--text-muted)", opacity: 0.2, margin: "0 auto 12px", display: "block" }} />
-      <p style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5, maxWidth: 420, margin: "0 auto" }}>{text}</p>
     </div>
   );
 }
@@ -267,8 +209,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return (<div><label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>{label}</label>{children}</div>);
 }
 
-const card: React.CSSProperties = { background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" };
-const cellName: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 };
-const cellPhone: React.CSSProperties = { fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5, width: 160 };
 const inp: React.CSSProperties = { height: 40, width: "100%", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 12px", fontSize: 13, outline: "none", boxSizing: "border-box" };
 const select: React.CSSProperties = { height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" };
