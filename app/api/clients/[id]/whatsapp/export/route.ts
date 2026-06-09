@@ -9,6 +9,12 @@ export const runtime = "nodejs";
 // Respeita os mesmos filtros da tela. Só dados auditáveis (rastreáveis a mensagens reais).
 
 function norm(s: string) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+function canonicalAd(model: string | null, title: string | null): string {
+  if (model && model.trim()) return model.trim();
+  const t = (title ?? "").trim();
+  if (!t) return "Anúncio (sem título)";
+  return t.split(/\s+[-–—|]\s+/)[0].trim() || t;
+}
 function csvCell(v: string | number | null | undefined): string {
   const s = v == null ? "" : String(v);
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -85,8 +91,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // Aplica filtros sobre as unidades enriquecidas.
   const filtered = units.filter((u) => {
     const c = contactById.get(u.contactId);
-    const campaign = resolveCampaign(u.adModel ?? u.adTitle);
-    const adName = u.adModel ?? u.adTitle ?? "";
+    const adName = canonicalAd(u.adModel, u.adTitle);
+    const campaign = resolveCampaign(adName) ?? adName;
     const tags = tagsBy.get(u.contactId) ?? [];
     const stage = convBy.get(u.contactId)?.funnelStage ?? "";
     const valid = c?.reportValid !== false;
@@ -116,8 +122,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       c?.name ?? "",
       `+${c?.waId ?? ""}`,
       u.origin,
-      resolveCampaign(u.adModel ?? u.adTitle),
-      u.adModel ?? u.adTitle ?? "",
+      (() => { const a = canonicalAd(u.adModel, u.adTitle); return resolveCampaign(a) ?? a; })(),
+      canonicalAd(u.adModel, u.adTitle),
       fmt(u.enteredAt),
       fm && !fm.startsWith("[") ? fm : (fm ? "[mídia]" : ""),
       fmt(cv?.lastMessageAt),

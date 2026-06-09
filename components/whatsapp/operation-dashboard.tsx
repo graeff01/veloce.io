@@ -4,15 +4,11 @@ import { useEffect, useState } from "react";
 import {
   Loader2, Users, Megaphone, MessageSquare, Layers, Target, Tag,
   TrendingUp, TrendingDown, BarChart2, CheckCircle2, Send,
-  AlertCircle, ShieldCheck, Inbox, Sparkles, Hash, Clock, Info,
+  AlertCircle, Inbox, Sparkles, Hash, Clock, Info,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface MostActive {
-  contactId: string; name: string | null; waId: string;
-  messages: number; fromAd: boolean; lastMessageAt: string | null; funnelStage: string | null;
-}
 interface Overview {
   leads: number; converted: number;
   byOrigin: { ad: number; organic: number };
@@ -21,7 +17,6 @@ interface Overview {
   messagesSeries: { date: string; messages: number }[];
   funnel: Record<string, number>;
   messagesReceived: number; avgMessagesPerLead: number; noStage: number;
-  mostActiveLeads: MostActive[];
   campaignsWithLeads: number;
   // Atendimento (coexistência — forward-only)
   storeMessages: number; withReply: number; withoutReply: number;
@@ -48,15 +43,6 @@ export interface OpenContact { contactId: string; name: string | null; phone: st
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function fmtBRL(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function pct(n: number, total: number) { return total ? Math.round((n / total) * 100) : 0; }
-function timeAgoShort(iso: string | null) {
-  if (!iso) return "—";
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return "agora";
-  if (mins < 60) return `há ${mins}min`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return `há ${h}h`;
-  return `há ${Math.floor(h / 24)}d`;
-}
 const MONTH_NAMES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const STAGE_COLORS: Record<string, string> = {
   recebido: "#3B82F6", respondido: "#8B5CF6", qualificado: "#F59E0B",
@@ -210,66 +196,6 @@ function Funnel({ funnel, noStage }: { funnel: Record<string, number>; noStage: 
   );
 }
 
-// ─── Ad ranking ───────────────────────────────────────────────────────────────
-function AdRanking({ items, maxLeads }: { items: Overview["byAd"]; maxLeads: number }) {
-  if (items.length === 0) return <EmptyChart label="Nenhum anúncio gerou leads neste período" />;
-  return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 64px 90px 70px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
-        {["Anúncio","Leads","Convertidos","% total"].map((h, i) => (
-          <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
-        ))}
-      </div>
-      {items.slice(0, 8).map((a, i) => (
-        <div key={a.adTitle} style={{ display: "grid", gridTemplateColumns: "1fr 64px 90px 70px", padding: "10px 4px", borderBottom: i < Math.min(items.length, 8) - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-              <Megaphone size={11} style={{ color: "var(--accent)", flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.adTitle}</span>
-            </div>
-            <div style={{ height: 4, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
-              <div style={{ width: `${pct(a.total, maxLeads)}%`, height: "100%", background: "var(--accent)", opacity: 0.6 }} />
-            </div>
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{a.total}</span>
-          <span style={{ fontSize: 13, fontWeight: a.converted ? 700 : 400, color: a.converted ? "#16A34A" : "var(--text-muted)", textAlign: "right" }}>{a.converted || "—"}</span>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{pct(a.total, maxLeads === 1 ? 1 : items.reduce((s, x) => s + x.total, 0))}%</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Most active leads ────────────────────────────────────────────────────────
-function MostActiveTable({ leads, onOpen }: { leads: MostActive[]; onOpen?: (c: OpenContact) => void }) {
-  if (leads.length === 0) return <EmptyChart label="Nenhuma mensagem recebida no período" />;
-  return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 90px", padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
-        {["Lead","Mensagens","Origem","Última"].map((h, i) => (
-          <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 1 ? "right" : "left" }}>{h}</span>
-        ))}
-      </div>
-      {leads.map((l, i) => (
-        <button key={l.contactId} onClick={() => onOpen?.({ contactId: l.contactId, name: l.name, phone: l.waId })}
-          style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 90px", padding: "10px 4px", borderBottom: i < leads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8, background: "none", border: "none", cursor: onOpen ? "pointer" : "default", textAlign: "left" }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name ?? "Sem nome"}</p>
-            <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>+{l.waId}</p>
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", textAlign: "right" }}>{l.messages}</span>
-          <span style={{ fontSize: 11.5 }}>
-            {l.fromAd
-              ? <span style={{ color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3 }}><Megaphone size={10} /> Anúncio</span>
-              : <span style={{ color: "var(--text-muted)" }}>Orgânico</span>}
-          </span>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "left" }}>{timeAgoShort(l.lastMessageAt)}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── CPL table ────────────────────────────────────────────────────────────────
 function CplTable({ rows }: { rows: Overview["cpl"] }) {
   return (
@@ -314,7 +240,7 @@ function EmptyChart({ label }: { label: string }) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export function OperationDashboard({ clientId, year, month, onOpenContact }: {
+export function OperationDashboard({ clientId, year, month }: {
   clientId: string; year: number; month: number; onOpenContact?: (c: OpenContact) => void;
 }) {
   const [data, setData] = useState<Overview | null>(null);
@@ -357,7 +283,6 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
   );
 
   const adCount = data.byOrigin.ad;
-  const maxAdLeads = data.byAd.length ? Math.max(...data.byAd.map((a) => a.total)) : 1;
 
   // Resumo textual do período (sem IA).
   const monthName = MONTH_NAMES[month - 1];
@@ -444,44 +369,6 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
         </Section>
         <Section title="Funil comercial" subtitle="Classificação manual dos leads por etapa">
           <Funnel funnel={data.funnel} noStage={data.noStage} />
-        </Section>
-      </div>
-
-      {/* ── Leads mais ativos + Anúncios ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
-        <Section title="Leads mais ativos" subtitle="Quem mais enviou mensagens no período">
-          <MostActiveTable leads={data.mostActiveLeads} onOpen={onOpenContact} />
-        </Section>
-        <Section title="Anúncios que geraram conversas" subtitle="Leads e conversão por anúncio">
-          <AdRanking items={data.byAd} maxLeads={maxAdLeads} />
-        </Section>
-      </div>
-
-      {/* ── Qualidade + Tags ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-        <Section title="Qualidade para relatório" subtitle="Leads válidos vs. invalidados manualmente">
-          <div style={{ display: "flex", gap: 12 }}>
-            <MiniStat icon={<ShieldCheck size={14} color="#16A34A" />} label="Válidos" value={String(data.validLeads)} sub={`${pct(data.validLeads, data.leads)}% do total`} />
-            <MiniStat icon={<AlertCircle size={14} color={data.invalidLeads ? "#DC2626" : "#94A3B8"} />} label="Inválidos" value={String(data.invalidLeads)} attention={data.invalidLeads > 0} />
-          </div>
-        </Section>
-        <Section title="Leads por tag" subtitle="Segmentação manual dos contatos">
-          {data.leadsByTag.length === 0 ? <EmptyChart label="Nenhuma tag aplicada no período" /> : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {data.leadsByTag.slice(0, 8).map((t) => {
-                const max = Math.max(...data.leadsByTag.map((x) => x.count), 1);
-                return (
-                  <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)", width: 110, flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
-                    <div style={{ flex: 1, height: 8, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
-                      <div style={{ width: `${pct(t.count, max)}%`, height: "100%", background: t.color, opacity: 0.8 }} />
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", width: 24, textAlign: "right", flexShrink: 0 }}>{t.count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </Section>
       </div>
 

@@ -15,7 +15,7 @@ import { StatusBadge, TagChip } from "@/components/whatsapp/primitives/lead-badg
 interface FirstMsg { text: string | null; type: string }
 interface AdLead {
   id: string; contactId: string; name: string | null; phone: string;
-  enteredAt: string; adTitle: string | null; adModel: string | null; adId: string | null;
+  enteredAt: string; adTitle: string | null; adModel: string | null; adName?: string; adId: string | null;
   adBody: string | null; sourceType: string | null; sourceUrl: string | null; ctwaClid: string | null;
   campaignName: string | null; funnelStage: string | null;
   firstMessage: FirstMsg | null; messageCount: number;
@@ -207,7 +207,7 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
   const filtered = useMemo(() => {
     return leads.filter((l) => {
       if (campaignFilter && (l.campaignName ?? "Sem campanha identificada") !== campaignFilter) return false;
-      if (adFilter && (l.adModel ?? l.adTitle ?? "Anúncio (sem título)") !== adFilter) return false;
+      if (adFilter && (l.adName ?? l.adModel ?? l.adTitle ?? "Anúncio (sem título)") !== adFilter) return false;
       if (stageFilter) {
         if (stageFilter === "__none__" ? l.funnelStage : l.funnelStage !== stageFilter) return false;
       }
@@ -221,7 +221,7 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       if (replyFilter === "semresposta" && l.storeMessages && l.storeMessages > 0) return false;
       const term = q.trim().toLowerCase();
       if (term) {
-        const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""} ${(l.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
+        const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adName ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""} ${(l.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
@@ -410,7 +410,7 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
               {/* Origem */}
               <div style={{ minWidth: 0 }}>
                 <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", margin: 0, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  <Megaphone size={11} style={{ color: "var(--accent)", flexShrink: 0 }} /> {l.adModel ?? l.adTitle ?? "Anúncio"}
+                  <Megaphone size={11} style={{ color: "var(--accent)", flexShrink: 0 }} /> {l.adName ?? l.adModel ?? l.adTitle ?? "Anúncio"}
                 </p>
                 <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.campaignName ?? "Campanha não identificada"}</p>
               </div>

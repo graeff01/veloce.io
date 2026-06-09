@@ -16,6 +16,15 @@ function norm(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
+// Nome canônico do anúncio: usa o modelo detectado; senão, o título do anúncio
+// cortado no 1º separador (" - ", " | ", "—") → funde variações do mesmo carro.
+function canonicalAd(model: string | null, title: string | null): string {
+  if (model && model.trim()) return model.trim();
+  const t = (title ?? "").trim();
+  if (!t) return "Anúncio (sem título)";
+  return t.split(/\s+[-–—|]\s+/)[0].trim() || t;
+}
+
 export async function GET(req: Request) {
   const { error } = await requireAuth("clients:read");
   if (error) return error;
@@ -140,7 +149,7 @@ export async function GET(req: Request) {
   }
 
   const richLeads = leads.map((l) => {
-    const key = l.adModel ?? l.adTitle ?? null;
+    const adName = canonicalAd(l.adModel, l.adTitle);
     const c = contactById.get(l.contactId);
     const badge = deriveBadge({
       createdAt: c?.createdAt ?? l.enteredAt,
@@ -157,12 +166,14 @@ export async function GET(req: Request) {
       enteredAt: l.enteredAt,
       adTitle: l.adTitle,
       adModel: l.adModel,
+      adName,
       adId: l.adId,
       adBody: l.adBody,
       sourceType: l.sourceType,
       sourceUrl: l.sourceUrl,
       ctwaClid: l.ctwaClid,
-      campaignName: resolveCampaign(key),
+      // Campanha = match no Meta; se não houver, usa o próprio nome do anúncio.
+      campaignName: resolveCampaign(adName) ?? adName,
       funnelStage: stageByContact.get(l.contactId) ?? null,
       firstMessage: firstMsgByContact.get(l.contactId) ?? null,
       messageCount: msgCountByContact.get(l.contactId) ?? 0,
@@ -180,10 +191,10 @@ export async function GET(req: Request) {
     };
   });
 
-  // Agrupamento por anúncio (modelo).
+  // Agrupamento por anúncio (nome canônico — funde variações do mesmo carro).
   const groupsMap = new Map<string, typeof richLeads>();
   for (const lead of richLeads) {
-    const k = lead.adModel ?? lead.adTitle ?? "Anúncio (sem título)";
+    const k = lead.adName;
     if (!groupsMap.has(k)) groupsMap.set(k, []);
     groupsMap.get(k)!.push(lead);
   }
@@ -212,7 +223,7 @@ export async function GET(req: Request) {
     .map(([name, items]) => ({
       name,
       total: items.length,
-      ads: new Set(items.map((i) => i.adModel ?? i.adTitle ?? "—")).size,
+      ads: new Set(items.map((i) => i.adName)).size,
       negociacao: items.filter((i) => i.funnelStage === "negociacao").length,
       convertido: items.filter((i) => i.funnelStage === "convertido").length,
     }))
