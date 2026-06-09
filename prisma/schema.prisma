@@ -468,22 +468,54 @@ model WaConnection {
   leads         WaLead[]
   conversations WaConversation[]
   events        WaEvent[]
+  tags          WaTag[]
 }
 
 model WaContact {
   id            String    @id @default(cuid())
   connectionId  String
   waId          String    // telefone E.164 sem "+"
-  name          String?
+  name          String?   // nome do perfil do WhatsApp (não confiável)
+  displayName   String?   // nome interno editável pelo operador
+  notes         String?   // observações internas
+  reportValid   Boolean   @default(true)  // conta no relatório mensal?
+  reportInvalidReason String?
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
   connection    WaConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   messages      WaMessage[]
   conversation  WaConversation?
+  tags          WaContactTag[]
 
   @@unique([connectionId, waId])
   @@index([connectionId, lastMessageAt])
+}
+
+// Tags planas por conexão (segmentação de leads: SUV, Financiamento, Quente...).
+model WaTag {
+  id           String   @id @default(cuid())
+  connectionId String
+  name         String
+  color        String   @default("#64748B")
+  createdAt    DateTime @default(now())
+
+  connection   WaConnection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  contacts     WaContactTag[]
+
+  @@unique([connectionId, name])
+  @@index([connectionId])
+}
+
+model WaContactTag {
+  contactId String
+  tagId     String
+
+  contact   WaContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       WaTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@index([tagId])
 }
 
 model WaMessage {
