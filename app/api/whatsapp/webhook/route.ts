@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  verifySignature, onlyDigits, messageText, mediaRef, type WaWebhookBody, type WaChangeValue,
+  verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
       try {
         if (value?.messages?.length) await processMessages(conn, value);
-        if (value?.message_echoes?.length) await processMessageEchoes(conn, value);
+        if (messageEchoes(value).length) await processMessageEchoes(conn, value);
         if (value?.statuses?.length) await processStatuses(conn.id, value);
         await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
       } catch (e) {
@@ -157,7 +157,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 // Nunca disparam o agente nem criam lead.
 async function processMessageEchoes(conn: WaConnection, value: WaChangeValue) {
   const connectionId = conn.id;
-  for (const m of value.message_echoes ?? []) {
+  for (const m of messageEchoes(value)) {
     // No echo: from = número do negócio, to = cliente.
     const customerWaId = m.to ? onlyDigits(m.to) : "";
     if (!customerWaId) continue;

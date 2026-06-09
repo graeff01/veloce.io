@@ -41,6 +41,16 @@ export interface Overview {
     contactId: string; name: string | null; waId: string;
     messages: number; fromAd: boolean; lastMessageAt: string | null; funnelStage: string | null;
   }[];
+  // ── Atendimento (depende de outbound — coexistência; forward-only) ──
+  storeMessages: number;       // total de mensagens enviadas pela loja
+  withReply: number;           // conversas com ao menos 1 resposta da loja
+  withoutReply: number;        // conversas sem resposta da loja
+  responseMinSec: number | null;
+  responseMaxSec: number | null;
+  // ── Qualidade / segmentação ──
+  validLeads: number;
+  invalidLeads: number;
+  leadsByTag: { name: string; color: string; count: number }[];
 }
 
 function dayKey(d: Date): string {
@@ -55,7 +65,7 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   const [convs, adLeads, waitingNow, alertRows, inboundMsgs] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId, firstInboundAt: { gte: start, lt: end } },
-      select: { contactId: true, firstInboundAt: true, firstResponseSec: true, funnelStage: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
+      select: { contactId: true, firstInboundAt: true, firstResponseSec: true, outboundCount: true, funnelStage: true, lastMessageAt: true, contact: { select: { name: true, waId: true, reportValid: true } } },
     }),
     prisma.waLead.findMany({
       where: { connectionId, enteredAt: { gte: start, lt: end } },
@@ -156,6 +166,31 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   const total = convs.length + extraAdLeads.length;
   // Média de mensagens só faz sentido sobre quem realmente conversou ao vivo.
   const liveLeads = convs.length;
+
+  // Atendimento (forward-only — só conversas com outbound capturado).
+  const storeMessages = convs.reduce((s, c) => s + (c.outboundCount ?? 0), 0);
+  const withReply = convs.filter((c) => c.firstResponseSec != null).length;
+  const withoutReply = convs.length - withReply;
+  const responseMinSec = times.length ? Math.min(...times) : null;
+  const responseMaxSec = times.length ? Math.max(...times) : null;
+
+  // Qualidade: válidos/inválidos para relatório.
+  const invalidLeads = convs.filter((c) => c.contact?.reportValid === false).length;
+  const validLeads = total - invalidLeads;
+
+  // Leads por tag (no período).
+  const periodContactIds = convs.map((c) => c.contactId);
+  const tagRows = periodContactIds.length
+    ? await prisma.waContactTag.findMany({ where: { contactId: { in: periodContactIds } }, include: { tag: true } })
+    : [];
+  const tagMap = new Map<string, { name: string; color: string; count: number }>();
+  for (const t of tagRows) {
+    const e = tagMap.get(t.tagId) ?? { name: t.tag.name, color: t.tag.color, count: 0 };
+    e.count++;
+    tagMap.set(t.tagId, e);
+  }
+  const leadsByTag = [...tagMap.values()].sort((a, b) => b.count - a.count);
+
   return {
     converted: funnel.convertido,
     leads: total,
@@ -164,6 +199,14 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     messagesSeries: [...msgSeriesMap.entries()].map(([date, messages]) => ({ date, messages })).sort((a, b) => a.date.localeCompare(b.date)),
     noStage,
     mostActiveLeads,
+    storeMessages,
+    withReply,
+    withoutReply,
+    responseMinSec,
+    responseMaxSec,
+    validLeads,
+    invalidLeads,
+    leadsByTag,
     responded,
     unanswered: total - responded,
     responseRate: total ? responded / total : 0,

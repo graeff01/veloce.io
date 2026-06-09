@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import {
   Loader2, Users, Megaphone, MessageSquare, Layers, Target, Tag,
-  TrendingUp, TrendingDown, BarChart2, DollarSign, CheckCircle2,
-  AlertCircle, ShieldCheck, Inbox, Sparkles, Phone, Hash,
+  TrendingUp, TrendingDown, BarChart2, CheckCircle2, Send,
+  AlertCircle, ShieldCheck, Inbox, Sparkles, Hash, Clock, Info,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 
@@ -23,19 +23,31 @@ interface Overview {
   messagesReceived: number; avgMessagesPerLead: number; noStage: number;
   mostActiveLeads: MostActive[];
   campaignsWithLeads: number;
+  // Atendimento (coexistência — forward-only)
+  storeMessages: number; withReply: number; withoutReply: number;
+  responded: number; avgFirstResponseSec: number | null; medianFirstResponseSec: number | null;
+  responseMinSec: number | null; responseMaxSec: number | null;
+  validLeads: number; invalidLeads: number;
+  leadsByTag: { name: string; color: string; count: number }[];
   previous: { leads: number; converted: number };
   cpl: { model: string; realLeads: number; spend: number; cplReal: number | null; metaLeads: number; cplMeta: number | null }[];
   [key: string]: unknown;
+}
+
+// Duração curta (sem importar de wa-metrics, que puxa prisma para o client).
+function fmtDur(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h${m % 60 ? ` ${m % 60}min` : ""}` : `${Math.floor(h / 24)}d`;
 }
 export interface OpenContact { contactId: string; name: string | null; phone: string | null }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function fmtBRL(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function pct(n: number, total: number) { return total ? Math.round((n / total) * 100) : 0; }
-function fmtDateTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
 function timeAgoShort(iso: string | null) {
   if (!iso) return "—";
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -99,6 +111,17 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
         {subtitle && <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "3px 0 0" }}>{subtitle}</p>}
       </div>
       {children}
+    </div>
+  );
+}
+
+// ─── Mini stat (atendimento) ─────────────────────────────────────────────────
+function MiniStat({ icon, label, value, sub, attention }: { icon: React.ReactNode; label: string; value: string; sub?: string; attention?: boolean }) {
+  return (
+    <div style={{ background: "var(--bg-base)", border: `1px solid ${attention ? "rgba(217,119,6,0.3)" : "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>{icon}<span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{label}</span></div>
+      <p style={{ fontSize: 20, fontWeight: 800, color: attention ? "#B45309" : "var(--text-primary)", margin: 0, letterSpacing: "-0.5px" }}>{value}</p>
+      {sub && <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>{sub}</p>}
     </div>
   );
 }
@@ -299,6 +322,7 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
 
   useEffect(() => {
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/clients/${clientId}/whatsapp/overview?year=${year}&month=${month}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -391,6 +415,22 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
         )}
       </div>
 
+      {/* ── Atendimento (forward-only, coexistência) ── */}
+      <Section title="Atendimento (mensagens da loja)" subtitle="Tempo de resposta e cobertura — a partir da ativação do espelhamento de saída">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 10, background: "color-mix(in srgb, #0EA5E9 6%, transparent)", border: "1px solid color-mix(in srgb, #0EA5E9 20%, var(--border))", marginBottom: 14 }}>
+          <Info size={13} color="#0EA5E9" />
+          <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>Métricas de resposta valem a partir da ativação da coexistência. Conversas anteriores não têm mensagens da loja capturadas.</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          <MiniStat icon={<Send size={14} color="#16A34A" />} label="Mensagens da loja" value={String(data.storeMessages)} />
+          <MiniStat icon={<MessageSquare size={14} color="#16A34A" />} label="Conversas respondidas" value={String(data.withReply)} sub={`${pct(data.withReply, data.withReply + data.withoutReply)}%`} />
+          <MiniStat icon={<AlertCircle size={14} color={data.withoutReply ? "#D97706" : "#94A3B8"} />} label="Sem resposta" value={String(data.withoutReply)} attention={data.withoutReply > 0} />
+          <MiniStat icon={<Clock size={14} color="#0EA5E9" />} label="Tempo médio 1ª resposta" value={fmtDur(data.avgFirstResponseSec)} sub={data.medianFirstResponseSec != null ? `mediana ${fmtDur(data.medianFirstResponseSec)}` : undefined} />
+          <MiniStat icon={<TrendingUp size={14} color="#16A34A" />} label="Mais rápida" value={fmtDur(data.responseMinSec)} />
+          <MiniStat icon={<TrendingDown size={14} color="#D97706" />} label="Mais lenta" value={fmtDur(data.responseMaxSec)} />
+        </div>
+      </Section>
+
       {/* ── Gráficos ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
         <Section title="Leads por dia" subtitle="Volume diário de contatos recebidos">
@@ -414,6 +454,34 @@ export function OperationDashboard({ clientId, year, month, onOpenContact }: {
         </Section>
         <Section title="Anúncios que geraram conversas" subtitle="Leads e conversão por anúncio">
           <AdRanking items={data.byAd} maxLeads={maxAdLeads} />
+        </Section>
+      </div>
+
+      {/* ── Qualidade + Tags ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+        <Section title="Qualidade para relatório" subtitle="Leads válidos vs. invalidados manualmente">
+          <div style={{ display: "flex", gap: 12 }}>
+            <MiniStat icon={<ShieldCheck size={14} color="#16A34A" />} label="Válidos" value={String(data.validLeads)} sub={`${pct(data.validLeads, data.leads)}% do total`} />
+            <MiniStat icon={<AlertCircle size={14} color={data.invalidLeads ? "#DC2626" : "#94A3B8"} />} label="Inválidos" value={String(data.invalidLeads)} attention={data.invalidLeads > 0} />
+          </div>
+        </Section>
+        <Section title="Leads por tag" subtitle="Segmentação manual dos contatos">
+          {data.leadsByTag.length === 0 ? <EmptyChart label="Nenhuma tag aplicada no período" /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {data.leadsByTag.slice(0, 8).map((t) => {
+                const max = Math.max(...data.leadsByTag.map((x) => x.count), 1);
+                return (
+                  <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-secondary)", width: 110, flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+                    <div style={{ flex: 1, height: 8, borderRadius: 99, background: "var(--bg-elevated)", overflow: "hidden" }}>
+                      <div style={{ width: `${pct(t.count, max)}%`, height: "100%", background: t.color, opacity: 0.8 }} />
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", width: 24, textAlign: "right", flexShrink: 0 }}>{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Section>
       </div>
 

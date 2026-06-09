@@ -32,7 +32,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const [messages, lead, conversation, tags] = await Promise.all([
-    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: { timestamp: "asc" }, take: 1000 }),
+    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000 }),
     prisma.waLead.findUnique({ where: { contactId: contact.id } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id } }),
     prisma.waContactTag.findMany({ where: { contactId: contact.id }, include: { tag: true } }),
@@ -51,10 +51,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     status: conversation?.status ?? null,
     aiSummary: conversation?.aiSummary ?? null,
     aiSuggestedStage: conversation?.aiSuggestedStage ?? null,
-    items: messages.map((m) => ({
-      id: m.id, text: m.text, direction: m.direction, type: m.type,
-      timestamp: m.timestamp, deliveredAt: m.deliveredAt, readAt: m.readAt,
-    })),
+    items: messages.map((m) => {
+      const raw = m.raw as Record<string, { filename?: string }> | null;
+      return {
+        id: m.id, text: m.text, direction: m.direction, type: m.type,
+        timestamp: m.timestamp, deliveredAt: m.deliveredAt, readAt: m.readAt,
+        filename: raw?.[m.type]?.filename ?? null,
+      };
+    }),
   });
 }
 

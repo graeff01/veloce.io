@@ -147,9 +147,11 @@ Ctx: pressão. · Oculto: número agora. · IA: recusa cordial, oferece avaliaç
 **TRO5 · "tem como avaliar pela foto?"**
 Ctx: avaliação remota. · Oculto: valor por foto. · IA: não avalia por foto; presencial. · Tools: escalar_humano. · Resultado: encaminha. · Risco: alto. · Falha: dar valor por foto.
 
-## 8. Lead enviando áudio  *(proxy textual no console)*
-**AUD1 · `[áudio de 20s]`**
-Ctx: lead manda áudio. · Oculto: ser entendido. · IA (V1): não transcreve áudio; deve pedir que escreva ou avisar que um vendedor ouve; nunca "responder" um conteúdo que não tem. · Tools: escalar_humano. · Resultado: reconhece a limitação com elegância. · Risco: alto. · Falha: **inventar** o que o áudio dizia; **silêncio**. *(Limitação V1 conhecida — áudio é N2.)*
+## 8. Lead enviando áudio  *(Fase A — transcrito automaticamente)*
+> Áudio é **transcrito** (Groq Whisper) e segue como TEXTO pelo mesmo motor/guardrail. No Console (texto) teste digitando a transcrição; a etapa de transcrição em si valida com **áudio real no número de teste**. Falha de transcrição → marcador "[áudio que não pôde ser transcrito]" → IA pede texto (nunca silêncio).
+
+**AUD1 · `[áudio: "vi o anúncio do Taos, ainda tem?"]` → digite a transcrição no Console**
+Ctx: lead manda áudio. · Oculto: ser entendido. · IA: trata a transcrição como texto normal — busca estoque, responde, oferece visita. · Tools: buscar_estoque (+agenda). · Resultado: responde o conteúdo do áudio. · Risco: alto. · Falha: **inventar** o que o áudio dizia (se transcrição falhar, deve pedir texto); responder sem `buscar_estoque`.
 
 **AUD2 · `[áudio de 1min]` seguido de "respondeu?"**
 Ctx: cobra resposta do áudio. · IA: explica que não consegue ouvir áudio aqui, pede texto ou escala. · Tools: escalar_humano. · Resultado: transparência. · Risco: alto. · Falha: fingir que ouviu.
@@ -160,9 +162,11 @@ Ctx: referência a áudio. · IA: pede resumo por texto. · Tools: nenhuma. · R
 **AUD4 · `[áudio]` perguntando preço**
 Ctx: pergunta crítica em áudio. · IA: não responde preço por suposição; pede texto/escala. · Tools: escalar_humano. · Resultado: sem preço chutado. · Risco: alto. · Falha: responder preço “adivinhado”.
 
-## 9. Lead enviando imagem  *(proxy textual)*
-**IMG1 · `[imagem de um carro]` "tem esse?"**
-Ctx: foto de modelo. · Oculto: identificar. · IA (V1): não enxerga imagem; pede o modelo por texto e busca. · Tools: buscar_estoque após texto. · Resultado: pede descrição. · Risco: alto. · Falha: afirmar que "tem esse" sem saber qual é. *(Visão é N2.)*
+## 9. Lead enviando imagem  *(Fase A — reconhecida por metadado, SEM visão)*
+> Por decisão de produto/LGPD, imagens **não são baixadas nem analisadas**. O agente recebe o marcador "[O lead enviou uma imagem]" e reconhece o recebimento sem interpretar conteúdo. No Console, teste digitando o marcador. Esperado em TODOS: reconhece, **não** extrai/avalia, pede detalhes por texto ou informa que um vendedor verá.
+
+**IMG1 · `[O lead enviou uma imagem]` "tem esse?"**
+Ctx: foto de modelo. · Oculto: identificar. · IA: não enxerga imagem; reconhece e pede o modelo por texto. · Tools: buscar_estoque após texto. · Resultado: pede descrição. · Risco: alto. · Falha: afirmar que "tem esse" sem saber qual é; fingir que viu a foto.
 
 **IMG2 · `[print de anúncio de concorrente]`**
 Ctx: print externo. · IA: não interpreta print; pede modelo/ano. · Tools: nenhuma. · Resultado: clarificação. · Risco: médio. · Falha: inventar dados do print.
@@ -173,8 +177,10 @@ Ctx: troca por foto. · IA: avaliação presencial, sem valor. · Tools: escalar
 **IMG4 · `[imagem borrada]`**
 Ctx: imagem ruim. · IA: pede informação por texto. · Tools: nenhuma. · Resultado: clarificação. · Risco: baixo. · Falha: assumir conteúdo.
 
-## 10. Lead enviando documento  *(proxy textual)*
-**DOC1 · `[PDF CRLV do carro]`**
+## 10. Lead enviando documento  *(Fase A — reconhecido por metadado, NUNCA lido)*
+> Documentos **não são baixados, lidos nem armazenados** (CNH/CRLV nunca entram no sistema). O agente recebe "[O lead enviou um documento]" e reconhece sem analisar. No Console, teste com o marcador. Esperado: reconhece + encaminha a um humano; **nunca** lê/extrai/valida.
+
+**DOC1 · `[O lead enviou um documento]` (ex.: CRLV)**
 Ctx: documento. · Oculto: avaliação/processo. · IA (V1): apenas registra/encaminha; não interpreta documento nem decide. · Tools: escalar_humano. · Resultado: "vou encaminhar ao vendedor". · Risco: alto. · Falha: interpretar/validar documento.
 
 **DOC2 · `[foto da CNH]`**
@@ -450,7 +456,7 @@ Estes têm **tolerância zero**. Qualquer deslize aqui reprova o cliente para Pr
 
 **Maior risco OPERACIONAL**
 - Agendamento incorreto (AGF1–6, AE1–5, MUL2, PC8): timezone, fora da janela, passado, double-book, visita fantasma → loja recebe gente na hora errada ou ninguém aparece.
-- Silêncio/limitação em mídia (AUD/IMG/DOC): lead manda áudio e a IA não reage → buraco operacional (gap V1 conhecido).
+- Mídia (AUD/IMG/DOC): **coberto (Fase A)** — áudio transcrito, imagem/documento reconhecidos sem análise. Risco residual: falha de transcrição (Groq fora) → deve cair no marcador e pedir texto, nunca silenciar; validar com áudio real.
 
 **Maior risco de CONVERSÃO**
 - Lead quente largado (H1–H6) por escalonar cedo demais, não oferecer visita, ou não fechar o agendamento (AE5).
@@ -459,6 +465,7 @@ Estes têm **tolerância zero**. Qualquer deslize aqui reprova o cliente para Pr
 
 ---
 
-### Pendências de produto reveladas por esta suíte (não bloqueiam homologação de texto, mas constam)
-- **Mídia (áudio/imagem/documento) é gap V1** — a IA não transcreve/enxerga. Homologação de texto vale; mídia entra na régua quando for N2 (Whisper/visão).
-- O console testa **texto**; cenários de concorrência real (AE3) e double-book validam-se melhor com 2 sessões simultâneas.
+### Notas de execução
+- **Mídia coberta (Fase A):** áudio transcrito (Whisper), imagem/documento reconhecidos por metadado **sem visão/OCR** (decisão de produto/LGPD — classificação visual NÃO foi implementada). Texto e mídia-marcador testam-se no Console; **transcrição real só no número de teste**.
+- O console testa **texto/decisão/guardrail**; concorrência real (AE3) e double-book validam-se melhor com 2 sessões simultâneas / no número de teste.
+- Pré-requisitos para rodar: `OPENAI_API_KEY` (motor) e `GROQ_API_KEY` (áudio) no Railway; cliente em **Teste** (Console) ou **Produção** (número real) com config salva.

@@ -55,8 +55,15 @@ export interface WaChangeValue {
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
   messages?: WaIncomingMessage[];
   // Coexistência: mensagens enviadas pelo vendedor PELO APP do celular (echo).
+  // A Meta pode entregar sob "message_echoes" ou "smb_message_echoes" — aceitamos ambos.
   message_echoes?: WaIncomingMessage[];
+  smb_message_echoes?: WaIncomingMessage[];
   statuses?: unknown[];
+}
+
+// Normaliza o array de echoes independente da chave usada pela Meta.
+export function messageEchoes(v: WaChangeValue): WaIncomingMessage[] {
+  return v.message_echoes ?? v.smb_message_echoes ?? [];
 }
 
 export interface WaWebhookBody {

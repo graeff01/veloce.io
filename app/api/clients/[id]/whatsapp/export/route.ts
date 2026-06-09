@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { deriveBadge, BADGE_LABEL } from "@/lib/wa-leads";
+import { fmtDuration } from "@/lib/wa-metrics";
 
 export const runtime = "nodejs";
 
-// GET /whatsapp/export?year=&month=&type=ads|all → CSV mensal (relatório).
-// Só dados auditáveis (entrada, origem, mensagens do lead, funil, tags, validade).
+// GET /whatsapp/export?year=&month=&type=ads|all&... (filtros) → CSV mensal.
+// Respeita os mesmos filtros da tela. Só dados auditáveis (rastreáveis a mensagens reais).
 
 function norm(s: string) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 function csvCell(v: string | number | null | undefined): string {
@@ -31,8 +32,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
 
+  // Filtros (mesmos da tela).
+  const fCampaign = url.searchParams.get("campanha") ?? "";
+  const fAd = url.searchParams.get("anuncio") ?? "";
+  const fStage = url.searchParams.get("funil") ?? "";
+  const fValid = url.searchParams.get("valido") ?? "";
+  const fOrigin = url.searchParams.get("origem") ?? "";
+  const fTag = url.searchParams.get("tag") ?? "";
+  const fQ = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+
   // Universo: leads de anúncio (WaLead) ou todas as conversas do período.
-  let units: { contactId: string; enteredAt: Date; adModel: string | null; adTitle: string | null; adId: string | null; ctwaClid: string | null; imported: boolean; origin: string }[];
+  type Unit = { contactId: string; enteredAt: Date; adModel: string | null; adTitle: string | null; adId: string | null; ctwaClid: string | null; imported: boolean; origin: string };
+  let units: Unit[];
   if (type === "ads") {
     const leads = await prisma.waLead.findMany({ where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } }, orderBy: { enteredAt: "desc" } });
     units = leads.map((l) => ({ contactId: l.contactId, enteredAt: l.enteredAt, adModel: l.adModel, adTitle: l.adTitle, adId: l.adId, ctwaClid: l.ctwaClid, imported: l.imported, origin: "Anúncio" }));
@@ -47,14 +58,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const contactIds = units.map((u) => u.contactId);
   const [contacts, convs, msgs, tagRows, meta] = await Promise.all([
-    prisma.waContact.findMany({ where: { id: { in: contactIds } }, select: { id: true, name: true, displayName: true, waId: true, reportValid: true, reportInvalidReason: true, createdAt: true } }),
-    prisma.waConversation.findMany({ where: { contactId: { in: contactIds } }, select: { contactId: true, funnelStage: true } }),
-    contactIds.length ? prisma.waMessage.findMany({ where: { contactId: { in: contactIds }, direction: "in" }, select: { contactId: true, text: true, timestamp: true }, orderBy: { timestamp: "asc" } }) : Promise.resolve([]),
+    prisma.waContact.findMany({ where: { id: { in: contactIds } }, select: { id: true, name: true, displayName: true, waId: true, reportValid: true, reportInvalidReason: true, notes: true, createdAt: true } }),
+    prisma.waConversation.findMany({ where: { contactId: { in: contactIds } }, select: { contactId: true, funnelStage: true, outboundCount: true, firstResponseSec: true, lastMessageAt: true } }),
+    contactIds.length ? prisma.waMessage.findMany({ where: { contactId: { in: contactIds }, direction: "in" }, select: { contactId: true, text: true, timestamp: true }, orderBy: [{ timestamp: "asc" }, { id: "asc" }] }) : Promise.resolve([]),
     prisma.waContactTag.findMany({ where: { contactId: { in: contactIds } }, include: { tag: true } }),
     prisma.metaConnection.findUnique({ where: { clientId: id }, include: { insights: { select: { campaignName: true, adsetName: true } } } }).catch(() => null),
   ]);
   const contactById = new Map(contacts.map((c) => [c.id, c]));
-  const stageBy = new Map(convs.map((c) => [c.contactId, c.funnelStage]));
+  const convBy = new Map(convs.map((c) => [c.contactId, c]));
   const firstMsg = new Map<string, string>(), msgCount = new Map<string, number>(), prevBefore = new Map<string, Date>(), firstIn = new Map<string, Date>();
   for (const m of msgs) {
     if (!firstMsg.has(m.contactId) && m.text) firstMsg.set(m.contactId, m.text);
@@ -71,25 +82,54 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return "";
   };
 
-  const header = ["Nome", "Telefone", "Origem", "Campanha", "Anúncio", "Entrada", "Primeira mensagem", "Nº mensagens", "Funil", "Tags", "Situação", "Válido p/ relatório", "Motivo", "Importado"];
-  const rows = units.map((u) => {
+  // Aplica filtros sobre as unidades enriquecidas.
+  const filtered = units.filter((u) => {
     const c = contactById.get(u.contactId);
+    const campaign = resolveCampaign(u.adModel ?? u.adTitle);
+    const adName = u.adModel ?? u.adTitle ?? "";
+    const tags = tagsBy.get(u.contactId) ?? [];
+    const stage = convBy.get(u.contactId)?.funnelStage ?? "";
+    const valid = c?.reportValid !== false;
+    if (fOrigin === "ad" && u.origin !== "Anúncio") return false;
+    if (fOrigin === "organic" && u.origin !== "Orgânico") return false;
+    if (fCampaign && campaign !== fCampaign) return false;
+    if (fAd && adName !== fAd) return false;
+    if (fStage) { if (fStage === "__none__" ? stage : stage !== fStage) return false; }
+    if (fValid === "validos" && !valid) return false;
+    if (fValid === "invalidos" && valid) return false;
+    if (fTag && !tags.includes(fTag)) return false;
+    if (fQ) {
+      const hay = `${c?.displayName ?? ""} ${c?.name ?? ""} ${u.contactId} ${firstMsg.get(u.contactId) ?? ""} ${adName} ${campaign} ${tags.join(" ")}`.toLowerCase();
+      if (!hay.includes(fQ)) return false;
+    }
+    return true;
+  });
+
+  const header = ["Nome interno", "Nome WhatsApp", "Telefone", "Origem", "Campanha", "Anúncio", "Data de entrada", "Primeira mensagem", "Última mensagem", "Msgs do lead", "Msgs da loja", "Tempo 1ª resposta", "Funil", "Tags", "Situação", "Válido p/ relatório", "Motivo", "Notas", "Importado"];
+  const rows = filtered.map((u) => {
+    const c = contactById.get(u.contactId);
+    const cv = convBy.get(u.contactId);
     const badge = deriveBadge({ createdAt: c?.createdAt ?? u.enteredAt, periodStart: start, prevActivityBefore: prevBefore.get(u.contactId) ?? null, firstActivityInPeriod: firstIn.get(u.contactId) ?? null });
     const fm = firstMsg.get(u.contactId);
     return [
-      c?.displayName || c?.name || "",
+      c?.displayName ?? "",
+      c?.name ?? "",
       `+${c?.waId ?? ""}`,
       u.origin,
       resolveCampaign(u.adModel ?? u.adTitle),
       u.adModel ?? u.adTitle ?? "",
       fmt(u.enteredAt),
       fm && !fm.startsWith("[") ? fm : (fm ? "[mídia]" : ""),
+      fmt(cv?.lastMessageAt),
       String(msgCount.get(u.contactId) ?? 0),
-      stageBy.get(u.contactId) ? (stageBy.get(u.contactId) as string) : "",
+      String(cv?.outboundCount ?? 0),
+      cv?.firstResponseSec != null ? fmtDuration(cv.firstResponseSec) : "",
+      cv?.funnelStage ?? "",
       (tagsBy.get(u.contactId) ?? []).join(", "),
       BADGE_LABEL[badge],
       c?.reportValid === false ? "Não" : "Sim",
       c?.reportInvalidReason ?? "",
+      c?.notes ?? "",
       u.imported ? "Sim" : "Não",
     ].map(csvCell).join(";");
   });

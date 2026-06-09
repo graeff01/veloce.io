@@ -538,6 +538,7 @@ model WaMessage {
   @@unique([connectionId, waMessageId])
   @@index([connectionId, timestamp])
   @@index([contactId, timestamp])
+  @@index([connectionId, direction, timestamp])
 }
 
 // Lead de anúncio: criado quando a 1ª mensagem traz o "referral" (Click-to-WhatsApp).

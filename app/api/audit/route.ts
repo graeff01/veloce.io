@@ -62,31 +62,41 @@ export async function GET(req: Request) {
 
   const contactIds = leads.map((l) => l.contactId);
 
-  // Funil (manual) por contato.
+  // Conversa: funil + contadores + SLA (tempo até 1ª resposta da loja).
   const convs = contactIds.length
     ? await prisma.waConversation.findMany({
         where: { contactId: { in: contactIds } },
-        select: { contactId: true, funnelStage: true },
+        select: { contactId: true, funnelStage: true, outboundCount: true, firstResponseSec: true, lastMessageAt: true },
       })
     : [];
   const stageByContact = new Map(convs.map((c) => [c.contactId, c.funnelStage]));
+  const convByContact = new Map(convs.map((c) => [c.contactId, c]));
 
-  // 1ª mensagem do lead + total de mensagens recebidas (só inbound — é o que temos).
+  // 1ª mensagem do lead + total de mensagens recebidas + flags de mídia.
   const msgs = contactIds.length
     ? await prisma.waMessage.findMany({
         where: { contactId: { in: contactIds }, direction: "in" },
         select: { contactId: true, text: true, type: true, timestamp: true },
-        orderBy: { timestamp: "asc" },
+        orderBy: [{ timestamp: "asc" }, { id: "asc" }],
       })
     : [];
   const firstMsgByContact = new Map<string, { text: string | null; type: string }>();
   const msgCountByContact = new Map<string, number>();
+  const mediaByContact = new Map<string, { media: boolean; audio: boolean; image: boolean }>();
   // Para o badge: última atividade ANTES do período + 1ª DENTRO do período.
   const prevBefore = new Map<string, Date>();
   const firstInPeriod = new Map<string, Date>();
+  const MEDIA = new Set(["image", "sticker", "audio", "video", "document"]);
   for (const m of msgs) {
     if (!firstMsgByContact.has(m.contactId)) firstMsgByContact.set(m.contactId, { text: m.text, type: m.type });
     msgCountByContact.set(m.contactId, (msgCountByContact.get(m.contactId) ?? 0) + 1);
+    if (MEDIA.has(m.type)) {
+      const f = mediaByContact.get(m.contactId) ?? { media: false, audio: false, image: false };
+      f.media = true;
+      if (m.type === "audio") f.audio = true;
+      if (m.type === "image") f.image = true;
+      mediaByContact.set(m.contactId, f);
+    }
     if (m.timestamp < start) {
       const cur = prevBefore.get(m.contactId);
       if (!cur || m.timestamp > cur) prevBefore.set(m.contactId, m.timestamp);
@@ -156,6 +166,12 @@ export async function GET(req: Request) {
       funnelStage: stageByContact.get(l.contactId) ?? null,
       firstMessage: firstMsgByContact.get(l.contactId) ?? null,
       messageCount: msgCountByContact.get(l.contactId) ?? 0,
+      storeMessages: convByContact.get(l.contactId)?.outboundCount ?? 0,
+      firstResponseSec: convByContact.get(l.contactId)?.firstResponseSec ?? null,
+      lastMessageAt: convByContact.get(l.contactId)?.lastMessageAt ?? null,
+      hasMedia: mediaByContact.get(l.contactId)?.media ?? false,
+      hasAudio: mediaByContact.get(l.contactId)?.audio ?? false,
+      hasImage: mediaByContact.get(l.contactId)?.image ?? false,
       imported: l.imported,
       reportValid: c?.reportValid ?? true,
       reportInvalidReason: c?.reportInvalidReason ?? null,

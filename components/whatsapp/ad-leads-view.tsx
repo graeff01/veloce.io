@@ -6,7 +6,7 @@ import {
   X, Phone, Mic, Image, FileText, Video, ChevronRight,
   ShieldCheck, AlertCircle, Download,
 } from "lucide-react";
-import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
+import { FUNNEL_LABELS } from "@/lib/wa-format";
 import type { LeadBadge } from "@/lib/wa-leads";
 import { LeadDetails } from "@/components/whatsapp/lead-details";
 import { StatusBadge, TagChip } from "@/components/whatsapp/primitives/lead-badges";
@@ -24,6 +24,10 @@ interface AdLead {
   reportValid?: boolean;
   tags?: { id: string; name: string; color: string }[];
   badge?: LeadBadge;
+  storeMessages?: number;
+  firstResponseSec?: number | null;
+  lastMessageAt?: string | null;
+  hasMedia?: boolean; hasAudio?: boolean; hasImage?: boolean;
 }
 interface AdGroup { adTitle: string; campaignName: string | null; total: number; lastEnteredAt: string | null; negociacao: number; convertido: number }
 interface CampaignGroup { name: string; total: number; ads: number; negociacao: number; convertido: number }
@@ -33,7 +37,17 @@ interface AuditData {
   ads: AdGroup[];
   campaigns: CampaignGroup[];
 }
-type Tab = "todos" | "campanhas" | "anuncios" | "validacao";
+type Tab = "todos" | "validos" | "invalidos" | "semresposta" | "campanhas" | "anuncios" | "validacao";
+
+// Tempo de resposta legível.
+function fmtResp(sec: number | null | undefined): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h${m % 60 ? ` ${m % 60}min` : ""}` : `${Math.floor(h / 24)}d`;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STAGE_COLORS: Record<string, string> = {
@@ -126,20 +140,32 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
   const [adFilter, setAdFilter] = useState(sp0.get("anuncio") ?? "");
   const [stageFilter, setStageFilter] = useState(sp0.get("funil") ?? "");
   const [validFilter, setValidFilter] = useState(sp0.get("valido") ?? "");
+  const [tagFilter, setTagFilter] = useState(sp0.get("tag") ?? "");
+  const [mediaFilter, setMediaFilter] = useState(sp0.get("midia") ?? "");
+  const [replyFilter, setReplyFilter] = useState(sp0.get("resposta") ?? "");
   const [selected, setSelected] = useState<AdLead | null>(null);
 
-  // Sincroniza filtros → URL sem disparar navegação do Next.
-  useEffect(() => {
+  // Query string com os filtros ativos (usada na URL e no export CSV).
+  const filterQS = useMemo(() => {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (campaignFilter) sp.set("campanha", campaignFilter);
     if (adFilter) sp.set("anuncio", adFilter);
     if (stageFilter) sp.set("funil", stageFilter);
     if (validFilter) sp.set("valido", validFilter);
+    if (tagFilter) sp.set("tag", tagFilter);
+    if (mediaFilter) sp.set("midia", mediaFilter);
+    if (replyFilter) sp.set("resposta", replyFilter);
+    return sp;
+  }, [q, campaignFilter, adFilter, stageFilter, validFilter, tagFilter, mediaFilter, replyFilter]);
+
+  // Sincroniza filtros → URL sem disparar navegação do Next.
+  useEffect(() => {
+    const sp = new URLSearchParams(filterQS);
     if (tab !== "todos") sp.set("aba", tab);
     const qs = sp.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [q, campaignFilter, adFilter, stageFilter, validFilter, tab]);
+  }, [filterQS, tab]);
 
   useEffect(() => {
     let active = true;
@@ -168,10 +194,16 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setData(d); }).catch(() => {});
   }, [clientId, year, month]);
 
-  const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); setValidFilter(""); };
-  const hasFilters = q || campaignFilter || adFilter || stageFilter || validFilter;
+  const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); setValidFilter(""); setTagFilter(""); setMediaFilter(""); setReplyFilter(""); };
+  const hasFilters = q || campaignFilter || adFilter || stageFilter || validFilter || tagFilter || mediaFilter || replyFilter;
 
   const leads = data?.leads ?? [];
+  // Tags disponíveis no período (para o filtro).
+  const allTagNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of leads) for (const t of l.tags ?? []) s.add(t.name);
+    return [...s].sort();
+  }, [leads]);
   const filtered = useMemo(() => {
     return leads.filter((l) => {
       if (campaignFilter && (l.campaignName ?? "Sem campanha identificada") !== campaignFilter) return false;
@@ -181,6 +213,12 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       }
       if (validFilter === "validos" && l.reportValid === false) return false;
       if (validFilter === "invalidos" && l.reportValid !== false) return false;
+      if (tagFilter && !(l.tags ?? []).some((t) => t.name === tagFilter)) return false;
+      if (mediaFilter === "midia" && !l.hasMedia) return false;
+      if (mediaFilter === "audio" && !l.hasAudio) return false;
+      if (mediaFilter === "imagem" && !l.hasImage) return false;
+      if (replyFilter === "respondido" && !(l.storeMessages && l.storeMessages > 0)) return false;
+      if (replyFilter === "semresposta" && l.storeMessages && l.storeMessages > 0) return false;
       const term = q.trim().toLowerCase();
       if (term) {
         const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""} ${(l.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
@@ -188,12 +226,22 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       }
       return true;
     });
-  }, [leads, q, campaignFilter, adFilter, stageFilter, validFilter]);
+  }, [leads, q, campaignFilter, adFilter, stageFilter, validFilter, tagFilter, mediaFilter, replyFilter]);
 
   // Validação: leads com dados incompletos para o relatório. Importados do Kommo
   // são categoria conhecida (histórico, sem mensagens próprias) → fora da validação.
   const validationLeads = useMemo(() => leads.filter((l) => !l.imported && (!l.adId || !l.campaignName || !l.adTitle || l.messageCount === 0)), [leads]);
   const importedCount = useMemo(() => leads.filter((l) => l.imported).length, [leads]);
+  const invalidLeads = useMemo(() => leads.filter((l) => l.reportValid === false), [leads]);
+  const noReplyLeads = useMemo(() => leads.filter((l) => !(l.storeMessages && l.storeMessages > 0)), [leads]);
+
+  // Linhas exibidas conforme a aba ativa (sobre o conjunto já filtrado).
+  const tabRows = useMemo(() => {
+    if (tab === "validos") return filtered.filter((l) => l.reportValid !== false);
+    if (tab === "invalidos") return filtered.filter((l) => l.reportValid === false);
+    if (tab === "semresposta") return filtered.filter((l) => !(l.storeMessages && l.storeMessages > 0));
+    return filtered;
+  }, [filtered, tab]);
 
   const negociacao = leads.filter((l) => l.funnelStage === "negociacao").length;
   const convertido = leads.filter((l) => l.funnelStage === "convertido").length;
@@ -222,9 +270,9 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
 
         {/* ── Toolbar ── */}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <a href={`/api/clients/${clientId}/whatsapp/export?year=${year}&month=${month}&type=ads`} download
+          <a href={`/api/clients/${clientId}/whatsapp/export?year=${year}&month=${month}&type=ads${filterQS.toString() ? `&${filterQS.toString()}` : ""}`} download
             style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>
-            <Download size={14} /> Exportar relatório (CSV)
+            <Download size={14} /> Exportar {hasFilters ? "(filtrado)" : "relatório"} CSV
           </a>
         </div>
 
@@ -248,16 +296,16 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
         )}
 
         {/* ── Tabs ── */}
-        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)" }}>
-          {([["todos","Todos",leads.length],["campanhas","Campanhas",data.campaigns.length],["anuncios","Anúncios",data.ads.length],["validacao","Validação",validationLeads.length]] as const).map(([k, label, count]) => {
+        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", overflowX: "auto" }} className="adl-scroll">
+          {([["todos","Todos",leads.length],["validos","Válidos",leads.length - invalidLeads.length],["invalidos","Inválidos",invalidLeads.length],["semresposta","Sem resposta",noReplyLeads.length],["campanhas","Campanhas",data.campaigns.length],["anuncios","Anúncios",data.ads.length],["validacao","Dados incompletos",validationLeads.length]] as const).map(([k, label, count]) => {
             const active = tab === k;
-            const isAlert = k === "validacao" && count > 0;
+            const isAlert = (k === "validacao" || k === "invalidos") && count > 0;
             return (
               <button key={k} onClick={() => setTab(k)} style={{
-                padding: "9px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
+                padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
                 fontWeight: active ? 600 : 500, color: active ? "var(--text-primary)" : "var(--text-muted)",
                 borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1,
-                display: "flex", alignItems: "center", gap: 6,
+                display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flexShrink: 0,
               }}>
                 {label}
                 <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: isAlert ? "rgba(217,119,6,0.12)" : active ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--bg-elevated)", color: isAlert ? "#D97706" : active ? "var(--accent)" : "var(--text-muted)" }}>{count}</span>
@@ -266,12 +314,12 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
           })}
         </div>
 
-        {/* ── Filters (only on Todos) ── */}
-        {tab === "todos" && (
+        {/* ── Filters (abas de lista) ── */}
+        {(tab === "todos" || tab === "validos" || tab === "invalidos" || tab === "semresposta") && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "0 12px", flex: 1, minWidth: 240 }}>
               <Search size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar lead, telefone ou mensagem..." style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontSize: 13 }} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome, telefone, mensagem, tag..." style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontSize: 13 }} />
             </div>
             <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)} style={selectStyle}>
               <option value="">Campanha: todas</option>
@@ -285,6 +333,23 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
               <option value="">Funil: todos</option>
               {Object.keys(STAGE_COLORS).map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
               <option value="__none__">Sem etapa</option>
+            </select>
+            {allTagNames.length > 0 && (
+              <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={selectStyle}>
+                <option value="">Tag: todas</option>
+                {allTagNames.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            <select value={mediaFilter} onChange={(e) => setMediaFilter(e.target.value)} style={selectStyle}>
+              <option value="">Mídia: todas</option>
+              <option value="midia">Com mídia</option>
+              <option value="audio">Com áudio</option>
+              <option value="imagem">Com imagem</option>
+            </select>
+            <select value={replyFilter} onChange={(e) => setReplyFilter(e.target.value)} style={selectStyle}>
+              <option value="">Resposta: todas</option>
+              <option value="respondido">Respondidos</option>
+              <option value="semresposta">Sem resposta</option>
             </select>
             <select value={validFilter} onChange={(e) => setValidFilter(e.target.value)} style={selectStyle}>
               <option value="">Relatório: todos</option>
@@ -300,7 +365,7 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
         )}
 
         {/* ── Content ── */}
-        {tab === "todos" && <LeadsTable leads={filtered} onSelect={setSelected} />}
+        {(tab === "todos" || tab === "validos" || tab === "invalidos" || tab === "semresposta") && <LeadsTable leads={tabRows} onSelect={setSelected} />}
         {tab === "campanhas" && <CampaignsTable campaigns={data.campaigns} />}
         {tab === "anuncios" && <AdsTable ads={data.ads} />}
         {tab === "validacao" && <ValidationTable leads={validationLeads} all={leads} onSelect={setSelected} />}
@@ -318,15 +383,15 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
       <div className="adl-scroll" style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: 880 }}>
+        <div style={{ minWidth: 1020 }}>
           {/* header */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.6fr 1.8fr 1fr 1fr 40px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-            {["Lead","Origem","Primeira mensagem","Entrada","Funil",""].map((h, i) => (
+          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.5fr 1.5fr 0.9fr 1fr 0.9fr 40px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+            {["Lead","Origem","Primeira mensagem","Entrada","Resposta","Funil",""].map((h, i) => (
               <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</span>
             ))}
           </div>
           {leads.map((l) => (
-            <button key={l.id} className="adl-row" onClick={() => onSelect(l)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 1.6fr 1.8fr 1fr 1fr 40px", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--border)", cursor: "pointer", textAlign: "left", alignItems: "center" }}>
+            <button key={l.id} className="adl-row" onClick={() => onSelect(l)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 1.5fr 1.5fr 0.9fr 1fr 0.9fr 40px", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--border)", cursor: "pointer", textAlign: "left", alignItems: "center" }}>
               {/* Lead */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 <Avatar name={l.displayName ?? l.name} wa={l.phone} size={38} />
@@ -358,7 +423,20 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
               {/* Entrada */}
               <div>
                 <p style={{ fontSize: 12.5, color: "var(--text-primary)", margin: 0 }}>{fmtDate(l.enteredAt)}, {fmtTime(l.enteredAt)}</p>
-                <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>{timeAgo(l.enteredAt)}</p>
+                <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>{l.messageCount ?? 0} do lead{l.storeMessages ? ` · ${l.storeMessages} loja` : ""}</p>
+              </div>
+              {/* Resposta */}
+              <div>
+                {l.storeMessages && l.storeMessages > 0 ? (
+                  <>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: "#16A34A", margin: 0 }}>{l.firstResponseSec != null ? fmtResp(l.firstResponseSec) : "Respondido"}</p>
+                    <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>1ª resposta</p>
+                  </>
+                ) : l.imported ? (
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>—</span>
+                ) : (
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "#D97706", background: "rgba(217,119,6,0.1)", padding: "2px 8px", borderRadius: 99 }}>Sem resposta</span>
+                )}
               </div>
               {/* Funil */}
               <div><StageChip stage={l.funnelStage} /></div>
