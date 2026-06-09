@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2, Search, Megaphone, Users, Layers, Target, CheckCircle2,
   X, Phone, Mic, Image, FileText, Video, ChevronRight,
-  ShieldCheck, AlertCircle,
+  ShieldCheck, AlertCircle, Download,
 } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
 import type { LeadBadge } from "@/lib/wa-leads";
@@ -219,6 +219,14 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       `}</style>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+        {/* ── Toolbar ── */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <a href={`/api/clients/${clientId}/whatsapp/export?year=${year}&month=${month}&type=ads`} download
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>
+            <Download size={14} /> Exportar relatório (CSV)
+          </a>
+        </div>
 
         {/* ── Summary cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
