@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2, Search, Megaphone, Users, Layers, Target, CheckCircle2,
-  X, Phone, Calendar, Mic, Image, FileText, Video, ChevronRight,
-  ShieldCheck, AlertCircle, MessageSquare, Hash, ExternalLink, Clock,
+  X, Phone, Mic, Image, FileText, Video, ChevronRight,
+  ShieldCheck, AlertCircle,
 } from "lucide-react";
 import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
-import { MediaContent } from "@/components/whatsapp/wa-media";
-
-const MEDIA_TYPES = new Set(["image", "sticker", "audio", "video", "document"]);
+import type { LeadBadge } from "@/lib/wa-leads";
+import { LeadDetails } from "@/components/whatsapp/lead-details";
+import { StatusBadge, TagChip } from "@/components/whatsapp/primitives/lead-badges";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface FirstMsg { text: string | null; type: string }
@@ -20,6 +20,10 @@ interface AdLead {
   campaignName: string | null; funnelStage: string | null;
   firstMessage: FirstMsg | null; messageCount: number;
   imported?: boolean;
+  displayName?: string | null;
+  reportValid?: boolean;
+  tags?: { id: string; name: string; color: string }[];
+  badge?: LeadBadge;
 }
 interface AdGroup { adTitle: string; campaignName: string | null; total: number; lastEnteredAt: string | null; negociacao: number; convertido: number }
 interface CampaignGroup { name: string; total: number; ads: number; negociacao: number; convertido: number }
@@ -29,9 +33,6 @@ interface AuditData {
   ads: AdGroup[];
   campaigns: CampaignGroup[];
 }
-interface DetailMsg { id: string; text: string | null; direction: string; type: string; timestamp: string }
-interface Detail { items: DetailMsg[] }
-
 type Tab = "todos" | "campanhas" | "anuncios" | "validacao";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -54,14 +55,8 @@ function initials(name: string | null, wa: string) {
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-function dayLabel(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 function mediaIcon(type: string) {
   const map: Record<string, React.ReactNode> = {
@@ -144,6 +139,11 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
         .catch(() => {});
     }, 20000);
     return () => clearInterval(id);
+  }, [clientId, year, month]);
+
+  const reload = useCallback(() => {
+    fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setData(d); }).catch(() => {});
   }, [clientId, year, month]);
 
   const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); };
@@ -270,7 +270,7 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       </div>
 
       {/* ── Detail drawer ── */}
-      {selected && <LeadDetailDrawer clientId={clientId} lead={selected} onClose={() => setSelected(null)} />}
+      {selected && <LeadDetailDrawer clientId={clientId} lead={selected} onClose={() => setSelected(null)} onChanged={reload} />}
     </>
   );
 }
@@ -292,10 +292,17 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
             <button key={l.id} className="adl-row" onClick={() => onSelect(l)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 1.6fr 1.8fr 1fr 1fr 40px", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "var(--border)", cursor: "pointer", textAlign: "left", alignItems: "center" }}>
               {/* Lead */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <Avatar name={l.name} wa={l.phone} size={38} />
+                <Avatar name={l.displayName ?? l.name} wa={l.phone} size={38} />
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name ?? "Sem nome"}</p>
-                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0", display: "flex", alignItems: "center", gap: 3 }}><Phone size={9} /> +{l.phone}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.displayName ?? l.name ?? "Sem nome"}</span>
+                    <StatusBadge badge={l.badge} />
+                    {l.reportValid === false && <span style={{ fontSize: 9.5, fontWeight: 700, color: "#DC2626", background: "rgba(220,38,38,0.1)", padding: "1px 6px", borderRadius: 99, flexShrink: 0 }}>inválido</span>}
+                  </p>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Phone size={9} /> +{l.phone}</span>
+                    {l.tags && l.tags.length > 0 && l.tags.slice(0, 2).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                  </p>
                 </div>
               </div>
               {/* Origem */}
@@ -433,167 +440,16 @@ function ValCell({ ok }: { ok: boolean }) {
 }
 
 // ─── Detail drawer ────────────────────────────────────────────────────────────
-function LeadDetailDrawer({ clientId, lead, onClose }: { clientId: string; lead: AdLead; onClose: () => void }) {
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetch(`/api/clients/${clientId}/whatsapp/conversations/${lead.contactId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (active) { setDetail(d); setLoading(false); } })
-      .catch(() => active && setLoading(false));
-    return () => { active = false; };
-  }, [clientId, lead.contactId]);
-
-  const checks = lead.imported
-    ? [
-        { label: "Origem do anúncio (tag Kommo)", ok: !!lead.adTitle },
-        { label: "Importado do histórico Kommo", ok: true },
-        { label: "Conversa ao vivo no veloce.io", ok: lead.messageCount > 0 },
-      ]
-    : [
-        { label: "Referral capturado", ok: !!lead.ctwaClid || !!lead.adId },
-        { label: "Campanha identificada", ok: !!lead.campaignName },
-        { label: "Anúncio identificado", ok: !!lead.adTitle },
-        { label: "Mensagem recebida", ok: lead.messageCount > 0 },
-      ];
-  // Importado é histórico válido para o relatório, mesmo sem conversa ao vivo.
-  const allOk = lead.imported ? !!lead.adTitle : checks.every((c) => c.ok);
-
+function LeadDetailDrawer({ clientId, lead, onClose, onChanged }: { clientId: string; lead: AdLead; onClose: () => void; onChanged?: () => void }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", backdropFilter: "blur(2px)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} className="adl-scroll" style={{ width: "min(620px, 92vw)", height: "100%", background: "var(--bg-base)", boxShadow: "-8px 0 40px rgba(15,23,42,0.18)", overflowY: "auto", display: "flex", flexDirection: "column" }}>
-
-        {/* Header */}
-        <div style={{ position: "sticky", top: 0, zIndex: 2, padding: "18px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ display: "flex", gap: 14, minWidth: 0 }}>
-            <Avatar name={lead.name} wa={lead.phone} size={52} />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{lead.name ?? "Sem nome"}</p>
-              <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "3px 0 0", display: "flex", alignItems: "center", gap: 4 }}><Phone size={11} /> +{lead.phone}</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)", padding: "3px 9px", borderRadius: 99, display: "inline-flex", alignItems: "center", gap: 4 }}><Megaphone size={10} /> Lead de anúncio</span>
-                {lead.imported && <span style={{ fontSize: 11, fontWeight: 600, color: "#8B5CF6", background: "color-mix(in srgb, #8B5CF6 10%, transparent)", padding: "3px 9px", borderRadius: 99 }}>Importado do Kommo</span>}
-                <StageChip stage={lead.funnelStage} />
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><X size={16} /></button>
+        <div style={{ position: "sticky", top: 0, zIndex: 3, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Ficha do lead</span>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} /></button>
         </div>
-
-        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Origem */}
-          <DetailCard icon={<Megaphone size={14} color="var(--accent)" />} title="Origem do lead">
-            <DetailRow label="Anúncio" value={lead.adModel ?? lead.adTitle ?? "—"} strong />
-            {lead.adTitle && lead.adModel && lead.adTitle !== lead.adModel && <DetailRow label="Título do anúncio" value={lead.adTitle} />}
-            <DetailRow label="Campanha" value={lead.campaignName ?? "Não identificada"} />
-            <DetailRow label="Tipo de origem" value={lead.sourceType ?? "—"} />
-            <DetailRow label="ID do anúncio (Meta)" value={lead.adId ?? "—"} mono />
-            <DetailRow label="Entrada" value={fmtDateTime(lead.enteredAt)} />
-            {lead.sourceUrl && (
-              <div style={{ marginTop: 6 }}>
-                <a href={lead.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  Ver origem do clique <ExternalLink size={11} />
-                </a>
-              </div>
-            )}
-          </DetailCard>
-
-          {/* Validação para relatório */}
-          <DetailCard icon={<ShieldCheck size={14} color={allOk ? "#16A34A" : "#D97706"} />} title="Validação para relatório">
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {checks.map((c) => (
-                <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  {c.ok ? <CheckCircle2 size={16} style={{ color: "#16A34A", flexShrink: 0 }} /> : <AlertCircle size={16} style={{ color: "#D97706", flexShrink: 0 }} />}
-                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{c.label}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: allOk ? "color-mix(in srgb, #16A34A 8%, transparent)" : "color-mix(in srgb, #D97706 8%, transparent)", display: "flex", alignItems: "center", gap: 8 }}>
-              {allOk ? <CheckCircle2 size={15} color="#16A34A" /> : <AlertCircle size={15} color="#D97706" />}
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: allOk ? "#16A34A" : "#92600A" }}>
-                {allOk
-                  ? (lead.imported ? "Contabilizado no relatório (histórico importado)" : "Contabilizado no relatório mensal")
-                  : "Dados incompletos — conferir antes do fechamento"}
-              </span>
-            </div>
-          </DetailCard>
-
-          {/* Conversa */}
-          <DetailCard icon={<MessageSquare size={14} color="var(--text-secondary)" />} title={`Mensagens do lead${lead.messageCount ? ` · ${lead.messageCount}` : ""}`}>
-            {loading ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: 24 }}><Loader2 size={18} className="adl-spin" style={{ color: "var(--text-muted)" }} /></div>
-            ) : !detail || detail.items.length === 0 ? (
-              <p style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: 16 }}>Nenhuma mensagem registrada.</p>
-            ) : (
-              <Timeline items={detail.items} clientId={clientId} />
-            )}
-            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0", display: "flex", alignItems: "center", gap: 5, fontStyle: "italic" }}>
-              <Clock size={11} /> Mostramos apenas as mensagens recebidas. As respostas continuam no WhatsApp do vendedor.
-            </p>
-          </DetailCard>
-
-        </div>
+        <LeadDetails clientId={clientId} contactId={lead.contactId} badge={lead.badge} campaignName={lead.campaignName} onChanged={onChanged} showTimeline />
       </div>
-    </div>
-  );
-}
-
-function Timeline({ items, clientId }: { items: DetailMsg[]; clientId: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {items.map((m, i) => {
-        const incoming = m.direction !== "out";
-        const prev = i > 0 ? items[i - 1] : null;
-        const showDay = !prev || dayLabel(prev.timestamp) !== dayLabel(m.timestamp);
-        return (
-          <div key={m.id}>
-            {showDay && (
-              <div style={{ display: "flex", justifyContent: "center", margin: "12px 0 8px" }}>
-                <span style={{ fontSize: 11, color: "var(--text-secondary)", background: "var(--bg-elevated)", padding: "3px 12px", borderRadius: 99, fontWeight: 500 }}>{dayLabel(m.timestamp)}</span>
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: incoming ? "flex-start" : "flex-end", marginBottom: 4 }}>
-              <div style={{ maxWidth: "82%" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, justifyContent: incoming ? "flex-start" : "flex-end" }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: incoming ? "var(--accent)" : "#16A34A" }}>{incoming ? "Lead" : "Loja"}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{fmtTime(m.timestamp)}</span>
-                </div>
-                <div style={{ padding: "8px 12px", borderRadius: 12, borderTopLeftRadius: incoming ? 3 : 12, borderTopRightRadius: incoming ? 12 : 3, background: incoming ? "var(--bg-surface)" : "color-mix(in srgb, #16A34A 10%, var(--bg-surface))", border: `1px solid ${incoming ? "var(--border)" : "color-mix(in srgb, #16A34A 20%, var(--border))"}`, fontSize: 13, lineHeight: 1.45, color: "var(--text-primary)" }}>
-                  {MEDIA_TYPES.has(m.type) ? (
-                    <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} />
-                  ) : (
-                    <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function DetailCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-        {icon}
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-function DetailRow({ label, value, strong, mono }: { label: string; value: string; strong?: boolean; mono?: boolean }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
-      <span style={{ fontSize: 12.5, color: "var(--text-muted)", flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12.5, color: strong ? "var(--accent)" : "var(--text-primary)", fontWeight: strong ? 700 : 500, textAlign: "right", wordBreak: "break-word", fontFamily: mono ? "monospace" : undefined }}>{value}</span>
     </div>
   );
 }
