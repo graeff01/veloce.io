@@ -127,10 +127,11 @@ function PanelCard({ icon, title, children }: { icon: React.ReactNode; title: st
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function ConversationsView({ clientId, onFunnelChange }: { clientId: string; onFunnelChange?: () => void }) {
+  const sp0 = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const [list, setList] = useState<ConvRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
-  const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "ads">("all");
+  const [q, setQ] = useState(sp0.get("busca") ?? "");
+  const [filter, setFilter] = useState<"all" | "ads">(sp0.get("origem") === "ads" ? "ads" : "all");
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -147,6 +148,15 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadList(); }, [loadList]);
+
+  // Filtros → URL (refresh-safe, compartilhável).
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (q) sp.set("busca", q); else sp.delete("busca");
+    if (filter === "ads") sp.set("origem", "ads"); else sp.delete("origem");
+    const qs = sp.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, [q, filter]);
 
   // Atualização automática da lista (novos leads/mensagens) sem recarregar a página.
   useEffect(() => {

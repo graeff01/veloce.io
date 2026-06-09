@@ -109,19 +109,41 @@ function SummaryCard({ icon, label, value, accent }: { icon: React.ReactNode; la
   );
 }
 
+// Lê o estado inicial dos filtros da URL (refresh-safe, compartilhável).
+function initialParams() {
+  if (typeof window === "undefined") return new URLSearchParams();
+  return new URLSearchParams(window.location.search);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function AdLeadsView({ clientId, year, month }: { clientId: string; year: number; month: number }) {
+  const sp0 = initialParams();
   const [data, setData] = useState<AuditData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("todos");
-  const [q, setQ] = useState("");
-  const [campaignFilter, setCampaignFilter] = useState("");
-  const [adFilter, setAdFilter] = useState("");
-  const [stageFilter, setStageFilter] = useState("");
+  const [tab, setTab] = useState<Tab>((sp0.get("aba") as Tab) || "todos");
+  const [q, setQ] = useState(sp0.get("q") ?? "");
+  const [campaignFilter, setCampaignFilter] = useState(sp0.get("campanha") ?? "");
+  const [adFilter, setAdFilter] = useState(sp0.get("anuncio") ?? "");
+  const [stageFilter, setStageFilter] = useState(sp0.get("funil") ?? "");
+  const [validFilter, setValidFilter] = useState(sp0.get("valido") ?? "");
   const [selected, setSelected] = useState<AdLead | null>(null);
+
+  // Sincroniza filtros → URL sem disparar navegação do Next.
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (q) sp.set("q", q);
+    if (campaignFilter) sp.set("campanha", campaignFilter);
+    if (adFilter) sp.set("anuncio", adFilter);
+    if (stageFilter) sp.set("funil", stageFilter);
+    if (validFilter) sp.set("valido", validFilter);
+    if (tab !== "todos") sp.set("aba", tab);
+    const qs = sp.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, [q, campaignFilter, adFilter, stageFilter, validFilter, tab]);
 
   useEffect(() => {
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -146,8 +168,8 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setData(d); }).catch(() => {});
   }, [clientId, year, month]);
 
-  const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); };
-  const hasFilters = q || campaignFilter || adFilter || stageFilter;
+  const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); setValidFilter(""); };
+  const hasFilters = q || campaignFilter || adFilter || stageFilter || validFilter;
 
   const leads = data?.leads ?? [];
   const filtered = useMemo(() => {
@@ -157,14 +179,16 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       if (stageFilter) {
         if (stageFilter === "__none__" ? l.funnelStage : l.funnelStage !== stageFilter) return false;
       }
+      if (validFilter === "validos" && l.reportValid === false) return false;
+      if (validFilter === "invalidos" && l.reportValid !== false) return false;
       const term = q.trim().toLowerCase();
       if (term) {
-        const hay = `${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""}`.toLowerCase();
+        const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""} ${(l.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
     });
-  }, [leads, q, campaignFilter, adFilter, stageFilter]);
+  }, [leads, q, campaignFilter, adFilter, stageFilter, validFilter]);
 
   // Validação: leads com dados incompletos para o relatório. Importados do Kommo
   // são categoria conhecida (histórico, sem mensagens próprias) → fora da validação.
@@ -253,6 +277,11 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
               <option value="">Funil: todos</option>
               {Object.keys(STAGE_COLORS).map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
               <option value="__none__">Sem etapa</option>
+            </select>
+            <select value={validFilter} onChange={(e) => setValidFilter(e.target.value)} style={selectStyle}>
+              <option value="">Relatório: todos</option>
+              <option value="validos">Válidos</option>
+              <option value="invalidos">Inválidos</option>
             </select>
             {hasFilters && (
               <button onClick={clearFilters} style={{ height: 38, padding: "0 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
