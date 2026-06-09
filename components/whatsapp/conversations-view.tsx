@@ -4,17 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Loader2, Phone, Megaphone, Check, CheckCheck,
   MessageSquare, Sparkles, X, ChevronRight, ChevronLeft,
-  Calendar, Mic, Image, FileText, Video, Tag, MoreHorizontal,
-  Clock, Hash,
+  Mic, Image, FileText, Video,
 } from "lucide-react";
-import { timeAgo, FUNNEL_LABELS } from "@/lib/wa-format";
+import { FUNNEL_LABELS } from "@/lib/wa-format";
+import type { LeadBadge } from "@/lib/wa-leads";
 import { MediaContent } from "@/components/whatsapp/wa-media";
+import { LeadDetails } from "@/components/whatsapp/lead-details";
+import { StatusBadge, TagChip } from "@/components/whatsapp/primitives/lead-badges";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ConvRow {
-  contactId: string; waId: string; name: string | null;
+  contactId: string; waId: string; name: string | null; displayName: string | null;
   lastMessageAt: string | null; lastText: string | null; lastDirection: string | null;
   fromAd: boolean; adTitle: string | null;
+  reportValid: boolean; tags: { id: string; name: string; color: string }[]; badge: LeadBadge;
 }
 interface Msg {
   id: string; text: string | null; direction: string; type: string;
@@ -79,25 +82,6 @@ function mediaLabel(type: string) {
   };
   return map[type] ?? type;
 }
-function computeStats(items: Msg[]) {
-  const inbound = items.filter((m) => m.direction !== "out").length;
-  const outbound = items.filter((m) => m.direction === "out").length;
-  let firstResponseMs: number | null = null;
-  const firstIn = items.find((m) => m.direction !== "out");
-  if (firstIn) {
-    const firstOut = items.find((m) => m.direction === "out" && new Date(m.timestamp) > new Date(firstIn.timestamp));
-    if (firstOut) firstResponseMs = new Date(firstOut.timestamp).getTime() - new Date(firstIn.timestamp).getTime();
-  }
-  return { inbound, outbound, firstResponseMs };
-}
-function fmtMs(ms: number | null) {
-  if (ms === null) return "—";
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}min`;
-  return `${Math.floor(m / 60)}h ${m % 60}min`;
-}
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 function SkeletonConv() {
@@ -140,14 +124,6 @@ function PanelCard({ icon, title, children }: { icon: React.ReactNode; title: st
   );
 }
 
-function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
-      <span style={{ fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12.5, color: accent ?? "var(--text-primary)", textAlign: "right", wordBreak: "break-word", fontWeight: accent ? 600 : 400 }}>{value}</span>
-    </div>
-  );
-}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function ConversationsView({ clientId, onFunnelChange }: { clientId: string; onFunnelChange?: () => void }) {
@@ -169,6 +145,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     setLoadingList(false);
   }, [clientId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadList(); }, [loadList]);
 
   // Atualização automática da lista (novos leads/mensagens) sem recarregar a página.
@@ -192,6 +169,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingDetail(true); setDetail(null); setAi(null);
     fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -235,7 +213,6 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   }, [list, q, filter]);
 
   const selectedConv = list.find((c) => c.contactId === selected);
-  const stats = detail ? computeStats(detail.items) : null;
 
   return (
     <>
@@ -315,11 +292,12 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                     borderBottom: "1px solid var(--border)",
                     borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
                   }}>
-                  <Avatar name={c.name} wa={c.waId} />
+                  <Avatar name={c.displayName ?? c.name} wa={c.waId} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {c.name ?? `+${c.waId}`}
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.displayName ?? c.name ?? `+${c.waId}`}</span>
+                        <StatusBadge badge={c.badge} />
                       </span>
                       <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, letterSpacing: "0.01em" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
@@ -329,12 +307,16 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                         {mIcon}
                         {c.lastText ? (isMedia ? mediaLabel(c.lastText.replace(/[\[\]]/g, "")) : c.lastText) : <span style={{ opacity: 0.5 }}>—</span>}
                       </span>
-                      {c.fromAd && (
-                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 10%, transparent)", borderRadius: 99, padding: "2px 7px" }}>
-                          <Megaphone size={9} style={{ color: "var(--accent)" }} />
-                          <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>Meta</span>
-                        </span>
-                      )}
+                      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {c.tags?.slice(0, 1).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                        {c.reportValid === false && <span style={{ fontSize: 9.5, fontWeight: 700, color: "#DC2626", background: "rgba(220,38,38,0.1)", padding: "1px 6px", borderRadius: 99 }}>inválido</span>}
+                        {c.fromAd && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 10%, transparent)", borderRadius: 99, padding: "2px 7px" }}>
+                            <Megaphone size={9} style={{ color: "var(--accent)" }} />
+                            <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>Meta</span>
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
                 </button>
@@ -352,7 +334,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
               {/* Chat header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <Avatar name={detail?.contact.name ?? selectedConv?.name ?? null} wa={detail?.contact.waId ?? selectedConv?.waId ?? ""} size={40} />
+                  <Avatar name={selectedConv?.displayName ?? detail?.contact.name ?? selectedConv?.name ?? null} wa={detail?.contact.waId ?? selectedConv?.waId ?? ""} size={40} />
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {detail?.contact.name ?? selectedConv?.name ?? `+${detail?.contact.waId ?? ""}`}
@@ -488,54 +470,8 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
         {selected && rightOpen && (
           <div className="wa-scroll" style={{ width: 296, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--bg-elevated)", overflowY: "auto" }}>
 
-            {/* Contact card */}
-            <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "var(--bg-surface)" }}>
-              <Avatar name={detail?.contact.name ?? null} wa={detail?.contact.waId ?? ""} size={62} />
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
-                  {detail?.contact.name ?? `+${detail?.contact.waId ?? ""}`}
-                </p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  <Phone size={10} /> +{detail?.contact.waId}
-                </p>
-              </div>
-            </div>
-
-            {/* Funnel card */}
-            <PanelCard icon={<Hash size={13} />} title="Funil de atendimento">
-              <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
-                style={{ width: "100%", height: 36, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" }}>
-                <option value="">Sem etapa definida</option>
-                {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
-              </select>
-              {detail?.funnelStage && (
-                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", fontWeight: 600 }}>{FUNNEL_LABELS[detail.funnelStage]}</span>
-                </div>
-              )}
-            </PanelCard>
-
-            {/* Lead origin */}
-            {detail?.lead && (
-              <PanelCard icon={<Megaphone size={13} />} title="Origem · Meta Ads">
-                {detail.lead.adTitle && <InfoRow label="Anúncio" value={detail.lead.adTitle} accent="var(--accent)" />}
-                {detail.lead.sourceType && <InfoRow label="Tipo" value={detail.lead.sourceType} />}
-                {detail.lead.enteredAt && (
-                  <InfoRow label="Entrou em" value={new Date(detail.lead.enteredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} />
-                )}
-              </PanelCard>
-            )}
-
-            {/* Service stats */}
-            {stats && (
-              <PanelCard icon={<Clock size={13} />} title="Conversa">
-                <InfoRow label="Mensagens do lead" value={String(stats.inbound)} />
-                {detail?.items.length ? (
-                  <InfoRow label="Última mensagem" value={timeAgo(detail.items[detail.items.length - 1].timestamp)} />
-                ) : null}
-              </PanelCard>
-            )}
+            {/* Ficha de lead unificada (nome, tags, notas, funil, validação, origem) */}
+            <LeadDetails clientId={clientId} contactId={selected} badge={selectedConv?.badge} showTimeline={false} onChanged={loadList} />
 
             {/* AI card */}
             <PanelCard icon={<Sparkles size={13} />} title="Inteligência IA">
@@ -569,16 +505,6 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   </button>
                 </div>
               )}
-            </PanelCard>
-
-            {/* Tags placeholder */}
-            <PanelCard icon={<Tag size={13} />} title="Tags">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {["SUV","Financiamento","Troca","Test Drive","Urgente"].map((t) => (
-                  <span key={t} style={{ fontSize: 11.5, padding: "3px 10px", borderRadius: 99, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", cursor: "pointer" }}>{t}</span>
-                ))}
-              </div>
-              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>Tags em breve</p>
             </PanelCard>
 
           </div>
