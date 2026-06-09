@@ -7,6 +7,7 @@ export type WaEventType =
   | "first.response"
   | "status.changed"
   | "funnel.changed"
+  | "report.validity"
   | "integration.error";
 
 // Registra um evento. Nunca lança — observabilidade não pode quebrar o fluxo.

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
+import { deriveBadge } from "@/lib/wa-leads";
 
 // GET /api/audit
 //   sem clientId → clientes com WhatsApp conectado (para o seletor)
@@ -80,9 +81,36 @@ export async function GET(req: Request) {
     : [];
   const firstMsgByContact = new Map<string, { text: string | null; type: string }>();
   const msgCountByContact = new Map<string, number>();
+  // Para o badge: última atividade ANTES do período + 1ª DENTRO do período.
+  const prevBefore = new Map<string, Date>();
+  const firstInPeriod = new Map<string, Date>();
   for (const m of msgs) {
     if (!firstMsgByContact.has(m.contactId)) firstMsgByContact.set(m.contactId, { text: m.text, type: m.type });
     msgCountByContact.set(m.contactId, (msgCountByContact.get(m.contactId) ?? 0) + 1);
+    if (m.timestamp < start) {
+      const cur = prevBefore.get(m.contactId);
+      if (!cur || m.timestamp > cur) prevBefore.set(m.contactId, m.timestamp);
+    } else if (!firstInPeriod.has(m.contactId)) {
+      firstInPeriod.set(m.contactId, m.timestamp); // msgs asc → 1ª no período
+    }
+  }
+
+  // Dados do contato (nome interno, validade) + tags.
+  const contacts = contactIds.length
+    ? await prisma.waContact.findMany({
+        where: { id: { in: contactIds } },
+        select: { id: true, createdAt: true, displayName: true, reportValid: true, reportInvalidReason: true },
+      })
+    : [];
+  const contactById = new Map(contacts.map((c) => [c.id, c]));
+  const tagRows = contactIds.length
+    ? await prisma.waContactTag.findMany({ where: { contactId: { in: contactIds } }, include: { tag: true } })
+    : [];
+  const tagsByContact = new Map<string, { id: string; name: string; color: string }[]>();
+  for (const t of tagRows) {
+    const arr = tagsByContact.get(t.contactId) ?? [];
+    arr.push({ id: t.tag.id, name: t.tag.name, color: t.tag.color });
+    tagsByContact.set(t.contactId, arr);
   }
 
   // Campanha (best-effort): nome da campanha/adset do Meta que contém o modelo.
@@ -103,10 +131,18 @@ export async function GET(req: Request) {
 
   const richLeads = leads.map((l) => {
     const key = l.adModel ?? l.adTitle ?? null;
+    const c = contactById.get(l.contactId);
+    const badge = deriveBadge({
+      createdAt: c?.createdAt ?? l.enteredAt,
+      periodStart: start,
+      prevActivityBefore: prevBefore.get(l.contactId) ?? null,
+      firstActivityInPeriod: firstInPeriod.get(l.contactId) ?? null,
+    });
     return {
       id: l.id,
       contactId: l.contactId,
       name: l.name,
+      displayName: c?.displayName ?? null,
       phone: l.waId,
       enteredAt: l.enteredAt,
       adTitle: l.adTitle,
@@ -121,6 +157,10 @@ export async function GET(req: Request) {
       firstMessage: firstMsgByContact.get(l.contactId) ?? null,
       messageCount: msgCountByContact.get(l.contactId) ?? 0,
       imported: l.imported,
+      reportValid: c?.reportValid ?? true,
+      reportInvalidReason: c?.reportInvalidReason ?? null,
+      tags: tagsByContact.get(l.contactId) ?? [],
+      badge,
     };
   });
 
