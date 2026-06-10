@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { deriveBadge } from "@/lib/wa-leads";
+import { deriveBadge, canonicalAdName } from "@/lib/wa-leads";
 
 // GET /api/audit
 //   sem clientId → clientes com WhatsApp conectado (para o seletor)
@@ -14,15 +14,6 @@ import { deriveBadge } from "@/lib/wa-leads";
 
 function norm(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
-
-// Nome canônico do anúncio: usa o modelo detectado; senão, o título do anúncio
-// cortado no 1º separador (" - ", " | ", "—") → funde variações do mesmo carro.
-function canonicalAd(model: string | null, title: string | null): string {
-  if (model && model.trim()) return model.trim();
-  const t = (title ?? "").trim();
-  if (!t) return "Anúncio (sem título)";
-  return t.split(/\s+[-–—|]\s+/)[0].trim() || t;
 }
 
 export async function GET(req: Request) {
@@ -149,7 +140,7 @@ export async function GET(req: Request) {
   }
 
   const richLeads = leads.map((l) => {
-    const adName = canonicalAd(l.adModel, l.adTitle);
+    const adName = canonicalAdName(l.adModel, l.adTitle);
     const c = contactById.get(l.contactId);
     const badge = deriveBadge({
       createdAt: c?.createdAt ?? l.enteredAt,

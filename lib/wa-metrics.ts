@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { canonicalAdName } from "@/lib/wa-leads";
 
 // Janela de "encerramento por inatividade" e limiares de alerta (interno; nunca
 // afeta o WhatsApp da loja). Centralizado para fácil ajuste futuro.
@@ -123,11 +124,12 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   // Todos os contatos de anúncio do período (com ou sem conversa).
   const adCount = adContactIds.size;
 
-  // Agrupa por modelo de anúncio + conta conversões (funil = "convertido")
+  // Agrupa por anúncio canônico (funde variações do mesmo carro) + conta
+  // conversões (funil = "convertido").
   const modelByContact = new Map<string, string>();
   const byAdMap = new Map<string, { leads: number; converted: number }>();
   for (const l of adLeads) {
-    const key = l.adModel ?? l.adTitle ?? "Anúncio (sem título)";
+    const key = canonicalAdName(l.adModel, l.adTitle);
     modelByContact.set(l.contactId, key);
     const e = byAdMap.get(key) ?? { leads: 0, converted: 0 };
     e.leads++;
