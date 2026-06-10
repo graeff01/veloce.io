@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { LogOut, Moon, Sun } from "lucide-react";
+
+const PAGES = [
+  { href: "/portal", label: "Visão Geral" },
+  { href: "/portal/evolucao", label: "Evolução" },
+];
 
 // Chrome mínimo do portal: marca + tema + sair. Sem navegação interna — o
 // cliente vê tudo numa página. Mesma linguagem visual e mesmo toggle de tema
 // do Veloce.io (compartilha a chave "veloce-theme").
 export function PortalNav() {
   const router = useRouter();
+  const pathname = usePathname();
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -89,10 +96,35 @@ export function PortalNav() {
               Veloce
             </p>
             <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.4px", textTransform: "uppercase" }}>
-              Portal do Cliente
+              Centro de Performance
             </p>
           </div>
         </div>
+
+        {/* Navegação (2 páginas) */}
+        <nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {PAGES.map(({ href, label }) => {
+            const active = href === "/portal" ? pathname === "/portal" : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 9,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  color: active ? "var(--text-primary)" : "var(--text-muted)",
+                  background: active ? "var(--bg-hover)" : "transparent",
+                  transition: "color 150ms, background 150ms",
+                }}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button

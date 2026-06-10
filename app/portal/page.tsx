@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PortalNav } from "@/components/portal/portal-nav";
 import { LineChart } from "@/components/portal/line-chart";
-
-interface TopAd { title: string; total: number }
+import { ArrowRight, TrendingUp, TrendingDown } from "lucide-react";
 
 interface Resumo {
   clientName: string;
@@ -13,28 +13,26 @@ interface Resumo {
   updatedAt: string | null;
   connected: boolean;
   leads: number;
+  leadsPrev: number;
+  convertido: number;
+  convertidoPrev: number;
   responded: number;
   semResposta: number;
   responseRate: number; // 0..1
   avgFirstResponseSec: number | null;
-  fastestResponseSec: number | null;
-  mensagensRecebidas: number;
   negociacao: number;
-  convertido: number;
   investimento: number;
   cplReal: number | null;
-  origem: { anuncio: number; organico: number };
-  topAds: TopAd[];
   series: { date: string; leads: number }[];
 }
 
 const num: React.CSSProperties = { fontVariantNumeric: "tabular-nums" };
-const CHART_COLOR = "#6366F1"; // hex concreto (funciona nos dois temas)
+const CHART_COLOR = "#6366F1";
+const META_RESPOSTA_SEC = 30 * 60; // meta: 30 min
 
 function fmtMoney(v: number, decimals = 0): string {
   return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 }
-
 function fmtDuration(sec: number | null): string {
   if (sec == null) return "—";
   if (sec < 60) return `${Math.round(sec)}s`;
@@ -46,13 +44,14 @@ function fmtDuration(sec: number | null): string {
   const dd = Math.floor(h / 24);
   return `${dd} dia${dd > 1 ? "s" : ""}`;
 }
-
+function growth(cur: number, prev: number): number | null {
+  if (prev <= 0) return null;
+  return ((cur - prev) / prev) * 100;
+}
 function buildDailySeries(series: { date: string; leads: number }[]): { date: string; value: number }[] {
   const map = new Map(series.map((s) => [s.date, s.leads]));
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
+  const year = now.getFullYear(), month = now.getMonth(), today = now.getDate();
   const out: { date: string; value: number }[] = [];
   for (let day = 1; day <= today; day++) {
     const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -60,7 +59,6 @@ function buildDailySeries(series: { date: string; leads: number }[]): { date: st
   }
   return out;
 }
-
 function saudacao(): string {
   const h = new Date().getHours();
   if (h < 5) return "Boa noite";
@@ -69,242 +67,208 @@ function saudacao(): string {
   return "Boa noite";
 }
 
-export default function PortalDashboard() {
+export default function PortalHome() {
   const router = useRouter();
-  const [data, setData] = useState<Resumo | null>(null);
+  const [d, setD] = useState<Resumo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetch("/api/portal/v1/auth/me")
       .then((r) => { if (!r.ok) { router.replace("/portal/login"); return; } setAuthChecked(true); })
       .catch(() => router.replace("/portal/login"));
-
     fetch("/api/portal/v1/resumo")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: Resumo | null) => { if (d) setData(d); });
+      .then((x: Resumo | null) => { if (x) setD(x); });
   }, [router]);
 
-  if (!authChecked || !data) {
-    return <div><PortalNav /><Skeleton /></div>;
-  }
+  if (!authChecked || !d) return <div><PortalNav /><Skeleton /></div>;
 
-  const d = data;
   const taxa = Math.round(d.responseRate * 100);
-  const series = buildDailySeries(d.series);
   const hasData = d.leads > 0;
-  const pico = series.reduce((m, p) => (p.value > m.value ? p : m), series[0] ?? { date: "", value: 0 });
-  const topAds = d.topAds.filter((a) => a.total > 0);
-  const maxAd = topAds.length ? Math.max(...topAds.map((a) => a.total)) : 1;
+  const leadsGrowth = growth(d.leads, d.leadsPrev);
+  const series = buildDailySeries(d.series);
+
+  // Status de saúde (executivo, sem detalhe operacional)
+  const atendimentoOk = taxa >= 70;
+  const velocidadeOk = d.avgFirstResponseSec != null && d.avgFirstResponseSec <= META_RESPOSTA_SEC;
 
   return (
     <div>
       <PortalNav />
-
       <main
         className="portal-rise"
-        style={{
-          padding: "24px clamp(20px, 4vw, 48px) 36px",
-          maxWidth: 1720,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-        }}
+        style={{ padding: "32px clamp(20px, 4vw, 48px) 48px", display: "flex", flexDirection: "column", gap: 28 }}
       >
-        {/* ── Cabeçalho ── */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)", margin: 0 }}>
-              {saudacao()}, {d.clientName}
-            </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-              <span className="live-dot" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)" }} />
-              <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0, textTransform: "capitalize" }}>
-                {d.monthLabel} · atualizado em tempo real
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Resumo (faixa fina) ── */}
-        {hasData && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "13px 18px",
-              borderRadius: 12,
-              background: "var(--accent-soft)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
-            <p style={{ fontSize: 14, color: "var(--text-primary)", margin: 0, lineHeight: 1.5 }}>
-              Neste mês, <B>{d.leads}</B> {d.leads > 1 ? "pessoas entraram" : "pessoa entrou"} em contato e enviaram <B>{d.mensagensRecebidas}</B> mensagens.{" "}
-              <B>{taxa}%</B> receberam atendimento{d.avgFirstResponseSec != null && <>, com resposta em média de <B>{fmtDuration(d.avgFirstResponseSec)}</B></>}.
+        {/* ── HERO EXECUTIVO ── */}
+        <section>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)", margin: 0 }}>
+            {saudacao()}, {d.clientName}
+          </h1>
+          {hasData ? (
+            <p style={{ fontSize: 17, lineHeight: 1.7, color: "var(--text-secondary)", margin: "14px 0 0", maxWidth: 760 }}>
+              Em <B>{d.monthLabel}</B> você recebeu <B>{d.leads} oportunidades</B> através dos canais conectados.
+              {d.avgFirstResponseSec != null && <> Tempo médio de resposta: <B>{fmtDuration(d.avgFirstResponseSec)}</B>.</>}{" "}
+              <span style={{ color: atendimentoOk ? "var(--green)" : "var(--amber)", fontWeight: 600 }}>
+                {atendimentoOk ? "Atendimento saudável." : "Atendimento precisa de atenção."}
+              </span>{" "}
+              {leadsGrowth != null && (
+                <span style={{ color: leadsGrowth >= 0 ? "var(--green)" : "var(--text-muted)", fontWeight: 600 }}>
+                  {leadsGrowth >= 0 ? "Tendência positiva" : "Queda"} em relação ao período anterior.
+                </span>
+              )}
             </p>
+          ) : (
+            <p style={{ fontSize: 16, lineHeight: 1.7, color: "var(--text-muted)", margin: "14px 0 0", maxWidth: 680 }}>
+              Seus canais já estão conectados. Assim que as primeiras oportunidades chegarem, seu resumo aparece aqui.
+            </p>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
+            <span className="live-dot" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)" }} />
+            <span style={{ fontSize: 12.5, color: "var(--text-muted)", textTransform: "capitalize" }}>{d.monthLabel} · atualizado em tempo real</span>
           </div>
-        )}
-
-        {/* ── KPIs principais (resultado) ── */}
-        <section
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 14,
-            boxShadow: "var(--shadow-card)",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
-          }}
-        >
-          <Kpi value={String(d.leads)} label="Leads gerados" />
-          <Kpi value={d.investimento > 0 ? fmtMoney(d.investimento) : "—"} label="Investimento" divider />
-          <Kpi value={d.cplReal != null ? fmtMoney(d.cplReal, 2) : "—"} label="Custo por lead real" divider
-            tone={d.cplReal != null ? "var(--accent)" : undefined} />
-          <Kpi value={String(d.negociacao)} label="Em negociação" divider tone={d.negociacao > 0 ? "var(--amber)" : undefined} />
-          <Kpi value={String(d.convertido)} label="Conversões" divider tone={d.convertido > 0 ? "var(--green)" : undefined} />
         </section>
 
-        {/* ── Linha de detalhe (3 painéis) ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-          {/* Origem dos contatos */}
-          <Panel label="Origem dos contatos">
-            {hasData ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <OrigemRow color="var(--accent)" label="dos anúncios" value={d.origem.anuncio} total={d.leads} />
-                <OrigemRow color="var(--green)" label="orgânico / direto" value={d.origem.organico} total={d.leads} />
-              </div>
-            ) : <EmptyText>A origem de cada contato aparece aqui assim que os leads chegarem.</EmptyText>}
-          </Panel>
+        {/* ── BLOCO 1 — RESULTADOS ── */}
+        <section>
+          <SectionLabel>Resultados</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+            <BigCard
+              label="Oportunidades"
+              value={String(d.leads)}
+              footer={leadsGrowth != null
+                ? <Delta v={leadsGrowth} suffix="vs. período anterior" />
+                : <Muted>sem base de comparação</Muted>}
+            />
+            <BigCard
+              label="Investimento"
+              value={d.investimento > 0 ? fmtMoney(d.investimento) : "Dado indisponível"}
+              dim={d.investimento <= 0}
+              footer={<Muted>{d.investimento > 0 ? "via Meta Ads" : "conecte os anúncios"}</Muted>}
+            />
+            <BigCard
+              label="Custo por oportunidade"
+              value={d.cplReal != null ? fmtMoney(d.cplReal, 2) : "Dado indisponível"}
+              dim={d.cplReal == null}
+              accent
+              footer={<Muted>investimento ÷ leads de anúncio</Muted>}
+            />
+            <BigCard
+              label="Conversões"
+              value={String(d.convertido)}
+              footer={growth(d.convertido, d.convertidoPrev) != null
+                ? <Delta v={growth(d.convertido, d.convertidoPrev)!} suffix="vs. período anterior" />
+                : <Muted>negócios fechados</Muted>}
+            />
+          </div>
+        </section>
 
-          {/* Atendimento */}
-          <Panel label="Atendimento">
-            {hasData ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-                <StatRow label="Taxa de atendimento" value={`${taxa}%`} tone={taxa >= 80 ? "var(--green)" : taxa >= 50 ? "var(--amber)" : "var(--red)"} />
-                <StatRow label="Tempo médio de resposta" value={fmtDuration(d.avgFirstResponseSec)} />
-                <StatRow label="Resposta mais rápida" value={fmtDuration(d.fastestResponseSec)} tone="var(--green)" />
-                <StatRow label="Ainda sem resposta" value={String(d.semResposta)} tone={d.semResposta > 0 ? "var(--amber)" : "var(--text-primary)"} />
-              </div>
-            ) : <EmptyText>A velocidade e a cobertura do atendimento aparecem aqui.</EmptyText>}
-          </Panel>
+        {/* ── BLOCO 2 — SAÚDE DA OPERAÇÃO ── */}
+        <section>
+          <SectionLabel>Saúde da operação</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+            <HealthCard
+              status={!hasData ? "muted" : atendimentoOk ? "good" : "warn"}
+              title={atendimentoOk ? "Atendimento saudável" : "Atendimento em atenção"}
+              detail={hasData ? `${taxa}% das oportunidades atendidas` : "Dado indisponível"}
+            />
+            <HealthCard
+              status={!hasData || d.avgFirstResponseSec == null ? "muted" : velocidadeOk ? "good" : "warn"}
+              title="Velocidade de resposta"
+              detail={d.avgFirstResponseSec != null ? `${fmtDuration(d.avgFirstResponseSec)} em média` : "Dado indisponível"}
+            />
+            <HealthCard
+              status={!hasData ? "muted" : d.semResposta > 0 ? "warn" : "good"}
+              title={d.semResposta > 0 ? "Atenção necessária" : "Tudo respondido"}
+              detail={hasData ? (d.semResposta > 0 ? `${d.semResposta} oportunidades sem retorno` : "Nenhuma oportunidade sem retorno") : "Dado indisponível"}
+            />
+          </div>
+        </section>
 
-          {/* O que mais traz contatos */}
-          <Panel label="O que mais traz contatos">
-            {topAds.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {topAds.map((a) => (
-                  <div key={a.title}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-                      <span style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                      <span style={{ ...num, fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flexShrink: 0 }}>{a.total}</span>
-                    </div>
-                    <div style={{ height: 5, borderRadius: 3, background: "var(--bg-elevated)", overflow: "hidden" }}>
-                      <div style={{ width: `${(a.total / maxAd) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 3 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : <EmptyText>Quando seus anúncios trouxerem contatos, os que mais convertem aparecem aqui.</EmptyText>}
-          </Panel>
-        </div>
-
-        {/* ── Evolução (gráfico único) ── */}
-        <Panel label="Leads recebidos ao longo do tempo">
-          {hasData && series.length > 1 ? (
-            <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-                <span style={{ ...num, fontSize: 20, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{d.leads}</span>
-                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-                  no mês{pico.value > 0 ? ` · pico de ${pico.value} em ${pico.date.slice(8)}/${pico.date.slice(5, 7)}` : ""}
-                </span>
-              </div>
-              <LineChart data={series} color={CHART_COLOR} height={150} showDates />
-            </div>
-          ) : <EmptyText>O histórico diário é construído automaticamente conforme novos contatos chegam.</EmptyText>}
-        </Panel>
+        {/* ── BLOCO 3 — EVOLUÇÃO (compacto) ── */}
+        <section>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <SectionLabel noMargin>Tendência de oportunidades</SectionLabel>
+            <Link href="/portal/evolucao" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}>
+              Ver evolução completa <ArrowRight size={13} />
+            </Link>
+          </div>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
+            {hasData && series.length > 1 ? (
+              <LineChart data={series} color={CHART_COLOR} height={120} showDates />
+            ) : (
+              <p style={{ fontSize: 13.5, color: "var(--text-muted)", margin: 0, padding: "28px 0", textAlign: "center" }}>
+                A tendência aparece conforme as oportunidades chegam.
+              </p>
+            )}
+          </div>
+        </section>
       </main>
     </div>
   );
 }
 
 /* ──────────────── Componentes ──────────────── */
-
-function Kpi({ value, label, tone, divider }: { value: string; label: string; tone?: string; divider?: boolean }) {
-  return (
-    <div style={{ padding: "18px 22px", borderLeft: divider ? "1px solid var(--border)" : "none" }}>
-      <p style={{ ...num, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1, color: tone ?? "var(--text-primary)" }}>{value}</p>
-      <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", marginTop: 9 }}>{label}</p>
-    </div>
-  );
-}
-
-function Panel({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <section style={{ display: "flex", flexDirection: "column" }}>
-      <h2 style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
-        {label}
-      </h2>
-      <div
-        style={{
-          flex: 1,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          boxShadow: "var(--shadow-card)",
-          padding: "20px 22px",
-        }}
-      >
-        {children}
-      </div>
-    </section>
-  );
-}
-
 function B({ children }: { children: React.ReactNode }) {
   return <strong style={{ fontWeight: 700, color: "var(--text-primary)" }}>{children}</strong>;
 }
-
-function StatRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Muted({ children }: { children: React.ReactNode }) {
+  return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{children}</span>;
+}
+function Delta({ v, suffix }: { v: number; suffix: string }) {
+  const up = v >= 0;
+  const color = up ? "var(--green)" : "var(--red)";
+  const Icon = up ? TrendingUp : TrendingDown;
   return (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-      <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
-      <span style={{ ...num, fontSize: 16, fontWeight: 700, color: tone ?? "var(--text-primary)" }}>{value}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color, fontWeight: 700, ...num }}>
+        <Icon size={12} />{Math.abs(v).toFixed(0)}%
+      </span>
+      <span style={{ color: "var(--text-muted)" }}>{suffix}</span>
+    </span>
+  );
+}
+function SectionLabel({ children, noMargin }: { children: React.ReactNode; noMargin?: boolean }) {
+  return (
+    <h2 style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", textTransform: "uppercase", margin: noMargin ? 0 : "0 0 12px" }}>
+      {children}
+    </h2>
+  );
+}
+function BigCard({ label, value, footer, accent, dim }: { label: string; value: string; footer?: React.ReactNode; accent?: boolean; dim?: boolean }) {
+  return (
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--shadow-card)", padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14, minHeight: 132 }}>
+      <p style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-muted)" }}>{label}</p>
+      <p style={{ ...num, fontSize: dim ? 18 : 36, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1, color: dim ? "var(--text-muted)" : accent ? "var(--accent)" : "var(--text-primary)", marginTop: "auto" }}>
+        {value}
+      </p>
+      <div style={{ minHeight: 16 }}>{footer}</div>
     </div>
   );
 }
-
-function OrigemRow({ color, label, value, total }: { color: string; label: string; value: number; total: number }) {
-  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+function HealthCard({ status, title, detail }: { status: "good" | "warn" | "muted"; title: string; detail: string }) {
+  const color = status === "good" ? "var(--green)" : status === "warn" ? "var(--amber)" : "var(--text-muted)";
+  const soft = status === "good" ? "var(--green-soft)" : status === "warn" ? "var(--amber-soft)" : "var(--bg-elevated)";
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
-        <span style={{ ...num, fontSize: 23, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{value}</span>
-        <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
-        <span style={{ ...num, marginLeft: "auto", fontSize: 12.5, fontWeight: 600, color }}>{pct}%</span>
-      </div>
-      <div style={{ height: 6, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 500ms ease-out" }} />
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--shadow-card)", padding: "20px 22px", display: "flex", alignItems: "flex-start", gap: 13 }}>
+      <span style={{ width: 11, height: 11, borderRadius: "50%", background: color, boxShadow: `0 0 0 4px ${soft}`, marginTop: 4, flexShrink: 0 }} />
+      <div>
+        <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>{title}</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>{detail}</p>
       </div>
     </div>
   );
 }
-
-function EmptyText({ children }: { children: React.ReactNode }) {
-  return <p style={{ fontSize: 13.5, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>{children}</p>;
-}
-
 function Skeleton() {
   return (
-    <div style={{ padding: "24px clamp(20px, 4vw, 48px)", maxWidth: 1720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ height: 52, width: 340, borderRadius: 10, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
-      <div style={{ height: 46, borderRadius: 12, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
-      <div style={{ height: 86, borderRadius: 14, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-        {[0, 1, 2].map((i) => <div key={i} style={{ height: 150, borderRadius: 14, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />)}
+    <div style={{ padding: "32px clamp(20px, 4vw, 48px)", display: "flex", flexDirection: "column", gap: 28 }}>
+      <div style={{ height: 80, width: "60%", borderRadius: 12, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        {[0, 1, 2, 3].map((i) => <div key={i} style={{ height: 132, borderRadius: 16, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />)}
       </div>
-      <div style={{ height: 210, borderRadius: 14, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        {[0, 1, 2].map((i) => <div key={i} style={{ height: 80, borderRadius: 16, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />)}
+      </div>
+      <div style={{ height: 170, borderRadius: 14, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} />
     </div>
   );
 }

@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePortalAuth, logPortalAccess } from "@/lib/portal-helpers";
 import { prisma } from "@/lib/prisma";
 
-type Period = "7d" | "30d" | "90d";
+// Evolução do portal — responde "estamos melhorando?".
+// Séries de leads, conversões, investimento e CPL ao longo do tempo, 100% de
+// dados reais: leads/conversões do WhatsApp (WaConversation), investimento do
+// MetaAdInsight (por ad_id, mesma fonte da atribuição). Sem mock, sem nome.
+type Period = "7d" | "30d" | "90d" | "12m";
 
-function periodDays(p: Period): number {
-  return p === "7d" ? 7 : p === "30d" ? 30 : 90;
+const VALID: Period[] = ["7d", "30d", "90d", "12m"];
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -14,78 +23,93 @@ export async function GET(req: NextRequest) {
   const { session } = auth;
 
   const url = new URL(req.url);
-  const rawPeriod = url.searchParams.get("periodo") ?? "30d";
-  const period: Period = ["7d", "30d", "90d"].includes(rawPeriod)
-    ? (rawPeriod as Period)
-    : "30d";
+  const raw = url.searchParams.get("periodo") ?? "30d";
+  const period: Period = VALID.includes(raw as Period) ? (raw as Period) : "30d";
+  const monthly = period === "12m";
 
-  const days = periodDays(period);
   const now = new Date();
-  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  let start: Date;
+  if (period === "12m") start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  else {
+    const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+  }
 
   const [waConn, metaConn] = await Promise.all([
-    prisma.waConnection.findUnique({ where: { clientId: session.clientId } }),
-    prisma.metaConnection.findUnique({ where: { clientId: session.clientId } }),
+    prisma.waConnection.findUnique({ where: { clientId: session.clientId }, select: { id: true } }),
+    prisma.metaConnection.findUnique({ where: { clientId: session.clientId }, select: { id: true } }),
   ]);
 
-  // Inicializar série diária
-  const leadsMap: Record<string, number> = {};
-  const spendMap: Record<string, number> = {};
-  for (let i = days - 1; i >= 0; i--) {
-    const k = new Date(now.getTime() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    leadsMap[k] = 0;
-    spendMap[k] = 0;
+  // Eixo de buckets (dia ou mês)
+  const buckets: string[] = [];
+  if (monthly) {
+    for (let i = 0; i < 12; i++) buckets.push(monthKey(new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)));
+  } else {
+    const cur = new Date(start);
+    while (cur <= now) { buckets.push(dayKey(cur)); cur.setDate(cur.getDate() + 1); }
+  }
+  const keyOf = (d: Date) => (monthly ? monthKey(d) : dayKey(d));
+
+  const leadsMap = new Map<string, number>();
+  const convMap = new Map<string, number>();
+  const spendMap = new Map<string, number>();
+  for (const b of buckets) { leadsMap.set(b, 0); convMap.set(b, 0); spendMap.set(b, 0); }
+
+  // Leads e conversões — WhatsApp (atribuídos pela data de entrada do lead)
+  if (waConn) {
+    const convs = await prisma.waConversation.findMany({
+      where: { connectionId: waConn.id, firstInboundAt: { gte: start } },
+      select: { firstInboundAt: true, funnelStage: true },
+    });
+    for (const c of convs) {
+      if (!c.firstInboundAt) continue;
+      const k = keyOf(c.firstInboundAt);
+      if (leadsMap.has(k)) {
+        leadsMap.set(k, (leadsMap.get(k) ?? 0) + 1);
+        if (c.funnelStage === "convertido") convMap.set(k, (convMap.get(k) ?? 0) + 1);
+      }
+    }
   }
 
-  // Leads por dia via WaConversation
-  const convs = await prisma.waConversation.findMany({
-    where: {
-      connectionId: waConn?.id ?? "",
-      firstInboundAt: { gte: start },
-    },
-    select: { firstInboundAt: true },
-  });
-  for (const c of convs) {
-    if (!c.firstInboundAt) continue;
-    const k = c.firstInboundAt.toISOString().slice(0, 10);
-    if (k in leadsMap) leadsMap[k]++;
+  // Investimento — MetaAdInsight (por ad_id, mesma fonte do CPL real)
+  let hasInvest = false;
+  if (metaConn) {
+    const ins = await prisma.metaAdInsight.findMany({
+      where: { connectionId: metaConn.id, date: { gte: start } },
+      select: { date: true, spend: true },
+    });
+    hasInvest = ins.length > 0;
+    for (const r of ins) {
+      const k = keyOf(r.date);
+      if (spendMap.has(k)) spendMap.set(k, (spendMap.get(k) ?? 0) + r.spend);
+    }
   }
 
-  // Investimento por dia via MetaInsight
-  const insights = await prisma.metaInsight.findMany({
-    where: {
-      connectionId: metaConn?.id ?? "",
-      dateStart: { gte: start },
-    },
-    select: { dateStart: true, spend: true },
-  });
-  for (const ins of insights) {
-    const k = ins.dateStart.toISOString().slice(0, 10);
-    if (k in spendMap) spendMap[k] += ins.spend;
-  }
-
-  // Montar série unificada
-  const series = Object.keys(leadsMap).map((date) => {
-    const leads = leadsMap[date] ?? 0;
-    const investimento = parseFloat((spendMap[date] ?? 0).toFixed(2));
-    const cpl = leads > 0 ? parseFloat((investimento / leads).toFixed(2)) : 0;
-    return { date, leads, investimento, cpl };
+  const series = buckets.map((b) => {
+    const leads = leadsMap.get(b) ?? 0;
+    const conversoes = convMap.get(b) ?? 0;
+    const investimento = parseFloat((spendMap.get(b) ?? 0).toFixed(2));
+    const cpl = leads > 0 && investimento > 0 ? parseFloat((investimento / leads).toFixed(2)) : 0;
+    return { date: b, leads, conversoes, investimento, cpl };
   });
 
-  // Totais
   const totalLeads = series.reduce((s, r) => s + r.leads, 0);
+  const totalConv = series.reduce((s, r) => s + r.conversoes, 0);
   const totalSpend = series.reduce((s, r) => s + r.investimento, 0);
-  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
 
   await logPortalAccess(session.clientId, session.credentialId, "VIEW_EVOLUCAO", req);
 
   return NextResponse.json({
     period,
+    granularity: monthly ? "month" : "day",
     series,
+    // flags p/ o front mostrar "Dado indisponível" em vez de inventar
+    hasInvestmentData: hasInvest,
     totais: {
       leads: totalLeads,
+      conversoes: totalConv,
       investimento: parseFloat(totalSpend.toFixed(2)),
-      cpl: parseFloat(avgCpl.toFixed(2)),
+      cpl: totalLeads > 0 && totalSpend > 0 ? parseFloat((totalSpend / totalLeads).toFixed(2)) : null,
     },
   });
 }

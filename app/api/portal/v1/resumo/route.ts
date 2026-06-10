@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  // Período anterior (mês passado) para o comparativo de tendência
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevEnd = start;
 
   const [client, conn, metaConn] = await Promise.all([
     prisma.client.findUnique({ where: { id: session.clientId }, select: { name: true } }),
@@ -37,7 +40,7 @@ export async function GET(req: NextRequest) {
       monthLabel,
       updatedAt: null,
       connected: false,
-      leads: 0, responded: 0, semResposta: 0, responseRate: 0,
+      leads: 0, leadsPrev: 0, convertidoPrev: 0, responded: 0, semResposta: 0, responseRate: 0,
       avgFirstResponseSec: null, fastestResponseSec: null, mensagensRecebidas: 0,
       negociacao: 0, convertido: 0,
       investimento: 0, cplReal: null,
@@ -46,9 +49,10 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Overview (operação/atendimento) + Atribuição real por ID (investimento/CPL).
-  const [ov, attr] = await Promise.all([
+  // Overview (operação/atendimento) + período anterior + Atribuição real por ID.
+  const [ov, ovPrev, attr] = await Promise.all([
     computeOverview(conn.id, start, end),
+    computeOverview(conn.id, prevStart, prevEnd),
     metaConn
       ? computeRealAttribution(metaConn.id, conn.id, start, end)
       : Promise.resolve(null),
@@ -60,6 +64,8 @@ export async function GET(req: NextRequest) {
     updatedAt: conn.lastEventAt?.toISOString() ?? null,
     connected: true,
     leads: ov.leads,
+    leadsPrev: ovPrev.leads, // mês anterior — comparativo de tendência
+    convertidoPrev: ovPrev.funnel.convertido,
     responded: ov.responded,
     semResposta: ov.leads - ov.responded,
     responseRate: ov.responseRate, // 0..1
