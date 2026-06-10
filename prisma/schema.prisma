@@ -93,6 +93,8 @@ model Client {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
+  portalEnabled     Boolean  @default(false)
+
   tasks             Task[]
   movements         Movement[]
   brains            Brain[]
@@ -109,6 +111,8 @@ model Client {
   catalogItems      CatalogItem[]
   knowledgeChunks   KnowledgeChunk[]
   winningCampaigns  WinningCampaign[]
+  portalCredentials CustomerPortalCredential[]
+  portalAccessLogs  PortalAccessLog[]
 }
 
 model Meeting {
@@ -879,4 +883,42 @@ model ExecutionLog {
   user   User    @relation(fields: [userId], references: [id])
   client Client? @relation(fields: [clientId], references: [id])
   task   Task?   @relation(fields: [taskId], references: [id])
+}
+
+// ── Portal do Cliente ─────────────────────────────────────────────────────────
+
+// Credencial de acesso ao portal (separada dos Users internos da agência).
+model CustomerPortalCredential {
+  id           String    @id @default(cuid())
+  clientId     String
+  email        String    @unique
+  passwordHash String
+  name         String?
+  role         String    @default("viewer") // viewer | manager
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  client Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  logs   PortalAccessLog[]
+
+  @@index([clientId])
+}
+
+// Auditoria de acesso ao portal (LGPD + segurança).
+model PortalAccessLog {
+  id           String    @id @default(cuid())
+  clientId     String
+  credentialId String?
+  action       String    // LOGIN_SUCCESS | LOGIN_FAILED | LOGOUT | VIEW_*
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+
+  client     Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  credential CustomerPortalCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([credentialId, createdAt])
 }
