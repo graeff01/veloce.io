@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePortalAuth, logPortalAccess } from "@/lib/portal-helpers";
 import { prisma } from "@/lib/prisma";
 import { computeOverview } from "@/lib/wa-metrics";
+import { computeRealAttribution } from "@/lib/meta-attribution";
 
 // Resumo executivo do portal.
 //
@@ -20,9 +21,10 @@ export async function GET(req: NextRequest) {
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const [client, conn] = await Promise.all([
+  const [client, conn, metaConn] = await Promise.all([
     prisma.client.findUnique({ where: { id: session.clientId }, select: { name: true } }),
     prisma.waConnection.findUnique({ where: { clientId: session.clientId } }),
+    prisma.metaConnection.findUnique({ where: { clientId: session.clientId }, select: { id: true } }),
   ]);
 
   const monthLabel = start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -35,22 +37,22 @@ export async function GET(req: NextRequest) {
       monthLabel,
       updatedAt: null,
       connected: false,
-      leads: 0,
-      responded: 0,
-      semResposta: 0,
-      responseRate: 0,
-      avgFirstResponseSec: null,
-      fastestResponseSec: null,
-      mensagensRecebidas: 0,
-      negociacao: 0,
-      convertido: 0,
+      leads: 0, responded: 0, semResposta: 0, responseRate: 0,
+      avgFirstResponseSec: null, fastestResponseSec: null, mensagensRecebidas: 0,
+      negociacao: 0, convertido: 0,
+      investimento: 0, cplReal: null,
       origem: { anuncio: 0, organico: 0 },
-      topAds: [],
-      series: [],
+      topAds: [], series: [],
     });
   }
 
-  const ov = await computeOverview(conn.id, start, end);
+  // Overview (operação/atendimento) + Atribuição real por ID (investimento/CPL).
+  const [ov, attr] = await Promise.all([
+    computeOverview(conn.id, start, end),
+    metaConn
+      ? computeRealAttribution(metaConn.id, conn.id, start, end)
+      : Promise.resolve(null),
+  ]);
 
   return NextResponse.json({
     clientName: client?.name ?? "",
@@ -66,8 +68,11 @@ export async function GET(req: NextRequest) {
     mensagensRecebidas: ov.messagesReceived,
     negociacao: ov.funnel.negociacao,
     convertido: ov.funnel.convertido,
+    // ── Atribuição REAL por ad_id (investimento e CPL real). Sem match por nome. ──
+    investimento: attr?.investimento ?? 0,
+    cplReal: attr?.cplReal ?? null,
     origem: { anuncio: ov.byOrigin.ad, organico: ov.byOrigin.organic },
-    // Anúncios que mais trouxeram contatos (valioso p/ concessionária: qual carro puxa)
+    // Anúncios que mais trouxeram contatos (nome canônico, fonte WhatsApp)
     topAds: ov.byAd.slice(0, 4).map((a) => ({ title: a.adTitle, total: a.total })),
     series: ov.series, // [{ date, leads }] — apenas dias com lead
   });

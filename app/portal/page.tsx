@@ -21,6 +21,8 @@ interface Resumo {
   mensagensRecebidas: number;
   negociacao: number;
   convertido: number;
+  investimento: number;
+  cplReal: number | null;
   origem: { anuncio: number; organico: number };
   topAds: TopAd[];
   series: { date: string; leads: number }[];
@@ -28,6 +30,10 @@ interface Resumo {
 
 const num: React.CSSProperties = { fontVariantNumeric: "tabular-nums" };
 const CHART_COLOR = "#6366F1"; // hex concreto (funciona nos dois temas)
+
+function fmtMoney(v: number, decimals = 0): string {
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
 
 function fmtDuration(sec: number | null): string {
   if (sec == null) return "—";
@@ -141,7 +147,7 @@ export default function PortalDashboard() {
           </div>
         )}
 
-        {/* ── KPIs principais ── */}
+        {/* ── KPIs principais (resultado) ── */}
         <section
           style={{
             background: "var(--bg-surface)",
@@ -149,15 +155,15 @@ export default function PortalDashboard() {
             borderRadius: 14,
             boxShadow: "var(--shadow-card)",
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
           }}
         >
-          <Kpi value={String(d.leads)} label="Leads recebidos" />
-          <Kpi value={String(d.mensagensRecebidas)} label="Mensagens recebidas" divider />
-          <Kpi value={hasData ? `${taxa}%` : "—"} label="Taxa de atendimento" divider
-            tone={hasData ? (taxa >= 80 ? "var(--green)" : taxa >= 50 ? "var(--amber)" : "var(--red)") : undefined} />
-          <Kpi value={fmtDuration(d.avgFirstResponseSec)} label="Tempo médio de resposta" divider
-            tone={d.avgFirstResponseSec != null && d.avgFirstResponseSec <= 1800 ? "var(--green)" : d.avgFirstResponseSec != null && d.avgFirstResponseSec > 3600 ? "var(--amber)" : undefined} />
+          <Kpi value={String(d.leads)} label="Leads gerados" />
+          <Kpi value={d.investimento > 0 ? fmtMoney(d.investimento) : "—"} label="Investimento" divider />
+          <Kpi value={d.cplReal != null ? fmtMoney(d.cplReal, 2) : "—"} label="Custo por lead real" divider
+            tone={d.cplReal != null ? "var(--accent)" : undefined} />
+          <Kpi value={String(d.negociacao)} label="Em negociação" divider tone={d.negociacao > 0 ? "var(--amber)" : undefined} />
+          <Kpi value={String(d.convertido)} label="Conversões" divider tone={d.convertido > 0 ? "var(--green)" : undefined} />
         </section>
 
         {/* ── Linha de detalhe (3 painéis) ── */}
@@ -176,9 +182,10 @@ export default function PortalDashboard() {
           <Panel label="Atendimento">
             {hasData ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-                <StatRow label="Receberam resposta" value={String(d.responded)} tone="var(--green)" />
+                <StatRow label="Taxa de atendimento" value={`${taxa}%`} tone={taxa >= 80 ? "var(--green)" : taxa >= 50 ? "var(--amber)" : "var(--red)"} />
+                <StatRow label="Tempo médio de resposta" value={fmtDuration(d.avgFirstResponseSec)} />
+                <StatRow label="Resposta mais rápida" value={fmtDuration(d.fastestResponseSec)} tone="var(--green)" />
                 <StatRow label="Ainda sem resposta" value={String(d.semResposta)} tone={d.semResposta > 0 ? "var(--amber)" : "var(--text-primary)"} />
-                <StatRow label="Resposta mais rápida" value={fmtDuration(d.fastestResponseSec)} />
               </div>
             ) : <EmptyText>A velocidade e a cobertura do atendimento aparecem aqui.</EmptyText>}
           </Panel>

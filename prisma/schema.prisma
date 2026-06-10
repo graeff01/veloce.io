@@ -413,11 +413,116 @@ model MetaConnection {
   accountName   String?
   currency      String?
   lastSyncAt    DateTime?
+  lastAdSyncAt  DateTime? // última sincronização da estrutura/insights por ad_id
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   client        Client    @relation(fields: [clientId], references: [id])
   insights      MetaInsight[]
+  // Estrutura dimensional por IDs oficiais (atribuição determinística)
+  campaigns     MetaCampaign[]
+  adsets        MetaAdSet[]
+  ads           MetaAd[]
+  creatives     MetaCreative[]
+  adInsights    MetaAdInsight[]
+}
+
+// ── Estrutura Meta dimensional (IDs oficiais) ────────────────────────────────
+// Espelho local da hierarquia Campaign → AdSet → Ad → Creative. Tudo chaveado
+// por (connectionId, <id oficial>) — atribuição NUNCA depende de nome e é imune
+// a renomeações. Vínculos entre dimensões são por ID oficial (soft, indexado),
+// não FK rígida — resiliente a sync parcial/fora de ordem.
+model MetaCampaign {
+  id           String   @id @default(cuid())
+  connectionId String
+  campaignId   String   // id oficial da Meta
+  name         String
+  objective    String?
+  status       String   // effective_status (ACTIVE | PAUSED | ...)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, campaignId])
+  @@index([connectionId])
+}
+
+model MetaAdSet {
+  id           String   @id @default(cuid())
+  connectionId String
+  adsetId      String   // id oficial
+  campaignId   String   // id oficial da campanha (join)
+  name         String
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, adsetId])
+  @@index([connectionId, campaignId])
+}
+
+model MetaAd {
+  id           String   @id @default(cuid())
+  connectionId String
+  adId         String   // id oficial — WaLead.adId casa aqui
+  adsetId      String   // id oficial do conjunto
+  campaignId   String   // id oficial da campanha
+  creativeId   String?  // id oficial do criativo
+  name         String
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, adId])
+  @@index([connectionId, campaignId])
+  @@index([connectionId, adsetId])
+  @@index([connectionId, creativeId])
+}
+
+model MetaCreative {
+  id           String   @id @default(cuid())
+  connectionId String
+  creativeId   String   // id oficial
+  name         String?
+  title        String?
+  body         String?
+  thumbnailUrl String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, creativeId])
+}
+
+// Insights diários por anúncio (level=ad, time_increment=1). Granularidade que
+// permite CPL real por ad_id e somas por qualquer recorte de período.
+model MetaAdInsight {
+  id           String   @id @default(cuid())
+  connectionId String
+  adId         String   // id oficial
+  date         DateTime // dia (UTC, 00:00)
+  spend        Float    @default(0)
+  impressions  Int      @default(0)
+  reach        Int      @default(0)
+  clicks       Int      @default(0)
+  ctr          Float    @default(0)
+  cpc          Float    @default(0)
+  cpm          Float    @default(0)
+  leads        Int      @default(0) // leads que a Meta reporta (modelado) — referência
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, adId, date])
+  @@index([connectionId, date])
+  @@index([connectionId, adId])
 }
 
 model MetaInsight {

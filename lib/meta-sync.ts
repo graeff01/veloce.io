@@ -1,0 +1,164 @@
+import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
+
+// ── Sync oficial da Meta Marketing API (por IDs) ─────────────────────────────
+// Espelha a estrutura (Campaign → AdSet → Ad → Creative) e os insights diários
+// em nível de ANÚNCIO para as tabelas dimensionais. Tudo por ID oficial — base
+// da atribuição determinística. Nenhuma lógica depende de nome.
+
+const GRAPH = "https://graph.facebook.com/v21.0";
+
+export class MetaTokenError extends Error {}
+export class MetaRateLimitError extends Error {}
+
+interface GraphPage<T> { data: T[]; paging?: { next?: string } }
+
+// GET paginado com tratamento de erro oficial da Meta (190 = token, 17/80004 = rate).
+async function graphGetAll<T>(url: string): Promise<T[]> {
+  const out: T[] = [];
+  let next: string | undefined = url;
+  let guard = 0;
+  while (next && guard++ < 50) {
+    const res = await fetch(next);
+    const json = (await res.json()) as GraphPage<T> & { error?: { code?: number; type?: string; message?: string } };
+    if (!res.ok || json.error) {
+      const err = json.error;
+      if (err?.code === 190 || err?.type === "OAuthException") {
+        throw new MetaTokenError(err?.message ?? "Token Meta expirado/revogado");
+      }
+      if (err?.code === 17 || err?.code === 80004 || err?.code === 4) {
+        throw new MetaRateLimitError(err?.message ?? "Rate limit da Meta atingido");
+      }
+      throw new Error(err?.message ?? "Erro na Graph API");
+    }
+    out.push(...(json.data ?? []));
+    next = json.paging?.next;
+  }
+  return out;
+}
+
+function getAction(actions: { action_type: string; value: string }[] | undefined, type: string): number {
+  if (!actions) return 0;
+  const f = actions.find((a) => a.action_type === type);
+  return f ? parseFloat(f.value) : 0;
+}
+
+interface CampaignRow { id: string; name: string; objective?: string; effective_status?: string }
+interface AdSetRow { id: string; name: string; effective_status?: string; campaign_id: string }
+interface AdRow { id: string; name: string; effective_status?: string; adset_id: string; campaign_id: string; creative?: { id: string } }
+interface CreativeRow { id: string; name?: string; title?: string; body?: string; thumbnail_url?: string }
+interface AdInsightRow {
+  ad_id: string; date_start: string;
+  spend?: string; impressions?: string; reach?: string; clicks?: string;
+  ctr?: string; cpc?: string; cpm?: string;
+  actions?: { action_type: string; value: string }[];
+}
+
+export interface MetaSyncResult {
+  campaigns: number; adsets: number; ads: number; creatives: number; insightDays: number;
+  period: { since: string; until: string };
+}
+
+// Sincroniza estrutura + insights diários (level=ad) de uma conexão Meta.
+export async function syncMetaAds(connectionId: string, since: string, until: string): Promise<MetaSyncResult> {
+  const conn = await prisma.metaConnection.findUnique({ where: { id: connectionId } });
+  if (!conn) throw new Error("Conexão Meta não encontrada");
+
+  const token = decryptSecret(conn.accessToken);
+  const acct = conn.adAccountId; // formato act_<id>
+  const auth = `access_token=${encodeURIComponent(token)}`;
+
+  // 1) Estrutura — sempre por ID oficial
+  const [campaigns, adsets, ads] = await Promise.all([
+    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status&limit=200&${auth}`),
+    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id&limit=200&${auth}`),
+    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,creative{id}&limit=300&${auth}`),
+  ]);
+
+  const creativeIds = [...new Set(ads.map((a) => a.creative?.id).filter((x): x is string => !!x))];
+  // Criativos: busca por id (em lotes pela própria conta) — best-effort
+  const creatives = creativeIds.length
+    ? await graphGetAll<CreativeRow>(`${GRAPH}/${acct}/adcreatives?fields=id,name,title,body,thumbnail_url&limit=300&${auth}`)
+    : [];
+
+  // 2) Insights diários em nível de anúncio
+  const insightFields = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,actions";
+  const timeRange = `{"since":"${since}","until":"${until}"}`;
+  const insights = await graphGetAll<AdInsightRow>(
+    `${GRAPH}/${acct}/insights?level=ad&fields=${insightFields}` +
+    `&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
+  );
+
+  // 3) Persistência (upsert por ID oficial — imune a renomeação)
+  const now = new Date();
+  for (const c of campaigns) {
+    await prisma.metaCampaign.upsert({
+      where: { connectionId_campaignId: { connectionId, campaignId: c.id } },
+      create: { connectionId, campaignId: c.id, name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN" },
+      update: { name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN", updatedAt: now },
+    });
+  }
+  for (const a of adsets) {
+    await prisma.metaAdSet.upsert({
+      where: { connectionId_adsetId: { connectionId, adsetId: a.id } },
+      create: { connectionId, adsetId: a.id, campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN" },
+      update: { campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
+    });
+  }
+  for (const cr of creatives) {
+    await prisma.metaCreative.upsert({
+      where: { connectionId_creativeId: { connectionId, creativeId: cr.id } },
+      create: { connectionId, creativeId: cr.id, name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null },
+      update: { name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null, updatedAt: now },
+    });
+  }
+  for (const a of ads) {
+    await prisma.metaAd.upsert({
+      where: { connectionId_adId: { connectionId, adId: a.id } },
+      create: { connectionId, adId: a.id, adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN" },
+      update: { adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
+    });
+  }
+  for (const ins of insights) {
+    const date = new Date(`${ins.date_start}T00:00:00.000Z`);
+    const leads = getAction(ins.actions, "onsite_conversion.total_messaging_connection")
+      || getAction(ins.actions, "onsite_conversion.messaging_conversation_started_7d")
+      || getAction(ins.actions, "lead");
+    await prisma.metaAdInsight.upsert({
+      where: { connectionId_adId_date: { connectionId, adId: ins.ad_id, date } },
+      create: {
+        connectionId, adId: ins.ad_id, date,
+        spend: parseFloat(ins.spend ?? "0"),
+        impressions: parseInt(ins.impressions ?? "0"),
+        reach: parseInt(ins.reach ?? "0"),
+        clicks: parseInt(ins.clicks ?? "0"),
+        ctr: parseFloat(ins.ctr ?? "0"),
+        cpc: parseFloat(ins.cpc ?? "0"),
+        cpm: parseFloat(ins.cpm ?? "0"),
+        leads: Math.round(leads),
+      },
+      update: {
+        spend: parseFloat(ins.spend ?? "0"),
+        impressions: parseInt(ins.impressions ?? "0"),
+        reach: parseInt(ins.reach ?? "0"),
+        clicks: parseInt(ins.clicks ?? "0"),
+        ctr: parseFloat(ins.ctr ?? "0"),
+        cpc: parseFloat(ins.cpc ?? "0"),
+        cpm: parseFloat(ins.cpm ?? "0"),
+        leads: Math.round(leads),
+        updatedAt: now,
+      },
+    });
+  }
+
+  await prisma.metaConnection.update({ where: { id: connectionId }, data: { lastAdSyncAt: now } });
+
+  return {
+    campaigns: campaigns.length,
+    adsets: adsets.length,
+    ads: ads.length,
+    creatives: creatives.length,
+    insightDays: insights.length,
+    period: { since, until },
+  };
+}
