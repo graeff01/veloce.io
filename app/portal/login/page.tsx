@@ -39,14 +39,13 @@ export default function PortalLogin() {
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "11px 14px",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "rgba(255,255,255,0.04)",
-    color: "rgba(255,255,255,0.92)",
+    borderRadius: "var(--radius-input)",
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+    color: "var(--text-primary)",
     fontSize: 14,
     outline: "none",
     boxSizing: "border-box",
-    transition: "border-color 150ms, box-shadow 150ms",
   };
 
   return (
@@ -58,18 +57,17 @@ export default function PortalLogin() {
         alignItems: "center",
         justifyContent: "center",
         padding: "24px 16px",
-        position: "relative",
       }}
     >
-      <div className="portal-rise" style={{ width: "100%", maxWidth: 400 }}>
+      <div className="portal-rise" style={{ width: "100%", maxWidth: 396 }}>
         {/* Marca */}
-        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 36, justifyContent: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 32, justifyContent: "center" }}>
           <div
             style={{
               width: 34,
               height: 34,
               borderRadius: 10,
-              background: "linear-gradient(135deg, #6366F1 0%, #818CF8 100%)",
+              background: "linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -77,17 +75,15 @@ export default function PortalLogin() {
               fontWeight: 800,
               color: "#fff",
               letterSpacing: "-0.5px",
-              boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+              boxShadow: "0 8px 22px rgba(79,70,229,0.28)",
             }}
           >
             V
           </div>
           <div style={{ lineHeight: 1.2 }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.3px" }}>
-              Veloce
-            </p>
-            <p style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-              Centro de Performance
+            <p style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.3px" }}>Veloce</p>
+            <p style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+              Portal do Cliente
             </p>
           </div>
         </div>
@@ -95,51 +91,37 @@ export default function PortalLogin() {
         {/* Card */}
         <div
           style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 18,
-            padding: "36px 34px",
-            boxShadow: "0 32px 80px rgba(0,0,0,0.45)",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-modal)",
+            padding: "34px 32px",
+            boxShadow: "var(--shadow-modal)",
           }}
         >
-          <h1 style={{ fontSize: 21, fontWeight: 700, color: "rgba(255,255,255,0.95)", marginBottom: 6, letterSpacing: "-0.3px" }}>
+          <h1 style={{ fontSize: 21, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6, letterSpacing: "-0.3px" }}>
             Bem-vindo de volta
           </h1>
-          <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.45)", marginBottom: 28, lineHeight: 1.5 }}>
+          <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginBottom: 26, lineHeight: 1.5 }}>
             Acompanhe os resultados do seu negócio em tempo real.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 15 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>
                 Email
               </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="seu@email.com"
-                style={inputStyle}
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="seu@email.com" style={inputStyle} />
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>
                 Senha
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                style={inputStyle}
-              />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" style={inputStyle} />
             </div>
 
             {error && (
-              <p style={{ fontSize: 13, color: "#F87171", padding: "9px 12px", borderRadius: 8, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.18)" }}>
+              <p style={{ fontSize: 13, color: "var(--red)", padding: "9px 12px", borderRadius: 8, background: "var(--red-soft)", border: "1px solid var(--border)" }}>
                 {error}
               </p>
             )}
@@ -150,18 +132,15 @@ export default function PortalLogin() {
               style={{
                 marginTop: 8,
                 padding: "12px",
-                borderRadius: 10,
+                borderRadius: "var(--radius-button)",
                 border: "none",
-                background: loading
-                  ? "rgba(99,102,241,0.4)"
-                  : "linear-gradient(135deg, #6366F1 0%, #818CF8 100%)",
+                background: loading ? "rgba(79,70,229,0.5)" : "linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)",
                 color: "#fff",
                 fontSize: 14,
                 fontWeight: 600,
                 cursor: loading ? "not-allowed" : "pointer",
-                transition: "opacity 150ms, transform 150ms",
-                opacity: loading ? 0.7 : 1,
-                boxShadow: loading ? "none" : "0 8px 24px rgba(99,102,241,0.25)",
+                opacity: loading ? 0.8 : 1,
+                boxShadow: loading ? "none" : "0 8px 22px rgba(79,70,229,0.22)",
               }}
             >
               {loading ? "Entrando..." : "Acessar meu painel"}
@@ -169,7 +148,7 @@ export default function PortalLogin() {
           </form>
         </div>
 
-        <p style={{ marginTop: 24, textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.22)" }}>
+        <p style={{ marginTop: 22, textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
           Acesso exclusivo para clientes Veloce
         </p>
       </div>

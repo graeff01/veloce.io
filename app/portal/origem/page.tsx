@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// O portal agora é uma página narrativa única — esta rota leva à seção correspondente.
+// Portal unificado em uma única página executiva.
 export default function OrigemRedirect() {
-  redirect("/portal#origem");
+  redirect("/portal");
 }

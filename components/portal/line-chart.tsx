@@ -37,7 +37,7 @@ function fmtDate(iso: string): string {
 
 export function LineChart({
   data,
-  color = "#818CF8",
+  color = "#4F46E5",
   height = 200,
   showDates = false,
 }: LineChartProps) {
@@ -86,14 +86,14 @@ export function LineChart({
           </linearGradient>
         </defs>
 
-        {/* Gridlines horizontais sutis */}
+        {/* Gridlines horizontais sutis (tema claro) */}
         {[0.25, 0.5, 0.75].map((f) => {
           const y = padTop + f * (h - padTop - padBottom);
           return (
             <line
               key={f}
               x1={padX} x2={w - padX} y1={y} y2={y}
-              stroke="rgba(255,255,255,0.05)"
+              stroke="rgba(17,24,39,0.06)"
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
             />
@@ -105,7 +105,7 @@ export function LineChart({
           d={lineD}
           fill="none"
           stroke={color}
-          strokeWidth="2"
+          strokeWidth="2.25"
           strokeLinecap="round"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
@@ -117,12 +117,12 @@ export function LineChart({
           style={{
             display: "flex",
             justifyContent: "space-between",
-            marginTop: 8,
+            marginTop: 10,
             padding: "0 2px",
           }}
         >
           {labels.map((l) => (
-            <span key={l.i} style={{ fontSize: 10.5, color: "rgba(255,255,255,0.32)", fontVariantNumeric: "tabular-nums" }}>
+            <span key={l.i} style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
               {fmtDate(l.date)}
             </span>
           ))}
