@@ -62,7 +62,8 @@ export function LineChart({
   const lineD = smoothPath(pts);
   const areaD = `${lineD} L ${pts[pts.length - 1].x} ${h - padBottom} L ${pts[0].x} ${h - padBottom} Z`;
 
-  const gradId = `grad-${color.replace("#", "")}`;
+  // Id precisa ser sempre válido (sem "#", "(", ")" etc. de cores/var).
+  const gradId = `lc-grad-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
 
   // Datas renderizadas em HTML (fora do SVG esticado) para não distorcer o texto
   const labelStep = Math.max(1, Math.floor(data.length / 6));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 export default function PortalLogin() {
@@ -9,6 +9,12 @@ export default function PortalLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Respeita o tema salvo (compartilhado com o Veloce.io)
+  useEffect(() => {
+    const saved = localStorage.getItem("veloce-theme");
+    document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

@@ -37,11 +37,15 @@ export async function GET(req: NextRequest) {
       connected: false,
       leads: 0,
       responded: 0,
+      semResposta: 0,
       responseRate: 0,
       avgFirstResponseSec: null,
+      fastestResponseSec: null,
+      mensagensRecebidas: 0,
       negociacao: 0,
       convertido: 0,
       origem: { anuncio: 0, organico: 0 },
+      topAds: [],
       series: [],
     });
   }
@@ -55,11 +59,16 @@ export async function GET(req: NextRequest) {
     connected: true,
     leads: ov.leads,
     responded: ov.responded,
+    semResposta: ov.leads - ov.responded,
     responseRate: ov.responseRate, // 0..1
     avgFirstResponseSec: ov.avgFirstResponseSec,
+    fastestResponseSec: ov.responseMinSec,
+    mensagensRecebidas: ov.messagesReceived,
     negociacao: ov.funnel.negociacao,
     convertido: ov.funnel.convertido,
     origem: { anuncio: ov.byOrigin.ad, organico: ov.byOrigin.organic },
+    // Anúncios que mais trouxeram contatos (valioso p/ concessionária: qual carro puxa)
+    topAds: ov.byAd.slice(0, 4).map((a) => ({ title: a.adTitle, total: a.total })),
     series: ov.series, // [{ date, leads }] — apenas dias com lead
   });
 }
