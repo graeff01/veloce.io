@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { deriveBadge, canonicalAdName } from "@/lib/wa-leads";
+import { resolveCampaignByAdIds } from "@/lib/meta-attribution";
 
 // GET /api/audit
 //   sem clientId → clientes com WhatsApp conectado (para o seletor)
@@ -123,7 +124,13 @@ export async function GET(req: Request) {
     tagsByContact.set(t.contactId, arr);
   }
 
-  // Campanha (best-effort): nome da campanha/adset do Meta que contém o modelo.
+  // Campanha — PREFERE atribuição por ad_id (determinística). Só usa o match
+  // por nome (legado) quando a estrutura ad-level ainda não foi sincronizada.
+  const metaConn = await prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }).catch(() => null);
+  const campByAdId = metaConn
+    ? await resolveCampaignByAdIds(metaConn.id, leads.map((l) => l.adId).filter((x): x is string => !!x))
+    : new Map();
+
   const meta = await prisma.metaConnection.findUnique({
     where: { clientId },
     include: { insights: { select: { campaignName: true, adsetName: true } } },
@@ -141,6 +148,8 @@ export async function GET(req: Request) {
 
   const richLeads = leads.map((l) => {
     const adName = canonicalAdName(l.adModel, l.adTitle);
+    // ID-first: campanha resolvida pelo ad_id; senão match por nome; senão o anúncio.
+    const campaignName = (l.adId && campByAdId.get(l.adId)?.campaignName) || resolveCampaign(adName) || adName;
     const c = contactById.get(l.contactId);
     const badge = deriveBadge({
       createdAt: c?.createdAt ?? l.enteredAt,
@@ -163,8 +172,7 @@ export async function GET(req: Request) {
       sourceType: l.sourceType,
       sourceUrl: l.sourceUrl,
       ctwaClid: l.ctwaClid,
-      // Campanha = match no Meta; se não houver, usa o próprio nome do anúncio.
-      campaignName: resolveCampaign(adName) ?? adName,
+      campaignName,
       funnelStage: stageByContact.get(l.contactId) ?? null,
       firstMessage: firstMsgByContact.get(l.contactId) ?? null,
       messageCount: msgCountByContact.get(l.contactId) ?? 0,

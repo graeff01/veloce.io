@@ -94,7 +94,12 @@ export function AdsTab({ clientId }: { clientId: string }) {
   async function handleSync() {
     setSyncing(true);
     setError("");
-    const res = await fetch(`/api/clients/${clientId}/meta/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    // Insights agregados (campanha/adset) + estrutura/insights por ad_id
+    // (base da atribuição determinística e do CPL real do portal).
+    const [res] = await Promise.all([
+      fetch(`/api/clients/${clientId}/meta/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }),
+      fetch(`/api/clients/${clientId}/meta/sync-ads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).catch(() => null),
+    ]);
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "Erro ao sincronizar");
     else await load();

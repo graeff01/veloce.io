@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { deriveBadge, BADGE_LABEL } from "@/lib/wa-leads";
 import { fmtDuration } from "@/lib/wa-metrics";
+import { resolveCampaignByAdIds } from "@/lib/meta-attribution";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ export const runtime = "nodejs";
 // Respeita os mesmos filtros da tela. Só dados auditáveis (rastreáveis a mensagens reais).
 
 function norm(s: string) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+// (mantido p/ filtro/nome do anúncio; campanha agora resolve por ad_id primeiro)
 function canonicalAd(model: string | null, title: string | null): string {
   if (model && model.trim()) return model.trim();
   const t = (title ?? "").trim();
@@ -87,12 +89,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     for (const ins of meta.insights) if (`${norm(ins.campaignName ?? "")} ${norm(ins.adsetName ?? "")}`.includes(key)) return ins.campaignName ?? "";
     return "";
   };
+  // ID-first: campanha pelo ad_id (determinístico); fallback p/ match por nome.
+  const campByAdId = meta
+    ? await resolveCampaignByAdIds(meta.id, units.map((u) => u.adId).filter((x): x is string => !!x))
+    : new Map();
+  const campaignOf = (u: { adId: string | null; adModel: string | null; adTitle: string | null }) => {
+    const a = canonicalAd(u.adModel, u.adTitle);
+    return (u.adId && campByAdId.get(u.adId)?.campaignName) || resolveCampaign(a) || a;
+  };
 
   // Aplica filtros sobre as unidades enriquecidas.
   const filtered = units.filter((u) => {
     const c = contactById.get(u.contactId);
     const adName = canonicalAd(u.adModel, u.adTitle);
-    const campaign = resolveCampaign(adName) ?? adName;
+    const campaign = campaignOf(u);
     const tags = tagsBy.get(u.contactId) ?? [];
     const stage = convBy.get(u.contactId)?.funnelStage ?? "";
     const valid = c?.reportValid !== false;
@@ -122,7 +132,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       c?.name ?? "",
       `+${c?.waId ?? ""}`,
       u.origin,
-      (() => { const a = canonicalAd(u.adModel, u.adTitle); return resolveCampaign(a) ?? a; })(),
+      campaignOf(u),
       canonicalAd(u.adModel, u.adTitle),
       fmt(u.enteredAt),
       fm && !fm.startsWith("[") ? fm : (fm ? "[mídia]" : ""),

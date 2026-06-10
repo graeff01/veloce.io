@@ -48,6 +48,7 @@ export interface CplByCampaign {
   status: string;
   spend: number;
   leads: number;      // leads REAIS (WhatsApp) atribuídos por ad_id
+  metaLeads: number;  // leads que a Meta reporta (modelado) — referência
   cpl: number | null;
 }
 
@@ -56,8 +57,39 @@ export interface CplByAd {
   name: string;
   campaignId: string;
   spend: number;
-  leads: number;
+  leads: number;      // leads REAIS (WhatsApp)
+  metaLeads: number;  // leads reportados pela Meta
   cpl: number | null;
+}
+
+// Resolve o nome ATUAL da campanha de cada ad_id (display), por ID — não por
+// nome. Retorna Map<adId, { campaignId, campaignName, adName }>. Vazio quando a
+// estrutura ainda não foi sincronizada (chamador usa fallback).
+export async function resolveCampaignByAdIds(
+  connectionId: string,
+  adIds: string[],
+): Promise<Map<string, { campaignId: string; campaignName: string; adName: string }>> {
+  const out = new Map<string, { campaignId: string; campaignName: string; adName: string }>();
+  const ids = [...new Set(adIds.filter(Boolean))];
+  if (!ids.length) return out;
+
+  const ads = await prisma.metaAd.findMany({
+    where: { connectionId, adId: { in: ids } },
+    select: { adId: true, name: true, campaignId: true },
+  });
+  if (!ads.length) return out;
+
+  const campIds = [...new Set(ads.map((a) => a.campaignId))];
+  const camps = await prisma.metaCampaign.findMany({
+    where: { connectionId, campaignId: { in: campIds } },
+    select: { campaignId: true, name: true },
+  });
+  const campName = new Map(camps.map((c) => [c.campaignId, c.name]));
+
+  for (const a of ads) {
+    out.set(a.adId, { campaignId: a.campaignId, campaignName: campName.get(a.campaignId) ?? a.name, adName: a.name });
+  }
+  return out;
 }
 
 export interface RealAttribution {
@@ -82,7 +114,7 @@ export async function computeRealAttribution(
     prisma.metaAdInsight.groupBy({
       by: ["adId"],
       where: { connectionId, date: { gte: start, lt: end } },
-      _sum: { spend: true },
+      _sum: { spend: true, leads: true },
     }),
     prisma.metaAd.findMany({ where: { connectionId }, select: { adId: true, name: true, campaignId: true } }),
     prisma.metaCampaign.findMany({ where: { connectionId }, select: { campaignId: true, name: true, status: true } }),
@@ -98,7 +130,8 @@ export async function computeRealAttribution(
   const adMeta = new Map(ads.map((a) => [a.adId, a]));
   const campMeta = new Map(campaigns.map((c) => [c.campaignId, c]));
   const spendByAd = new Map<string, number>();
-  for (const r of spendRows) spendByAd.set(r.adId, r._sum.spend ?? 0);
+  const metaLeadsByAd = new Map<string, number>();
+  for (const r of spendRows) { spendByAd.set(r.adId, r._sum.spend ?? 0); metaLeadsByAd.set(r.adId, r._sum.leads ?? 0); }
 
   const leadsByAd = new Map<string, number>();
   for (const r of leadRows) if (r.adId) leadsByAd.set(r.adId, r._count._all);
@@ -118,10 +151,11 @@ export async function computeRealAttribution(
   // Por anúncio
   const allAdIds = new Set<string>([...spendByAd.keys(), ...leadsByAd.keys()]);
   const porAnuncio: CplByAd[] = [];
-  const campAgg = new Map<string, { spend: number; leads: number }>();
+  const campAgg = new Map<string, { spend: number; leads: number; metaLeads: number }>();
   for (const adId of allAdIds) {
     const spend = spendByAd.get(adId) ?? 0;
     const leads = leadsByAd.get(adId) ?? 0;
+    const metaLeads = metaLeadsByAd.get(adId) ?? 0;
     const meta = adMeta.get(adId);
     const campaignId = meta?.campaignId ?? "—";
     porAnuncio.push({
@@ -130,11 +164,13 @@ export async function computeRealAttribution(
       campaignId,
       spend,
       leads,
+      metaLeads,
       cpl: leads > 0 && spend > 0 ? spend / leads : null,
     });
-    const agg = campAgg.get(campaignId) ?? { spend: 0, leads: 0 };
+    const agg = campAgg.get(campaignId) ?? { spend: 0, leads: 0, metaLeads: 0 };
     agg.spend += spend;
     agg.leads += leads;
+    agg.metaLeads += metaLeads;
     campAgg.set(campaignId, agg);
   }
   porAnuncio.sort((a, b) => b.leads - a.leads || b.spend - a.spend);
@@ -146,6 +182,7 @@ export async function computeRealAttribution(
       status: campMeta.get(campaignId)?.status ?? "UNKNOWN",
       spend: v.spend,
       leads: v.leads,
+      metaLeads: v.metaLeads,
       cpl: v.leads > 0 && v.spend > 0 ? v.spend / v.leads : null,
     }))
     .sort((a, b) => b.leads - a.leads || b.spend - a.spend);

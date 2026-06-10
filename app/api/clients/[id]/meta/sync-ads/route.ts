@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { syncMetaAds, MetaTokenError, MetaRateLimitError } from "@/lib/meta-sync";
+import { checkMetaToken } from "@/lib/meta-token";
 
 // POST — sincroniza estrutura (campanhas/conjuntos/anúncios/criativos) + insights
 // diários em nível de anúncio, tudo por ID oficial. Base da atribuição real.
@@ -20,7 +21,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const result = await syncMetaAds(conn.id, since, until);
-    return NextResponse.json({ ok: true, ...result });
+    // Saúde do token (System User não expira — ideal p/ sync contínuo)
+    const tokenInfo = await checkMetaToken(conn.accessToken).catch(() => null);
+    return NextResponse.json({ ok: true, ...result, token: tokenInfo });
   } catch (e) {
     if (e instanceof MetaTokenError) {
       return NextResponse.json({ error: "O token do Meta expirou ou foi revogado. Reconecte a conta.", reconnect: true }, { status: 401 });
