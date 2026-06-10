@@ -12,9 +12,32 @@ interface LineChartProps {
   showDates?: boolean;
 }
 
+// Curva suave via Catmull-Rom → Bézier cúbica
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return "";
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+function fmtDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
+}
+
 export function LineChart({
   data,
-  color = "#3B82F6",
+  color = "#818CF8",
   height = 200,
   showDates = false,
 }: LineChartProps) {
@@ -27,49 +50,84 @@ export function LineChart({
 
   const w = 600;
   const h = height;
-  const padX = 8;
-  const padY = showDates ? 24 : 12;
+  const padX = 4;
+  const padTop = 10;
+  const padBottom = 6;
 
-  const pts = data.map((d, i) => {
-    const x = padX + (i / (data.length - 1)) * (w - padX * 2);
-    const y = padY + ((1 - (d.value - min) / range) * (h - padY - 8));
-    return { x, y, ...d };
-  });
+  const pts = data.map((d, i) => ({
+    x: padX + (i / (data.length - 1)) * (w - padX * 2),
+    y: padTop + (1 - (d.value - min) / range) * (h - padTop - padBottom),
+  }));
 
-  const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const lineD = smoothPath(pts);
+  const areaD = `${lineD} L ${pts[pts.length - 1].x} ${h - padBottom} L ${pts[0].x} ${h - padBottom} Z`;
 
-  // Fill area
-  const areaD =
-    pathD +
-    ` L ${pts[pts.length - 1].x} ${h - padY} L ${pts[0].x} ${h - padY} Z`;
+  const gradId = `grad-${color.replace("#", "")}`;
 
-  // Show date labels every N points to avoid crowding
-  const step = Math.max(1, Math.floor(data.length / 6));
+  // Datas renderizadas em HTML (fora do SVG esticado) para não distorcer o texto
+  const labelStep = Math.max(1, Math.floor(data.length / 6));
+  const labels = data
+    .map((d, i) => ({ ...d, i }))
+    .filter((d) => d.i % labelStep === 0 || d.i === data.length - 1);
 
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={`grad-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
+    <div>
+      <svg
+        width="100%"
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        style={{ display: "block" }}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
 
-      {/* Area fill */}
-      <path d={areaD} fill={`url(#grad-${color.replace("#", "")})`} />
+        {/* Gridlines horizontais sutis */}
+        {[0.25, 0.5, 0.75].map((f) => {
+          const y = padTop + f * (h - padTop - padBottom);
+          return (
+            <line
+              key={f}
+              x1={padX} x2={w - padX} y1={y} y2={y}
+              stroke="rgba(255,255,255,0.05)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
 
-      {/* Line */}
-      <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={areaD} fill={`url(#${gradId})`} />
+        <path
+          d={lineD}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
 
-      {/* Date labels */}
-      {showDates &&
-        pts
-          .filter((_, i) => i % step === 0 || i === pts.length - 1)
-          .map((p, i) => (
-            <text key={i} x={p.x} y={h - 6} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.35)">
-              {p.date.slice(5)} {/* MM-DD */}
-            </text>
+      {showDates && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 8,
+            padding: "0 2px",
+          }}
+        >
+          {labels.map((l) => (
+            <span key={l.i} style={{ fontSize: 10.5, color: "rgba(255,255,255,0.32)", fontVariantNumeric: "tabular-nums" }}>
+              {fmtDate(l.date)}
+            </span>
           ))}
-    </svg>
+        </div>
+      )}
+    </div>
   );
 }

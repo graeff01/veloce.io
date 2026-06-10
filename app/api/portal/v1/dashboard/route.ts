@@ -87,10 +87,11 @@ export async function GET(req: NextRequest) {
   const responseTimes = convs30
     .filter((c): c is typeof c & { firstResponseSec: number } => c.firstResponseSec != null)
     .map((c) => c.firstResponseSec);
-  const avgResponseMin =
+  const avgResponseSec =
     responseTimes.length > 0
-      ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length / 60)
+      ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
       : 0;
+  const avgResponseMin = Math.round(avgResponseSec / 60);
 
   const negociacoes = convs30.filter(
     (c) => c.funnelStage === "negociacao" || c.funnelStage === "qualificado"
@@ -110,6 +111,7 @@ export async function GET(req: NextRequest) {
       cplGrowth: parseFloat(cplGrowth.toFixed(1)),
       taxaAtendimento: parseFloat(taxaAtendimento.toFixed(1)),
       avgResponseMin,
+      avgResponseSec,
       negociacoes,
       vendas,
     },

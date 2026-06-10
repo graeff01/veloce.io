@@ -2,7 +2,6 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart2 } from "lucide-react";
 
 export default function PortalLogin() {
   const router = useRouter();
@@ -37,6 +36,19 @@ export default function PortalLogin() {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "11px 14px",
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+    transition: "border-color 150ms, box-shadow 150ms",
+  };
+
   return (
     <div
       style={{
@@ -46,134 +58,121 @@ export default function PortalLogin() {
         alignItems: "center",
         justifyContent: "center",
         padding: "24px 16px",
-        background: "linear-gradient(135deg, #080D1E 0%, #0F172A 100%)",
+        position: "relative",
       }}
     >
-      {/* Card */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 400,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 20,
-          padding: "40px 36px",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
-        }}
-      >
-        {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
+      <div className="portal-rise" style={{ width: "100%", maxWidth: 400 }}>
+        {/* Marca */}
+        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 36, justifyContent: "center" }}>
           <div
             style={{
-              width: 36,
-              height: 36,
+              width: 34,
+              height: 34,
               borderRadius: 10,
-              background: "rgba(129,140,248,0.15)",
+              background: "linear-gradient(135deg, #6366F1 0%, #818CF8 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              border: "1px solid rgba(129,140,248,0.25)",
+              fontSize: 17,
+              fontWeight: 800,
+              color: "#fff",
+              letterSpacing: "-0.5px",
+              boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
             }}
           >
-            <BarChart2 size={18} color="#818CF8" />
+            V
           </div>
-          <div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.92)", lineHeight: 1.2 }}>
+          <div style={{ lineHeight: 1.2 }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.3px" }}>
               Veloce
             </p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.2 }}>
-              Portal do Cliente
+            <p style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(255,255,255,0.4)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+              Centro de Performance
             </p>
           </div>
         </div>
 
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "rgba(255,255,255,0.92)", marginBottom: 6 }}>
-          Bem-vindo
-        </h1>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", marginBottom: 28 }}>
-          Acesse os resultados do seu negócio
+        {/* Card */}
+        <div
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 18,
+            padding: "36px 34px",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.45)",
+          }}
+        >
+          <h1 style={{ fontSize: 21, fontWeight: 700, color: "rgba(255,255,255,0.95)", marginBottom: 6, letterSpacing: "-0.3px" }}>
+            Bem-vindo de volta
+          </h1>
+          <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.45)", marginBottom: 28, lineHeight: 1.5 }}>
+            Acompanhe os resultados do seu negócio em tempo real.
+          </p>
+
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="seu@email.com"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
+                Senha
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                style={inputStyle}
+              />
+            </div>
+
+            {error && (
+              <p style={{ fontSize: 13, color: "#F87171", padding: "9px 12px", borderRadius: 8, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.18)" }}>
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                marginTop: 8,
+                padding: "12px",
+                borderRadius: 10,
+                border: "none",
+                background: loading
+                  ? "rgba(99,102,241,0.4)"
+                  : "linear-gradient(135deg, #6366F1 0%, #818CF8 100%)",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? "not-allowed" : "pointer",
+                transition: "opacity 150ms, transform 150ms",
+                opacity: loading ? 0.7 : 1,
+                boxShadow: loading ? "none" : "0 8px 24px rgba(99,102,241,0.25)",
+              }}
+            >
+              {loading ? "Entrando..." : "Acessar meu painel"}
+            </button>
+          </form>
+        </div>
+
+        <p style={{ marginTop: 24, textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.22)" }}>
+          Acesso exclusivo para clientes Veloce
         </p>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="seu@email.com"
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.87)",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", marginBottom: 6 }}>
-              Senha
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.87)",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          {error && (
-            <p style={{ fontSize: 13, color: "#F87171", padding: "8px 12px", borderRadius: 8, background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)" }}>
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 6,
-              padding: "11px",
-              borderRadius: 10,
-              border: "none",
-              background: loading ? "rgba(129,140,248,0.4)" : "#818CF8",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "opacity 150ms",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? "Entrando..." : "Entrar"}
-          </button>
-        </form>
       </div>
-
-      <p style={{ marginTop: 24, fontSize: 12, color: "rgba(255,255,255,0.2)" }}>
-        Acesso exclusivo para clientes Veloce
-      </p>
     </div>
   );
 }

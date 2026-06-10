@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
       pendentes,
       taxaResposta: parseFloat(taxaResposta.toFixed(1)),
       avgResponseMin: Math.round(avgSec / 60),
+      avgResponseSec: Math.round(avgSec),
     },
     distribuicao: dist,
     series: Object.entries(series).map(([date, v]) => ({ date, ...v })),
