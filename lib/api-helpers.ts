@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+import { getServerSession, type Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
@@ -36,7 +36,7 @@ export async function requireAuth(permission?: Permission) {
 // Guard de rotas do CLIENTE (acesso executivo). Exige papel CLIENT e clientId.
 // O clientId vem SEMPRE da sessão — nunca do request — garantindo isolamento.
 export async function requireClientAuth(): Promise<
-  | { error: null; session: NonNullable<Awaited<ReturnType<typeof getServerSession>>>; clientId: string }
+  | { error: null; session: Session; clientId: string }
   | { error: NextResponse; session: null; clientId: null }
 > {
   const session = await getServerSession(authOptions);
