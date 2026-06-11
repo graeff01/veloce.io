@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
-  Loader2, Users, Megaphone, MessageSquare, Layers, Target, Tag,
+  Loader2, Users, Megaphone, MessageSquare, Target,
   TrendingUp, TrendingDown, BarChart2, CheckCircle2, Send,
-  AlertCircle, Inbox, Sparkles, Hash, Clock, Info,
+  AlertCircle, Inbox, Sparkles, Clock, Info,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 
@@ -314,11 +314,6 @@ export function OperationDashboard({ clientId, year, month }: {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
         <MetricCard icon={<Users size={16} color="#3B82F6" />} label="Leads recebidos" value={data.leads} sub="contatos únicos no período" accent="#3B82F6" delta={data.previous.leads > 0 ? <Delta curr={data.leads} prev={data.previous.leads} /> : undefined} />
         <MetricCard icon={<Megaphone size={16} color="var(--accent)" />} label="Leads de anúncio" value={adCount} sub={`${pct(adCount, data.leads)}% · origem Meta Ads`} accent="var(--accent)" />
-        <MetricCard icon={<MessageSquare size={16} color="#06B6D4" />} label="Leads orgânicos" value={data.byOrigin.organic} sub={`${pct(data.byOrigin.organic, data.leads)}% · sem referral`} accent="#06B6D4" />
-        <MetricCard icon={<Inbox size={16} color="#0EA5E9" />} label="Mensagens recebidas" value={data.messagesReceived} sub={`${data.avgMessagesPerLead.toFixed(1)} por lead`} accent="#0EA5E9" />
-        <MetricCard icon={<Layers size={16} color="#8B5CF6" />} label="Campanhas com leads" value={data.campaignsWithLeads} sub="identificadas no período" accent="#8B5CF6" />
-        <MetricCard icon={<Hash size={16} color="#EC4899" />} label="Anúncios com leads" value={data.byAd.length} sub="criativos com conversas" accent="#EC4899" />
-        <MetricCard icon={<Tag size={16} color="#D97706" />} label="Leads sem etapa" value={data.noStage} sub="precisam de classificação" accent="#D97706" attention={data.noStage > 0} />
         <MetricCard icon={<Target size={16} color="#16A34A" />} label="Convertidos" value={data.converted} sub={`${pct(data.converted, data.leads)}% · marcados no funil`} accent="#16A34A" delta={data.previous.converted > 0 ? <Delta curr={data.converted} prev={data.previous.converted} /> : undefined} />
       </div>
 
