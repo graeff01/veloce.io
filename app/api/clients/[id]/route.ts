@@ -7,7 +7,12 @@ import { z } from "zod";
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   brand: z.string().optional(),
-  logoUrl: z.string().optional(),
+  // Logo: vazio (remover), data URL de imagem, ou URL http(s). Teto ~1.2MB
+  // (base64 de uma imagem de até ~600KB) para evitar payloads abusivos no banco.
+  logoUrl: z.string()
+    .max(1_200_000, "Imagem muito grande")
+    .refine((v) => v === "" || /^data:image\/(png|jpe?g|gif|webp|svg\+xml);/.test(v) || /^https?:\/\//.test(v), "Formato de imagem inválido")
+    .optional(),
   followUpAt: z.string().optional().nullable(),
   followUpNote: z.string().optional().nullable(),
   email: z.string().email().optional().or(z.literal("")),

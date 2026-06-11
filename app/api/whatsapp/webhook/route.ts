@@ -31,8 +31,14 @@ export async function POST(req: Request) {
   const raw = await req.text();
 
   // Proteção principal: valida a assinatura do corpo (HMAC com o App Secret).
+  // Fail-closed em produção: sem App Secret configurado, recusa (evita injeção de
+  // lead forjado). Em dev permite sem assinatura para facilitar testes locais.
   const appSecret = process.env.WHATSAPP_APP_SECRET;
-  if (appSecret && !verifySignature(raw, req.headers.get("x-hub-signature-256"), appSecret)) {
+  if (!appSecret) {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse("webhook não configurado", { status: 503 });
+    }
+  } else if (!verifySignature(raw, req.headers.get("x-hub-signature-256"), appSecret)) {
     return new NextResponse("invalid signature", { status: 401 });
   }
 

@@ -14,11 +14,6 @@ const nextConfig: NextConfig = {
     // allow a bit above that.
     proxyClientMaxBodySize: "30mb",
   },
-  env: {
-    // Exposed to Edge Runtime (proxy.ts). Set to "true" locally to skip auth.
-    // Must be unset or "false" on Railway.
-    DISABLE_AUTH: process.env.DISABLE_AUTH ?? "false",
-  },
   // Cabeçalhos de segurança (sem CSP estrita p/ não quebrar os estilos inline).
   async headers() {
     return [

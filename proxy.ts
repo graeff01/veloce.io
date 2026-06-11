@@ -4,9 +4,9 @@ import { getToken } from "next-auth/jwt";
 
 const adminOnlyRoutes = ["/settings"];
 
-// Set DISABLE_AUTH=true in .env to bypass auth locally (no database needed)
-// Remove this variable before deploying to Railway
-const DISABLE_AUTH = process.env.DISABLE_AUTH === "true";
+// Set DISABLE_AUTH=true in .env to bypass auth locally (no database needed).
+// Fail-secure: NUNCA bypassa auth em produção, mesmo que a env vaze.
+const DISABLE_AUTH = process.env.NODE_ENV !== "production" && process.env.DISABLE_AUTH === "true";
 
 export async function proxy(req: NextRequest) {
   if (DISABLE_AUTH) return NextResponse.next();

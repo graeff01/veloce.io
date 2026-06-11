@@ -13,8 +13,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const body = await req.json().catch(() => ({}));
   const now = new Date();
-  const since = body.since ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const until = body.until ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const ymd = /^\d{4}-\d{2}-\d{2}$/; // só aceita datas no formato esperado (vai p/ query externa)
+  const since = ymd.test(body.since) ? body.since : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const until = ymd.test(body.until) ? body.until : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   try {
     const result = await syncMetaInsights(conn.id, since, until);
