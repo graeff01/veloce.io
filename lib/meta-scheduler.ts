@@ -23,8 +23,11 @@ async function runOnce(): Promise<void> {
   }
   if (!conns.length) return;
 
+  // Re-sincroniza o MÊS INTEIRO até hoje (month-to-date). Upsert é idempotente,
+  // então re-gravar dias já estáveis não duplica — garante o mês sempre completo
+  // mesmo que algum ciclo tenha sido perdido (server reiniciou, etc).
   const now = new Date();
-  const since = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2));
+  const since = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
   const until = ymd(now);
 
   for (const c of conns) {
