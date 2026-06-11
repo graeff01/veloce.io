@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Link2,
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight,
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText,
 } from "lucide-react";
 import { WinningCampaigns } from "@/components/clients/winning-campaigns";
 
@@ -289,14 +289,22 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* Seletor de período */}
-        <div style={{ display: "flex", gap: 8 }}>
+        {/* Seletor de período + exportar relatório */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={selectStyle}>
             {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={selectStyle}>
             {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
           </select>
+          <a
+            href={`/api/clients/${clientId}/meta/report?year=${year}&month=${month}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}
+          >
+            <FileText size={14} /> Exportar relatório (PDF)
+          </a>
         </div>
 
         {!ads ? (
