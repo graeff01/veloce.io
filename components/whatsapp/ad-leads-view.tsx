@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Loader2, Search, Megaphone, Users, Layers, Target, CheckCircle2,
+  Loader2, Search, Megaphone, Users, Target, CheckCircle2,
   X, Phone, Mic, Image, FileText, Video, ChevronRight,
-  ShieldCheck, AlertCircle, Download,
+  AlertCircle, Download,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 import type { LeadBadge } from "@/lib/wa-leads";
@@ -37,7 +37,18 @@ interface AuditData {
   ads: AdGroup[];
   campaigns: CampaignGroup[];
 }
-type Tab = "todos" | "validos" | "invalidos" | "semresposta" | "campanhas" | "anuncios" | "validacao";
+
+// Lead agrupado por anúncio (visão drill-down).
+interface AdBucket {
+  key: string;
+  adLabel: string;
+  campaign: string | null;
+  leads: AdLead[];
+  incomplete: number;
+  negociacao: number;
+  convertido: number;
+  lastEnteredAt: string | null;
+}
 
 // Tempo de resposta legível.
 function fmtResp(sec: number | null | undefined): string {
@@ -123,49 +134,12 @@ function SummaryCard({ icon, label, value, accent }: { icon: React.ReactNode; la
   );
 }
 
-// Lê o estado inicial dos filtros da URL (refresh-safe, compartilhável).
-function initialParams() {
-  if (typeof window === "undefined") return new URLSearchParams();
-  return new URLSearchParams(window.location.search);
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function AdLeadsView({ clientId, year, month }: { clientId: string; year: number; month: number }) {
-  const sp0 = initialParams();
   const [data, setData] = useState<AuditData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>((sp0.get("aba") as Tab) || "todos");
-  const [q, setQ] = useState(sp0.get("q") ?? "");
-  const [campaignFilter, setCampaignFilter] = useState(sp0.get("campanha") ?? "");
-  const [adFilter, setAdFilter] = useState(sp0.get("anuncio") ?? "");
-  const [stageFilter, setStageFilter] = useState(sp0.get("funil") ?? "");
-  const [validFilter, setValidFilter] = useState(sp0.get("valido") ?? "");
-  const [tagFilter, setTagFilter] = useState(sp0.get("tag") ?? "");
-  const [mediaFilter, setMediaFilter] = useState(sp0.get("midia") ?? "");
-  const [replyFilter, setReplyFilter] = useState(sp0.get("resposta") ?? "");
+  const [openAdKey, setOpenAdKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdLead | null>(null);
-
-  // Query string com os filtros ativos (usada na URL e no export CSV).
-  const filterQS = useMemo(() => {
-    const sp = new URLSearchParams();
-    if (q) sp.set("q", q);
-    if (campaignFilter) sp.set("campanha", campaignFilter);
-    if (adFilter) sp.set("anuncio", adFilter);
-    if (stageFilter) sp.set("funil", stageFilter);
-    if (validFilter) sp.set("valido", validFilter);
-    if (tagFilter) sp.set("tag", tagFilter);
-    if (mediaFilter) sp.set("midia", mediaFilter);
-    if (replyFilter) sp.set("resposta", replyFilter);
-    return sp;
-  }, [q, campaignFilter, adFilter, stageFilter, validFilter, tagFilter, mediaFilter, replyFilter]);
-
-  // Sincroniza filtros → URL sem disparar navegação do Next.
-  useEffect(() => {
-    const sp = new URLSearchParams(filterQS);
-    if (tab !== "todos") sp.set("aba", tab);
-    const qs = sp.toString();
-    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [filterQS, tab]);
 
   useEffect(() => {
     let active = true;
@@ -194,58 +168,48 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setData(d); }).catch(() => {});
   }, [clientId, year, month]);
 
-  const clearFilters = () => { setQ(""); setCampaignFilter(""); setAdFilter(""); setStageFilter(""); setValidFilter(""); setTagFilter(""); setMediaFilter(""); setReplyFilter(""); };
-  const hasFilters = q || campaignFilter || adFilter || stageFilter || validFilter || tagFilter || mediaFilter || replyFilter;
-
   const leads = data?.leads ?? [];
-  // Tags disponíveis no período (para o filtro).
-  const allTagNames = useMemo(() => {
+
+  // Selinho de qualidade: leads com dado incompleto para o relatório. Importados
+  // do Kommo são categoria conhecida (histórico) → fora da checagem.
+  const incompleteIds = useMemo(() => {
     const s = new Set<string>();
-    for (const l of leads) for (const t of l.tags ?? []) s.add(t.name);
-    return [...s].sort();
+    for (const l of leads) {
+      if (!l.imported && (!l.adId || !l.campaignName || !l.adTitle || l.messageCount === 0)) s.add(l.id);
+    }
+    return s;
   }, [leads]);
-  const filtered = useMemo(() => {
-    return leads.filter((l) => {
-      if (campaignFilter && (l.campaignName ?? "Sem campanha identificada") !== campaignFilter) return false;
-      if (adFilter && (l.adName ?? l.adModel ?? l.adTitle ?? "Anúncio (sem título)") !== adFilter) return false;
-      if (stageFilter) {
-        if (stageFilter === "__none__" ? l.funnelStage : l.funnelStage !== stageFilter) return false;
+
+  // Agrupa os leads por anúncio. Sem anúncio identificado → bucket próprio.
+  const adGroups = useMemo<AdBucket[]>(() => {
+    const map = new Map<string, AdBucket>();
+    for (const l of leads) {
+      const adLabel = l.adName ?? l.adModel ?? l.adTitle ?? null;
+      const key = adLabel ?? "__none__";
+      let g = map.get(key);
+      if (!g) {
+        g = { key, adLabel: adLabel ?? "Sem anúncio identificado", campaign: l.campaignName ?? null, leads: [], incomplete: 0, negociacao: 0, convertido: 0, lastEnteredAt: null };
+        map.set(key, g);
       }
-      if (validFilter === "validos" && l.reportValid === false) return false;
-      if (validFilter === "invalidos" && l.reportValid !== false) return false;
-      if (tagFilter && !(l.tags ?? []).some((t) => t.name === tagFilter)) return false;
-      if (mediaFilter === "midia" && !l.hasMedia) return false;
-      if (mediaFilter === "audio" && !l.hasAudio) return false;
-      if (mediaFilter === "imagem" && !l.hasImage) return false;
-      if (replyFilter === "respondido" && !(l.storeMessages && l.storeMessages > 0)) return false;
-      if (replyFilter === "semresposta" && l.storeMessages && l.storeMessages > 0) return false;
-      const term = q.trim().toLowerCase();
-      if (term) {
-        const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""} ${l.adName ?? ""} ${l.adModel ?? ""} ${l.adTitle ?? ""} ${(l.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
-        if (!hay.includes(term)) return false;
-      }
-      return true;
+      g.leads.push(l);
+      if (incompleteIds.has(l.id)) g.incomplete++;
+      if (l.funnelStage === "negociacao") g.negociacao++;
+      if (l.funnelStage === "convertido") g.convertido++;
+      if (!g.campaign && l.campaignName) g.campaign = l.campaignName;
+      if (!g.lastEnteredAt || l.enteredAt > g.lastEnteredAt) g.lastEnteredAt = l.enteredAt;
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.key === "__none__") return 1;
+      if (b.key === "__none__") return -1;
+      return b.leads.length - a.leads.length;
     });
-  }, [leads, q, campaignFilter, adFilter, stageFilter, validFilter, tagFilter, mediaFilter, replyFilter]);
+  }, [leads, incompleteIds]);
 
-  // Validação: leads com dados incompletos para o relatório. Importados do Kommo
-  // são categoria conhecida (histórico, sem mensagens próprias) → fora da validação.
-  const validationLeads = useMemo(() => leads.filter((l) => !l.imported && (!l.adId || !l.campaignName || !l.adTitle || l.messageCount === 0)), [leads]);
   const importedCount = useMemo(() => leads.filter((l) => l.imported).length, [leads]);
-  const invalidLeads = useMemo(() => leads.filter((l) => l.reportValid === false), [leads]);
-  const noReplyLeads = useMemo(() => leads.filter((l) => !(l.storeMessages && l.storeMessages > 0)), [leads]);
-
-  // Linhas exibidas conforme a aba ativa (sobre o conjunto já filtrado).
-  const tabRows = useMemo(() => {
-    if (tab === "validos") return filtered.filter((l) => l.reportValid !== false);
-    if (tab === "invalidos") return filtered.filter((l) => l.reportValid === false);
-    if (tab === "semresposta") return filtered.filter((l) => !(l.storeMessages && l.storeMessages > 0));
-    return filtered;
-  }, [filtered, tab]);
-
   const negociacao = leads.filter((l) => l.funnelStage === "negociacao").length;
   const convertido = leads.filter((l) => l.funnelStage === "convertido").length;
-  const fullyValidated = leads.length - validationLeads.length;
+  const adCount = adGroups.filter((g) => g.key !== "__none__").length;
+  const openGroup = adGroups.find((g) => g.key === openAdKey) ?? null;
 
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 64, color: "var(--text-muted)" }}>
@@ -270,20 +234,18 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
 
         {/* ── Toolbar ── */}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <a href={`/api/clients/${clientId}/whatsapp/export?year=${year}&month=${month}&type=ads${filterQS.toString() ? `&${filterQS.toString()}` : ""}`} download
+          <a href={`/api/clients/${clientId}/whatsapp/export?year=${year}&month=${month}&type=ads`} download
             style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>
-            <Download size={14} /> Exportar {hasFilters ? "(filtrado)" : "relatório"} CSV
+            <Download size={14} /> Exportar relatório CSV
           </a>
         </div>
 
-        {/* ── Summary cards ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+        {/* ── Summary cards (enxuto) ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <SummaryCard icon={<Users size={16} color="#3B82F6" />} label="Leads de anúncio" value={data.totalLeads} accent="#3B82F6" />
-          <SummaryCard icon={<Layers size={16} color="#8B5CF6" />} label="Campanhas com leads" value={data.campaigns.length} accent="#8B5CF6" />
-          <SummaryCard icon={<Megaphone size={16} color="var(--accent)" />} label="Anúncios com leads" value={data.ads.length} accent="var(--accent)" />
+          <SummaryCard icon={<Megaphone size={16} color="var(--accent)" />} label="Anúncios com leads" value={adCount} accent="var(--accent)" />
           <SummaryCard icon={<Target size={16} color="#10B981" />} label="Em negociação" value={negociacao} accent="#10B981" />
           <SummaryCard icon={<CheckCircle2 size={16} color="#16A34A" />} label="Convertidos" value={convertido} accent="#16A34A" />
-          <SummaryCard icon={<ShieldCheck size={16} color={validationLeads.length ? "#D97706" : "#16A34A"} />} label="Validados p/ relatório" value={`${fullyValidated}/${leads.length}`} accent={validationLeads.length ? "#D97706" : "#16A34A"} />
         </div>
 
         {importedCount > 0 && (
@@ -295,91 +257,108 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
           </div>
         )}
 
-        {/* ── Tabs ── */}
-        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", overflowX: "auto" }} className="adl-scroll">
-          {([["todos","Todos",leads.length],["validos","Válidos",leads.length - invalidLeads.length],["invalidos","Inválidos",invalidLeads.length],["semresposta","Sem resposta",noReplyLeads.length],["campanhas","Campanhas",data.campaigns.length],["anuncios","Anúncios",data.ads.length],["validacao","Dados incompletos",validationLeads.length]] as const).map(([k, label, count]) => {
-            const active = tab === k;
-            const isAlert = (k === "validacao" || k === "invalidos") && count > 0;
+        {/* Selinho agregado de qualidade do dado */}
+        {incompleteIds.size > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 10, background: "rgba(217,119,6,0.06)", border: "1px solid rgba(217,119,6,0.2)" }}>
+            <AlertCircle size={14} color="#D97706" />
+            <span style={{ fontSize: 12.5, color: "#92600A" }}>
+              {incompleteIds.size} {incompleteIds.size === 1 ? "lead" : "leads"} com dado incompleto (sem anúncio/campanha identificada) — confira ao fechar o relatório.
+            </span>
+          </div>
+        )}
+
+        {/* ── Lista de anúncios (clicável → leads no modal) ── */}
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
+          {adGroups.map((g, i) => {
+            const isNone = g.key === "__none__";
             return (
-              <button key={k} onClick={() => setTab(k)} style={{
-                padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
-                fontWeight: active ? 600 : 500, color: active ? "var(--text-primary)" : "var(--text-muted)",
-                borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1,
-                display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flexShrink: 0,
+              <button key={g.key} className="adl-row" onClick={() => setOpenAdKey(g.key)} style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "15px 18px",
+                borderBottom: i < adGroups.length - 1 ? "1px solid var(--border)" : "none",
+                background: "transparent", border: "none", borderBottomStyle: "solid", borderBottomWidth: i < adGroups.length - 1 ? 1 : 0, borderBottomColor: "var(--border)",
+                cursor: "pointer", textAlign: "left",
               }}>
-                {label}
-                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: isAlert ? "rgba(217,119,6,0.12)" : active ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--bg-elevated)", color: isAlert ? "#D97706" : active ? "var(--accent)" : "var(--text-muted)" }}>{count}</span>
+                <div style={{ width: 40, height: 40, borderRadius: 11, background: isNone ? "var(--bg-elevated)" : "color-mix(in srgb, var(--accent) 10%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Megaphone size={18} style={{ color: isNone ? "var(--text-muted)" : "var(--accent)" }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: isNone ? "var(--text-secondary)" : "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.adLabel}</span>
+                    {g.incomplete > 0 && (
+                      <span title="Leads com dado incompleto" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, color: "#D97706", background: "rgba(217,119,6,0.12)", padding: "1px 7px", borderRadius: 99, flexShrink: 0 }}>
+                        <AlertCircle size={10} /> {g.incomplete}
+                      </span>
+                    )}
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "3px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {g.campaign ?? "Campanha não identificada"}
+                    {g.convertido > 0 ? ` · ${g.convertido} convertido${g.convertido > 1 ? "s" : ""}` : g.negociacao > 0 ? ` · ${g.negociacao} em negociação` : ""}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.5px" }}>{g.leads.length}</p>
+                  <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "1px 0 0" }}>{g.leads.length === 1 ? "lead" : "leads"}</p>
+                </div>
+                <ChevronRight size={18} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               </button>
             );
           })}
         </div>
-
-        {/* ── Filters (abas de lista) ── */}
-        {(tab === "todos" || tab === "validos" || tab === "invalidos" || tab === "semresposta") && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "0 12px", flex: 1, minWidth: 240 }}>
-              <Search size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome, telefone, mensagem, tag..." style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontSize: 13 }} />
-            </div>
-            <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)} style={selectStyle}>
-              <option value="">Campanha: todas</option>
-              {data.campaigns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-            </select>
-            <select value={adFilter} onChange={(e) => setAdFilter(e.target.value)} style={selectStyle}>
-              <option value="">Anúncio: todos</option>
-              {data.ads.map((a) => <option key={a.adTitle} value={a.adTitle}>{a.adTitle}</option>)}
-            </select>
-            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={selectStyle}>
-              <option value="">Funil: todos</option>
-              {Object.keys(STAGE_COLORS).map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
-              <option value="__none__">Sem etapa</option>
-            </select>
-            {allTagNames.length > 0 && (
-              <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={selectStyle}>
-                <option value="">Tag: todas</option>
-                {allTagNames.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            )}
-            <select value={mediaFilter} onChange={(e) => setMediaFilter(e.target.value)} style={selectStyle}>
-              <option value="">Mídia: todas</option>
-              <option value="midia">Com mídia</option>
-              <option value="audio">Com áudio</option>
-              <option value="imagem">Com imagem</option>
-            </select>
-            <select value={replyFilter} onChange={(e) => setReplyFilter(e.target.value)} style={selectStyle}>
-              <option value="">Resposta: todas</option>
-              <option value="respondido">Respondidos</option>
-              <option value="semresposta">Sem resposta</option>
-            </select>
-            <select value={validFilter} onChange={(e) => setValidFilter(e.target.value)} style={selectStyle}>
-              <option value="">Relatório: todos</option>
-              <option value="validos">Válidos</option>
-              <option value="invalidos">Inválidos</option>
-            </select>
-            {hasFilters && (
-              <button onClick={clearFilters} style={{ height: 38, padding: "0 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                <X size={13} /> Limpar
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── Content ── */}
-        {(tab === "todos" || tab === "validos" || tab === "invalidos" || tab === "semresposta") && <LeadsTable leads={tabRows} onSelect={setSelected} />}
-        {tab === "campanhas" && <CampaignsTable campaigns={data.campaigns} />}
-        {tab === "anuncios" && <AdsTable ads={data.ads} />}
-        {tab === "validacao" && <ValidationTable leads={validationLeads} all={leads} onSelect={setSelected} />}
       </div>
 
-      {/* ── Detail drawer ── */}
+      {/* ── Modal: leads do anúncio ── */}
+      {openGroup && (
+        <AdLeadsModal group={openGroup} onClose={() => setOpenAdKey(null)} onSelect={setSelected} />
+      )}
+
+      {/* ── Detail drawer (por cima do modal) ── */}
       {selected && <LeadDetailDrawer clientId={clientId} lead={selected} onClose={() => setSelected(null)} onChanged={reload} />}
     </>
   );
 }
 
+// ─── Modal: leads de um anúncio ───────────────────────────────────────────────
+function AdLeadsModal({ group, onClose, onSelect }: { group: AdBucket; onClose: () => void; onSelect: (l: AdLead) => void }) {
+  const [q, setQ] = useState("");
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return group.leads;
+    return group.leads.filter((l) => {
+      const hay = `${l.displayName ?? ""} ${l.name ?? ""} ${l.phone} ${l.firstMessage?.text ?? ""}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [group.leads, q]);
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", backdropFilter: "blur(2px)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(940px, 96vw)", maxHeight: "86vh", background: "var(--bg-base)", borderRadius: 16, boxShadow: "0 24px 70px rgba(15,23,42,0.28)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, background: "var(--bg-surface)" }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "color-mix(in srgb, var(--accent) 10%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Megaphone size={17} style={{ color: "var(--accent)" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.adLabel}</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>{group.campaign ?? "Campanha não identificada"} · {group.leads.length} {group.leads.length === 1 ? "lead" : "leads"}</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, borderRadius: 10, background: "var(--bg-elevated)", border: "1px solid var(--border)", padding: "0 12px", width: 220 }}>
+            <Search size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar lead..." style={{ flex: 1, border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontSize: 13, minWidth: 0 }} />
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><X size={16} /></button>
+        </div>
+        {/* Body */}
+        <div className="adl-scroll" style={{ overflowY: "auto", padding: 18 }}>
+          <LeadsTable leads={filtered} onSelect={onSelect} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Leads table ──────────────────────────────────────────────────────────────
 function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead) => void }) {
-  if (leads.length === 0) return <EmptyState label="Nenhum lead corresponde aos filtros." />;
+  if (leads.length === 0) return <EmptyState label="Nenhum lead corresponde à busca." />;
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
       <div className="adl-scroll" style={{ overflowX: "auto" }}>
@@ -450,110 +429,6 @@ function LeadsTable({ leads, onSelect }: { leads: AdLead[]; onSelect: (l: AdLead
   );
 }
 
-// ─── Campaigns table ──────────────────────────────────────────────────────────
-function CampaignsTable({ campaigns }: { campaigns: CampaignGroup[] }) {
-  if (campaigns.length === 0) return <EmptyState label="Nenhuma campanha no período." />;
-  return (
-    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 80px 110px 110px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-        {["Campanha","Leads","Anúncios","Em negociação","Convertidos"].map((h, i) => (
-          <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
-        ))}
-      </div>
-      {campaigns.map((c, i) => (
-        <div key={c.name} style={{ display: "grid", gridTemplateColumns: "2fr 80px 80px 110px 110px", gap: 12, padding: "13px 18px", borderBottom: i < campaigns.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-            <Layers size={13} style={{ color: "#8B5CF6", flexShrink: 0 }} />
-            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
-          </span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{c.total}</span>
-          <span style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "right" }}>{c.ads}</span>
-          <span style={{ fontSize: 13, fontWeight: c.negociacao ? 700 : 400, color: c.negociacao ? "#10B981" : "var(--text-muted)", textAlign: "right" }}>{c.negociacao || "—"}</span>
-          <span style={{ fontSize: 13, fontWeight: c.convertido ? 700 : 400, color: c.convertido ? "#16A34A" : "var(--text-muted)", textAlign: "right" }}>{c.convertido || "—"}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Ads table ────────────────────────────────────────────────────────────────
-function AdsTable({ ads }: { ads: AdGroup[] }) {
-  if (ads.length === 0) return <EmptyState label="Nenhum anúncio no período." />;
-  return (
-    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.4fr 70px 130px 110px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-        {["Anúncio","Campanha","Leads","Último lead","Em negociação"].map((h, i) => (
-          <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i < 2 ? "left" : "right" }}>{h}</span>
-        ))}
-      </div>
-      {ads.map((a, i) => (
-        <div key={a.adTitle} style={{ display: "grid", gridTemplateColumns: "1.8fr 1.4fr 70px 130px 110px", gap: 12, padding: "13px 18px", borderBottom: i < ads.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-            <Megaphone size={13} style={{ color: "var(--accent)", flexShrink: 0 }} />
-            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.adTitle}</span>
-          </span>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.campaignName ?? "—"}</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{a.total}</span>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{a.lastEnteredAt ? `${fmtDate(a.lastEnteredAt)}, ${fmtTime(a.lastEnteredAt)}` : "—"}</span>
-          <span style={{ fontSize: 13, fontWeight: a.negociacao ? 700 : 400, color: a.negociacao ? "#10B981" : "var(--text-muted)", textAlign: "right" }}>{a.negociacao || "—"}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Validation table ─────────────────────────────────────────────────────────
-function ValidationTable({ leads, all, onSelect }: { leads: AdLead[]; all: AdLead[]; onSelect: (l: AdLead) => void }) {
-  if (all.length > 0 && leads.length === 0) {
-    return (
-      <div style={{ background: "color-mix(in srgb, #16A34A 5%, var(--bg-surface))", border: "1px solid color-mix(in srgb, #16A34A 25%, var(--border))", borderRadius: 14, padding: "28px 24px", textAlign: "center" }}>
-        <ShieldCheck size={30} style={{ color: "#16A34A", margin: "0 auto 12px", display: "block" }} />
-        <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Todos os {all.length} leads estão validados</p>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "6px 0 0" }}>Referral, campanha, anúncio e mensagem confirmados. Prontos para o relatório mensal.</p>
-      </div>
-    );
-  }
-  if (leads.length === 0) return <EmptyState label="Nenhum lead para validar." />;
-  return (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(217,119,6,0.06)", border: "1px solid rgba(217,119,6,0.2)", marginBottom: 12 }}>
-        <AlertCircle size={15} color="#D97706" />
-        <span style={{ fontSize: 12.5, color: "#92600A" }}>{leads.length} lead{leads.length !== 1 ? "s" : ""} com dados incompletos — confira antes de fechar o relatório.</span>
-      </div>
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr) 40px", gap: 10, padding: "11px 18px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-          {["Lead","Referral","Campanha","Anúncio","Mensagem",""].map((h, i) => (
-            <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "center" }}>{h}</span>
-          ))}
-        </div>
-        {leads.map((l, i) => (
-          <button key={l.id} className="adl-row" onClick={() => onSelect(l)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr) 40px", gap: 10, padding: "12px 18px", borderBottom: i < leads.length - 1 ? "1px solid var(--border)" : "none", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <Avatar name={l.name} wa={l.phone} size={34} />
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name ?? "Sem nome"}</p>
-                <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>+{l.phone}</p>
-              </div>
-            </div>
-            <ValCell ok={!!l.ctwaClid || !!l.adId} />
-            <ValCell ok={!!l.campaignName} />
-            <ValCell ok={!!l.adTitle} />
-            <ValCell ok={l.messageCount > 0} />
-            <ChevronRight size={15} style={{ color: "var(--text-muted)" }} />
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-function ValCell({ ok }: { ok: boolean }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "center" }}>
-      {ok ? <CheckCircle2 size={16} style={{ color: "#16A34A" }} /> : <AlertCircle size={16} style={{ color: "#D97706" }} />}
-    </div>
-  );
-}
-
 // ─── Detail drawer ────────────────────────────────────────────────────────────
 function LeadDetailDrawer({ clientId, lead, onClose, onChanged }: { clientId: string; lead: AdLead; onClose: () => void; onChanged?: () => void }) {
   return (
@@ -591,8 +466,3 @@ function EmptyAdLeads() {
     </div>
   );
 }
-
-const selectStyle: React.CSSProperties = {
-  height: 38, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-surface)",
-  color: "var(--text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer", maxWidth: 200,
-};
