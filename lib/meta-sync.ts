@@ -23,7 +23,9 @@ async function graphGetAll<T>(url: string): Promise<T[]> {
     const json = (await res.json()) as GraphPage<T> & { error?: { code?: number; type?: string; message?: string } };
     if (!res.ok || json.error) {
       const err = json.error;
-      if (err?.code === 190 || err?.type === "OAuthException") {
+      // Apenas code 190 = token. type OAuthException também cobre erros de query
+      // inválida (#100), que não devem ser tratados como token expirado.
+      if (err?.code === 190) {
         throw new MetaTokenError(err?.message ?? "Token Meta expirado/revogado");
       }
       if (err?.code === 17 || err?.code === 80004 || err?.code === 4) {

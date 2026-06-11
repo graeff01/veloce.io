@@ -14,7 +14,8 @@ export async function syncMetaInsights(
 
   const accessToken = decryptSecret(conn.accessToken);
 
-  const fields = "campaign_id,campaign_name,adset_id,adset_name,objective,status,spend,impressions,reach,clicks,ctr,cpm,cpc,actions,action_values,cost_per_action_type";
+  // NÃO incluir "status" — não é campo válido do endpoint de insights (Meta retorna #100).
+  const fields = "campaign_id,campaign_name,adset_id,adset_name,objective,spend,impressions,reach,clicks,ctr,cpm,cpc,actions,action_values,cost_per_action_type";
   const url = new URL(`https://graph.facebook.com/v21.0/${conn.adAccountId}/insights`);
   url.searchParams.set("fields", fields);
   url.searchParams.set("time_range", JSON.stringify({ since, until }));
@@ -28,7 +29,9 @@ export async function syncMetaInsights(
 
   if (!metaRes.ok || metaData.error) {
     const err = metaData.error;
-    if (err?.code === 190 || err?.type === "OAuthException") {
+    // Apenas code 190 = token expirado/revogado. NÃO usar type OAuthException,
+    // pois erros de query inválida (#100) também têm esse type e seriam mascarados.
+    if (err?.code === 190) {
       throw new MetaTokenError(err?.message ?? "Token expirado/revogado");
     }
     if (err?.code === 17 || err?.code === 80004 || err?.code === 4) {
