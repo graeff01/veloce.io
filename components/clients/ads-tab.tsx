@@ -172,6 +172,18 @@ export function AdsTab({ clientId }: { clientId: string }) {
     </div>
   );
 
+  // ── Atualizar token (mesma conta, sem desconectar/perder dados) ──
+  if (showSetup) return (
+    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", padding: "32px 28px" }}>
+      <SetupForm
+        clientId={clientId}
+        initialAccountId={conn.adAccountId}
+        onSaved={() => { setShowSetup(false); setError(""); load(); }}
+        onCancel={() => setShowSetup(false)}
+      />
+    </div>
+  );
+
   // ── Connected ──────────────────────────────────────────────────────────────
   const insights = conn.insights;
   const totalSpend      = insights.reduce((s, i) => s + i.spend, 0);
@@ -213,6 +225,12 @@ export function AdsTab({ clientId }: { clientId: string }) {
           >
             {syncing ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={12} />}
             {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          </button>
+          <button
+            onClick={() => setShowSetup(true)}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 12px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+          >
+            <Link2 size={12} /> Atualizar token
           </button>
           <button
             onClick={handleDisconnect}
@@ -321,12 +339,14 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
 // ── Setup Form ─────────────────────────────────────────────────────────────────
 
-function SetupForm({ clientId, onSaved, onCancel }: {
+function SetupForm({ clientId, initialAccountId = "", onSaved, onCancel }: {
   clientId: string;
+  initialAccountId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [adAccountId, setAdAccountId] = useState("");
+  const isUpdate = !!initialAccountId;
+  const [adAccountId, setAdAccountId] = useState(initialAccountId);
   const [accessToken, setAccessToken] = useState("");
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState("");
@@ -359,7 +379,7 @@ function SetupForm({ clientId, onSaved, onCancel }: {
         <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}>
           <X size={16} />
         </button>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Conectar Meta Ads</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{isUpdate ? "Atualizar token Meta Ads" : "Conectar Meta Ads"}</h2>
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -409,7 +429,7 @@ function SetupForm({ clientId, onSaved, onCancel }: {
           </button>
           <button type="submit" disabled={saving} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 9, border: "none", background: "#1877F2", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
             {saving ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={13} />}
-            {saving ? "Verificando..." : "Conectar"}
+            {saving ? "Verificando..." : isUpdate ? "Atualizar" : "Conectar"}
           </button>
         </div>
       </form>
