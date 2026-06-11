@@ -53,6 +53,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   // Atualiza o cabeçalho (contatos, leads, última atividade) periodicamente.
   useEffect(() => {
     const id = setInterval(() => {
+      if (document.hidden) return; // aba oculta → não consome
       fetch(`/api/clients/${clientId}/whatsapp`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setConn(c); }).catch(() => {});
     }, 20000);
     return () => clearInterval(id);

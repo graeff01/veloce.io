@@ -161,7 +161,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
 
   // Atualização automática da lista (novos leads/mensagens) sem recarregar a página.
   useEffect(() => {
-    const id = setInterval(() => { loadList(); }, 15000);
+    const id = setInterval(() => { if (!document.hidden) loadList(); }, 15000);
     return () => clearInterval(id);
   }, [loadList]);
 
@@ -169,6 +169,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   useEffect(() => {
     if (!selected) return;
     const id = setInterval(() => {
+      if (document.hidden) return; // aba oculta → não consome
       fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d: Detail | null) => { if (d) setDetail(d); })

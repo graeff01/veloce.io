@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useCachedFetch } from "@/lib/use-cached-fetch";
 import {
   Loader2, Search, Megaphone, Users, Target, CheckCircle2,
   X, Phone, Mic, Image, FileText, Video, ChevronRight,
@@ -136,37 +137,15 @@ function SummaryCard({ icon, label, value, accent }: { icon: React.ReactNode; la
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function AdLeadsView({ clientId, year, month }: { clientId: string; year: number; month: number }) {
-  const [data, setData] = useState<AuditData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [openAdKey, setOpenAdKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdLead | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (active) { setData(d); setLoading(false); } })
-      .catch(() => active && setLoading(false));
-    return () => { active = false; };
-  }, [clientId, year, month]);
-
-  // Atualização automática (novos leads) sem recarregar a página.
-  useEffect(() => {
-    const id = setInterval(() => {
-      fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (d) setData(d); })
-        .catch(() => {});
-    }, 20000);
-    return () => clearInterval(id);
-  }, [clientId, year, month]);
-
-  const reload = useCallback(() => {
-    fetch(`/api/audit?clientId=${clientId}&year=${year}&month=${month}`)
-      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setData(d); }).catch(() => {});
-  }, [clientId, year, month]);
+  // Dados com cache + revalidação: aparece na hora ao navegar e o polling
+  // pausa quando a aba está oculta (não consome à toa).
+  const { data, loading, refresh: reload } = useCachedFetch<AuditData>(
+    `/api/audit?clientId=${clientId}&year=${year}&month=${month}`,
+    { refreshMs: 20000 },
+  );
 
   const leads = data?.leads ?? [];
 
