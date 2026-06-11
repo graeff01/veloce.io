@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     + `&level=adset`
     + `&time_increment=all_days`
     + `&limit=200`
-    + `&access_token=${accessToken}`;
+    + `&access_token=${encodeURIComponent(accessToken)}`;
 
   const metaRes = await fetch(url);
   const metaData = await metaRes.json();
