@@ -9,6 +9,7 @@ datasource db {
 enum Role {
   ADMIN
   OPERATIONAL
+  CLIENT
 }
 
 enum ClientStatus {
@@ -51,9 +52,16 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  // Vínculo com Client — preenchido apenas para usuários de papel CLIENT
+  // (acesso executivo travado a um único cliente). Null para equipe interna.
+  clientId  String?
+  client    Client?   @relation("ClientUsers", fields: [clientId], references: [id], onDelete: Cascade)
+
   assignedTasks     Task[]         @relation("AssignedTasks")
   assignedMovements Movement[]     @relation("AssignedMovements")
   executionLogs     ExecutionLog[]
+
+  @@index([clientId])
 }
 
 model Client {
@@ -113,6 +121,7 @@ model Client {
   winningCampaigns  WinningCampaign[]
   portalCredentials CustomerPortalCredential[]
   portalAccessLogs  PortalAccessLog[]
+  clientUsers       User[]            @relation("ClientUsers")
 }
 
 model Meeting {
