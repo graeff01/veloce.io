@@ -13,7 +13,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:migrate:dev": "prisma migrate dev",
-    "db:migrate": "prisma migrate resolve --rolled-back 20260526011313_add_movement_brain 2>/dev/null || true && prisma migrate deploy",
+    "db:migrate": "prisma migrate resolve --rolled-back 20260526011313_add_movement_brain 2>/dev/null || true && prisma migrate resolve --rolled-back 20260611130000_unified_client_access 2>/dev/null || true && prisma migrate deploy",
     "db:check": "prisma migrate diff --from-config-datasource prisma.config.ts --to-schema prisma/schema.prisma --exit-code",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",

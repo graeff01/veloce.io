@@ -1,17 +1,22 @@
 -- Unificação de acesso: papel CLIENT + vínculo User↔Client.
--- O usuário CLIENT é travado a um único cliente (acesso executivo).
+-- IDEMPOTENTE e seguro para re-aplicação (deploy travado/parcial não quebra).
 
--- 1) Novo valor no enum Role (Postgres 12+ permite ADD VALUE em transação;
---    não usamos o valor nesta mesma migração, então é seguro).
+-- 1) Novo valor no enum Role (IF NOT EXISTS — re-rodável).
 ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'CLIENT';
 
--- 2) Vínculo opcional do usuário com um cliente.
-ALTER TABLE "User" ADD COLUMN "clientId" TEXT;
+-- 2) Coluna de vínculo (IF NOT EXISTS — não falha se já existir).
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "clientId" TEXT;
 
--- 3) FK + índice.
-ALTER TABLE "User"
-  ADD CONSTRAINT "User_clientId_fkey"
-  FOREIGN KEY ("clientId") REFERENCES "Client"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+-- 3) FK só se ainda não existir.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'User_clientId_fkey') THEN
+    ALTER TABLE "User"
+      ADD CONSTRAINT "User_clientId_fkey"
+      FOREIGN KEY ("clientId") REFERENCES "Client"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-CREATE INDEX "User_clientId_idx" ON "User"("clientId");
+-- 4) Índice (IF NOT EXISTS — re-rodável).
+CREATE INDEX IF NOT EXISTS "User_clientId_idx" ON "User"("clientId");
