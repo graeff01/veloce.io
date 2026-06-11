@@ -17,6 +17,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
 
-  const data = await computeMetaAdsView(id, start, end);
-  return NextResponse.json(data);
+  try {
+    const data = await computeMetaAdsView(id, start, end);
+    return NextResponse.json(data);
+  } catch (e) {
+    // Erro transitório (banco lento, deploy em curso) — não quebra a tela.
+    console.error("[meta/ads] erro ao computar view:", e instanceof Error ? e.message : e);
+    return NextResponse.json(
+      { connected: true, hasData: false, totals: { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, leads: 0, metaLeads: 0, cpl: null }, campaigns: [], ads: [], leadsSemIdentificacao: 0 },
+      { status: 200 }
+    );
+  }
 }
