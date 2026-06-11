@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2,
-  CalendarDays, Columns3, User, Mic, Megaphone, Bot,
+  CalendarDays, Columns3, User, Mic, Megaphone, Bot, BarChart3,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -18,6 +18,7 @@ import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
 import { VisitsCalendar } from "@/components/calendar/visits-calendar";
 import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
+import { AdsTab } from "@/components/clients/ads-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "agenda" | "ia";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "agenda" | "ia";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -177,6 +178,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
+    { key: "anuncios",  label: "Anúncios",  icon: <BarChart3 size={13} /> },
     { key: "agenda",    label: "Agenda",    icon: <CalendarDays size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
@@ -280,6 +282,12 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {tab === "leads" && (
         <WhatsAppTab clientId={clientId} />
+      )}
+
+      {tab === "anuncios" && (
+        <div style={{ padding: "24px 28px" }}>
+          <AdsTab clientId={clientId} />
+        </div>
       )}
 
       {tab === "agenda" && (
