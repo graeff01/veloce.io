@@ -29,31 +29,36 @@ export function useCachedFetch<T>(
 ): { data: T | null; loading: boolean; refresh: () => void } {
   const [data, setData] = useState<T | null>(() => (key ? ((cache.get(key) as T) ?? null) : null));
   const [loading, setLoading] = useState<boolean>(() => !(key && cache.has(key)));
-  const keyRef = useRef(key);
-  keyRef.current = key;
-
-  async function load(k: string) {
-    const d = await fetchKey<T>(k);
-    if (keyRef.current !== k) return; // chave mudou no meio — descarta
-    if (d != null) { cache.set(k, d); setData(d); }
-    setLoading(false);
-  }
+  // Atualizado dentro do efeito (nunca durante o render) — usado pelo refresh().
+  const loadRef = useRef<() => void>(() => {});
 
   const refreshMs = opts?.refreshMs;
   useEffect(() => {
     if (!key) return;
+    let cancelled = false;
+
+    // Hidrata do cache na hora (navegação instantânea); senão mostra loading.
     if (cache.has(key)) { setData(cache.get(key) as T); setLoading(false); }
     else setLoading(true);
-    void load(key); // revalida sempre ao montar/trocar de chave
 
-    if (!refreshMs) return;
-    const id = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) return; // aba oculta → não consome
-      void load(key);
-    }, refreshMs);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const load = async () => {
+      const d = await fetchKey<T>(key);
+      if (cancelled) return;
+      if (d != null) { cache.set(key, d); setData(d); }
+      setLoading(false);
+    };
+    loadRef.current = () => { void load(); };
+    void load(); // revalida sempre ao montar/trocar de chave
+
+    let id: ReturnType<typeof setInterval> | undefined;
+    if (refreshMs) {
+      id = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return; // aba oculta → não consome
+        void load();
+      }, refreshMs);
+    }
+    return () => { cancelled = true; if (id) clearInterval(id); };
   }, [key, refreshMs]);
 
-  return { data, loading, refresh: () => { if (key) void load(key); } };
+  return { data, loading, refresh: () => loadRef.current() };
 }
