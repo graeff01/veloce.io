@@ -17,6 +17,9 @@ import {
   Wallet,
   Users,
   UserRound,
+  MessageSquare,
+  TrendingUp,
+  FileText,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -39,13 +42,24 @@ const adminNavItems = [
   { href: "/settings", icon: Settings, label: "Configuracoes" },
 ];
 
+// Menu do CLIENTE — versão executiva, acesso restrito.
+const clientNavItems = [
+  { href: "/c",            icon: LayoutDashboard, label: "Visão Geral" },
+  { href: "/c/whatsapp",   icon: MessageSquare,   label: "WhatsApp" },
+  { href: "/c/ads",        icon: TrendingUp,      label: "Ads Intelligence" },
+  { href: "/c/relatorios", icon: FileText,        label: "Relatórios" },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const isClient = session?.user.role === "CLIENT";
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
+    // Usuário CLIENTE não tem carteira — não consome a API interna de clientes.
+    if (isClient) return;
     fetch("/api/clients")
       .then((r) => r.ok ? r.json() : [])
       .then((data: Array<{ id: string; name: string; status: string; logoUrl?: string | null; stats?: { overdueTasks?: number } }>) => {
@@ -62,7 +76,7 @@ export function Sidebar() {
         );
       })
       .catch(() => {});
-  }, []);
+  }, [isClient]);
 
   useEffect(() => {
     const saved = localStorage.getItem("veloce-theme");
@@ -89,10 +103,22 @@ export function Sidebar() {
   }
 
   const firstName = session?.user.name?.split(" ")[0] ?? "";
-  const role = session?.user.role === "ADMIN" ? "Administrador" : "Operacional";
+  const role = session?.user.role === "ADMIN" ? "Administrador" : session?.user.role === "CLIENT" ? "Cliente" : "Operacional";
 
   const activeClients = clients.filter((c) => c.status === "ACTIVE");
   const pausedClients = clients.filter((c) => c.status === "PAUSED");
+
+  // ── Sidebar do CLIENTE (mesma casca visual, menu restrito) ──
+  if (isClient) {
+    return (
+      <ClientSidebar
+        pathname={pathname}
+        firstName={firstName}
+        dark={dark}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
 
   return (
     <aside
@@ -526,5 +552,73 @@ function BottomNavItem({
         <span>{label}</span>
       </div>
     </Link>
+  );
+}
+
+/* ─── Client Sidebar (versão executiva, menu restrito) ─────────────────── */
+function ClientSidebar({
+  pathname,
+  firstName,
+  dark,
+  toggleTheme,
+}: {
+  pathname: string;
+  firstName: string;
+  dark: boolean;
+  toggleTheme: () => void;
+}) {
+  function active(href: string) {
+    return href === "/c" ? pathname === "/c" : pathname.startsWith(href);
+  }
+  return (
+    <aside
+      style={{
+        position: "fixed",
+        left: 0,
+        top: 0,
+        height: "100vh",
+        width: 240,
+        display: "flex",
+        flexDirection: "column",
+        zIndex: 40,
+        background: "linear-gradient(180deg, var(--bg-sidebar) 0%, var(--bg-surface) 100%)",
+        borderRight: "1px solid var(--border)",
+        boxShadow: "8px 0 34px rgba(0,0,0,0.10)",
+      }}
+    >
+      {/* Logo */}
+      <div style={{ height: 56, display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <Link href="/c" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
+          <div style={{ width: 30, height: 30, borderRadius: 9, background: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", border: "1px solid var(--border)" }}>
+            <Image src="/logo.png" alt="Veloce.io" width={30} height={30} priority style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>
+            veloce<span style={{ color: "var(--accent)" }}>.io</span>
+          </span>
+        </Link>
+      </div>
+
+      {/* Nav */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 8px", minHeight: 0 }}>
+        {clientNavItems.map((item) => (
+          <BottomNavItem key={item.href} {...item} active={active(item.href)} />
+        ))}
+      </div>
+
+      {/* User footer */}
+      <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px 12px" }}>
+        {firstName && <Avatar name={firstName} size="sm" />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "18px" }}>{firstName}</p>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: "15px" }}>Cliente</p>
+        </div>
+        <button onClick={() => signOut({ callbackUrl: "/login" })} title="Sair" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, borderRadius: 6, display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <LogOut size={14} />
+        </button>
+        <button onClick={toggleTheme} title={dark ? "Modo claro" : "Modo escuro"} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, borderRadius: 6, display: "flex", alignItems: "center", flexShrink: 0 }}>
+          {dark ? <Sun size={14} /> : <Moon size={14} />}
+        </button>
+      </div>
+    </aside>
   );
 }
