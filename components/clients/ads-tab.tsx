@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Link2,
-  AlertTriangle, CheckCircle2,
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { WinningCampaigns } from "@/components/clients/winning-campaigns";
 
@@ -40,7 +40,7 @@ interface MetaConnection {
 
 // Visão dimensional (campanhas + anúncios com leads reais) — /meta/ads
 interface AdRow {
-  adId: string; name: string; campaignName: string; status: string;
+  adId: string; name: string; campaignId: string; campaignName: string; status: string;
   spend: number; impressions: number; clicks: number; ctr: number; cpc: number;
   leads: number; metaLeads: number; cpl: number | null;
 }
@@ -54,6 +54,7 @@ interface AdsView {
   totals: { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; metaLeads: number; cpl: number | null };
   campaigns: CampaignRow[];
   ads: AdRow[];
+  leadsSemIdentificacao: number;
 }
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -306,29 +307,14 @@ export function AdsTab({ clientId }: { clientId: string }) {
               <MetaKpi label="Cliques"       value={fmtK(t.clicks)}                        icon={<MousePointer size={14} color="#059669" />} bg="rgba(5,150,105,0.08)"  />
             </div>
 
-            {/* ── Campanhas ── */}
-            <AdsTable
-              title="Campanhas"
-              cols={["Campanha", "Status", "Investimento", "Impr.", "CTR", "Leads", "CPL"]}
-              widths="2fr 90px 110px 80px 70px 70px 90px"
-              rows={ads.campaigns.map((c) => ({
-                key: c.campaignId, name: c.name, status: c.status,
-                cells: [fmtBRL(c.spend), fmtK(c.impressions), `${fmt(c.ctr)}%`, c.leads, c.cpl != null ? fmtBRL(c.cpl) : "—"],
-                highlightLeads: 3,
-              }))}
-            />
+            {/* ── Campanhas (expande anúncios) ── */}
+            <CampaignAccordion campaigns={ads.campaigns} ads={ads.ads} />
 
-            {/* ── Anúncios ── */}
-            <AdsTable
-              title="Anúncios"
-              cols={["Anúncio", "Status", "Investimento", "Impr.", "CTR", "CPC", "Leads", "CPL"]}
-              widths="2fr 90px 110px 80px 70px 80px 70px 90px"
-              rows={ads.ads.map((a) => ({
-                key: a.adId, name: a.name, status: a.status, sub: a.campaignName,
-                cells: [fmtBRL(a.spend), fmtK(a.impressions), `${fmt(a.ctr)}%`, fmtBRL(a.cpc), a.leads, a.cpl != null ? fmtBRL(a.cpl) : "—"],
-                highlightLeads: 4,
-              }))}
-            />
+            {ads.leadsSemIdentificacao > 0 && (
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "-8px 2px 0" }}>
+                {ads.leadsSemIdentificacao} lead(s) de anúncio sem identificação de campanha (origem não reconhecida) não entram nas linhas acima.
+              </p>
+            )}
           </>
         )}
 
@@ -344,37 +330,78 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
 const selectStyle: React.CSSProperties = { height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" };
 
-// Tabela enxuta de campanhas/anúncios. "Leads" é destacado (resultado real).
-function AdsTable({ title, cols, widths, rows }: {
-  title: string;
-  cols: string[];
-  widths: string;
-  rows: { key: string; name: string; status: string; sub?: string; cells: (string | number)[]; highlightLeads: number }[];
-}) {
+// Accordion: campanhas; clicar expande os anúncios da campanha (fechado por padrão).
+const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";
+
+function CampaignAccordion({ campaigns, ads }: { campaigns: CampaignRow[]; ads: AdRow[] }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const adsByCampaign = new Map<string, AdRow[]>();
+  for (const a of ads) {
+    const arr = adsByCampaign.get(a.campaignId) ?? [];
+    arr.push(a);
+    adsByCampaign.set(a.campaignId, arr);
+  }
+
   return (
     <div>
-      <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>{title}</p>
+      <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Campanhas e anúncios</p>
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: widths, padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-          {cols.map((h, i) => (
-            <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: i <= 1 ? "left" : "right" }}>{h}</span>
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", alignItems: "center" }}>
+          {["", "Campanha", "Status", "Investimento", "Impr.", "CTR", "CPC", "Leads", "CPL"].map((h, i) => (
+            <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: i <= 2 ? "left" : "right" }}>{h}</span>
           ))}
         </div>
-        {rows.length === 0 ? (
+
+        {campaigns.length === 0 ? (
           <p style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px" }}>Sem dados no período.</p>
-        ) : rows.map((row, i) => {
-          const st = statusColor(row.status);
+        ) : campaigns.map((c, i) => {
+          const st = statusColor(c.status);
+          const myAds = adsByCampaign.get(c.campaignId) ?? [];
+          const canExpand = myAds.length > 0;
+          const isOpen = !!open[c.campaignId];
           return (
-            <div key={row.key} style={{ display: "grid", gridTemplateColumns: widths, padding: "11px 16px", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</p>
-                {row.sub && <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.sub}</p>}
+            <div key={c.campaignId} style={{ borderBottom: i < campaigns.length - 1 ? "1px solid var(--border)" : "none" }}>
+              {/* Linha da campanha */}
+              <div
+                onClick={() => canExpand && setOpen((o) => ({ ...o, [c.campaignId]: !o[c.campaignId] }))}
+                style={{ display: "grid", gridTemplateColumns: COLS, padding: "12px 16px", alignItems: "center", cursor: canExpand ? "pointer" : "default", transition: "background 120ms" }}
+                onMouseEnter={(e) => { if (canExpand) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <span style={{ display: "flex", color: "var(--text-muted)" }}>
+                  {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</p>
+                  {canExpand && <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0" }}>{myAds.length} anúncio{myAds.length > 1 ? "s" : ""}</p>}
+                </div>
+                <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
+                <Cell v={fmtBRL(c.spend)} bold />
+                <Cell v={fmtK(c.impressions)} />
+                <Cell v={`${fmt(c.ctr)}%`} />
+                <Cell v="—" />
+                <Cell v={c.leads} leads />
+                <Cell v={c.cpl != null ? fmtBRL(c.cpl) : "—"} />
               </div>
-              <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
-              {row.cells.map((c, ci) => {
-                const isLeads = ci + 2 === row.highlightLeads;
+
+              {/* Anúncios da campanha */}
+              {isOpen && myAds.map((a) => {
+                const ast = statusColor(a.status);
                 return (
-                  <span key={ci} style={{ fontSize: 12, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: isLeads && Number(c) > 0 ? 700 : ci === 0 ? 700 : 400, color: isLeads ? (Number(c) > 0 ? "#16A34A" : "var(--text-muted)") : ci === 0 ? "var(--text-primary)" : "var(--text-secondary)" }}>{c}</span>
+                  <div key={a.adId} style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)" }}>
+                    <span />
+                    <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)" }}>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
+                    </div>
+                    <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
+                    <Cell v={fmtBRL(a.spend)} />
+                    <Cell v={fmtK(a.impressions)} />
+                    <Cell v={`${fmt(a.ctr)}%`} />
+                    <Cell v={fmtBRL(a.cpc)} />
+                    <Cell v={a.leads} leads />
+                    <Cell v={a.cpl != null ? fmtBRL(a.cpl) : "—"} />
+                  </div>
                 );
               })}
             </div>
@@ -382,6 +409,17 @@ function AdsTable({ title, cols, widths, rows }: {
         })}
       </div>
     </div>
+  );
+}
+
+function Cell({ v, bold, leads }: { v: string | number; bold?: boolean; leads?: boolean }) {
+  const positive = leads && Number(v) > 0;
+  return (
+    <span style={{
+      fontSize: 12, textAlign: "right", fontVariantNumeric: "tabular-nums",
+      fontWeight: positive || bold ? 700 : 400,
+      color: leads ? (positive ? "#16A34A" : "var(--text-muted)") : bold ? "var(--text-primary)" : "var(--text-secondary)",
+    }}>{v}</span>
   );
 }
 

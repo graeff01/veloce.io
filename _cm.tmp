@@ -1,0 +1,16 @@
+feat(ads): accordion campanha->anuncios + atribui leads sem ad_id (Kommo) por modelo
+
+- Aba Anuncios: uma tabela so de campanhas; clicar expande os anuncios da
+  campanha (fechado por padrao p/ nao poluir quando houver varios). Remove a
+  sensacao de duplicacao (campanha e anuncio mostravam o mesmo numero).
+- Motor (meta-ads-view) agora cruza Meta x WhatsApp e atribui TAMBEM os leads
+  sem ad_id (ex.: importados do Kommo): casa o modelo do anuncio
+  (canonicalAdName) com o nome da CAMPANHA sincronizada; se a campanha tem 1
+  unico anuncio, credita tambem a esse anuncio. Assim 1 campanha/1 anuncio
+  recebe todos os leads reais (ad_id + Kommo), sem duplicar.
+- Leads que nao casam com nenhuma campanha aparecem como "sem identificacao"
+  (nunca inventados). Tudo dado real do banco; nada mockado.
+- Sem mexer em token: a visao le do banco; ao colar o token valido de Ads e
+  sincronizar, ja puxa tudo.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
