@@ -54,9 +54,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
 
   // Verifica a conta no Meta antes de salvar
-  const verifyRes = await fetch(
-    `https://graph.facebook.com/v21.0/${accountId}?fields=name,currency,account_status&access_token=${encodeURIComponent(accessToken)}`
-  );
+  const verifyUrl = new URL(`https://graph.facebook.com/v21.0/${accountId}`);
+  verifyUrl.searchParams.append("fields", "name,currency,account_status");
+
+  const verifyRes = await fetch(verifyUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   const verifyData = await verifyRes.json();
 
   if (!verifyRes.ok || verifyData.error) {

@@ -27,15 +27,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     "actions", "action_values", "cost_per_action_type",
   ].join(",");
 
-  const url = `https://graph.facebook.com/v21.0/${conn.adAccountId}/insights`
-    + `?fields=${fields}`
-    + `&time_range={"since":"${since}","until":"${until}"}`
-    + `&level=adset`
-    + `&time_increment=all_days`
-    + `&limit=200`
-    + `&access_token=${encodeURIComponent(accessToken)}`;
+  const url = new URL(`https://graph.facebook.com/v21.0/${conn.adAccountId}/insights`);
+  url.searchParams.append("fields", fields);
+  url.searchParams.append("time_range", JSON.stringify({ since, until }));
+  url.searchParams.append("level", "adset");
+  url.searchParams.append("time_increment", "all_days");
+  url.searchParams.append("limit", "200");
 
-  const metaRes = await fetch(url);
+  const metaRes = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   const metaData = await metaRes.json();
 
   if (!metaRes.ok || metaData.error) {
