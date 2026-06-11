@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-helpers";
-import { computeAdsIntelligence } from "@/lib/ads-intelligence";
+import { computeMetaAdsView } from "@/lib/meta-ads-view";
 
-// GET /api/clients/[id]/ads-intelligence?year=&month=
-// Inteligência comercial da mídia: investimento (Meta, por ad_id) × comportamento
-// real do lead (WhatsApp/CRM). 100% por ID. Sem mock.
+// GET /api/clients/[id]/meta/ads?year=&month=
+// Campanhas e anúncios (dimensional + leads reais por ad_id). Lê do banco — não
+// chama a Meta — então mostra os dados sincronizados mesmo se o token expirou.
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
@@ -17,6 +17,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
 
-  const data = await computeAdsIntelligence(id, start, end);
+  const data = await computeMetaAdsView(id, start, end);
   return NextResponse.json(data);
 }

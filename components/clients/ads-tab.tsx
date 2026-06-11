@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
-  Eye, MousePointer, DollarSign, Users, ShoppingCart, Link2,
+  Eye, MousePointer, DollarSign, Link2,
   AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { WinningCampaigns } from "@/components/clients/winning-campaigns";
@@ -37,6 +37,26 @@ interface MetaConnection {
   lastSyncAt: string | null;
   insights: MetaInsight[];
 }
+
+// Visão dimensional (campanhas + anúncios com leads reais) — /meta/ads
+interface AdRow {
+  adId: string; name: string; campaignName: string; status: string;
+  spend: number; impressions: number; clicks: number; ctr: number; cpc: number;
+  leads: number; metaLeads: number; cpl: number | null;
+}
+interface CampaignRow {
+  campaignId: string; name: string; status: string;
+  spend: number; impressions: number; clicks: number; ctr: number;
+  leads: number; metaLeads: number; cpl: number | null;
+}
+interface AdsView {
+  connected: boolean; hasData: boolean;
+  totals: { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; metaLeads: number; cpl: number | null };
+  campaigns: CampaignRow[];
+  ads: AdRow[];
+}
+
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -73,11 +93,15 @@ function timeAgo(iso: string) {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export function AdsTab({ clientId }: { clientId: string }) {
+  const now = new Date();
   const [conn, setConn]         = useState<MetaConnection | null>(null);
   const [loading, setLoading]   = useState(true);
   const [syncing, setSyncing]   = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [error, setError]       = useState("");
+  const [year, setYear]         = useState(now.getFullYear());
+  const [month, setMonth]       = useState(now.getMonth() + 1);
+  const [ads, setAds]           = useState<AdsView | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,7 +113,13 @@ export function AdsTab({ clientId }: { clientId: string }) {
     setLoading(false);
   }, [clientId]);
 
+  const loadAds = useCallback(async () => {
+    const r = await fetch(`/api/clients/${clientId}/meta/ads?year=${year}&month=${month}`);
+    if (r.ok) setAds(await r.json());
+  }, [clientId, year, month]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (conn) loadAds(); }, [conn, loadAds]);
 
   async function handleSync() {
     setSyncing(true);
@@ -102,7 +132,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
     ]);
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "Erro ao sincronizar");
-    else await load();
+    else { await load(); await loadAds(); }
     setSyncing(false);
   }
 
@@ -185,15 +215,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
   );
 
   // ── Connected ──────────────────────────────────────────────────────────────
-  const insights = conn.insights;
-  const totalSpend      = insights.reduce((s, i) => s + i.spend, 0);
-  const totalImpressions = insights.reduce((s, i) => s + i.impressions, 0);
-  const totalReach      = insights.reduce((s, i) => s + i.reach, 0);
-  const totalClicks     = insights.reduce((s, i) => s + i.clicks, 0);
-  const totalLeads      = insights.reduce((s, i) => s + i.leads, 0);
-  const avgCPL          = totalLeads > 0 ? totalSpend / totalLeads : 0;
-  const avgCTR          = insights.length > 0 ? insights.reduce((s, i) => s + i.ctr, 0) / insights.length : 0;
-  const totalPurchases  = insights.reduce((s, i) => s + i.purchases, 0);
+  const t = ads?.totals;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)" }}>
@@ -249,89 +271,115 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {insights.length === 0 ? (
+        {/* Seletor de período */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={selectStyle}>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={selectStyle}>
+            {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
+          </select>
+        </div>
+
+        {!ads ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+            <Loader2 size={20} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+          </div>
+        ) : !ads.hasData ? (
           <div style={{ textAlign: "center", padding: "48px 0" }}>
             <Zap size={32} style={{ color: "var(--text-muted)", opacity: 0.2, margin: "0 auto 12px", display: "block" }} />
-            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>Nenhum dado sincronizado ainda</p>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>Nenhum anúncio com dados neste período</p>
             <button onClick={handleSync} disabled={syncing} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 20px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               {syncing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />}
               Sincronizar agora
             </button>
           </div>
-        ) : (
+        ) : t && (
           <>
-            {/* ── KPI Summary ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-              <MetaKpi label="Gasto total"    value={fmtBRL(totalSpend)}   icon={<DollarSign size={14} color="#DC2626" />}  bg="rgba(220,38,38,0.08)"  />
-              <MetaKpi label="CPL médio"      value={totalLeads > 0 ? fmtBRL(avgCPL) : "—"} icon={<TrendingDown size={14} color="#D97706" />} bg="rgba(217,119,6,0.08)" />
-              <MetaKpi label="CTR médio"      value={`${fmt(avgCTR, 2)}%`} icon={<MousePointer size={14} color="#2563EB" />} bg="rgba(37,99,235,0.08)"  />
-              <MetaKpi label="Alcance"        value={fmtK(totalReach)}     icon={<Users size={14} color="#7C3AED" />}        bg="rgba(124,58,237,0.08)" />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-              <MetaKpi label="Impressões"     value={fmtK(totalImpressions)} icon={<Eye size={14} color="#0891B2" />}       bg="rgba(8,145,178,0.08)"  />
-              <MetaKpi label="Cliques"        value={fmtK(totalClicks)}    icon={<MousePointer size={14} color="#059669" />} bg="rgba(5,150,105,0.08)"  />
-              <MetaKpi label="Leads"          value={String(totalLeads)}   icon={<TrendingUp size={14} color="#16A34A" />}   bg="rgba(22,163,74,0.08)"  />
-              <MetaKpi label="Compras"        value={String(totalPurchases)} icon={<ShoppingCart size={14} color="#7C3AED" />} bg="rgba(124,58,237,0.08)" />
+            {/* ── KPIs (só o que importa) ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              <MetaKpi label="Investimento"  value={fmtBRL(t.spend)}                       icon={<DollarSign size={14} color="#DC2626" />}  bg="rgba(220,38,38,0.08)"  />
+              <MetaKpi label="Leads reais"   value={String(t.leads)}                       icon={<TrendingUp size={14} color="#16A34A" />}   bg="rgba(22,163,74,0.08)"  />
+              <MetaKpi label="CPL real"      value={t.cpl != null ? fmtBRL(t.cpl) : "—"}   icon={<TrendingDown size={14} color="#D97706" />} bg="rgba(217,119,6,0.08)" />
+              <MetaKpi label="CTR"           value={`${fmt(t.ctr)}%`}                      icon={<MousePointer size={14} color="#2563EB" />} bg="rgba(37,99,235,0.08)"  />
+              <MetaKpi label="Impressões"    value={fmtK(t.impressions)}                   icon={<Eye size={14} color="#0891B2" />}          bg="rgba(8,145,178,0.08)"  />
+              <MetaKpi label="Cliques"       value={fmtK(t.clicks)}                        icon={<MousePointer size={14} color="#059669" />} bg="rgba(5,150,105,0.08)"  />
             </div>
 
-            {/* ── Campaigns table ── */}
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-                Campanhas — {new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" })}
-              </p>
+            {/* ── Campanhas ── */}
+            <AdsTable
+              title="Campanhas"
+              cols={["Campanha", "Status", "Investimento", "Impr.", "CTR", "Leads", "CPL"]}
+              widths="2fr 90px 110px 80px 70px 70px 90px"
+              rows={ads.campaigns.map((c) => ({
+                key: c.campaignId, name: c.name, status: c.status,
+                cells: [fmtBRL(c.spend), fmtK(c.impressions), `${fmt(c.ctr)}%`, c.leads, c.cpl != null ? fmtBRL(c.cpl) : "—"],
+                highlightLeads: 3,
+              }))}
+            />
 
-              <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                {/* Header */}
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 100px 80px 70px 70px 80px 80px", padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-                  {["Campanha / Conjunto", "Status", "Gasto", "Alcance", "CTR", "CPC", "Leads", "CPL"].map(h => (
-                    <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{h}</span>
-                  ))}
-                </div>
-
-                {insights.map((row, i) => {
-                  const st = statusColor(row.status);
-                  return (
-                    <div
-                      key={row.id}
-                      style={{ display: "grid", gridTemplateColumns: "2fr 80px 100px 80px 70px 70px 80px 80px", padding: "11px 16px", borderBottom: i < insights.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.campaignName}</p>
-                        {row.adsetName && (
-                          <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.adsetName}</p>
-                        )}
-                      </div>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20, display: "inline-block" }}>{st.label}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{fmtBRL(row.spend)}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fmtK(row.reach)}</span>
-                      <span style={{ fontSize: 12, color: row.ctr >= 2 ? "#16A34A" : row.ctr >= 1 ? "#D97706" : "var(--text-secondary)" }}>{fmt(row.ctr)}%</span>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fmtBRL(row.cpc)}</span>
-                      <span style={{ fontSize: 12, fontWeight: row.leads > 0 ? 700 : 400, color: row.leads > 0 ? "#16A34A" : "var(--text-muted)" }}>{row.leads}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{row.cpl > 0 ? fmtBRL(row.cpl) : "—"}</span>
-                    </div>
-                  );
-                })}
-
-                {/* Footer total */}
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 100px 80px 70px 70px 80px 80px", padding: "10px 16px", borderTop: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{insights.length} campanha{insights.length !== 1 ? "s" : ""}</span>
-                  <span />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#DC2626" }}>{fmtBRL(totalSpend)}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{fmtK(totalReach)}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{fmt(avgCTR)}%</span>
-                  <span />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#16A34A" }}>{totalLeads}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>{avgCPL > 0 ? fmtBRL(avgCPL) : "—"}</span>
-                </div>
-              </div>
-            </div>
+            {/* ── Anúncios ── */}
+            <AdsTable
+              title="Anúncios"
+              cols={["Anúncio", "Status", "Investimento", "Impr.", "CTR", "CPC", "Leads", "CPL"]}
+              widths="2fr 90px 110px 80px 70px 80px 70px 90px"
+              rows={ads.ads.map((a) => ({
+                key: a.adId, name: a.name, status: a.status, sub: a.campaignName,
+                cells: [fmtBRL(a.spend), fmtK(a.impressions), `${fmt(a.ctr)}%`, fmtBRL(a.cpc), a.leads, a.cpl != null ? fmtBRL(a.cpl) : "—"],
+                highlightLeads: 4,
+              }))}
+            />
           </>
         )}
+
         {/* ── Winning Campaigns ── */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
           <WinningCampaigns clientId={clientId} />
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+const selectStyle: React.CSSProperties = { height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" };
+
+// Tabela enxuta de campanhas/anúncios. "Leads" é destacado (resultado real).
+function AdsTable({ title, cols, widths, rows }: {
+  title: string;
+  cols: string[];
+  widths: string;
+  rows: { key: string; name: string; status: string; sub?: string; cells: (string | number)[]; highlightLeads: number }[];
+}) {
+  return (
+    <div>
+      <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>{title}</p>
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: widths, padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+          {cols.map((h, i) => (
+            <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: i <= 1 ? "left" : "right" }}>{h}</span>
+          ))}
+        </div>
+        {rows.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px" }}>Sem dados no período.</p>
+        ) : rows.map((row, i) => {
+          const st = statusColor(row.status);
+          return (
+            <div key={row.key} style={{ display: "grid", gridTemplateColumns: widths, padding: "11px 16px", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</p>
+                {row.sub && <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.sub}</p>}
+              </div>
+              <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
+              {row.cells.map((c, ci) => {
+                const isLeads = ci + 2 === row.highlightLeads;
+                return (
+                  <span key={ci} style={{ fontSize: 12, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: isLeads && Number(c) > 0 ? 700 : ci === 0 ? 700 : 400, color: isLeads ? (Number(c) > 0 ? "#16A34A" : "var(--text-muted)") : ci === 0 ? "var(--text-primary)" : "var(--text-secondary)" }}>{c}</span>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,0 +1,16 @@
+feat(ads): aba Anuncios = gerenciador enxuto (dados dimensionais) + remove Ads Intelligence
+
+A aba Anuncios lia a tabela antiga (MetaInsight, nivel de conjunto) — vazia —
+enquanto o Ads Intelligence lia as tabelas novas (MetaAd/MetaAdInsight). Por
+isso uma tinha dados e a outra nao. Agora a aba Anuncios usa a MESMA fonte:
+
+- lib/meta-ads-view.ts + GET /api/clients/[id]/meta/ads: campanhas e anuncios
+  com investimento, impressoes, cliques, CTR, CPC e LEADS REAIS por ad_id +
+  CPL real. Le do banco (nao chama a Meta) — mostra os dados mesmo com token
+  expirado; o erro de token so aparece ao Sincronizar.
+- Aba Anuncios reconstruida: seletor de mes/ano, KPIs (Investimento, Leads
+  reais, CPL real, CTR, Impressoes, Cliques), tabela de Campanhas e tabela de
+  Anuncios. Mantem Campanhas Vencedoras.
+- Removido o modulo Ads Intelligence (aba no WhatsApp + view + rota + lib).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

@@ -8,7 +8,6 @@ import { WaConversation, type WaConversationContact } from "@/components/clients
 import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
 import { ConversationsView } from "@/components/whatsapp/conversations-view";
 import { AdLeadsView } from "@/components/whatsapp/ad-leads-view";
-import { AdsIntelligenceView } from "@/components/whatsapp/ads-intelligence-view";
 
 interface Connection {
   id: string;
@@ -33,7 +32,7 @@ function timeAgo(iso: string) {
 export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"painel" | "conversas" | "leads" | "ads">("painel");
+  const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
   const [open, setOpen] = useState<WaConversationContact | null>(null);
   const [editing, setEditing] = useState(false);
 
@@ -103,7 +102,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
-          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["ads", "Ads Intelligence"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
+          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{
               padding: "8px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
               fontWeight: view === k ? 600 : 500, color: view === k ? "var(--text-primary)" : "var(--text-muted)",
@@ -140,8 +139,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
         )}
 
         {view === "leads" && <AdLeadsView clientId={clientId} year={year} month={month} />}
-
-        {view === "ads" && <AdsIntelligenceView clientId={clientId} year={year} month={month} />}
 
       </div>
       )}
