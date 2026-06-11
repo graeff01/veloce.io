@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import {
   Building2,
   CheckCircle2,
@@ -60,7 +59,6 @@ const emptySearch: SearchResponse = { clients: [], tasks: [], campaigns: [], use
 
 export function CommandCenter() {
   const router = useRouter();
-  const { data: session } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -195,8 +193,6 @@ export function CommandCenter() {
     }
   }
 
-  // Busca interna não existe para o CLIENTE.
-  if (session?.user.role === "CLIENT") return null;
   if (!open) return null;
 
   return (

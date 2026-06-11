@@ -77,7 +77,6 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
-          clientId: user.clientId ?? null,
         };
       },
     }),
@@ -87,7 +86,6 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as { id: string; role: Role }).role;
-        token.clientId = (user as { clientId: string | null }).clientId ?? null;
       }
       return token;
     },
@@ -95,7 +93,6 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.id as string;
         session.user.role = token.role as Role;
-        session.user.clientId = (token.clientId as string | null) ?? null;
       }
       return session;
     },

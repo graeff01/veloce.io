@@ -30,9 +30,6 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
     "plans:read",
     "checklist:update",
   ] as Permission[],
-  // CLIENT não tem NENHUMA permissão interna. O acesso executivo do cliente é
-  // controlado por um guard dedicado (requireClientAuth), nunca por requireAuth.
-  CLIENT: [] as Permission[],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {
