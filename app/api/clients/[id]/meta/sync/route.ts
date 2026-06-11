@@ -6,8 +6,11 @@ import { decryptSecret } from "@/lib/crypto";
 // POST — busca insights do Meta e salva no banco
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:update");
-  if (error) return error;
+  const { error, session } = await requireAuth("clients:update");
+  if (error) {
+    console.error("[META/SYNC] Auth error:", { error: error.body, session, url: req.url });
+    return error;
+  }
 
   const conn = await prisma.metaConnection.findUnique({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "Conexão Meta não configurada" }, { status: 404 });
