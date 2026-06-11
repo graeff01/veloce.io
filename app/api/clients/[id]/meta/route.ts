@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // Verifica a conta no Meta antes de salvar
   const verifyRes = await fetch(
-    `https://graph.facebook.com/v21.0/${accountId}?fields=name,currency,account_status&access_token=${accessToken}`
+    `https://graph.facebook.com/v21.0/${accountId}?fields=name,currency,account_status&access_token=${encodeURIComponent(accessToken)}`
   );
   const verifyData = await verifyRes.json();
 
