@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { encryptSecret } from "@/lib/crypto";
+import { checkMetaToken } from "@/lib/meta-token";
 import { z } from "zod";
 
 const saveSchema = z.object({
@@ -26,9 +27,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   if (!conn) return NextResponse.json(null);
 
+  // Saúde do token (best-effort — não bloqueia se a Meta estiver lenta)
+  const token = await checkMetaToken(conn.accessToken).catch(() => null);
+  const tokenStatus = token
+    ? { valid: token.valid, type: token.type, isSystemUser: token.isSystemUser, expiresAt: token.expiresAt?.toISOString() ?? null }
+    : null;
+
   // Nunca enviar o token ao cliente
   const { accessToken: _token, ...safe } = conn;
-  return NextResponse.json({ ...safe, hasToken: true });
+  return NextResponse.json({ ...safe, hasToken: true, tokenStatus });
 }
 
 // POST — salva/atualiza credenciais e verifica a conta

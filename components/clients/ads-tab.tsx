@@ -29,6 +29,13 @@ interface MetaInsight {
   roas: number;
 }
 
+interface TokenStatus {
+  valid: boolean;
+  type: string | null;
+  isSystemUser: boolean;
+  expiresAt: string | null;
+}
+
 interface MetaConnection {
   id: string;
   adAccountId: string;
@@ -36,6 +43,7 @@ interface MetaConnection {
   currency: string | null;
   lastSyncAt: string | null;
   insights: MetaInsight[];
+  tokenStatus?: TokenStatus | null;
 }
 
 // Visão dimensional (campanhas + anúncios com leads reais) — /meta/ads
@@ -238,6 +246,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
               {conn.lastSyncAt && <span> · Sincronizado {timeAgo(conn.lastSyncAt)}</span>}
             </p>
           </div>
+          {conn.tokenStatus && <TokenBadge s={conn.tokenStatus} />}
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
@@ -329,6 +338,23 @@ export function AdsTab({ clientId }: { clientId: string }) {
 }
 
 const selectStyle: React.CSSProperties = { height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" };
+
+// Saúde do token: verde = System User válido (não expira); amarelo = válido mas
+// expira (token de usuário); vermelho = inválido/revogado.
+function TokenBadge({ s }: { s: TokenStatus }) {
+  let color = "#16A34A", bg = "rgba(22,163,74,0.1)", label = "Token OK";
+  if (!s.valid) { color = "#DC2626"; bg = "rgba(220,38,38,0.1)"; label = "Token inválido"; }
+  else if (!s.isSystemUser) { color = "#D97706"; bg = "rgba(217,119,6,0.1)"; label = "Token expira"; }
+  else if (s.expiresAt) { color = "#D97706"; bg = "rgba(217,119,6,0.1)"; label = "Expira"; }
+  const title = s.valid
+    ? `${s.isSystemUser ? "System User" : "Usuário"}${s.expiresAt ? ` · expira ${new Date(s.expiresAt).toLocaleDateString("pt-BR")}` : " · não expira"}`
+    : "Token revogado ou expirado — use Atualizar token";
+  return (
+    <span title={title} style={{ fontSize: 10.5, fontWeight: 600, color, background: bg, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap" }}>
+      ● {label}
+    </span>
+  );
+}
 
 // Accordion: campanhas; clicar expande os anúncios da campanha (fechado por padrão).
 const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";

@@ -3,6 +3,7 @@ import { requirePortalAuth, logPortalAccess } from "@/lib/portal-helpers";
 import { prisma } from "@/lib/prisma";
 import { computeOverview } from "@/lib/wa-metrics";
 import { computeRealAttribution } from "@/lib/meta-attribution";
+import { cacheGet, cacheSet } from "@/lib/ttl-cache";
 
 // Resumo executivo do portal.
 //
@@ -34,6 +35,12 @@ export async function GET(req: NextRequest) {
 
   await logPortalAccess(session.clientId, session.credentialId, "VIEW_RESUMO", req);
 
+  // Cache curto por cliente (dados são iguais p/ todas as credenciais do mesmo
+  // cliente). Alivia recomputo quando várias pessoas abrem o portal junto.
+  const cacheKey = `resumo:${session.clientId}`;
+  const cached = cacheGet<Record<string, unknown>>(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   if (!conn) {
     return NextResponse.json({
       clientName: client?.name ?? "",
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
       : Promise.resolve(null),
   ]);
 
-  return NextResponse.json({
+  const payload = {
     clientName: client?.name ?? "",
     monthLabel,
     updatedAt: conn.lastEventAt?.toISOString() ?? null,
@@ -81,5 +88,8 @@ export async function GET(req: NextRequest) {
     // Anúncios que mais trouxeram contatos (nome canônico, fonte WhatsApp)
     topAds: ov.byAd.slice(0, 4).map((a) => ({ title: a.adTitle, total: a.total })),
     series: ov.series, // [{ date, leads }] — apenas dias com lead
-  });
+  };
+
+  cacheSet(cacheKey, payload, 60_000); // 60s
+  return NextResponse.json(payload);
 }

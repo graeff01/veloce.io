@@ -43,6 +43,15 @@ function getAction(actions: { action_type: string; value: string }[] | undefined
   return f ? parseFloat(f.value) : 0;
 }
 
+// Executa upserts em lotes concorrentes — paraleliza dentro do chunk (o pool do
+// Prisma serializa o excedente), reduzindo o tempo total sem estourar conexões.
+const CHUNK = 25;
+async function runChunked<T>(items: T[], make: (item: T) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < items.length; i += CHUNK) {
+    await Promise.all(items.slice(i, i + CHUNK).map(make));
+  }
+}
+
 interface CampaignRow { id: string; name: string; objective?: string; effective_status?: string }
 interface AdSetRow { id: string; name: string; effective_status?: string; campaign_id: string }
 interface AdRow { id: string; name: string; effective_status?: string; adset_id: string; campaign_id: string; creative?: { id: string } }
@@ -89,67 +98,64 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
     `&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
   );
 
-  // 3) Persistência (upsert por ID oficial — imune a renomeação)
+  // 3) Persistência (upsert por ID oficial — imune a renomeação).
+  // Em transações por lote (chunks) para reduzir round-trips e evitar timeout
+  // em contas grandes (centenas de anúncios × dias).
   const now = new Date();
-  for (const c of campaigns) {
-    await prisma.metaCampaign.upsert({
+
+  await runChunked(campaigns, (c) =>
+    prisma.metaCampaign.upsert({
       where: { connectionId_campaignId: { connectionId, campaignId: c.id } },
       create: { connectionId, campaignId: c.id, name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN" },
       update: { name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN", updatedAt: now },
-    });
-  }
-  for (const a of adsets) {
-    await prisma.metaAdSet.upsert({
+    }),
+  );
+
+  await runChunked(adsets, (a) =>
+    prisma.metaAdSet.upsert({
       where: { connectionId_adsetId: { connectionId, adsetId: a.id } },
       create: { connectionId, adsetId: a.id, campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN" },
       update: { campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
-    });
-  }
-  for (const cr of creatives) {
-    await prisma.metaCreative.upsert({
+    }),
+  );
+
+  await runChunked(creatives, (cr) =>
+    prisma.metaCreative.upsert({
       where: { connectionId_creativeId: { connectionId, creativeId: cr.id } },
       create: { connectionId, creativeId: cr.id, name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null },
       update: { name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null, updatedAt: now },
-    });
-  }
-  for (const a of ads) {
-    await prisma.metaAd.upsert({
+    }),
+  );
+
+  await runChunked(ads, (a) =>
+    prisma.metaAd.upsert({
       where: { connectionId_adId: { connectionId, adId: a.id } },
       create: { connectionId, adId: a.id, adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN" },
       update: { adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
-    });
-  }
-  for (const ins of insights) {
+    }),
+  );
+
+  await runChunked(insights, (ins) => {
     const date = new Date(`${ins.date_start}T00:00:00.000Z`);
     const leads = getAction(ins.actions, "onsite_conversion.total_messaging_connection")
       || getAction(ins.actions, "onsite_conversion.messaging_conversation_started_7d")
       || getAction(ins.actions, "lead");
-    await prisma.metaAdInsight.upsert({
+    const data = {
+      spend: parseFloat(ins.spend ?? "0"),
+      impressions: parseInt(ins.impressions ?? "0"),
+      reach: parseInt(ins.reach ?? "0"),
+      clicks: parseInt(ins.clicks ?? "0"),
+      ctr: parseFloat(ins.ctr ?? "0"),
+      cpc: parseFloat(ins.cpc ?? "0"),
+      cpm: parseFloat(ins.cpm ?? "0"),
+      leads: Math.round(leads),
+    };
+    return prisma.metaAdInsight.upsert({
       where: { connectionId_adId_date: { connectionId, adId: ins.ad_id, date } },
-      create: {
-        connectionId, adId: ins.ad_id, date,
-        spend: parseFloat(ins.spend ?? "0"),
-        impressions: parseInt(ins.impressions ?? "0"),
-        reach: parseInt(ins.reach ?? "0"),
-        clicks: parseInt(ins.clicks ?? "0"),
-        ctr: parseFloat(ins.ctr ?? "0"),
-        cpc: parseFloat(ins.cpc ?? "0"),
-        cpm: parseFloat(ins.cpm ?? "0"),
-        leads: Math.round(leads),
-      },
-      update: {
-        spend: parseFloat(ins.spend ?? "0"),
-        impressions: parseInt(ins.impressions ?? "0"),
-        reach: parseInt(ins.reach ?? "0"),
-        clicks: parseInt(ins.clicks ?? "0"),
-        ctr: parseFloat(ins.ctr ?? "0"),
-        cpc: parseFloat(ins.cpc ?? "0"),
-        cpm: parseFloat(ins.cpm ?? "0"),
-        leads: Math.round(leads),
-        updatedAt: now,
-      },
+      create: { connectionId, adId: ins.ad_id, date, ...data },
+      update: { ...data, updatedAt: now },
     });
-  }
+  });
 
   await prisma.metaConnection.update({ where: { id: connectionId }, data: { lastAdSyncAt: now } });
 
