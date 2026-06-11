@@ -7,73 +7,43 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const clientId = url.searchParams.get("clientId");
 
-  console.log("[DEBUG] Starting meta/sync test", { clientId });
-
-  // Teste 1: Verificar requireAuth
-  console.log("[DEBUG] Testing requireAuth...");
   const auth = await requireAuth("clients:update");
-  console.log("[DEBUG] Auth result:", { hasError: !!auth.error, session: auth.session?.user });
-
   if (auth.error) {
-    console.log("[DEBUG] Auth error detected, returning early");
-    return auth.error;
+    return NextResponse.json({ step: "auth", failed: true, message: "requireAuth retornou erro" }, { status: 200 });
   }
 
-  if (!clientId) {
-    return NextResponse.json({ error: "clientId required" }, { status: 400 });
-  }
+  if (!clientId) return NextResponse.json({ error: "clientId required" }, { status: 400 });
 
-  try {
-    // Teste 2: Verificar conexão Meta
-    console.log("[DEBUG] Fetching meta connection...", { clientId });
-    const conn = await prisma.metaConnection.findUnique({ where: { clientId } });
-    console.log("[DEBUG] Connection found:", { id: conn?.id, adAccountId: conn?.adAccountId, hasToken: !!conn?.accessToken });
+  const conn = await prisma.metaConnection.findUnique({ where: { clientId } });
+  if (!conn) return NextResponse.json({ step: "connection", failed: true }, { status: 200 });
 
-    if (!conn) {
-      return NextResponse.json({ error: "Conexão Meta não configurada" }, { status: 404 });
-    }
+  const accessToken = decryptSecret(conn.accessToken);
+  const now = new Date();
+  const since = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const until = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    // Teste 3: Verificar descriptografia do token
-    console.log("[DEBUG] Attempting token decryption...");
-    const accessToken = decryptSecret(conn.accessToken);
-    const tokenPreview = accessToken.substring(0, 20) + "...";
-    console.log("[DEBUG] Token decrypted successfully", { preview: tokenPreview });
+  // QUERY EXATA de insights que o sync faz
+  const fields = "campaign_id,campaign_name,adset_id,adset_name,objective,status,spend,impressions,reach,clicks,ctr,cpm,cpc,actions,action_values,cost_per_action_type";
+  const insightsUrl = new URL(`https://graph.facebook.com/v21.0/${conn.adAccountId}/insights`);
+  insightsUrl.searchParams.set("fields", fields);
+  insightsUrl.searchParams.set("time_range", JSON.stringify({ since, until }));
+  insightsUrl.searchParams.set("level", "adset");
+  insightsUrl.searchParams.set("time_increment", "all_days");
+  insightsUrl.searchParams.set("limit", "200");
+  insightsUrl.searchParams.set("access_token", accessToken);
 
-    // Teste 4: Fazer requisição à Meta
-    console.log("[DEBUG] Making Meta API request...");
-    const url = new URL(`https://graph.facebook.com/v21.0/${conn.adAccountId}`);
-    url.searchParams.set("fields", "name,currency");
-    url.searchParams.set("access_token", accessToken);
+  const res = await fetch(insightsUrl.toString());
+  const data = await res.json();
 
-    const metaRes = await fetch(url.toString());
-    const metaData = await metaRes.json();
-
-    console.log("[DEBUG] Meta API response:", {
-      status: metaRes.status,
-      ok: metaRes.ok,
-      hasError: !!metaData.error,
-      errorCode: metaData.error?.code,
-      errorType: metaData.error?.type,
-      errorMessage: metaData.error?.message,
-    });
-
-    return NextResponse.json({
-      success: true,
-      auth: { hasSession: !!auth.session },
-      connection: { id: conn.id, adAccountId: conn.adAccountId },
-      token: { decrypted: true, preview: tokenPreview },
-      meta: {
-        status: metaRes.status,
-        ok: metaRes.ok,
-        error: metaData.error ? { code: metaData.error.code, message: metaData.error.message } : null,
-        data: metaData.error ? null : { name: metaData.name, currency: metaData.currency },
-      },
-    });
-  } catch (e) {
-    console.error("[DEBUG] Error during test:", e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Unknown error", stack: e instanceof Error ? e.stack : undefined },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    period: { since, until },
+    adAccountId: conn.adAccountId,
+    insightsQuery: {
+      httpStatus: res.status,
+      ok: res.ok,
+      // ERRO CRU da Meta — é isso que precisamos ver
+      rawError: data.error ?? null,
+      rowCount: data.data?.length ?? 0,
+    },
+  });
 }
