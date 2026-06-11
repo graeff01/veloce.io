@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
-  Edit2, Activity, Loader2,
+  Edit2, Activity, Loader2, Upload, Trash2,
   CalendarDays, Columns3, User, Mic, Megaphone, Bot, BarChart3,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -376,6 +376,10 @@ function PerfilTab({
   const [fuDate, setFuDate] = useState(client.followUpAt ? client.followUpAt.slice(0, 10) : "");
   const [fuNote, setFuNote] = useState(client.followUpNote ?? "");
   const [savingFu, setSavingFu] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [savingLogo, setSavingLogo] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
   async function saveFollowUp() {
     setSavingFu(true);
     await fetch(`/api/clients/${clientId}`, {
@@ -387,6 +391,40 @@ function PerfilTab({
       }),
     });
     setSavingFu(false);
+    onSaved();
+  }
+
+  async function saveLogo(logoUrl: string | null) {
+    setSavingLogo(true);
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ logoUrl: logoUrl ?? "" }),
+    });
+    setSavingLogo(false);
+    onSaved();
+  }
+
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (logoInputRef.current) logoInputRef.current.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Selecione um arquivo de imagem."); return; }
+    if (file.size > 600 * 1024) { alert("Logo muito grande (máx. 600KB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => saveLogo(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function saveStatus(status: "ACTIVE" | "PAUSED" | "INACTIVE") {
+    if (status === client.status || savingStatus) return;
+    setSavingStatus(true);
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setSavingStatus(false);
     onSaved();
   }
 
@@ -432,6 +470,60 @@ function PerfilTab({
 
       {/* ── Left: Client data (agrupado) ── */}
       <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+        {/* Identidade (logo + nome) */}
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", alignItems: "center", gap: 16, boxShadow: "var(--shadow-card)" }}>
+          <div style={{ width: 64, height: 64, borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {client.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={client.logoUrl} alt={client.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <Avatar name={client.name} size="md" />
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{client.name}</p>
+            {client.brand && <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>{client.brand}</p>}
+            {isAdmin && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleLogoFile} />
+                <button onClick={() => logoInputRef.current?.click()} disabled={savingLogo}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "var(--bg-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600, cursor: savingLogo ? "default" : "pointer", opacity: savingLogo ? 0.6 : 1 }}>
+                  {savingLogo ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={12} />}
+                  {client.logoUrl ? "Trocar foto" : "Enviar foto"}
+                </button>
+                {client.logoUrl && !savingLogo && (
+                  <button onClick={() => saveLogo(null)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    <Trash2 size={12} /> Remover
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Status do cliente */}
+        {isAdmin && (
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 18px", boxShadow: "var(--shadow-card)" }}>
+            <Label style={{ marginBottom: 10 }}>Status do cliente</Label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {([["ACTIVE", "Ativo", "#16A34A"], ["PAUSED", "Pausado", "#D97706"], ["INACTIVE", "Inativo", "#64748B"]] as const).map(([value, label, color]) => {
+                const active = client.status === value;
+                return (
+                  <button key={value} onClick={() => saveStatus(value)} disabled={savingStatus}
+                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 9, cursor: savingStatus ? "default" : "pointer", fontSize: 12.5, fontWeight: 600,
+                      border: `1px solid ${active ? color : "var(--border)"}`,
+                      background: active ? `color-mix(in srgb, ${color} 12%, transparent)` : "var(--bg-elevated)",
+                      color: active ? color : "var(--text-muted)" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: active ? color : "var(--text-muted)" }} /> {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Label>Dados do cliente</Label>
           {isAdmin && (

@@ -6,7 +6,6 @@ import {
   Eye, MousePointer, DollarSign, Link2,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText,
 } from "lucide-react";
-import { WinningCampaigns } from "@/components/clients/winning-campaigns";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -210,12 +209,6 @@ export function AdsTab({ clientId }: { clientId: string }) {
           </div>
         )
       }
-      {/* Acervo disponível mesmo sem conexão Meta */}
-      {!showSetup && (
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 24 }}>
-          <WinningCampaigns clientId={clientId} />
-        </div>
-      )}
     </div>
   );
 
@@ -342,11 +335,6 @@ export function AdsTab({ clientId }: { clientId: string }) {
             )}
           </>
         )}
-
-        {/* ── Winning Campaigns ── */}
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
-          <WinningCampaigns clientId={clientId} />
-        </div>
 
       </div>
     </div>
