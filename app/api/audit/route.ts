@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { deriveBadge, canonicalAdName } from "@/lib/wa-leads";
+import { snapAdLabels } from "@/lib/wa-ad-match";
 import { resolveCampaignByAdIds } from "@/lib/meta-attribution";
 
 // GET /api/audit
@@ -181,6 +182,11 @@ export async function GET(req: Request) {
       badge,
     };
   });
+
+  // Encaixe conservador: junta typos/variações (ex.: "Taos HighBoline") no
+  // rótulo popular ("Taos Highline"). Threshold alto → não junta o que é diferente.
+  const snap = snapAdLabels(richLeads.map((l) => l.adName));
+  for (const l of richLeads) l.adName = snap.get(l.adName) ?? l.adName;
 
   // Agrupamento por anúncio (nome canônico — funde variações do mesmo carro).
   const groupsMap = new Map<string, typeof richLeads>();

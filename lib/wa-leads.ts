@@ -32,14 +32,23 @@ export function monthStart(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
+// Limpa um rótulo de anúncio: corta no 1º fim de frase (. ? !) OU separador
+// (" - ", " | ", "—"), tira pontuação solta e limita a ~5 palavras. Assim
+// "Taos Highline. Bom dia, qual o ano?" → "Taos Highline".
+function cleanAdLabel(s: string): string {
+  let v = s.split(/[.?!\n]|\s+[-–—|]\s+/)[0].trim();
+  v = v.replace(/[,;:]+$/u, "").replace(/\s+/g, " ").trim();
+  const words = v.split(" ");
+  if (words.length > 5) v = words.slice(0, 5).join(" ");
+  return v;
+}
+
 // Nome canônico do anúncio: funde variações do mesmo carro num único rótulo.
-// Usa o modelo detectado quando existe; senão, o título do anúncio cortado no
-// 1º separador (" - ", " | ", "—"). Ex.: model "Taos Highline" e título
-// "Taos Highline - Teu SUV premium tá aqui!" colapsam em "Taos Highline".
-// Fonte única usada pela auditoria, pelo overview e pelo portal.
+// Usa o modelo detectado quando existe; senão, o título — sempre limpo.
+// Ex.: model "Taos Highline" e título "Taos Highline - Teu SUV premium" colapsam.
+// Fonte única usada pela auditoria e pelo overview.
 export function canonicalAdName(model: string | null, title: string | null): string {
-  if (model && model.trim()) return model.trim();
-  const t = (title ?? "").trim();
-  if (!t) return "Anúncio (sem título)";
-  return t.split(/\s+[-–—|]\s+/)[0].trim() || t;
+  const base = (model && model.trim()) ? model.trim() : (title ?? "").trim();
+  if (!base) return "Anúncio (sem título)";
+  return cleanAdLabel(base) || base;
 }

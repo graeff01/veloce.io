@@ -385,10 +385,11 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
               <div className="wa-scroll" style={{
                 flex: 1, overflowY: "auto", padding: "20px 5%",
                 display: "flex", flexDirection: "column", gap: 2,
-                background: "var(--bg-base)",
+                // Fundo levemente esverdeado (sutil, lembra o WhatsApp).
+                background: "color-mix(in srgb, #1FA855 5%, var(--bg-base))",
                 backgroundImage: [
-                  "radial-gradient(ellipse at 15% 40%, color-mix(in srgb, var(--accent) 3%, transparent) 0%, transparent 55%)",
-                  "radial-gradient(ellipse at 85% 70%, color-mix(in srgb, var(--accent) 2%, transparent) 0%, transparent 45%)",
+                  "radial-gradient(ellipse at 15% 40%, color-mix(in srgb, #1FA855 4%, transparent) 0%, transparent 55%)",
+                  "radial-gradient(ellipse at 85% 70%, color-mix(in srgb, #1FA855 3%, transparent) 0%, transparent 45%)",
                   "radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--border) 50%, transparent) 1px, transparent 1px)",
                 ].join(", "),
                 backgroundSize: "100% 100%, 100% 100%, 22px 22px",
@@ -429,15 +430,20 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                             </span>
                           </div>
                         )}
-                        <div style={{ display: "flex", justifyContent: incoming ? "flex-start" : "flex-end" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: incoming ? "flex-start" : "flex-end" }}>
+                          {isFirstInGroup && (
+                            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", color: incoming ? "var(--text-muted)" : "#1FA855", margin: "0 6px 3px" }}>
+                              {incoming ? "Lead" : "Loja"}
+                            </span>
+                          )}
                           <div style={{
                             maxWidth: "70%", padding: "8px 12px 6px",
                             background: incoming
                               ? "var(--bg-surface)"
-                              : "color-mix(in srgb, var(--accent) 14%, var(--bg-surface))",
+                              : "color-mix(in srgb, #1FA855 16%, var(--bg-surface))",
                             border: incoming
                               ? "1px solid var(--border)"
-                              : "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
+                              : "1px solid color-mix(in srgb, #1FA855 22%, var(--border))",
                             boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
                             color: "var(--text-primary)",
                             fontSize: 13.5, lineHeight: 1.5,
@@ -452,7 +458,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                               <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{msgTime(m.timestamp)}</span>
                               {!incoming && (
                                 m.readAt
-                                  ? <CheckCheck size={13} style={{ color: "var(--accent)" }} />
+                                  ? <CheckCheck size={13} style={{ color: "#34B7F1" }} />
                                   : m.deliveredAt
                                     ? <CheckCheck size={13} style={{ color: "var(--text-muted)" }} />
                                     : <Check size={13} style={{ color: "var(--text-muted)" }} />
