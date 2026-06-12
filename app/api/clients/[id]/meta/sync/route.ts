@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { syncMetaInsights, MetaTokenError, MetaRateLimitError } from "@/lib/meta-sync-insights";
+import { captureException } from "@/lib/observability";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,6 +34,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 429 }
       );
     }
+    captureException(e, { where: "meta.sync", clientId: id });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro ao sincronizar" },
       { status: 400 }

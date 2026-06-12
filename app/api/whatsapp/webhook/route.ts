@@ -8,6 +8,8 @@ import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { maybeRespondWithAgent } from "@/lib/ai-agent/respond";
 import { scheduleAgentRun } from "@/lib/ai-agent/scheduler";
+import { captureException } from "@/lib/observability";
+import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -49,6 +51,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Persist-first: grava o payload cru antes de processar (rede de replay/auditoria).
+  // Best-effort: se falhar, segue o processamento como antes. Dedupe por hash do
+  // corpo evita linhas duplicadas em retry da Meta; idempotência real é por waMessageId.
+  let eventId: string | null = null;
+  try {
+    const dedupeKey = createHash("sha256").update(raw).digest("hex");
+    const evt = await prisma.webhookEvent.upsert({
+      where: { dedupeKey },
+      create: { source: "whatsapp", dedupeKey, payload: body as object },
+      update: {},
+      select: { id: true, status: true },
+    });
+    if (evt.status === "processed") return NextResponse.json({ ok: true }); // retry de evento já tratado
+    eventId = evt.id;
+  } catch (e) {
+    captureException(e, { where: "webhook.persist" });
+  }
+
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
@@ -65,8 +85,16 @@ export async function POST(req: Request) {
         await prisma.waConnection.update({ where: { id: conn.id }, data: { lastEventAt: new Date() } });
       } catch (e) {
         await logWaEvent(conn.id, "integration.error", null, { message: String(e) });
+        captureException(e, { where: "webhook.process", connectionId: conn.id });
       }
     }
+  }
+
+  // Marca o evento como processado (best-effort).
+  if (eventId) {
+    try {
+      await prisma.webhookEvent.update({ where: { id: eventId }, data: { status: "processed", processedAt: new Date() } });
+    } catch { /* não bloqueia o 200 */ }
   }
 
   // A Meta exige 200 rápido, senão reenvia.

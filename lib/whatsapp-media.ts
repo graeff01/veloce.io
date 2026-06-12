@@ -27,7 +27,9 @@ export async function downloadWhatsAppMedia(
   mediaId: string,
   allowMime: Set<string>,
 ): Promise<{ bytes: Buffer; mime: string } | { error: string }> {
-  const token = decryptSecret(conn.accessToken);
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { error: "token inválido" }; }
   const auth = { Authorization: `Bearer ${token}` };
 
   const metaRes = await fetchWithTimeout(`https://graph.facebook.com/v25.0/${mediaId}`, { headers: auth }, 10_000);

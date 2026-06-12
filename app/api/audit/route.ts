@@ -63,24 +63,26 @@ export async function GET(req: Request) {
 
   const contactIds = leads.map((l) => l.contactId);
 
-  // Conversa: funil + contadores + SLA (tempo até 1ª resposta da loja).
-  const convs = contactIds.length
-    ? await prisma.waConversation.findMany({
-        where: { contactId: { in: contactIds } },
-        select: { contactId: true, funnelStage: true, outboundCount: true, firstResponseSec: true, lastMessageAt: true },
-      })
-    : [];
+  // Leituras independentes (dependem só de contactIds) em paralelo — mesma
+  // resposta, menos latência. Com contactIds vazio, `in: []` retorna vazio.
+  const [convs, msgs, contacts, tagRows] = await Promise.all([
+    prisma.waConversation.findMany({
+      where: { contactId: { in: contactIds } },
+      select: { contactId: true, funnelStage: true, outboundCount: true, firstResponseSec: true, lastMessageAt: true },
+    }),
+    prisma.waMessage.findMany({
+      where: { contactId: { in: contactIds }, direction: "in" },
+      select: { contactId: true, text: true, type: true, timestamp: true },
+      orderBy: [{ timestamp: "asc" }, { id: "asc" }],
+    }),
+    prisma.waContact.findMany({
+      where: { id: { in: contactIds } },
+      select: { id: true, createdAt: true, displayName: true, reportValid: true, reportInvalidReason: true },
+    }),
+    prisma.waContactTag.findMany({ where: { contactId: { in: contactIds } }, include: { tag: true } }),
+  ]);
   const stageByContact = new Map(convs.map((c) => [c.contactId, c.funnelStage]));
   const convByContact = new Map(convs.map((c) => [c.contactId, c]));
-
-  // 1ª mensagem do lead + total de mensagens recebidas + flags de mídia.
-  const msgs = contactIds.length
-    ? await prisma.waMessage.findMany({
-        where: { contactId: { in: contactIds }, direction: "in" },
-        select: { contactId: true, text: true, type: true, timestamp: true },
-        orderBy: [{ timestamp: "asc" }, { id: "asc" }],
-      })
-    : [];
   const firstMsgByContact = new Map<string, { text: string | null; type: string }>();
   const msgCountByContact = new Map<string, number>();
   const mediaByContact = new Map<string, { media: boolean; audio: boolean; image: boolean }>();
@@ -106,17 +108,8 @@ export async function GET(req: Request) {
     }
   }
 
-  // Dados do contato (nome interno, validade) + tags.
-  const contacts = contactIds.length
-    ? await prisma.waContact.findMany({
-        where: { id: { in: contactIds } },
-        select: { id: true, createdAt: true, displayName: true, reportValid: true, reportInvalidReason: true },
-      })
-    : [];
+  // Maps de contato + tags (queries já resolvidas em paralelo acima).
   const contactById = new Map(contacts.map((c) => [c.id, c]));
-  const tagRows = contactIds.length
-    ? await prisma.waContactTag.findMany({ where: { contactId: { in: contactIds } }, include: { tag: true } })
-    : [];
   const tagsByContact = new Map<string, { id: string; name: string; color: string }[]>();
   for (const t of tagRows) {
     const arr = tagsByContact.get(t.contactId) ?? [];
@@ -126,15 +119,14 @@ export async function GET(req: Request) {
 
   // Campanha — PREFERE atribuição por ad_id (determinística). Só usa o match
   // por nome (legado) quando a estrutura ad-level ainda não foi sincronizada.
-  const metaConn = await prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }).catch(() => null);
-  const campByAdId = metaConn
-    ? await resolveCampaignByAdIds(metaConn.id, leads.map((l) => l.adId).filter((x): x is string => !!x))
-    : new Map();
-
+  // Uma única leitura da conexão Meta (id + insights) serve aos dois caminhos.
   const meta = await prisma.metaConnection.findUnique({
     where: { clientId },
     include: { insights: { select: { campaignName: true, adsetName: true } } },
   }).catch(() => null);
+  const campByAdId = meta
+    ? await resolveCampaignByAdIds(meta.id, leads.map((l) => l.adId).filter((x): x is string => !!x))
+    : new Map();
   function resolveCampaign(model: string | null): string | null {
     if (!model || !meta) return null;
     const key = norm(model);

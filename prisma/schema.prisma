@@ -985,3 +985,19 @@ model ExecutionLog {
   client Client? @relation(fields: [clientId], references: [id])
   task   Task?   @relation(fields: [taskId], references: [id])
 }
+
+// Rede de durabilidade do webhook: persiste o payload cru recebido (auditoria +
+// replay). O processamento segue idempotente por waMessageId; isto é o cinto de
+// segurança para nunca perder um evento se o processamento falhar.
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  source      String    @default("whatsapp")
+  dedupeKey   String    @unique // sha256 do corpo cru (evita linhas duplicadas em retry)
+  payload     Json
+  status      String    @default("received") // received | processed | error
+  error       String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status, createdAt])
+}

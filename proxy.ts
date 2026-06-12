@@ -29,7 +29,9 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
+  // Gate de borda só para PÁGINAS. Todo /api fica de fora: as rotas se protegem
+  // com requireAuth e devem responder 401 JSON limpo (não redirect 302 → HTML).
   matcher: [
-    "/((?!login|api/auth|api/whatsapp/webhook|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+    "/((?!api|login|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };
