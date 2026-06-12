@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaUnscoped } from "@/lib/prisma";
 import { computeExecutiveReport } from "@/lib/executive-report";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { buildInsights, type Insight } from "@/lib/insights-engine";
@@ -54,7 +54,8 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
       select: { title: true, date: true, client: { select: { name: true } } },
       orderBy: { date: "asc" },
     }),
-    prisma.visit.findMany({
+    // Visit é tenant-guarded; aqui é leitura global (agência) intencional → unscoped.
+    prismaUnscoped.visit.findMany({
       where: { scheduledAt: { gte: start, lt: end }, status: { notIn: ["cancelada", "faltou"] } },
       select: { scheduledAt: true, client: { select: { name: true } } },
       orderBy: { scheduledAt: "asc" },
