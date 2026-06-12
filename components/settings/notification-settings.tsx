@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Send, Loader2, Check } from "lucide-react";
+import { Bell, Send, Loader2, Check, Zap } from "lucide-react";
 
 interface Prefs {
   dailyDigest: boolean;
@@ -80,6 +80,17 @@ export function NotificationSettings() {
     } finally { setBusy(null); }
   }
 
+  async function sendTest() {
+    setBusy("test");
+    try {
+      const r = await fetch("/api/notifications/test", { method: "POST" }).then((x) => x.json());
+      const parts: string[] = [];
+      parts.push(r.push ? "✅ Navegador" : "—  Navegador (ative acima)");
+      parts.push(r.telegram ? "✅ Telegram" : "—  Telegram (conecte acima)");
+      alert(`Teste enviado:\n${parts.join("\n")}`);
+    } finally { setBusy(null); }
+  }
+
   if (!prefs) return <div className="skeleton-surface" style={{ height: 180, borderRadius: 10 }} />;
 
   return (
@@ -117,6 +128,19 @@ export function NotificationSettings() {
             <button onClick={connectTelegram} disabled={busy === "tg"} style={btn(prefs.telegramLinked)}>
               {busy === "tg" ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : prefs.telegramLinked ? <Check size={12} /> : <Send size={12} />}
               {prefs.telegramLinked ? "Conectado" : "Conectar"}
+            </button>
+          }
+        />
+
+        <div style={{ height: 1, background: "var(--border)" }} />
+
+        <Row
+          label="Testar agora"
+          hint="Envia uma notificação de teste para os canais ativos."
+          action={
+            <button onClick={sendTest} disabled={busy === "test"} style={btn(false)}>
+              {busy === "test" ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Zap size={12} />}
+              Enviar teste
             </button>
           }
         />
