@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "Veloce.io — Operações",
   description: "Plataforma interna de gestão operacional",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/favicon.ico" },

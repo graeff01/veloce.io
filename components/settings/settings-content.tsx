@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/input";
+import { NotificationSettings } from "@/components/settings/notification-settings";
 
 interface UserData {
   id: string;
@@ -288,6 +289,9 @@ export function SettingsContent() {
             </div>
           )}
         </div>
+
+        {/* Notificações — todos os usuários */}
+        <NotificationSettings />
 
         {/* Danger zone — admin only */}
         {session?.user.role === "ADMIN" && (
