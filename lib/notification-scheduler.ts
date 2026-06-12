@@ -1,4 +1,4 @@
-import { runDailyDigest, runCriticalAlerts } from "@/lib/notifications/run";
+import { runDailyDigest, runCriticalAlerts, runPendingLeadAlerts } from "@/lib/notifications/run";
 import { captureException } from "@/lib/observability";
 
 // Agendador interno das notificações (sem depender de cron externo). Iniciado no
@@ -17,12 +17,16 @@ function brtHour(): number {
 
 async function tick(): Promise<void> {
   try {
-    // Resumo do dia: a partir das 08h BRT (claim garante 1x por dia).
+    // Resumo do dia: a partir das 09h BRT (claim garante 1x por dia).
     const h = brtHour();
-    if (h >= 8 && h < 23) {
+    if (h >= 9 && h < 23) {
       await runDailyDigest();
     }
-    // Alertas críticos: a cada ~4h.
+    // Leads sem resposta há +2h: a cada tick (15 min). Idempotência impede repetir o mesmo lead no dia.
+    if (h >= 8 && h < 22) {
+      await runPendingLeadAlerts();
+    }
+    // Alertas críticos de mídia: a cada ~4h.
     if (Date.now() - lastCriticalAt >= CRITICAL_EVERY_MS) {
       lastCriticalAt = Date.now();
       await runCriticalAlerts();
@@ -37,5 +41,5 @@ export function startNotificationScheduler(): void {
   started = true;
   setTimeout(() => { void tick(); }, FIRST_DELAY_MS);
   setInterval(() => { void tick(); }, TICK_MS);
-  console.log("[notif-scheduler] agendado (resumo 08h BRT, alertas a cada 4h)");
+  console.log("[notif-scheduler] agendado (resumo 09h BRT, leads sem resposta + alertas ao longo do dia)");
 }
