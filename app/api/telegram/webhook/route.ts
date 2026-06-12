@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   if (text.startsWith("/start")) {
     const token = text.split(/\s+/)[1] ?? "";
-    const userId = verifyLinkToken(token);
+    const userId = await verifyLinkToken(token);
     if (!userId) {
       await sendTelegramMessage(chatId, "Link inválido ou expirado. Gere um novo no Veloce em Configurações → Notificações.");
       return NextResponse.json({ ok: true });

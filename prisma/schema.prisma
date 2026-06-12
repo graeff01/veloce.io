@@ -1060,3 +1060,12 @@ model NotificationLog {
 
   @@index([userId, createdAt])
 }
+
+// Token curto de vínculo do Telegram (uso único, expira). Charset compatível
+// com o parâmetro start do Telegram (base64url).
+model TelegramLinkToken {
+  token     String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

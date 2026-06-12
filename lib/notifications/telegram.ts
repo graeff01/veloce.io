@@ -32,22 +32,24 @@ export async function sendTelegramToUser(userId: string, text: string): Promise<
   return sendTelegramMessage(link.chatId, text);
 }
 
-// Token de vínculo: assinado com o segredo da app (sem tabela extra).
+// Token de vínculo: curto, aleatório, guardado no banco (uso único + expira).
+// Charset base64url ([A-Za-z0-9_-]) é compatível com o parâmetro `start` do
+// Telegram (que NÃO aceita ".", limite 64 chars).
 import crypto from "crypto";
-function linkSecret(): string {
-  return process.env.NEXTAUTH_SECRET || "veloce-fallback-key";
+
+export async function makeLinkToken(userId: string): Promise<string> {
+  const token = crypto.randomBytes(12).toString("base64url"); // 16 chars seguros
+  await prisma.telegramLinkToken.create({
+    data: { token, userId, expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+  });
+  return token;
 }
-export function makeLinkToken(userId: string): string {
-  const ts = Date.now().toString(36);
-  const sig = crypto.createHmac("sha256", linkSecret()).update(`${userId}.${ts}`).digest("base64url").slice(0, 16);
-  return `${userId}.${ts}.${sig}`;
-}
-export function verifyLinkToken(token: string): string | null {
-  const [userId, ts, sig] = token.split(".");
-  if (!userId || !ts || !sig) return null;
-  const expected = crypto.createHmac("sha256", linkSecret()).update(`${userId}.${ts}`).digest("base64url").slice(0, 16);
-  if (sig !== expected) return null;
-  // Validade de 1h para o deep-link.
-  if (Date.now() - parseInt(ts, 36) > 60 * 60 * 1000) return null;
-  return userId;
+
+export async function verifyLinkToken(token: string): Promise<string | null> {
+  if (!token) return null;
+  const row = await prisma.telegramLinkToken.findUnique({ where: { token } });
+  if (!row) return null;
+  await prisma.telegramLinkToken.delete({ where: { token } }).catch(() => {}); // uso único
+  if (row.expiresAt < new Date()) return null;
+  return row.userId;
 }

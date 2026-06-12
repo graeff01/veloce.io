@@ -12,7 +12,7 @@ export async function GET() {
     return NextResponse.json({ available: false });
   }
 
-  const token = makeLinkToken(session!.user.id);
+  const token = await makeLinkToken(session!.user.id);
   return NextResponse.json({
     available: true,
     link: `https://t.me/${botUser}?start=${token}`,
