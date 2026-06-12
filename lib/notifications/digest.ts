@@ -24,13 +24,26 @@ function fmtTime(d: Date): string {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtDay(d: Date): string {
+  return new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 // Resumo do dia (agência): tarefas de hoje, reuniões, visitas, atrasos.
 export async function buildDailyDigest(): Promise<DigestMessage> {
   const { start, end } = todayRange();
 
-  const [dueToday, overdue, meetings, visits] = await Promise.all([
+  // Janela de "prazos próximos": amanhã + 2 dias seguintes.
+  const soonEnd = new Date(end.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+  const [dueToday, overdue, upcoming, meetings, visits] = await Promise.all([
     prisma.task.count({ where: { deletedAt: null, dueDate: { gte: start, lt: end }, status: { not: "DONE" } } }),
     prisma.task.count({ where: { deletedAt: null, dueDate: { lt: start }, status: { not: "DONE" } } }),
+    prisma.task.findMany({
+      where: { deletedAt: null, dueDate: { gte: end, lt: soonEnd }, status: { not: "DONE" } },
+      select: { title: true, dueDate: true, client: { select: { name: true } } },
+      orderBy: { dueDate: "asc" },
+      take: 4,
+    }),
     prisma.meeting.findMany({
       where: { date: { gte: start, lt: end } },
       select: { title: true, date: true, client: { select: { name: true } } },
@@ -53,8 +66,12 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
   for (const m of meetings.slice(0, 3)) lines.push(`• ${fmtTime(m.date)} — Reunião ${m.client.name}`);
   for (const v of visits.slice(0, 3)) lines.push(`• ${fmtTime(v.scheduledAt)} — Visita ${v.client.name}`);
   if (overdue > 0) lines.push(`⚠️ ${overdue} tarefa${overdue > 1 ? "s" : ""} em atraso.`);
+  if (upcoming.length > 0) {
+    lines.push(`\n📅 Prazos próximos:`);
+    for (const t of upcoming) lines.push(`• ${fmtDay(t.dueDate)} — ${t.title} (${t.client.name})`);
+  }
 
-  const hasContent = dueToday > 0 || meetings.length > 0 || visits.length > 0 || overdue > 0;
+  const hasContent = dueToday > 0 || meetings.length > 0 || visits.length > 0 || overdue > 0 || upcoming.length > 0;
 
   return {
     title: "☀️ Resumo do dia",
