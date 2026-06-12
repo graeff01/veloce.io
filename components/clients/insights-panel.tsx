@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, TrendingUp, AlertTriangle, AlertOctagon, Info, Loader2 } from "lucide-react";
+import { Sparkles, TrendingUp, AlertTriangle, AlertOctagon, Info } from "lucide-react";
 
 interface Insight {
   id: string;
@@ -16,10 +16,10 @@ interface InsightsResponse {
 }
 
 const SEV = {
-  critical: { color: "#DC2626", bg: "rgba(220,38,38,0.08)", icon: AlertOctagon },
-  warning:  { color: "#D97706", bg: "rgba(217,119,6,0.08)", icon: AlertTriangle },
-  positive: { color: "#16A34A", bg: "rgba(22,163,74,0.08)", icon: TrendingUp },
-  info:     { color: "#64748B", bg: "rgba(100,116,139,0.08)", icon: Info },
+  critical: { color: "#DC2626", bg: "rgba(220,38,38,0.09)", icon: AlertOctagon, label: "Atenção crítica" },
+  warning:  { color: "#D97706", bg: "rgba(217,119,6,0.09)", icon: AlertTriangle, label: "Ponto de atenção" },
+  positive: { color: "#16A34A", bg: "rgba(22,163,74,0.09)", icon: TrendingUp, label: "Destaque positivo" },
+  info:     { color: "#64748B", bg: "rgba(100,116,139,0.09)", icon: Info, label: "Observação" },
 } as const;
 
 export function InsightsPanel({ clientId, year, month }: { clientId: string; year: number; month: number }) {
@@ -37,47 +37,51 @@ export function InsightsPanel({ clientId, year, month }: { clientId: string; yea
   }, [clientId, year, month]);
 
   if (loading) {
-    return (
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 20px", display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)" }}>
-        <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
-        <span style={{ fontSize: 13 }}>Analisando a operação...</span>
-      </div>
-    );
+    return <div className="skeleton-surface" style={{ height: 92, borderRadius: 14 }} />;
   }
   if (!data || (data.insights.length === 0 && !data.narrative?.text)) return null;
 
+  const top = data.insights[0]; // já vem ordenado por severidade
+  const rest = data.insights.slice(1, 6); // compacto: no máx. 5 chips
+  const s = top ? SEV[top.severity] : null;
+
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}>
-      {/* Header + narrativa */}
-      <div style={{ padding: "16px 20px", borderBottom: data.insights.length ? "1px solid var(--border)" : "none", background: "linear-gradient(90deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <Sparkles size={15} style={{ color: "var(--accent)" }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.03em", textTransform: "uppercase" }}>Co-piloto de operação</span>
-          {data.narrative?.source === "ai" && (
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 7px", borderRadius: 99 }}>IA</span>
-          )}
-        </div>
-        {data.narrative?.text && (
-          <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.55, margin: 0, fontWeight: 500 }}>{data.narrative.text}</p>
+      {/* Cabeçalho compacto */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 18px 0" }}>
+        <Sparkles size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Co-piloto</span>
+        {data.narrative?.source === "ai" && (
+          <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: 99 }}>IA</span>
         )}
       </div>
 
-      {/* Insights */}
-      {data.insights.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 1, background: "var(--border)" }}>
-          {data.insights.map((ins) => {
-            const s = SEV[ins.severity];
-            const Icon = s.icon;
+      {/* Destaque do dia (insight mais crítico) */}
+      {top && s && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 11, margin: "10px 14px 0", padding: "11px 13px", borderRadius: 10, background: s.bg, borderLeft: `3px solid ${s.color}` }}>
+          <s.icon size={16} style={{ color: s.color, flexShrink: 0, marginTop: 1 }} />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, lineHeight: 1.35 }}>{top.title}</p>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0", lineHeight: 1.45 }}>{top.detail}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Narrativa (uma linha calma) */}
+      {data.narrative?.text && (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "10px 18px 0", fontStyle: "italic" }}>{data.narrative.text}</p>
+      )}
+
+      {/* Demais sinais como chips compactos */}
+      {rest.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 16px 14px" }}>
+          {rest.map((ins) => {
+            const c = SEV[ins.severity];
             return (
-              <div key={ins.id} style={{ background: "var(--bg-surface)", padding: "13px 18px", display: "flex", gap: 11, alignItems: "flex-start" }}>
-                <div style={{ width: 26, height: 26, borderRadius: 8, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                  <Icon size={14} style={{ color: s.color }} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, lineHeight: 1.35 }}>{ins.title}</p>
-                  <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "3px 0 0", lineHeight: 1.45 }}>{ins.detail}</p>
-                </div>
-              </div>
+              <span key={ins.id} title={ins.detail} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--border)", padding: "4px 9px", borderRadius: 99, maxWidth: "100%" }}>
+                <c.icon size={11} style={{ color: c.color, flexShrink: 0 }} />
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ins.title}</span>
+              </span>
             );
           })}
         </div>

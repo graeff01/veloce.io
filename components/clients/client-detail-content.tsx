@@ -13,6 +13,7 @@ import { Badge, ClientStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
+import { ClientHealthCard } from "@/components/clients/client-health-card";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
@@ -559,8 +560,14 @@ function PerfilTab({
         ))}
       </section>
 
-      {/* ── Right: Follow-up + Activity timeline ── */}
+      {/* ── Right: Saúde + Follow-up + Activity timeline ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+
+        {/* Saúde das integrações */}
+        <section>
+          <Label style={{ marginBottom: 10 }}>Saúde das integrações</Label>
+          <ClientHealthCard clientId={clientId} />
+        </section>
 
         {/* Follow-up / próximo contato */}
         <section>

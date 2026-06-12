@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useCachedFetch } from "@/lib/use-cached-fetch";
 import {
-  Loader2, Search, Megaphone, Users, Target, CheckCircle2,
+  Search, Megaphone, Users, Target, CheckCircle2,
   X, Phone, Mic, Image, FileText, Video, ChevronRight,
   AlertCircle, Download,
 } from "lucide-react";
@@ -191,9 +191,12 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
   const openGroup = adGroups.find((g) => g.key === openAdKey) ?? null;
 
   if (loading) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 64, color: "var(--text-muted)" }}>
-      <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
-      <span style={{ fontSize: 12.5 }}>Carregando leads de anúncio...</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton-surface" style={{ height: 64, borderRadius: 12 }} />)}
+      </div>
+      <div className="skeleton-surface" style={{ height: 70, borderRadius: 14 }} />
+      {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton-surface" style={{ height: 70, borderRadius: 14 }} />)}
     </div>
   );
   if (!data || data.totalLeads === 0) return <EmptyAdLeads />;
