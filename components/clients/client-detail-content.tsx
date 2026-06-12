@@ -607,7 +607,7 @@ function PerfilTab({
         <Label style={{ marginBottom: 10 }}>Histórico de atividade</Label>
         <div style={{
           background: "var(--bg-surface)", border: "1px solid var(--border)",
-          borderRadius: 10, overflow: "hidden",
+          borderRadius: 10, overflowX: "hidden", overflowY: "auto", maxHeight: 320,
         }}>
           {timelineLogs.length === 0 ? (
             <div style={{ textAlign: "center", padding: "28px 0" }}>
