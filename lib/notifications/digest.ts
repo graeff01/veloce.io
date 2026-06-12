@@ -2,6 +2,7 @@ import { prisma, prismaUnscoped } from "@/lib/prisma";
 import { computeExecutiveReport } from "@/lib/executive-report";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { buildInsights, type Insight } from "@/lib/insights-engine";
+import { checkMetaToken } from "@/lib/meta-token";
 
 // ── Conteúdo das notificações ────────────────────────────────────────────────
 // Tudo derivado do dado real. O resumo diário é da agência (time pequeno).
@@ -37,10 +38,9 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
   const soonEnd = new Date(end.getTime() + 3 * 24 * 60 * 60 * 1000);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const waitCut = new Date(Date.now() - 2 * 60 * 60 * 1000);   // lead aguardando > 2h
   const syncCut = new Date(Date.now() - 48 * 60 * 60 * 1000);  // sync parado > 48h
 
-  const [dueToday, overdue, upcoming, meetings, visits, leadsWaiting, followUps, syncParado, activeClients, clientsWithTasks] = await Promise.all([
+  const [dueToday, overdue, upcoming, meetings, visits, followUps, syncParado, activeClients, clientsWithTasks] = await Promise.all([
     prisma.task.count({ where: { deletedAt: null, dueDate: { gte: start, lt: end }, status: { not: "DONE" } } }),
     prisma.task.count({ where: { deletedAt: null, dueDate: { lt: start }, status: { not: "DONE" } } }),
     prisma.task.findMany({
@@ -61,7 +61,6 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
       orderBy: { scheduledAt: "asc" },
     }),
     // Pendências da operação:
-    prisma.waConversation.count({ where: { status: "waiting", lastMessageAt: { lt: waitCut } } }),
     prisma.client.findMany({ where: { deletedAt: null, followUpAt: { gte: start, lt: end } }, select: { name: true, followUpNote: true } }),
     prisma.metaConnection.count({ where: { OR: [{ lastAdSyncAt: { lt: syncCut } }, { lastAdSyncAt: null, lastSyncAt: { lt: syncCut } }, { lastAdSyncAt: null, lastSyncAt: null }] } }),
     prisma.client.findMany({ where: { deletedAt: null, status: "ACTIVE" }, select: { id: true } }),
@@ -88,7 +87,6 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
 
   // Pendências da operação (só aparece o que existir).
   const pend: string[] = [];
-  if (leadsWaiting > 0) pend.push(`💬 ${leadsWaiting} lead${leadsWaiting > 1 ? "s" : ""} sem resposta há +2h`);
   if (semTarefas > 0) pend.push(`📋 ${semTarefas} cliente${semTarefas > 1 ? "s" : ""} sem tarefas no mês`);
   if (syncParado > 0) pend.push(`🔴 ${syncParado} conta${syncParado > 1 ? "s" : ""} Meta com sync parado`);
   if (pend.length > 0) {
@@ -158,38 +156,60 @@ export async function buildCriticalAlerts(): Promise<CriticalAlert[]> {
   return out;
 }
 
-// ── Alerta intraday: leads sem resposta há +2h ───────────────────────────────
-export interface PendingLeadAlert {
-  conversationId: string;
-  clientName: string;
-  contactName: string;
-  waitingHours: number;
-  dedupeKey: string;
-}
 
-export async function buildPendingLeadAlerts(): Promise<PendingLeadAlert[]> {
-  const waitCut = new Date(Date.now() - 2 * 60 * 60 * 1000);
+// ── Token Meta expirando / inválido (proativo) ───────────────────────────────
+export interface TokenAlert { clientId: string; clientName: string; daysLeft: number | null; invalid: boolean; dedupeKey: string }
+
+export async function buildTokenExpiryAlerts(): Promise<TokenAlert[]> {
   const now = new Date();
   const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const conns = await prisma.metaConnection.findMany({ select: { clientId: true, accessToken: true, client: { select: { name: true } } } });
+  const out: TokenAlert[] = [];
+  for (const c of conns) {
+    const info = await checkMetaToken(c.accessToken).catch(() => null);
+    if (!info) continue;
+    if (!info.valid) {
+      out.push({ clientId: c.clientId, clientName: c.client.name, daysLeft: null, invalid: true, dedupeKey: `token-invalid:${dayKey}:${c.clientId}` });
+    } else if (info.expiresAt) {
+      const days = Math.floor((info.expiresAt.getTime() - Date.now()) / 86_400_000);
+      if (days <= 5) out.push({ clientId: c.clientId, clientName: c.client.name, daysLeft: days, invalid: false, dedupeKey: `token-expiry:${dayKey}:${c.clientId}` });
+    }
+  }
+  return out;
+}
 
+// ── Resumo de fim de dia (placar) ────────────────────────────────────────────
+export async function buildEndOfDaySummary(): Promise<DigestMessage> {
+  const { start, end } = todayRange();
   const convs = await prisma.waConversation.findMany({
-    where: { status: "waiting", lastMessageAt: { lt: waitCut } },
-    select: {
-      id: true,
-      lastMessageAt: true,
-      contact: { select: { name: true, waId: true } },
-      connection: { select: { client: { select: { name: true } } } },
-    },
-    orderBy: { lastMessageAt: "asc" },
-    take: 50,
+    where: { firstInboundAt: { gte: start, lt: end } },
+    select: { firstResponseSec: true, funnelStage: true },
   });
+  const leads = convs.length;
+  const respondidos = convs.filter((c) => c.firstResponseSec != null).length;
+  const conversoes = convs.filter((c) => c.funnelStage === "convertido").length;
+  const times = convs.filter((c): c is typeof c & { firstResponseSec: number } => c.firstResponseSec != null).map((c) => c.firstResponseSec);
+  const avgMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
+  const body = `Hoje: ${leads} lead${leads !== 1 ? "s" : ""}, ${respondidos} respondido${respondidos !== 1 ? "s" : ""}, ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}${avgMin != null ? `, tempo médio ${avgMin}min` : ""}.`;
+  return { title: "🌙 Resumo de fim de dia", body, url: "/today", hasContent: leads > 0 };
+}
 
-  return convs.map((c) => ({
-    conversationId: c.id,
-    clientName: c.connection.client.name,
-    contactName: c.contact.name ?? `+${c.contact.waId}`,
-    waitingHours: c.lastMessageAt ? Math.floor((Date.now() - c.lastMessageAt.getTime()) / 3_600_000) : 2,
-    // Idempotência: 1 alerta por conversa por dia (não fica repetindo o mesmo lead).
-    dedupeKey: `lead-waiting:${dayKey}:${c.id}`,
-  }));
+// ── Relatórios mensais (dia 1) ───────────────────────────────────────────────
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+export async function buildMonthlyReportMessage(): Promise<{ title: string; pushBody: string; telegramBody: string; url: string } | null> {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const y = prev.getFullYear();
+  const m = prev.getMonth() + 1;
+  const base = (process.env.NEXTAUTH_URL || "https://veloceio-production.up.railway.app").replace(/\/$/, "");
+  const clients = await prisma.client.findMany({ where: { deletedAt: null, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  if (clients.length === 0) return null;
+  const lines = clients.map((c) => `• <a href="${base}/api/clients/${c.id}/executive-report?year=${y}&month=${m}">${c.name}</a>`);
+  return {
+    title: `📊 Relatórios de ${MONTHS[m - 1]}`,
+    pushBody: `Relatórios executivos de ${MONTHS[m - 1]} prontos (${clients.length} clientes). Abra no Veloce.`,
+    telegramBody: `<b>📊 Relatórios de ${MONTHS[m - 1]} prontos</b>\n${lines.join("\n")}`,
+    url: "/clients",
+  };
 }
