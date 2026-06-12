@@ -39,8 +39,9 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const syncCut = new Date(Date.now() - 48 * 60 * 60 * 1000);  // sync parado > 48h
+  const waitCut = new Date(Date.now() - 2 * 60 * 60 * 1000);   // lead aguardando > 2h
 
-  const [dueToday, overdue, upcoming, meetings, visits, followUps, syncParado, activeClients, clientsWithTasks] = await Promise.all([
+  const [dueToday, overdue, upcoming, meetings, visits, leadsWaiting, followUps, syncParado, activeClients, clientsWithTasks] = await Promise.all([
     prisma.task.count({ where: { deletedAt: null, dueDate: { gte: start, lt: end }, status: { not: "DONE" } } }),
     prisma.task.count({ where: { deletedAt: null, dueDate: { lt: start }, status: { not: "DONE" } } }),
     prisma.task.findMany({
@@ -61,6 +62,7 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
       orderBy: { scheduledAt: "asc" },
     }),
     // Pendências da operação:
+    prisma.waConversation.count({ where: { status: "waiting", lastMessageAt: { lt: waitCut } } }),
     prisma.client.findMany({ where: { deletedAt: null, followUpAt: { gte: start, lt: end } }, select: { name: true, followUpNote: true } }),
     prisma.metaConnection.count({ where: { OR: [{ lastAdSyncAt: { lt: syncCut } }, { lastAdSyncAt: null, lastSyncAt: { lt: syncCut } }, { lastAdSyncAt: null, lastSyncAt: null }] } }),
     prisma.client.findMany({ where: { deletedAt: null, status: "ACTIVE" }, select: { id: true } }),
@@ -87,6 +89,7 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
 
   // Pendências da operação (só aparece o que existir).
   const pend: string[] = [];
+  if (leadsWaiting > 0) pend.push(`💬 ${leadsWaiting} lead${leadsWaiting > 1 ? "s" : ""} sem resposta há +2h`);
   if (semTarefas > 0) pend.push(`📋 ${semTarefas} cliente${semTarefas > 1 ? "s" : ""} sem tarefas no mês`);
   if (syncParado > 0) pend.push(`🔴 ${syncParado} conta${syncParado > 1 ? "s" : ""} Meta com sync parado`);
   if (pend.length > 0) {
