@@ -64,6 +64,7 @@ const MUTED = "#64748B";      // cinza texto
 const FAINT = "#94A3B8";
 const LINE = "#E2E8F0";       // linhas finas
 const BG = "#FFFFFF";
+const SOFT = "#F8FAFC";       // fundo sutil dos cards
 const POS = "#067647";        // verde discreto (leads reais)
 
 const s = StyleSheet.create({
@@ -89,12 +90,12 @@ const s = StyleSheet.create({
   sectionKicker: { fontSize: 8, color: FAINT, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 },
   sectionTitle: { fontSize: 18, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.3, marginBottom: 20 },
 
-  // KPI grid
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 0, marginTop: 4 },
-  kpiCell: { width: "33.33%", paddingVertical: 16, paddingRight: 16, borderBottomWidth: 1, borderBottomColor: LINE },
-  kpiLabel: { fontSize: 8.5, color: MUTED, marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 },
-  kpiValue: { fontSize: 24, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5 },
-  kpiValuePos: { fontSize: 24, fontFamily: "Helvetica-Bold", color: POS, letterSpacing: -0.5 },
+  // KPI grid — cards com fundo sutil para dar profundidade e separar os números
+  kpiGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 4 },
+  kpiCell: { width: "31.5%", marginBottom: 12, paddingVertical: 15, paddingHorizontal: 14, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 8 },
+  kpiLabel: { fontSize: 8.5, color: MUTED, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
+  kpiValue: { fontSize: 22, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5 },
+  kpiValuePos: { fontSize: 22, fontFamily: "Helvetica-Bold", color: POS, letterSpacing: -0.5 },
 
   // Nota (honestidade dos dados)
   note: { fontSize: 8, color: FAINT, marginTop: 18, lineHeight: 1.5 },
@@ -228,27 +229,27 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
         <Footer data={data} />
       </Page>
 
-      {/* ── P2 · POR CAMPANHA ── */}
+      {/* ── P2 · DESEMPENHO (campanha + anúncio na mesma página) ── */}
       <Page size="A4" style={s.page}>
         <RunningHead data={data} />
-        <SectionHead kicker="Página 2" title="Desempenho por campanha" />
-        <Text style={s.tableLabel}>Campanhas com atividade no período</Text>
-        <TableHead />
+        <SectionHead kicker="Página 2" title="Desempenho dos anúncios" />
+
+        <View wrap={false}>
+          <Text style={s.tableLabel}>Por campanha</Text>
+          <TableHead />
+        </View>
         {data.campaigns.length === 0
           ? <Text style={s.empty}>Sem campanhas com dados neste período.</Text>
           : data.campaigns.map((r, i) => <MetricRow key={`c${i}`} r={r} />)}
-        <Footer data={data} />
-      </Page>
 
-      {/* ── P3 · POR ANÚNCIO ── */}
-      <Page size="A4" style={s.page}>
-        <RunningHead data={data} />
-        <SectionHead kicker="Página 3" title="Desempenho por anúncio" />
-        <Text style={s.tableLabel}>Anúncios com atividade no período</Text>
-        <TableHead />
+        <View wrap={false}>
+          <Text style={[s.tableLabel, { marginTop: 26 }]}>Por anúncio</Text>
+          <TableHead />
+        </View>
         {data.ads.length === 0
           ? <Text style={s.empty}>Sem anúncios com dados neste período.</Text>
           : data.ads.map((r, i) => <MetricRow key={`a${i}`} r={r} showCampaign />)}
+
         <Footer data={data} />
       </Page>
     </Document>
