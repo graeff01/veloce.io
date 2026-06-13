@@ -3,6 +3,23 @@ import { computeExecutiveReport } from "@/lib/executive-report";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { buildInsights, type Insight } from "@/lib/insights-engine";
 import { checkMetaToken } from "@/lib/meta-token";
+import { nowParts, wallToInstant } from "@/lib/tz";
+
+const TZ = "America/Sao_Paulo";
+
+// Executa `fn` sobre os itens com no máximo `limit` em voo ao mesmo tempo.
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 // ── Conteúdo das notificações ────────────────────────────────────────────────
 // Tudo derivado do dado real. O resumo diário é da agência (time pequeno).
@@ -14,19 +31,19 @@ export interface DigestMessage {
   hasContent: boolean;
 }
 
+// "Hoje" é o dia-calendário em BRT (não no fuso UTC do servidor Railway).
 function todayRange(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = wallToInstant(nowParts(TZ).ymd, "00:00", TZ);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
 }
 
 function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtDay(d: Date): string {
-  return new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
 }
 
 // Resumo do dia (agência): tarefas de hoje, reuniões, visitas, atrasos.
@@ -164,21 +181,24 @@ export async function buildCriticalAlerts(): Promise<CriticalAlert[]> {
 export interface TokenAlert { clientId: string; clientName: string; daysLeft: number | null; invalid: boolean; dedupeKey: string }
 
 export async function buildTokenExpiryAlerts(): Promise<TokenAlert[]> {
-  const now = new Date();
-  const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const dayKey = nowParts(TZ).ymd;
   const conns = await prisma.metaConnection.findMany({ select: { clientId: true, accessToken: true, client: { select: { name: true } } } });
-  const out: TokenAlert[] = [];
-  for (const c of conns) {
+
+  // Checa os tokens em paralelo com limite de concorrência (a Graph API é lenta;
+  // sequencial trava com muitos clientes).
+  const results = await mapLimit(conns, 5, async (c): Promise<TokenAlert | null> => {
     const info = await checkMetaToken(c.accessToken).catch(() => null);
-    if (!info) continue;
+    if (!info) return null;
     if (!info.valid) {
-      out.push({ clientId: c.clientId, clientName: c.client.name, daysLeft: null, invalid: true, dedupeKey: `token-invalid:${dayKey}:${c.clientId}` });
-    } else if (info.expiresAt) {
-      const days = Math.floor((info.expiresAt.getTime() - Date.now()) / 86_400_000);
-      if (days <= 5) out.push({ clientId: c.clientId, clientName: c.client.name, daysLeft: days, invalid: false, dedupeKey: `token-expiry:${dayKey}:${c.clientId}` });
+      return { clientId: c.clientId, clientName: c.client.name, daysLeft: null, invalid: true, dedupeKey: `token-invalid:${dayKey}:${c.clientId}` };
     }
-  }
-  return out;
+    if (info.expiresAt) {
+      const days = Math.floor((info.expiresAt.getTime() - Date.now()) / 86_400_000);
+      if (days <= 5) return { clientId: c.clientId, clientName: c.client.name, daysLeft: days, invalid: false, dedupeKey: `token-expiry:${dayKey}:${c.clientId}` };
+    }
+    return null;
+  });
+  return results.filter((r): r is TokenAlert => r !== null);
 }
 
 // ── Resumo de fim de dia (placar) ────────────────────────────────────────────
@@ -214,5 +234,31 @@ export async function buildMonthlyReportMessage(): Promise<{ title: string; push
     pushBody: `Relatórios executivos de ${MONTHS[m - 1]} prontos (${clients.length} clientes). Abra no Veloce.`,
     telegramBody: `<b>📊 Relatórios de ${MONTHS[m - 1]} prontos</b>\n${lines.join("\n")}`,
     url: "/clients",
+  };
+}
+
+// ── Saúde do envio (falhas que estouraram o orçamento de tentativas) ──────────
+// Lê o NotificationLog: o que desistiu (status=failed, attempts>=MAX) nas últimas
+// 26h. Visibilidade — dá para avisar a operação que algo não está saindo.
+export async function getFailureStats(maxAttempts: number): Promise<{ total: number; byType: Record<string, number> }> {
+  const since = new Date(Date.now() - 26 * 60 * 60 * 1000);
+  const rows = await prisma.notificationLog.findMany({
+    where: { status: "failed", attempts: { gte: maxAttempts }, createdAt: { gte: since } },
+    select: { type: true },
+  });
+  const byType: Record<string, number> = {};
+  for (const r of rows) byType[r.type] = (byType[r.type] ?? 0) + 1;
+  return { total: rows.length, byType };
+}
+
+export async function buildFailureAlert(maxAttempts: number): Promise<DigestMessage | null> {
+  const { total, byType } = await getFailureStats(maxAttempts);
+  if (total === 0) return null;
+  const detalhe = Object.entries(byType).map(([t, n]) => `• ${t}: ${n}`).join("\n");
+  return {
+    title: "⚠️ Notificações com falha",
+    body: `${total} notificação${total > 1 ? "ões" : ""} não saiu nas últimas 24h (esgotou as tentativas):\n${detalhe}\n\nVerifique a conexão do Telegram/push em Configurações.`,
+    url: "/settings",
+    hasContent: true,
   };
 }

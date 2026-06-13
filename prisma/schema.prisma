@@ -1048,17 +1048,31 @@ model NotificationPreference {
 }
 
 // Auditoria + idempotência de envios (chave única impede duplicar).
+// Fluxo: claim cria status="pending"; após despacho vira "sent" ou "failed".
+// "failed" com attempts < MAX é re-reivindicável no próximo tick (auto-retry).
 model NotificationLog {
   id        String   @id @default(cuid())
   userId    String
   type      String   // daily_digest | critical_alert
   channel   String   // push | telegram
   dedupeKey String   @unique
-  status    String   @default("sent") // sent | failed
+  status    String   @default("sent") // pending | sent | failed
+  attempts  Int      @default(0)
   error     String?
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// Mensagens enviadas pelo bot do Telegram, para auto-limpeza após 24h.
+// Guarda só o necessário pra chamar deleteMessage; a linha é removida após apagar.
+model TelegramMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  messageId Int
+  sentAt    DateTime @default(now())
+
+  @@index([sentAt])
 }
 
 // Token curto de vínculo do Telegram (uso único, expira). Charset compatível
