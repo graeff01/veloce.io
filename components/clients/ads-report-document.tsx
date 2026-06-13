@@ -197,7 +197,7 @@ function CampaignGroup({ camp, ads }: { camp: AdsReportRow; ads: AdsReportRow[] 
       {ads.length === 0
         ? <Text style={s.adEmpty}>Sem anúncios individuais com dados neste período.</Text>
         : ads.map((a, i) => (
-            <View key={i} style={[s.adRow, i === ads.length - 1 ? { borderBottomWidth: 0 } : null]} wrap={false}>
+            <View key={i} style={[s.adRow, i === ads.length - 1 ? { borderBottomWidth: 0 } : undefined]} wrap={false}>
               <View style={s.gName}>
                 <Text style={s.adName}><Text style={{ color: FAINT }}>—  </Text>{a.name}</Text>
               </View>
