@@ -100,22 +100,29 @@ const s = StyleSheet.create({
   // Nota (honestidade dos dados)
   note: { fontSize: 8, color: FAINT, marginTop: 18, lineHeight: 1.5 },
 
-  // Tabela (linhas finas, monocromática — igual à "Análise de evolução")
-  tableLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 },
-  thead: { flexDirection: "row", paddingVertical: 8, borderBottomWidth: 1.2, borderBottomColor: INK },
-  th: { fontSize: 8, fontFamily: "Helvetica-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 0.5 },
-  row: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: LINE, alignItems: "center" },
-  tdName: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
-  tdSub: { fontSize: 7.5, color: MUTED, marginTop: 2 },
-  td: { fontSize: 9, color: INK2 },
-  tdPos: { fontSize: 9.5, color: POS, fontFamily: "Helvetica-Bold" },
-  empty: { fontSize: 10, color: MUTED, paddingVertical: 16 },
+  // Intro da seção (orienta o cliente)
+  sectionLead: { fontSize: 9.5, color: MUTED, lineHeight: 1.5, marginBottom: 16 },
 
-  // Colunas
-  cName: { width: "28%" },
-  cStatus: { width: "10%" },
-  cMetric: { width: "13%", textAlign: "right" },
-  cMetricLeads: { width: "10%", textAlign: "right" },
+  // Tabela hierárquica: campanha (destaque) → anúncios (indentados), alinhados nas mesmas colunas
+  grpHead: { flexDirection: "row", paddingVertical: 8, borderBottomWidth: 1.2, borderBottomColor: INK },
+  grpTh: { fontSize: 8, fontFamily: "Helvetica-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 0.5 },
+
+  group: { marginBottom: 2 },
+  campRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, backgroundColor: SOFT, borderBottomWidth: 1, borderBottomColor: LINE, marginTop: 14 },
+  campName: { fontSize: 10.5, color: INK, fontFamily: "Helvetica-Bold" },
+  campStatus: { fontSize: 7.5, color: MUTED, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.4 },
+  campM: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
+  campMPos: { fontSize: 9.5, color: POS, fontFamily: "Helvetica-Bold" },
+
+  adRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: LINE },
+  adName: { fontSize: 9, color: INK2, paddingLeft: 14 },
+  adM: { fontSize: 8.5, color: INK2 },
+  adMPos: { fontSize: 8.5, color: POS, fontFamily: "Helvetica-Bold" },
+  adEmpty: { fontSize: 8.5, color: FAINT, paddingVertical: 7, paddingLeft: 22 },
+
+  // Colunas (idênticas para campanha e anúncio → alinhamento perfeito)
+  gName: { width: "40%" },
+  gM: { width: "15%", textAlign: "right" },
 
   footer: { position: "absolute", bottom: 30, left: 56, right: 56, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: LINE, paddingTop: 8 },
   footerText: { fontSize: 7.5, color: FAINT },
@@ -157,39 +164,79 @@ function KpiCell({ label, value, positive }: { label: string; value: string; pos
   );
 }
 
-function TableHead() {
+function GroupHead() {
   return (
-    <View style={s.thead}>
-      <Text style={[s.th, s.cName]}>Nome</Text>
-      <Text style={[s.th, s.cStatus]}>Status</Text>
-      <Text style={[s.th, s.cMetric]}>Investim.</Text>
-      <Text style={[s.th, s.cMetric]}>Impressões</Text>
-      <Text style={[s.th, s.cMetric]}>CTR</Text>
-      <Text style={[s.th, s.cMetricLeads]}>Leads</Text>
-      <Text style={[s.th, s.cMetric]}>CPL real</Text>
+    <View style={s.grpHead}>
+      <Text style={[s.grpTh, s.gName]}>Campanha / anúncio</Text>
+      <Text style={[s.grpTh, s.gM]}>Investim.</Text>
+      <Text style={[s.grpTh, s.gM]}>CTR</Text>
+      <Text style={[s.grpTh, s.gM]}>Leads</Text>
+      <Text style={[s.grpTh, s.gM]}>CPL real</Text>
     </View>
   );
 }
 
-function MetricRow({ r, showCampaign }: { r: AdsReportRow; showCampaign?: boolean }) {
+function CampaignGroup({ camp, ads }: { camp: AdsReportRow; ads: AdsReportRow[] }) {
+  const status = statusLabel(camp.status);
   return (
-    <View style={s.row} wrap={false}>
-      <View style={s.cName}>
-        <Text style={s.tdName}>{r.name}</Text>
-        {showCampaign && r.sub ? <Text style={s.tdSub}>{r.sub}</Text> : null}
+    <View style={s.group}>
+      {/* Linha da campanha — destaque (o "pai") */}
+      <View style={s.campRow} wrap={false}>
+        <View style={s.gName}>
+          <Text style={s.campName}>{camp.name}</Text>
+          {status ? <Text style={s.campStatus}>{status}</Text> : null}
+        </View>
+        <Text style={[s.campM, s.gM]}>{brl(camp.spend)}</Text>
+        <Text style={[s.campM, s.gM]}>{pct(camp.ctr)}</Text>
+        <Text style={[s.campMPos, s.gM]}>{num(camp.leads)}</Text>
+        <Text style={[s.campM, s.gM]}>{camp.cpl != null ? brl(camp.cpl) : "—"}</Text>
       </View>
-      <Text style={[s.td, s.cStatus]}>{statusLabel(r.status)}</Text>
-      <Text style={[s.td, s.cMetric]}>{brl(r.spend)}</Text>
-      <Text style={[s.td, s.cMetric]}>{k(r.impressions)}</Text>
-      <Text style={[s.td, s.cMetric]}>{pct(r.ctr)}</Text>
-      <Text style={[s.tdPos, s.cMetricLeads]}>{r.leads}</Text>
-      <Text style={[s.td, s.cMetric]}>{r.cpl != null ? brl(r.cpl) : "—"}</Text>
+      {/* Anúncios derivados — indentados */}
+      {ads.length === 0
+        ? <Text style={s.adEmpty}>Sem anúncios individuais com dados neste período.</Text>
+        : ads.map((a, i) => (
+            <View key={i} style={s.adRow} wrap={false}>
+              <View style={s.gName}>
+                <Text style={s.adName}><Text style={{ color: FAINT }}>—  </Text>{a.name}</Text>
+              </View>
+              <Text style={[s.adM, s.gM]}>{brl(a.spend)}</Text>
+              <Text style={[s.adM, s.gM]}>{pct(a.ctr)}</Text>
+              <Text style={[s.adMPos, s.gM]}>{num(a.leads)}</Text>
+              <Text style={[s.adM, s.gM]}>{a.cpl != null ? brl(a.cpl) : "—"}</Text>
+            </View>
+          ))}
     </View>
   );
+}
+
+// Soma anúncios "órfãos" (sem campanha vinculada) num grupo só, por segurança.
+function aggregate(rows: AdsReportRow[]): AdsReportRow {
+  const spend = rows.reduce((s, a) => s + a.spend, 0);
+  const impressions = rows.reduce((s, a) => s + a.impressions, 0);
+  const clicks = rows.reduce((s, a) => s + a.clicks, 0);
+  const leads = rows.reduce((s, a) => s + a.leads, 0);
+  return {
+    name: "Outros anúncios", sub: null, status: "",
+    spend, impressions, clicks,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    cpc: clicks > 0 ? spend / clicks : 0,
+    leads, cpl: leads > 0 ? spend / leads : null,
+  };
 }
 
 function AdsReportDocument({ data }: { data: AdsReportData }) {
   const t = data.totals;
+
+  // Agrupa anúncios sob sua campanha (casa por nome — ad.sub === campaign.name)
+  const adsByCamp = new Map<string, AdsReportRow[]>();
+  for (const a of data.ads) {
+    const key = a.sub ?? "";
+    if (!adsByCamp.has(key)) adsByCamp.set(key, []);
+    adsByCamp.get(key)!.push(a);
+  }
+  const campNames = new Set(data.campaigns.map((c) => c.name));
+  const orphanAds = data.ads.filter((a) => !campNames.has(a.sub ?? ""));
+
   return (
     <Document title={`Relatório de Anúncios — ${data.clientName}`} author="Plataforma Veloce">
       {/* ── CAPA ── */}
@@ -229,27 +276,20 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
         <Footer data={data} />
       </Page>
 
-      {/* ── P2 · DESEMPENHO (campanha + anúncio na mesma página) ── */}
+      {/* ── P2 · DESEMPENHO (campanha em destaque → anúncios derivados abaixo) ── */}
       <Page size="A4" style={s.page}>
         <RunningHead data={data} />
         <SectionHead kicker="Página 2" title="Desempenho dos anúncios" />
-
-        <View wrap={false}>
-          <Text style={s.tableLabel}>Por campanha</Text>
-          <TableHead />
-        </View>
-        {data.campaigns.length === 0
-          ? <Text style={s.empty}>Sem campanhas com dados neste período.</Text>
-          : data.campaigns.map((r, i) => <MetricRow key={`c${i}`} r={r} />)}
-
-        <View wrap={false}>
-          <Text style={[s.tableLabel, { marginTop: 26 }]}>Por anúncio</Text>
-          <TableHead />
-        </View>
-        {data.ads.length === 0
-          ? <Text style={s.empty}>Sem anúncios com dados neste período.</Text>
-          : data.ads.map((r, i) => <MetricRow key={`a${i}`} r={r} showCampaign />)}
-
+        <Text style={s.sectionLead}>
+          Cada campanha aparece em destaque com o resultado consolidado e, logo abaixo, os anúncios que pertencem a ela.
+        </Text>
+        <GroupHead />
+        {data.campaigns.length === 0 && orphanAds.length === 0
+          ? <Text style={s.adEmpty}>Sem campanhas com dados neste período.</Text>
+          : data.campaigns.map((c) => (
+              <CampaignGroup key={c.name} camp={c} ads={adsByCamp.get(c.name) ?? []} />
+            ))}
+        {orphanAds.length > 0 && <CampaignGroup camp={aggregate(orphanAds)} ads={orphanAds} />}
         <Footer data={data} />
       </Page>
     </Document>
