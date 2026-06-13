@@ -64,7 +64,8 @@ const MUTED = "#64748B";      // cinza texto
 const FAINT = "#94A3B8";
 const LINE = "#E2E8F0";       // linhas finas
 const BG = "#FFFFFF";
-const SOFT = "#F8FAFC";       // fundo sutil dos cards
+const SOFT = "#F8FAFC";       // fundo sutil dos cards de KPI
+const CAMPBG = "#E7ECF3";     // faixa da campanha — mais em evidência que o anúncio
 const POS = "#067647";        // verde discreto (leads reais)
 
 const s = StyleSheet.create({
@@ -104,17 +105,18 @@ const s = StyleSheet.create({
   sectionLead: { fontSize: 9.5, color: MUTED, lineHeight: 1.5, marginBottom: 16 },
 
   // Tabela hierárquica: campanha (destaque) → anúncios (indentados), alinhados nas mesmas colunas
-  grpHead: { flexDirection: "row", paddingVertical: 8, borderBottomWidth: 1.2, borderBottomColor: INK },
+  grpHead: { flexDirection: "row", paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1.2, borderBottomColor: INK },
   grpTh: { fontSize: 8, fontFamily: "Helvetica-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 0.5 },
 
-  group: { marginBottom: 2 },
-  campRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, backgroundColor: SOFT, borderBottomWidth: 1, borderBottomColor: LINE, marginTop: 14 },
+  // Cada campanha (+ seus anúncios) num card próprio → blocos separados quando há várias
+  group: { marginTop: 14, borderWidth: 1, borderColor: LINE, borderRadius: 8, overflow: "hidden", backgroundColor: BG },
+  campRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: CAMPBG, borderBottomWidth: 1, borderBottomColor: LINE },
   campName: { fontSize: 10.5, color: INK, fontFamily: "Helvetica-Bold" },
   campStatus: { fontSize: 7.5, color: MUTED, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.4 },
   campM: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
   campMPos: { fontSize: 9.5, color: POS, fontFamily: "Helvetica-Bold" },
 
-  adRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, paddingHorizontal: 8, borderBottomWidth: 0.5, borderBottomColor: LINE },
+  adRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, paddingHorizontal: 12, borderBottomWidth: 0.5, borderBottomColor: LINE },
   adName: { fontSize: 9, color: INK2, paddingLeft: 14 },
   adM: { fontSize: 8.5, color: INK2 },
   adMPos: { fontSize: 8.5, color: POS, fontFamily: "Helvetica-Bold" },
@@ -195,7 +197,7 @@ function CampaignGroup({ camp, ads }: { camp: AdsReportRow; ads: AdsReportRow[] 
       {ads.length === 0
         ? <Text style={s.adEmpty}>Sem anúncios individuais com dados neste período.</Text>
         : ads.map((a, i) => (
-            <View key={i} style={s.adRow} wrap={false}>
+            <View key={i} style={[s.adRow, i === ads.length - 1 ? { borderBottomWidth: 0 } : null]} wrap={false}>
               <View style={s.gName}>
                 <Text style={s.adName}><Text style={{ color: FAINT }}>—  </Text>{a.name}</Text>
               </View>
