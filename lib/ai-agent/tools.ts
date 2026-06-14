@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
 import type { ToolDef } from "@/lib/openai";
-import { slotsForDate, isSlotAvailable, DEFAULT_WINDOWS, type VisitCfg, type Window } from "@/lib/visit-availability";
-import { wallToInstant } from "@/lib/tz";
+import { scoreLead } from "./scoring";
+import { createEscalationTask } from "./escalation";
 
 export interface ToolCtx {
   clientId: string;
@@ -13,42 +12,32 @@ export interface ToolCtx {
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
 }
 
+// O agente NÃO agenda visita: ele atende fora do horário, entende o que o lead quer,
+// qualifica e adianta tudo ao vendedor (que dá sequência no horário comercial).
 export const TOOL_DEFS: ToolDef[] = [
   {
     type: "function",
     function: {
       name: "buscar_estoque",
-      description: "Busca produtos no catálogo do cliente (ex: carros). Use SEMPRE que o lead perguntar sobre produto/preço. Nunca invente.",
+      description: "Busca produtos no catálogo do cliente (ex: carros). Use SEMPRE que o lead perguntar sobre produto/preço/ficha técnica. Nunca invente.",
       parameters: { type: "object", properties: { termo: { type: "string", description: "modelo/termo procurado, ex: 'Taos' ou 'SUV até 120 mil'" } }, required: ["termo"] },
     },
   },
   {
     type: "function",
     function: {
-      name: "consultar_disponibilidade",
-      description: "Consulta os horários livres para visita numa data. Use antes de sugerir/marcar visita.",
-      parameters: { type: "object", properties: { data: { type: "string", description: "data no formato AAAA-MM-DD" } }, required: ["data"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "marcar_visita",
-      description: "Agenda uma visita do lead à loja num horário livre. Só use horários retornados por consultar_disponibilidade.",
-      parameters: { type: "object", properties: {
-        nome: { type: "string" }, data: { type: "string", description: "AAAA-MM-DD" }, hora: { type: "string", description: "HH:MM" },
-        carro: { type: "string" }, telefone: { type: "string" },
-      }, required: ["nome", "data", "hora"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "atualizar_perfil",
-      description: "Registra o que descobriu do lead (qualificação). Chame quando o lead informar produto de interesse, orçamento, troca ou financiamento.",
+      description: "Registra/qualifica o lead para adiantar ao vendedor. Chame sempre que descobrir qualquer informação nova: interesse, orçamento, troca, financiamento, urgência/prazo, intenção de visita ou de fechar.",
       parameters: { type: "object", properties: {
-        produto: { type: "string" }, orcamento: { type: "string" },
-        tem_troca: { type: "boolean" }, quer_financiamento: { type: "boolean" },
+        produto: { type: "string", description: "veículo/modelo de interesse" },
+        orcamento: { type: "string", description: "faixa de valor que o lead pretende gastar" },
+        tem_troca: { type: "boolean" },
+        troca_veiculo: { type: "string", description: "dados do veículo da troca: modelo, ano, km aprox., estado" },
+        quer_financiamento: { type: "boolean" },
+        financiamento_detalhe: { type: "string", description: "condições pretendidas: valor de entrada, prazo desejado, se usa a troca como parte do pagamento" },
+        urgencia: { type: "string", description: "prazo de compra em texto, ex: 'essa semana', 'esse mês', 'sem pressa'" },
+        quer_visitar: { type: "boolean", description: "demonstrou intenção de ir à loja / ver de perto / test drive" },
+        pronto_para_comprar: { type: "boolean", description: "sinal forte: quer fechar, pediu proposta, decidido" },
       } },
     },
   },
@@ -61,15 +50,6 @@ export const TOOL_DEFS: ToolDef[] = [
     },
   },
 ];
-
-async function getVisitCfg(clientId: string): Promise<{ cfg: VisitCfg; tz: string }> {
-  const c = await prisma.visitConfig.findUnique({ where: { clientId } });
-  if (!c) return { cfg: { slotMinutes: 60, capacityPerSlot: 1, windows: DEFAULT_WINDOWS }, tz: "America/Sao_Paulo" };
-  return {
-    cfg: { slotMinutes: c.slotMinutes, capacityPerSlot: c.capacityPerSlot, windows: (c.windows as unknown as Window[]) ?? DEFAULT_WINDOWS },
-    tz: c.timezone || "America/Sao_Paulo",
-  };
-}
 
 export interface ToolResult { result: string; decision?: string }
 
@@ -89,77 +69,48 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item encontrado para "${termo}".`, decision: "respondeu_duvida" };
       }
       const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`).join("\n");
-      return { result: `Itens disponíveis (confirme a disponibilidade na visita):\n${list}`, decision: "respondeu_duvida" };
-    }
-
-    case "consultar_disponibilidade": {
-      const dateStr = String(args.data ?? "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return { result: "Data inválida (use AAAA-MM-DD)." };
-      const { cfg, tz } = await getVisitCfg(ctx.clientId);
-      const dayStart = wallToInstant(dateStr, "00:00", tz);
-      const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
-      const booked = await prisma.visit.findMany({ where: { clientId: ctx.clientId, scheduledAt: { gte: dayStart, lt: dayEnd } }, select: { scheduledAt: true } });
-      const slots = slotsForDate(cfg, dateStr, booked.map((b) => b.scheduledAt), tz);
-      return { result: slots.length ? `Horários livres em ${dateStr}: ${slots.join(", ")}` : `Sem horários livres em ${dateStr}. Ofereça outra data.` };
-    }
-
-    case "marcar_visita": {
-      const dateStr = String(args.data ?? "");
-      const timeStr = String(args.hora ?? "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) return { result: "Data/hora inválida (AAAA-MM-DD e HH:MM)." };
-      const { cfg, tz } = await getVisitCfg(ctx.clientId);
-      const dt = wallToInstant(dateStr, timeStr, tz);
-      if (dt.getTime() <= Date.now()) return { result: "Esse horário já passou. Ofereça um horário futuro." };
-      if (dt.getTime() > Date.now() + 90 * 24 * 3600 * 1000) return { result: "Data muito distante. Sugira algo nas próximas semanas." };
-
-      // Modo teste: valida disponibilidade real, mas NÃO grava visita.
-      if (ctx.mode === "test") {
-        const count = await prisma.visit.count({ where: { clientId: ctx.clientId, scheduledAt: dt } });
-        if (!isSlotAvailable(cfg, dateStr, timeStr, count)) return { result: "(teste) Horário indisponível — ofereça outro." };
-        return { result: `(teste) Agendaria para ${dateStr} às ${timeStr} (não gravado).`, decision: "agendou" };
-      }
-
-      // Anti-spam: limite de agendamentos por contato em 24h.
-      const recent = await prisma.visit.count({ where: { clientId: ctx.clientId, contactId: ctx.contactId, source: "ia", createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
-      if (recent >= 3) return { result: "Já há agendamentos recentes para este contato. Sugira confirmar com um vendedor." };
-
-      try {
-        const visit = await prisma.$transaction(async (tx) => {
-          const count = await tx.visit.count({ where: { clientId: ctx.clientId, scheduledAt: dt } });
-          if (!isSlotAvailable(cfg, dateStr, timeStr, count)) return null;
-          return tx.visit.create({ data: {
-            clientId: ctx.clientId, contactId: ctx.contactId, leadName: String(args.nome ?? ctx.contactName ?? "Lead"),
-            leadPhone: (args.telefone as string) || ctx.contactWaId, car: (args.carro as string) || null,
-            scheduledAt: dt, durationMin: cfg.slotMinutes, status: "agendada", source: "ia",
-          } });
-        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-        if (!visit) return { result: "Esse horário não está disponível. Consulte a disponibilidade e ofereça outro." };
-        return { result: `Visita agendada para ${dateStr} às ${timeStr}. Confirme com o lead.`, decision: "agendou" };
-      } catch {
-        return { result: "Esse horário acabou de ser ocupado. Ofereça outro." };
-      }
+      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}`, decision: "respondeu_duvida" };
     }
 
     case "atualizar_perfil": {
       if (ctx.mode === "test") return { result: "(teste) Perfil seria atualizado (não gravado)." };
+      const trocaDetalhe = (args.troca_veiculo as string) || undefined;
+      const finDetalhe = (args.financiamento_detalhe as string) || undefined;
       const data = {
         productInterest: (args.produto as string) || undefined,
         budget: (args.orcamento as string) || undefined,
-        hasTradeIn: typeof args.tem_troca === "boolean" ? args.tem_troca : undefined,
-        wantsFinancing: typeof args.quer_financiamento === "boolean" ? args.quer_financiamento : undefined,
+        // Mencionar dados da troca implica que TEM troca (mesmo sem o booleano vir).
+        hasTradeIn: typeof args.tem_troca === "boolean" ? args.tem_troca : (trocaDetalhe ? true : undefined),
+        tradeInDetail: trocaDetalhe,
+        wantsFinancing: typeof args.quer_financiamento === "boolean" ? args.quer_financiamento : (finDetalhe ? true : undefined),
+        financingDetail: finDetalhe,
+        urgency: (args.urgencia as string) || undefined,
+        visitIntent: typeof args.quer_visitar === "boolean" ? args.quer_visitar : undefined,
+        readyToBuy: typeof args.pronto_para_comprar === "boolean" ? args.pronto_para_comprar : undefined,
       };
+      // Atualiza dados e relê o perfil consolidado para repontuar (estado, não delta).
+      const prevTemp = (await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId }, select: { temperature: true } }))?.temperature ?? null;
       const prof = await prisma.leadProfile.upsert({
         where: { contactId: ctx.contactId },
         create: { connectionId: ctx.connectionId, contactId: ctx.contactId, ...data },
         update: data,
       });
-      const score = (prof.productInterest ? 30 : 0) + (prof.budget ? 25 : 0) + (prof.wantsFinancing ? 15 : 0) + (prof.hasTradeIn ? 15 : 0);
-      await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { score, qualified: score >= 50 } });
-      return { result: `Perfil atualizado (score ${score}${score >= 50 ? ", qualificado" : ""}).` };
+      const { score, temperature } = scoreLead(prof);
+      await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { score, temperature, qualified: temperature !== "cold" } });
+
+      // CRM/comercial: ao esquentar para HOT, avisa o time (idempotente, 1x/dia).
+      if (temperature === "hot" && prevTemp !== "hot") {
+        await createEscalationTask({
+          clientId: ctx.clientId, contactId: ctx.contactId, contactName: ctx.contactName, waId: ctx.contactWaId,
+          reason: `Lead atingiu score ${score} (HOT). Sinais: ${[prof.readyToBuy && "quer fechar", prof.visitIntent && "quer visitar", prof.urgency && `urgência: ${prof.urgency}`, prof.budget && `orçamento: ${prof.budget}`].filter(Boolean).join("; ")}.`,
+          kind: "hot",
+        }).catch(() => {});
+      }
+      return { result: `Perfil atualizado (score ${score}, ${temperature}).` };
     }
 
     case "escalar_humano": {
-      return { result: "Ok. Diga ao lead que um vendedor dará sequência e registre o motivo. Não prometa prazo específico.", decision: "escalou" };
+      return { result: "Ok. Diga ao lead que um vendedor dará sequência no horário comercial e registre o motivo. Não prometa prazo específico.", decision: "escalou" };
     }
 
     default:

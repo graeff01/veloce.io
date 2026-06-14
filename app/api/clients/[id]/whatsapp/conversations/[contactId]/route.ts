@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { logWaEvent } from "@/lib/wa-events";
+import { eraseContactAiData } from "@/lib/ai-agent/retention";
 import { z } from "zod";
 
 const FUNNEL_STAGES = ["recebido", "respondido", "qualificado", "negociacao", "perdido", "convertido"] as const;
@@ -12,6 +13,8 @@ const patchSchema = z.object({
   reportValid: z.boolean().optional(),
   reportInvalidReason: z.string().max(300).nullable().optional(),
   tagIds: z.array(z.string()).max(30).optional(),
+  aiSilenced: z.boolean().optional(),       // operador assume/devolve o atendimento à IA
+  eraseAiData: z.boolean().optional(),      // LGPD: apagar dados que a IA guardou deste contato
 });
 
 async function getConnAndContact(clientId: string, contactId: string) {
@@ -31,11 +34,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  const [messages, lead, conversation, tags] = await Promise.all([
+  const [messages, lead, conversation, tags, profile] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000 }),
     prisma.waLead.findUnique({ where: { contactId: contact.id } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id } }),
     prisma.waContactTag.findMany({ where: { contactId: contact.id }, include: { tag: true } }),
+    prisma.leadProfile.findUnique({ where: { contactId: contact.id }, select: { score: true, temperature: true, qualified: true } }),
   ]);
 
   return NextResponse.json({
@@ -43,12 +47,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       id: contact.id, waId: contact.waId, name: contact.name,
       displayName: contact.displayName, notes: contact.notes,
       reportValid: contact.reportValid, reportInvalidReason: contact.reportInvalidReason,
+      aiSilenced: contact.aiSilenced, aiOptedOut: contact.aiOptedOut,
       createdAt: contact.createdAt,
     },
     tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),
     lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, adModel: lead.adModel, sourceType: lead.sourceType, sourceUrl: lead.sourceUrl, ctwaClid: lead.ctwaClid, enteredAt: lead.enteredAt, imported: lead.imported } : null,
     funnelStage: conversation?.funnelStage ?? null,
     status: conversation?.status ?? null,
+    leadScore: profile ? { score: profile.score, temperature: profile.temperature, qualified: profile.qualified } : null,
     aiSummary: conversation?.aiSummary ?? null,
     aiSuggestedStage: conversation?.aiSuggestedStage ?? null,
     items: messages.map((m) => {
@@ -76,14 +82,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  // Campos do contato (nome interno, notas, validade p/ relatório).
+  // Campos do contato (nome interno, notas, validade p/ relatório, silenciar IA).
   const contactUpdate: Record<string, unknown> = {};
   if (d.displayName !== undefined) contactUpdate.displayName = d.displayName;
   if (d.notes !== undefined) contactUpdate.notes = d.notes;
   if (d.reportValid !== undefined) contactUpdate.reportValid = d.reportValid;
   if (d.reportInvalidReason !== undefined) contactUpdate.reportInvalidReason = d.reportInvalidReason;
+  if (d.aiSilenced !== undefined) contactUpdate.aiSilenced = d.aiSilenced;
   if (Object.keys(contactUpdate).length) {
     await prisma.waContact.update({ where: { id: contact.id }, data: contactUpdate });
+  }
+  if (d.aiSilenced !== undefined) {
+    await logWaEvent(conn.id, "ai.silenced", contact.id, { silenced: d.aiSilenced, by: session?.user?.id ?? null });
+  }
+
+  // LGPD — direito ao esquecimento: apaga o que a IA guardou deste contato.
+  if (d.eraseAiData === true) {
+    const res = await eraseContactAiData(contact.id);
+    await logWaEvent(conn.id, "ai.erased", contact.id, { ...res, by: session?.user?.id ?? null });
+    return NextResponse.json({ ok: true, erased: res });
   }
 
   // Tags: substitui o conjunto (idempotente).

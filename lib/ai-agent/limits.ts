@@ -1,19 +1,32 @@
-import { prismaUnscoped } from "@/lib/prisma";
+import { spendToday } from "./usage";
 
-// Disjuntor global de gasto diário (todos os tenants). Opcional via env.
-// Query intencionalmente cross-tenant → usa prismaUnscoped (exceção documentada ao guard).
-// Custo estimado com base nos tokens do dia (preço gpt-4o-mini). Cache de 60s.
-let cache: { at: number; usd: number } | null = null;
+// Disjuntores de gasto diário. Fonte ÚNICA de custo = AiUsage (todos os pipelines:
+// chat/memory/intelligence/judge/embedding), não só o chat. Cache curto p/ não martelar.
+
+let globalCache: { at: number; usd: number } | null = null;
+const clientCache = new Map<string, { at: number; usd: number }>();
 
 export async function globalSpendExceeded(): Promise<boolean> {
   const cap = Number(process.env.AI_AGENT_DAILY_USD_CAP || 0);
   if (!cap) return false;
   const now = Date.now();
-  if (!cache || now - cache.at > 60_000) {
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    const agg = await prismaUnscoped.aiInteraction.aggregate({ where: { createdAt: { gte: start } }, _sum: { tokensIn: true, tokensOut: true } });
-    const usd = ((agg._sum.tokensIn ?? 0) / 1e6) * 0.15 + ((agg._sum.tokensOut ?? 0) / 1e6) * 0.6;
-    cache = { at: now, usd };
+  if (!globalCache || now - globalCache.at > 60_000) {
+    globalCache = { at: now, usd: await spendToday({}) };
   }
-  return cache.usd >= cap;
+  return globalCache.usd >= cap;
+}
+
+// Teto de gasto diário POR cliente — protege o orçamento global de um tenant abusivo.
+export async function clientSpendExceeded(clientId: string, cap: number): Promise<boolean> {
+  if (!cap || cap <= 0) return false;
+  const now = Date.now();
+  const hit = clientCache.get(clientId);
+  let usd: number;
+  if (hit && now - hit.at < 60_000) {
+    usd = hit.usd;
+  } else {
+    usd = await spendToday({ clientId });
+    clientCache.set(clientId, { at: now, usd });
+  }
+  return usd >= cap;
 }

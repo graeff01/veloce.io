@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Loader2, Phone, Megaphone, Check, CheckCheck,
   MessageSquare, Sparkles, X, ChevronRight, ChevronLeft,
-  Mic, Image, FileText, Video,
+  Mic, Image, FileText, Video, Bot, BotOff, Trash2,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 import type { LeadBadge } from "@/lib/wa-leads";
@@ -25,11 +25,18 @@ interface Msg {
   filename?: string | null;
 }
 interface Detail {
-  contact: { id: string; waId: string; name: string | null };
+  contact: { id: string; waId: string; name: string | null; aiSilenced?: boolean; aiOptedOut?: boolean };
   lead: { adTitle: string | null; adId?: string | null; enteredAt?: string | null; sourceType?: string | null } | null;
   funnelStage: string | null; items: Msg[];
   aiSummary: string | null; aiSuggestedStage: string | null;
+  leadScore?: { score: number; temperature: string | null; qualified: boolean } | null;
 }
+
+const TEMP_META: Record<string, { label: string; color: string; emoji: string }> = {
+  hot: { label: "Quente", color: "#EF4444", emoji: "🔥" },
+  warm: { label: "Morno", color: "#F59E0B", emoji: "🌤️" },
+  cold: { label: "Frio", color: "#3B82F6", emoji: "❄️" },
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STAGES = ["recebido","respondido","qualificado","negociacao","perdido","convertido"];
@@ -215,6 +222,26 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     });
     onFunnelChange?.();
   }
+  // Operador assume/devolve o atendimento à IA neste contato.
+  async function toggleSilence() {
+    if (!selected || !detail) return;
+    const next = !detail.contact.aiSilenced;
+    setDetail((d) => (d ? { ...d, contact: { ...d.contact, aiSilenced: next } } : d));
+    await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiSilenced: next }),
+    });
+  }
+  // LGPD — apaga o que a IA guardou deste contato (irreversível).
+  async function eraseAi() {
+    if (!selected) return;
+    if (!confirm("Apagar os dados que a IA guardou deste contato (texto das interações e qualificação)? É irreversível e o contato deixa de receber mensagens automáticas.")) return;
+    await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eraseAiData: true }),
+    });
+    setDetail((d) => (d ? { ...d, contact: { ...d.contact, aiOptedOut: true } } : d));
+  }
 
   const filtered = useMemo(() => {
     let r = list;
@@ -365,10 +392,33 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                           {FUNNEL_LABELS[detail.funnelStage]}
                         </span>
                       )}
+                      {detail?.leadScore?.temperature && TEMP_META[detail.leadScore.temperature] && (
+                        <span title={`Score de qualificação: ${detail.leadScore.score}/100`}
+                          style={{ fontSize: 10.5, fontWeight: 700, color: TEMP_META[detail.leadScore.temperature].color, background: `color-mix(in srgb, ${TEMP_META[detail.leadScore.temperature].color} 12%, transparent)`, padding: "1px 7px", borderRadius: 99 }}>
+                          {TEMP_META[detail.leadScore.temperature].emoji} {TEMP_META[detail.leadScore.temperature].label} · {detail.leadScore.score}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {detail?.contact.aiOptedOut ? (
+                    <span title="O lead pediu para não receber mensagens automáticas (opt-out)" style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)", padding: "0 10px", fontSize: 12 }}>
+                      <BotOff size={14} /> Opt-out
+                    </span>
+                  ) : (
+                    <button onClick={toggleSilence}
+                      title={detail?.contact.aiSilenced ? "IA silenciada neste contato — clique para devolver à IA" : "IA ativa neste contato — clique para assumir manualmente"}
+                      style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", cursor: "pointer", padding: "0 10px", fontSize: 12, fontWeight: 600,
+                        background: detail?.contact.aiSilenced ? "color-mix(in srgb, var(--red) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)",
+                        color: detail?.contact.aiSilenced ? "var(--red)" : "var(--green)" }}>
+                      {detail?.contact.aiSilenced ? <BotOff size={14} /> : <Bot size={14} />} {detail?.contact.aiSilenced ? "IA off" : "IA on"}
+                    </button>
+                  )}
+                  <button onClick={eraseAi} title="LGPD: apagar dados que a IA guardou deste contato"
+                    style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                    <Trash2 size={14} />
+                  </button>
                   <select value={detail?.funnelStage ?? ""} onChange={(e) => changeStage(e.target.value)}
                     style={{ height: 32, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer" }}>
                     <option value="">Funil: —</option>

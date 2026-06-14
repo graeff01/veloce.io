@@ -6,4 +6,6 @@ export async function register() {
   startMetaAutoSync();
   const { startNotificationScheduler } = await import("@/lib/notification-scheduler");
   startNotificationScheduler();
+  const { startAiAgentScheduler } = await import("@/lib/ai-agent/ai-scheduler");
+  startAiAgentScheduler();
 }
