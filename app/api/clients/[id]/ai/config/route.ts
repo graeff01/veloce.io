@@ -20,6 +20,14 @@ const putSchema = z.object({
   language: z.string().optional(),
   fallbackMessage: z.string().max(1000).nullable().optional(),
   handoffAfter: z.number().int().min(0).max(20).optional(),
+  paused: z.boolean().optional(),
+  pausedReason: z.string().max(200).nullable().optional(),
+  dailyUsdCap: z.number().min(0).max(1000).nullable().optional(),
+  humanTakeoverMin: z.number().int().min(0).max(1440).optional(),
+  scopeMode: z.enum(["all", "ads_only"]).optional(),
+  disclosureEnabled: z.boolean().optional(),
+  testMode: z.boolean().optional(),
+  testNumbers: z.array(z.string().max(30)).max(50).optional(),
 });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -8,6 +8,8 @@ export type WaEventType =
   | "status.changed"
   | "funnel.changed"
   | "report.validity"
+  | "ai.silenced"
+  | "ai.erased"
   | "integration.error";
 
 // Registra um evento. Nunca lança — observabilidade não pode quebrar o fluxo.

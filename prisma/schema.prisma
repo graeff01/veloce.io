@@ -588,6 +588,9 @@ model WaContact {
   notes         String?   // observações internas
   reportValid   Boolean   @default(true)  // conta no relatório mensal?
   reportInvalidReason String?
+  aiOptedOut    Boolean   @default(false) // lead pediu para não receber mensagens automáticas (LGPD)
+  aiOptedOutAt  DateTime?
+  aiSilenced    Boolean   @default(false) // operador silenciou a IA neste contato (assumiu manualmente)
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
@@ -634,6 +637,7 @@ model WaMessage {
   direction     String   // "in" (recebida) | "out" (enviada)
   type          String   // text, image, audio, ...
   text          String?
+  aiGenerated   Boolean  @default(false) // saída gerada pela IA (distingue de resposta humana p/ takeover)
   timestamp     DateTime
   deliveredAt   DateTime? // do evento "statuses" (entregue)
   readAt        DateTime? // do evento "statuses" (lido)
@@ -681,9 +685,12 @@ model WaConversation {
   contactId        String    @unique
   status           String    @default("open") // open | waiting | closed (rótulo interno)
   funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido (manual)
-  aiSummary        String?    // resumo da conversa gerado por IA
+  aiSummary        String?    // resumo da conversa p/ o CRM (gerado sob demanda pelo operador)
   aiSuggestedStage String?    // etapa de funil sugerida pela IA
   aiUpdatedAt      DateTime?
+  agentMemory      String?    // memória rolante de TRABALHO da IA (fatos do lead); separado do aiSummary do CRM
+  agentMemoryUpto  Int       @default(0) // nº de interações já resumidas (gatilho de refresh)
+  agentMemoryAt    DateTime?
   firstInboundAt   DateTime?
   firstResponseAt  DateTime?
   firstResponseSec Int?       // tempo da 1ª resposta (cache p/ métricas em escala)
@@ -763,10 +770,39 @@ model AiAgentConfig {
   language        String   @default("pt-BR")
   fallbackMessage String?  // mensagem quando não sabe / vai escalar
   handoffAfter    Int      @default(0) // escalar após N idas sem avanço (0 = desligado)
+  // ── Controles de segurança/operação (multi-tenant) ──
+  paused          Boolean  @default(false) // kill-switch instantâneo por cliente (não exige redeploy)
+  pausedReason    String?  // motivo do pause (auditoria)
+  dailyUsdCap     Float?   // teto de gasto diário POR cliente (null = sem teto próprio)
+  humanTakeoverMin Int     @default(180) // se um humano respondeu há < N min, a IA NÃO assume
+  scopeMode       String   @default("all") // all | ads_only — a quem a IA responde
+  disclosureEnabled Boolean @default(true) // anexar aviso "atendimento automático" na 1ª msg
+  testMode        Boolean  @default(false) // modo canário: responde SOMENTE os números em testNumbers
+  testNumbers     Json     @default("[]")  // lista de telefones (E.164 sem +) liberados no modo canário
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// Fila durável do agente: 1 job pendente por contato (coalescing de rajadas).
+// Substitui o debounce em memória — sobrevive a deploy/restart e a multi-instância.
+model AiJob {
+  id             String    @id @default(cuid())
+  clientId       String
+  connectionId   String
+  contactId      String    @unique // um job ativo por contato; o orquestrador lê todo o histórico
+  idempotencyKey String?   // waMessageId mais recente (proveniência/dedupe)
+  payload        Json?     // metadados da última mensagem (type/mediaId/mime/text)
+  status         String    @default("pending") // pending | processing
+  attempts       Int       @default(0)
+  runAfter       DateTime  @default(now()) // debounce/backoff: só processa após este instante
+  lockedAt       DateTime? // claim atômico anti-concorrência (expira após timeout)
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, runAfter])
 }
 
 // Catálogo genérico (produto) por cliente — multi-segmento (carro/imóvel/serviço).
@@ -812,14 +848,91 @@ model LeadProfile {
   productInterest String?
   budget          String?
   hasTradeIn      Boolean?
+  tradeInDetail   String?  // veículo da troca: modelo/ano/km/estado (coletado pela IA p/ adiantar ao vendedor)
   wantsFinancing  Boolean?
+  financingDetail String?  // entrada pretendida / prazo / se usa a troca como parte
+  urgency         String?  // prazo de compra em texto (ex: "essa semana", "sem pressa")
+  visitIntent     Boolean? // demonstrou intenção de ir à loja / ver de perto
+  readyToBuy      Boolean? // sinal forte: quer fechar / pediu proposta
   score           Int      @default(0)
+  temperature     String?  // cold | warm | hot (cache da classificação do score v2)
+  lastSentiment   String?  // último sentiment detectado (display no CRM + emotional drift)
   qualified       Boolean  @default(false)
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([connectionId])
+}
+
+// Sprint 3: classificação semântica por mensagem (intent + sentiment). 1 linha por
+// mensagem RELEVANTE do lead (triviais são ignoradas). Idempotente por waMessageId.
+model MessageAnalysis {
+  id                  String   @id @default(cuid())
+  clientId            String
+  connectionId        String
+  contactId           String
+  waMessageId         String   @unique
+  intent              String?
+  intentConfidence    Float?
+  sentiment           String?
+  sentimentConfidence Float?
+  createdAt           DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([clientId, intent])
+  @@index([clientId, sentiment])
+  @@index([contactId, createdAt])
+}
+
+// Sprint 3: objeções do lead, com ciclo de vida (severidade + resolvida ou não).
+// Esparsa e persistente — uma objeção é levantada e pode ser resolvida turnos depois.
+model LeadObjection {
+  id           String    @id @default(cuid())
+  clientId     String
+  connectionId String
+  contactId    String
+  type         String    // PRICE|TRUST|FINANCING|TIMING|COMPETITOR|FIT|AUTHORITY|URGENCY|LOCATION|OTHER
+  severity     Float     @default(0.5)
+  resolved     Boolean   @default(false)
+  resolvedAt   DateTime?
+  raisedMsgId  String?
+  createdAt    DateTime  @default(now())
+
+  @@index([clientId, type])
+  @@index([clientId, resolved])
+  @@index([contactId, resolved])
+}
+
+// Sprint 5: uso/custo REAL por chamada de LLM, atribuído por pipeline (fonte única de
+// custo p/ caps, alertas e dashboard). Cobre chat/memory/intelligence/judge/embedding.
+model AiUsage {
+  id        String   @id @default(cuid())
+  clientId  String
+  pipeline  String   // chat | memory | intelligence | judge | embedding
+  model     String?
+  tokensIn  Int      @default(0)
+  tokensOut Int      @default(0)
+  costUsd   Float    @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([clientId, pipeline, createdAt])
+}
+
+// Sprint 8: trilha de auditoria de ações sensíveis (acesso/export/exclusão de dados).
+model AuditLog {
+  id         String   @id @default(cuid())
+  clientId   String?
+  userId     String?
+  action     String   // data.export | data.erase | ai.config | login | ...
+  target     String?  // contactId / recurso afetado
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([action, createdAt])
 }
 
 // Log de cada turno da IA (auditoria/observabilidade).
@@ -833,9 +946,13 @@ model AiInteraction {
   decision   String?  // respondeu_duvida | sugeriu_visita | agendou | escalou | bloqueado | sem_fonte
   model      String?
   promptVersion    String?  // versão do prompt/contrato que produziu a resposta (rastreabilidade)
+  promptVariant    String?  // chave da variante A/B aplicada (null = padrão do cliente)
   contextUsed      Json?    // trechos de conhecimento (RAG) usados na resposta
   idempotencyKey   String?  // chave de dedupe (ex: waMessageId) — contrato p/ fila durável futura
   inboundMediaType String?  // text|audio|image|document|... — proveniência da entrada
+  stages     Json?    // timeline por etapa: [{name,ms}] (context|rag|llm|guardrail) — logs avançados
+  guardrails Json?    // guardrails acionados nesta resposta: string[] (motivos) — logs avançados
+  error      String?  // mensagem de erro quando status="error" (observabilidade)
   tokensIn   Int      @default(0)
   tokensOut  Int      @default(0)
   latencyMs  Int      @default(0)
@@ -845,6 +962,73 @@ model AiInteraction {
   @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
   @@index([contactId, createdAt])
+}
+
+// Sprint 4: avaliação de qualidade da resposta da IA (eval + AI judge numa linha).
+model AiResponseEvaluation {
+  id               String   @id @default(cuid())
+  clientId         String
+  contactId        String
+  waMessageId      String?  // mensagem de SAÍDA da IA avaliada
+  overall          Float
+  naturalness      Float?
+  empathy          Float?
+  clarity          Float?
+  persuasion       Float?
+  qualification    Float?
+  conversationFlow Float?
+  category         String   // excellent | missed_objection | weak_qualification | robotic_tone | overexplaining | poor_followup | weak_closing
+  suggestion       String?
+  severity         Float?
+  promptVersion    String?
+  promptVariant    String?
+  model            String?
+  createdAt        DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([clientId, category])
+  @@index([clientId, promptVariant])
+}
+
+// Sprint 4: variantes de prompt por cliente (A/B). Overrides opcionais do prompt base.
+model PromptVariant {
+  id               String   @id @default(cuid())
+  clientId         String
+  key              String   // identificador curto (ex: "A", "B", "empatico")
+  label            String?
+  active           Boolean  @default(true)
+  weight           Int      @default(1)
+  personaOverride  String?
+  goalsOverride    String?
+  rulesOverride    String?
+  extraInstructions String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([clientId, key])
+  @@index([clientId, active])
+}
+
+// Sprint 4: revisão humana amostral (ground truth contra viés do LLM judge).
+model HumanReview {
+  id               String    @id @default(cuid())
+  clientId         String
+  contactId        String
+  waMessageId      String?
+  leadMessage      String?
+  aiMessage        String?
+  status           String    @default("pending") // pending | done
+  goodResponse     Boolean?
+  natural          Boolean?
+  seemedBot        Boolean?
+  missedOpportunity Boolean?
+  manualScore      Int?      // 0-10
+  reviewerId       String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  reviewedAt       DateTime?
+
+  @@index([clientId, status])
 }
 
 // Disponibilidade de visitas por cliente (janelas/slot/capacidade) — agendamento seguro.

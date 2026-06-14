@@ -6,8 +6,7 @@ import {
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
-import { maybeRespondWithAgent } from "@/lib/ai-agent/respond";
-import { scheduleAgentRun } from "@/lib/ai-agent/scheduler";
+import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { captureException } from "@/lib/observability";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
@@ -145,15 +144,15 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
-    // Debounce + lock por contato evitam respostas duplicadas/concorrentes; o 200
-    // não espera o agente.
+    // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
+    // Sobrevive a deploy/restart e serializa em multi-instância; o 200 não espera o agente.
     if (!outbound) {
-      const connInfo = { id: conn.id, clientId: conn.clientId, phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken };
-      const contactInfo = { id: contact.id, name: contact.name, waId: customerWaId };
       const ref = mediaRef(m);
-      const msgInfo = { text: messageText(m), type: m.type, mediaId: ref?.id, mime: ref?.mime };
-      const idempotencyKey = m.id; // waMessageId — dedupe estável p/ a fila durável futura
-      scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, msgInfo, idempotencyKey));
+      void enqueueAgentJob({
+        clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
+        idempotencyKey: m.id,
+        payload: { text: messageText(m), type: m.type, mediaId: ref?.id, mime: ref?.mime },
+      }).catch(() => {});
     }
 
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo

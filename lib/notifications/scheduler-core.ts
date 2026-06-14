@@ -7,6 +7,8 @@ import { sweepExpiredTelegramMessages } from "@/lib/notifications/telegram";
 import { prisma } from "@/lib/prisma";
 import { nowParts } from "@/lib/tz";
 import { captureException } from "@/lib/observability";
+import { pruneOldAiLogs } from "@/lib/ai-agent/retention";
+import { runCostAlerts } from "@/lib/ai-agent/cost-alerts";
 
 // Núcleo de decisão "o que enviar agora", compartilhado pelo agendador interno
 // (setInterval) e pelo cron externo. Gates são no BANCO (gateOnce), não em
@@ -53,6 +55,12 @@ export async function runDueJobs(): Promise<void> {
 
   // Poda do histórico de logs (>90 dias): 1x/dia.
   if (await gateOnce(`gate:prune:${day}`)) await safe("prune", pruneOldLogs);
+
+  // LGPD: anonimiza o texto de interações antigas da IA (>retenção): 1x/dia.
+  if (await gateOnce(`gate:ai-prune:${day}`)) await safe("ai-prune", pruneOldAiLogs);
+
+  // Custo: alertas de limiar (70/85/95/100%) + auto-pause. gateOnce interno garante 1x/dia.
+  await safe("cost-alerts", runCostAlerts);
 }
 
 async function pruneOldLogs(): Promise<void> {
