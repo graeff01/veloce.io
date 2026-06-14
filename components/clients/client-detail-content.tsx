@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { ClientHealthCard } from "@/components/clients/client-health-card";
+import { FixedDemandsSection } from "@/components/clients/fixed-demands-section";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
@@ -558,6 +559,9 @@ function PerfilTab({
             </div>
           </div>
         ))}
+
+        {/* Demandas fixas — entram no kanban "A fazer" todo início de mês */}
+        <FixedDemandsSection clientId={clientId} isAdmin={isAdmin} />
       </section>
 
       {/* ── Right: Saúde + Follow-up + Activity timeline ── */}

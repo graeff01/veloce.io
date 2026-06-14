@@ -97,6 +97,7 @@ model Client {
   deletedAt    DateTime?
 
   tasks             Task[]
+  fixedDemands      FixedDemand[]
   movements         Movement[]
   brains            Brain[]
   clientPlans       ClientPlan[]
@@ -197,6 +198,7 @@ model Task {
   planYear    Int?
   order       Int        @default(0)
   meetingId   String?
+  fixedDemandId String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
@@ -204,8 +206,32 @@ model Task {
   client        Client         @relation(fields: [clientId], references: [id])
   assignee      User?          @relation("AssignedTasks", fields: [assignedTo], references: [id])
   meeting       Meeting?       @relation(fields: [meetingId], references: [id])
+  fixedDemand   FixedDemand?   @relation(fields: [fixedDemandId], references: [id])
   checklists    Checklist[]
   executionLogs ExecutionLog[]
+
+  @@index([fixedDemandId])
+}
+
+// Demanda fixa (recorrente): o usuário cadastra no Perfil e ela é materializada
+// como Task em "A fazer" todo início de mês, com prazo até o fim do mês.
+model FixedDemand {
+  id          String       @id @default(cuid())
+  clientId    String
+  title       String
+  type        String?
+  priority    TaskPriority @default(NORMAL)
+  description String?
+  order       Int          @default(0)
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  client Client @relation(fields: [clientId], references: [id])
+  tasks  Task[]
+
+  @@index([clientId])
 }
 
 model Checklist {

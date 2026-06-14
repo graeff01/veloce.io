@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, logAction } from "@/lib/api-helpers";
+import { parseDueDate, endOfMonthUTC } from "@/lib/utils";
 import { z } from "zod";
 
 const createTaskSchema = z.object({
@@ -77,8 +78,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       blocker: parsed.data.blocker || null,
       assignedTo: parsed.data.assignedTo || null,
       dueDate: parsed.data.dueDate
-        ? new Date(parsed.data.dueDate)
-        : new Date(parsed.data.planYear ?? new Date().getFullYear(), parsed.data.planMonth ?? new Date().getMonth() + 1, 0),
+        ? parseDueDate(parsed.data.dueDate)
+        : endOfMonthUTC(parsed.data.planYear ?? new Date().getFullYear(), parsed.data.planMonth ?? new Date().getMonth() + 1),
       planMonth: parsed.data.planMonth,
       planYear: parsed.data.planYear,
       meetingId: parsed.data.meetingId || null,

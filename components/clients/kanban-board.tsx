@@ -65,11 +65,16 @@ function typeColor(type: string | null) {
   return TYPE_COLOR[type] ?? "#6366F1";
 }
 
+const WEEKDAY_ABBR = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
 function fmtDate(iso: string) {
+  // Lê em componentes UTC: as datas são gravadas ao meio-dia UTC, então o dia do
+  // calendário fica estável em qualquer fuso (não cai pro dia anterior).
   const d = new Date(iso);
-  const dd = d.getDate().toString().padStart(2, "0");
-  const mm = (d.getMonth() + 1).toString().padStart(2, "0");
-  return `${dd}/${mm}`;
+  const dd = d.getUTCDate().toString().padStart(2, "0");
+  const mm = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+  const wd = WEEKDAY_ABBR[d.getUTCDay()];
+  return `${dd}/${mm} · ${wd}`;
 }
 
 function isOverdue(task: Task) {
@@ -113,6 +118,8 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
   // Rollover: archive DONE tasks from past months once per session
   const rolloverDone = useRef(false);
+  // Demandas fixas: materializar no mês atual uma vez por sessão
+  const seedDone = useRef(false);
 
   // Drag state
   const dragTaskId   = useRef<string | null>(null);
@@ -147,6 +154,17 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
       }).catch(() => {});
     }
   }, [isCurrentMonth, load]);
+
+  // Materializa as demandas fixas do cliente no mês atual (uma vez por sessão)
+  useEffect(() => {
+    if (isCurrentMonth && !seedDone.current) {
+      seedDone.current = true;
+      fetch(`/api/clients/${clientId}/tasks/seed-fixed`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, year }),
+      }).then(r => { if (r.ok) r.json().then(d => { if (d.created > 0) load(); }); }).catch(() => {});
+    }
+  }, [isCurrentMonth, clientId, month, year, load]);
 
   function openCreate() {
     setNewTitle("");
@@ -977,7 +995,7 @@ function TaskDetailModal({ task, users, onClose, onSaved }: {
         title: title.trim() || task.title,
         type: type || null,
         priority,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
+        dueDate: dueDate || undefined,
         assignedTo: assignedTo || null,
         blocker: blocker.trim() || null,
       }),

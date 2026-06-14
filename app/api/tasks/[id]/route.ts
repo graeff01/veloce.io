@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, logAction } from "@/lib/api-helpers";
+import { parseDueDate } from "@/lib/utils";
 import { z } from "zod";
 
 const updateTaskSchema = z.object({
@@ -36,7 +37,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.priority !== undefined && { priority: parsed.data.priority }),
       ...(parsed.data.blocker !== undefined && { blocker: parsed.data.blocker || null }),
       ...(parsed.data.assignedTo !== undefined && { assignedTo: parsed.data.assignedTo }),
-      ...(parsed.data.dueDate && { dueDate: new Date(parsed.data.dueDate) }),
+      ...(parsed.data.dueDate && { dueDate: parseDueDate(parsed.data.dueDate) }),
       ...(parsed.data.status && { status: parsed.data.status }),
       ...(parsed.data.order !== undefined && { order: parsed.data.order }),
     },
