@@ -5,6 +5,7 @@ import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
+  History, Target, FileText, ScrollText, LineChart,
 } from "lucide-react";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
@@ -783,8 +784,387 @@ function OverviewSection({ clientId, onNavigate }: { clientId: string; onNavigat
   );
 }
 
+// ── Memória (Construir) — o que a IA lembra de cada lead ──────────────────────
+interface MemLead { contactId: string; name: string | null; lastSeen: string | null; summary: string; factsCount: number }
+interface MemFact { key: string; value: string; updatedAt: string | null }
+interface MemDetail { contactId: string; summary: string; rollingSummary: string; facts: MemFact[] }
+
+function MemorySection({ clientId }: { clientId: string }) {
+  const [leads, setLeads] = useState<MemLead[] | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+  const [detail, setDetail] = useState<MemDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/memory`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLeads(Array.isArray(d.leads) ? d.leads : []);
+    });
+  }, [clientId]);
+
+  function open(contactId: string) {
+    setSel(contactId); setDetail(null); setLoadingDetail(true);
+    fetch(`/api/clients/${clientId}/ai/memory?contactId=${contactId}`).then((r) => r.json()).then((d) => {
+      setDetail(d.detail ?? null); setLoadingDetail(false);
+    });
+  }
+
+  if (!leads) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>O que a IA <b>lembra</b> de cada lead: um resumo de trabalho da conversa + os fatos já descobertos. Sobrevive entre sessões — lead que volta semanas depois é reconhecido.</p>
+      {leads.length === 0 ? (
+        <div style={card}><p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", margin: 0 }}>Nenhuma memória ainda. Conforme a IA conversa com leads, os resumos aparecem aqui.</p></div>
+      ) : (
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {leads.map((l) => (
+              <button key={l.contactId} onClick={() => open(l.contactId)} style={{ ...card, textAlign: "left", cursor: "pointer", borderColor: sel === l.contactId ? "var(--accent)" : "var(--border)", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{l.name || "Lead sem nome"}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--text-muted)", flexShrink: 0 }}>{l.lastSeen ? new Date(l.lastSeen).toLocaleDateString("pt-BR") : ""}</span>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.summary || "(sem resumo)"}</span>
+                <span style={{ fontSize: 10.5, color: "var(--accent)" }}>{l.factsCount} fato{l.factsCount === 1 ? "" : "s"} conhecido{l.factsCount === 1 ? "" : "s"}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: "1 1 320px" }}>
+            {!sel ? (
+              <div style={{ ...card, color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>Selecione um lead para ver a memória completa.</div>
+            ) : loadingDetail ? (
+              <div style={{ ...card, textAlign: "center" }}><Loader2 size={18} className="animate-spin" /></div>
+            ) : !detail ? (
+              <div style={{ ...card, color: "var(--text-muted)", fontSize: 13 }}>Sem memória para este lead.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={card}>
+                  <div style={{ ...label, marginBottom: 6 }}>Resumo da conversa</div>
+                  <div style={{ fontSize: 13, color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>{detail.rollingSummary || "(vazio)"}</div>
+                </div>
+                <div style={card}>
+                  <div style={{ ...label, marginBottom: 8 }}>Fatos do lead</div>
+                  {detail.facts.length === 0 ? <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Nenhum fato estruturado ainda.</p> : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {detail.facts.map((f, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, fontSize: 12.5 }}>
+                          <span style={{ width: 130, flexShrink: 0, color: "var(--text-muted)", textTransform: "capitalize" }}>{f.key}</span>
+                          <span style={{ color: "var(--text-primary)" }}>{f.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Qualificação (Inteligência) — slots + score por lead ──────────────────────
+interface QualLead { contactId: string; name: string | null; score: number; temperature: "cold" | "warm" | "hot"; slots: { key: string; value: string | null; filled: boolean }[]; missingSlots: string[]; updatedAt: string }
+interface Qual { leads: QualLead[]; distribution: { cold: number; warm: number; hot: number } }
+
+const TEMP_META: Record<string, { label: string; color: string }> = {
+  hot: { label: "Quente", color: "var(--red)" },
+  warm: { label: "Morno", color: "var(--amber, #F59E0B)" },
+  cold: { label: "Frio", color: "var(--text-muted)" },
+};
+
+function QualificationSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<Qual | null>(null);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/qualification?days=${days}`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData(d);
+    });
+  }, [clientId, days]);
+
+  if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  const leads = [...data.leads].sort((a, b) => b.score - a.score);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Nota e temperatura de cada lead, com o que já se sabe e o que falta descobrir.</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ ...input, width: 120 }}>
+          {[7, 30, 90].map((d) => <option key={d} value={d}>{d} dias</option>)}
+        </select>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+        {(["hot", "warm", "cold"] as const).map((t) => (
+          <div key={t} style={{ ...card, borderColor: t === "hot" && data.distribution.hot > 0 ? "var(--red)" : "var(--border)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>{TEMP_META[t].label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: TEMP_META[t].color, marginTop: 4 }}>{data.distribution[t]}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {leads.length === 0 && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhum lead qualificado no período.</p>}
+        {leads.map((l) => (
+          <div key={l.contactId} style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{l.name || "Lead sem nome"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, color: "#fff", background: TEMP_META[l.temperature].color }}>{TEMP_META[l.temperature].label}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>{l.score}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {l.slots.map((s) => (
+                <span key={s.key} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: s.filled ? "none" : "1px dashed var(--border)", background: s.filled ? "var(--accent-soft)" : "transparent", color: s.filled ? "var(--accent)" : "var(--text-muted)" }}>
+                  {s.key}{s.filled && s.value ? `: ${s.value}` : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Prompt Lab (Construir) — versões do prompt + teste A/B ────────────────────
+interface PromptVersion { id: string; label: string; body: string; active: boolean; isVariant: boolean; abWeight: number | null; persona: string | null; goals: string | null; rules: string | null; extra: string | null }
+interface PromptsData { versions: PromptVersion[]; abTest: { enabled: boolean; variants: { id: string; label: string; weight: number }[] } | null }
+interface VarDraft { key: string; label: string; active: boolean; weight: number }
+
+function PromptLabSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<PromptsData | null>(null);
+  const [vars, setVars] = useState<VarDraft[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [f, setF] = useState({ key: "", label: "", persona: "", goals: "", rules: "", extra: "" });
+
+  function load() {
+    fetch(`/api/clients/${clientId}/ai/prompts`).then((r) => r.json()).then((d: PromptsData) => {
+      setData(d);
+      setVars((d.versions || []).filter((v) => v.isVariant).map((v) => ({ key: v.id, label: v.label, active: v.active, weight: v.abWeight ?? 1 })));
+    });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [clientId]);
+
+  async function createVariant() {
+    if (!f.key.trim()) return;
+    setBusy(true);
+    await fetch(`/api/clients/${clientId}/ai/prompts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: f.key.trim(), label: f.label.trim() || undefined, persona: f.persona.trim() || null, goals: f.goals.trim() || null, rules: f.rules.trim() || null, extra: f.extra.trim() || null }) });
+    setF({ key: "", label: "", persona: "", goals: "", rules: "", extra: "" }); setShowForm(false); setBusy(false); load();
+  }
+  async function activate(body: object) {
+    setBusy(true);
+    await fetch(`/api/clients/${clientId}/ai/prompts/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    setBusy(false); load();
+  }
+  const setVar = (key: string, p: Partial<VarDraft>) => setVars((xs) => xs.map((v) => v.key === key ? { ...v, ...p } : v));
+
+  if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  const base = data.versions.find((v) => !v.isVariant);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Crie <b>variantes</b> do jeito da IA falar e rode um <b>teste A/B</b>: cada lead cai sempre na mesma variante, e a Avaliação mostra qual converte melhor. O prompt-base é editado na Configuração.</p>
+
+      {data.abTest?.enabled && (
+        <div style={{ ...card, background: "var(--accent-soft)", borderColor: "var(--accent)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent)", marginBottom: 4 }}>Teste A/B ativo</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {data.abTest.variants.map((v) => <span key={v.id} style={{ fontSize: 11.5, padding: "2px 8px", borderRadius: 999, background: "var(--bg-surface)", color: "var(--text-secondary)" }}>{v.label} · peso {v.weight}</span>)}
+          </div>
+        </div>
+      )}
+
+      {base && (
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{base.label}</span>
+            <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>somente leitura</span>
+          </div>
+          <pre style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0, maxHeight: 160, overflow: "auto" }}>{base.body || "(prompt-base vazio — configure persona/objetivos/regras na Configuração)"}</pre>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ ...label, margin: 0 }}>Variantes</span>
+          <button onClick={() => setShowForm((s) => !s)} style={{ ...btn(), padding: "5px 10px", fontSize: 12 }}><Plus size={13} /> Nova variante</button>
+        </div>
+
+        {showForm && (
+          <div style={card}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 120px" }}><label style={label}>Chave (ex: B)</label><input style={input} value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} placeholder="B" /></div>
+              <div style={{ flex: "1 1 200px" }}><label style={label}>Rótulo</label><input style={input} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="Mais empático" /></div>
+            </div>
+            <label style={{ ...label, marginTop: 12 }}>Persona (sobrescreve o base — opcional)</label>
+            <input style={input} value={f.persona} onChange={(e) => setF({ ...f, persona: e.target.value })} placeholder="Ex: mais caloroso e informal" />
+            <label style={{ ...label, marginTop: 12 }}>Objetivos (opcional)</label>
+            <textarea style={{ ...input, minHeight: 50, resize: "vertical" }} value={f.goals} onChange={(e) => setF({ ...f, goals: e.target.value })} />
+            <label style={{ ...label, marginTop: 12 }}>Regras (opcional)</label>
+            <textarea style={{ ...input, minHeight: 50, resize: "vertical" }} value={f.rules} onChange={(e) => setF({ ...f, rules: e.target.value })} />
+            <label style={{ ...label, marginTop: 12 }}>Instruções extras (opcional)</label>
+            <textarea style={{ ...input, minHeight: 50, resize: "vertical" }} value={f.extra} onChange={(e) => setF({ ...f, extra: e.target.value })} />
+            <button onClick={createVariant} disabled={busy || !f.key.trim()} style={{ ...btn(true), marginTop: 12 }}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Criar variante</button>
+          </div>
+        )}
+
+        {vars.length === 0 ? <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma variante. Crie uma para testar um estilo diferente contra o prompt-base.</p> : (
+          <>
+            {vars.map((v) => (
+              <div key={v.key} style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={v.active} onChange={(e) => setVar(v.key, { active: e.target.checked })} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{v.label || v.key}</span>
+                </label>
+                <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>chave: {v.key}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>peso</span>
+                  <input type="number" min={1} max={100} value={v.weight} onChange={(e) => setVar(v.key, { weight: Math.max(1, Number(e.target.value)) })} style={{ ...input, width: 70 }} />
+                  <button onClick={() => activate({ key: v.key })} disabled={busy} style={{ ...btn(), padding: "5px 10px", fontSize: 11.5 }}>Ativar só esta</button>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
+              <button onClick={() => activate({ variants: vars.filter((v) => v.active).map((v) => ({ key: v.key, weight: v.weight })) })} disabled={busy || vars.filter((v) => v.active).length === 0} style={btn(true)}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Aplicar split A/B</button>
+              <button onClick={() => activate({ key: "base" })} disabled={busy} style={btn()}>Desativar todas (só base)</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Logs avançados (Operar) — raio-x técnico por turno ────────────────────────
+interface LogItem { id: string; createdAt: string; contactId: string | null; decision: string | null; status: string; guardrails: string[]; toolCalls: { name: string; ok: boolean; ms: number | null }[]; stages: { name: string; ms: number }[]; tokensIn: number; tokensOut: number; latencyMs: number; model: string | null; promptVariant: string | null; promptVersion: string | null; error: string | null }
+
+const LOG_STATUS: Record<string, string> = { ok: "var(--green)", blocked: "var(--red)", error: "var(--red)", skipped: "var(--text-muted)" };
+
+function LogsSection({ clientId }: { clientId: string }) {
+  const [items, setItems] = useState<LogItem[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [first, setFirst] = useState(true);
+
+  function load(cur?: string | null) {
+    setLoading(true);
+    fetch(`/api/clients/${clientId}/ai/logs?limit=30${cur ? `&cursor=${cur}` : ""}`).then((r) => r.json()).then((d) => {
+      setItems((xs) => cur ? [...xs, ...(d.items || [])] : (d.items || []));
+      setCursor(d.nextCursor ?? null); setLoading(false); setFirst(false);
+    });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [clientId]);
+
+  if (first && loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Detalhe técnico de cada resposta: decisão, tempo por etapa, ferramentas usadas, travas de segurança, tokens e erros. Útil para diagnosticar.</p>
+      {items.length === 0 && <div style={card}><p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", margin: 0 }}>Nenhum turno registrado ainda.</p></div>}
+      {items.map((it) => (
+        <div key={it.id} style={{ ...card, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, color: "#fff", background: LOG_STATUS[it.status] ?? "var(--text-muted)" }}>{it.decision ?? it.status}</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(it.createdAt).toLocaleString("pt-BR")} · {it.latencyMs}ms{it.model ? ` · ${it.model}` : ""}{it.promptVariant ? ` · var ${it.promptVariant}` : ""}</span>
+          </div>
+
+          {it.stages.length > 0 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
+              {it.stages.map((s, i) => <span key={i} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 999, background: "var(--bg-base)", color: "var(--text-secondary)" }}>{s.name} {s.ms}ms</span>)}
+            </div>
+          )}
+          {it.toolCalls.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+              {it.toolCalls.map((t, i) => <span key={i} style={{ fontSize: 10.5, color: t.ok ? "var(--text-secondary)" : "var(--red)" }}>🔧 {t.name}{t.ms != null ? ` ${t.ms}ms` : ""}{t.ok ? "" : " ✗"}</span>)}
+            </div>
+          )}
+          {it.guardrails.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+              {it.guardrails.map((g, i) => <span key={i} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 999, background: "var(--red)", color: "#fff" }}>⚠ {g}</span>)}
+            </div>
+          )}
+          {it.error && <div style={{ fontSize: 11.5, color: "var(--red)", background: "var(--bg-base)", borderRadius: 6, padding: "6px 8px", marginBottom: 6 }}>{it.error}</div>}
+          <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>tokens {it.tokensIn}↓ / {it.tokensOut}↑</span>
+        </div>
+      ))}
+      {cursor && <button onClick={() => load(cursor)} disabled={loading} style={{ ...btn(), alignSelf: "center" }}>{loading ? <Loader2 size={14} className="animate-spin" /> : "Carregar mais"}</button>}
+    </div>
+  );
+}
+
+// ── Analytics (Inteligência) — séries temporais ───────────────────────────────
+interface AnaPoint { date: string; leads: number; answered: number; hot: number; conversions: number; costUsd: number; avgScore: number }
+interface Ana { series: AnaPoint[]; totals: { leads: number; conversions: number; costUsd: number } }
+
+function MiniChart({ title, points, color, fmt }: { title: string; points: { date: string; value: number }[]; color: string; fmt?: (n: number) => string }) {
+  const max = Math.max(1, ...points.map((p) => p.value));
+  return (
+    <div style={card}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 70 }}>
+        {points.map((p, i) => (
+          <div key={i} title={`${new Date(p.date).toLocaleDateString("pt-BR")}: ${fmt ? fmt(p.value) : p.value}`} style={{ flex: 1, minWidth: 2, height: `${(p.value / max) * 100}%`, background: color, borderRadius: 2, opacity: p.value ? 1 : 0.12 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<Ana | null>(null);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/analytics?days=${days}`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData(d);
+    });
+  }, [clientId, days]);
+
+  if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  const usd = (n: number) => `US$ ${n.toFixed(n < 1 ? 4 : 2)}`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Evolução diária de leads, respostas, conversões e custo.</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ ...input, width: 120 }}>
+          {[7, 30, 90].map((d) => <option key={d} value={d}>{d} dias</option>)}
+        </select>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+        {[{ l: "Leads", v: data.totals.leads }, { l: "Conversões", v: data.totals.conversions }, { l: "Custo total", v: usd(data.totals.costUsd) }].map((k) => (
+          <div key={k.l} style={card}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>{k.l}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", marginTop: 4 }}>{k.v}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        <MiniChart title="Leads / dia" points={data.series.map((s) => ({ date: s.date, value: s.leads }))} color="var(--accent)" />
+        <MiniChart title="Respondidos / dia" points={data.series.map((s) => ({ date: s.date, value: s.answered }))} color="var(--green)" />
+        <MiniChart title="Leads quentes / dia" points={data.series.map((s) => ({ date: s.date, value: s.hot }))} color="var(--red)" />
+        <MiniChart title="Conversões / dia" points={data.series.map((s) => ({ date: s.date, value: s.conversions }))} color="var(--green)" />
+        <MiniChart title="Custo (US$) / dia" points={data.series.map((s) => ({ date: s.date, value: s.costUsd }))} color="var(--accent)" fmt={usd} />
+        <MiniChart title="Nota média / dia" points={data.series.map((s) => ({ date: s.date, value: s.avgScore }))} color="var(--amber, #F59E0B)" />
+      </div>
+    </div>
+  );
+}
+
 // ── Root (navegação interna em sidebar, agrupada por modo de uso) ─────────────
-type Section = "overview" | "config" | "conhecimento" | "catalogo" | "console" | "avaliacao" | "atividade" | "custos" | "inteligencia";
+type Section = "overview" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 export function AiAgentTab({ clientId }: { clientId: string }) {
   const [section, setSection] = useState<Section>("overview");
@@ -795,6 +1175,8 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
       { key: "config", label: "Configuração", icon: <Bot size={14} /> },
       { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={14} /> },
       { key: "catalogo", label: "Estoque", icon: <Package size={14} /> },
+      { key: "prompts", label: "Prompt Lab", icon: <FileText size={14} /> },
+      { key: "memoria", label: "Memória", icon: <History size={14} /> },
     ] },
     { group: "Validar", items: [
       { key: "console", label: "Console", icon: <FlaskConical size={14} /> },
@@ -803,8 +1185,13 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
     { group: "Operar", items: [
       { key: "atividade", label: "Atividade", icon: <Activity size={14} /> },
       { key: "custos", label: "Custos", icon: <DollarSign size={14} /> },
+      { key: "logs", label: "Logs", icon: <ScrollText size={14} /> },
     ] },
-    { group: "Inteligência", items: [{ key: "inteligencia", label: "Inteligência", icon: <Brain size={14} /> }] },
+    { group: "Inteligência", items: [
+      { key: "inteligencia", label: "Inteligência", icon: <Brain size={14} /> },
+      { key: "qualificacao", label: "Qualificação", icon: <Target size={14} /> },
+      { key: "analytics", label: "Analytics", icon: <LineChart size={14} /> },
+    ] },
   ];
 
   const navItem = (it: { key: Section; label: string; icon: React.ReactNode }) => (
@@ -831,9 +1218,14 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {section === "avaliacao" && <EvaluationSection clientId={clientId} />}
         {section === "catalogo" && <CatalogSection clientId={clientId} />}
         {section === "conhecimento" && <KnowledgeSection clientId={clientId} />}
+        {section === "memoria" && <MemorySection clientId={clientId} />}
+        {section === "prompts" && <PromptLabSection clientId={clientId} />}
         {section === "inteligencia" && <InsightsSection clientId={clientId} />}
+        {section === "qualificacao" && <QualificationSection clientId={clientId} />}
+        {section === "analytics" && <AnalyticsSection clientId={clientId} />}
         {section === "atividade" && <ActivitySection clientId={clientId} />}
         {section === "custos" && <CostSection clientId={clientId} />}
+        {section === "logs" && <LogsSection clientId={clientId} />}
       </div>
     </div>
   );
