@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
-  Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight,
+  Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
 } from "lucide-react";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState<"persona" | "operacao" | "guardrails">("persona");
 
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
@@ -101,6 +102,14 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <button onClick={togglePause} style={{ ...btn(), flexShrink: 0, background: cfg.paused ? "#fff" : "var(--red)", color: cfg.paused ? "var(--red)" : "#fff", border: "none" }}>{cfg.paused ? "Retomar agente" : "Pausar agora"}</button>
       </div>
 
+      {/* Sub-navegação da configuração — poucos itens, mesma altitude (aqui a tab horizontal faz sentido) */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", paddingBottom: 4 }}>
+        {([{ k: "persona", l: "Persona" }, { k: "operacao", l: "Operação" }, { k: "guardrails", l: "Guardrails" }] as const).map((t) => (
+          <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t.k ? "var(--accent-soft)" : "transparent", color: tab === t.k ? "var(--accent)" : "var(--text-muted)" }}>{t.l}</button>
+        ))}
+      </div>
+
+      {tab === "operacao" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
@@ -152,8 +161,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <label style={label}>Horário comercial — a IA atua FORA disto (no fuso do cliente)</label>
         <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
       </div>
+      </div>}
 
-      <div style={card}>
+      {tab === "persona" && <div style={card}>
         <label style={label}>Tom de voz / personalidade</label>
         <input style={input} value={cfg.persona ?? ""} onChange={(e) => set({ persona: e.target.value })} placeholder="Ex: cordial, objetivo, simpático, sem gírias" />
         <label style={{ ...label, marginTop: 14 }}>Objetivo do atendimento</label>
@@ -172,9 +182,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
             <span style={{ position: "absolute", top: 3, left: cfg.audioTranscription ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
           </button>
         </div>
-      </div>
+      </div>}
 
-      <div style={card}>
+      {tab === "guardrails" && <div style={card}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <ShieldAlert size={15} color="var(--accent)" />
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Segurança & limites</span>
@@ -221,9 +231,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
             <span style={{ position: "absolute", top: 3, left: cfg.disclosureEnabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
           </button>
         </div>
-      </div>
+      </div>}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
         <button onClick={save} disabled={saving} style={btn(true)}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />} {saved ? "Salvo" : "Salvar configuração"}
         </button>
@@ -356,7 +366,6 @@ function ActivitySection({ clientId }: { clientId: string }) {
 
   if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
   const m = data.metrics;
-  const cost = ((m.tokensIn / 1_000_000) * 0.15 + (m.tokensOut / 1_000_000) * 0.6);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -365,7 +374,6 @@ function ActivitySection({ clientId }: { clientId: string }) {
           { l: "Turnos", v: m.total },
           { l: "Latência média", v: `${m.avgLatencyMs} ms` },
           { l: "Tokens", v: (m.tokensIn + m.tokensOut).toLocaleString("pt-BR") },
-          { l: "Custo estimado", v: `US$ ${cost.toFixed(4)}` },
         ].map((k) => (
           <div key={k.l} style={card}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>{k.l}</div>
@@ -596,8 +604,6 @@ function InsightsSection({ clientId }: { clientId: string }) {
         </select>
       </div>
 
-      <CostCard clientId={clientId} />
-
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
         {data.temperatures.map((t) => (
           <div key={t.key} style={card}>
@@ -635,21 +641,58 @@ function InsightsSection({ clientId }: { clientId: string }) {
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 10 }}>Temperatura emocional</div>
         <Bars rows={data.sentiments} />
       </div>
+    </div>
+  );
+}
+
+// ── Custos (Operar) ───────────────────────────────────────────────────────────
+function CostSection({ clientId }: { clientId: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Quanto a IA deste cliente custa — por período e por etapa do pipeline. Fonte única de custo do agente.</p>
+      <CostCard clientId={clientId} />
+    </div>
+  );
+}
+
+// ── Avaliação (Validar) — juiz IA, A/B e revisão humana ───────────────────────
+function EvaluationSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<Insights | null>(null);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/insights?days=${days}`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData(d);
+    });
+  }, [clientId, days]);
+
+  if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  const ev = data.evaluation;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Qualidade medida pelo juiz automático nos últimos {data.windowDays} dias.</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ ...input, width: 120 }}>
+          {[7, 30, 90].map((d) => <option key={d} value={d}>{d} dias</option>)}
+        </select>
+      </div>
 
       <div style={card}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Qualidade das respostas (juiz IA)</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: data.evaluation.avgScore >= 7 ? "var(--green)" : data.evaluation.avgScore >= 5 ? "var(--amber, #F59E0B)" : "var(--red)" }}>
-            {data.evaluation.count ? `${data.evaluation.avgScore}/10` : "—"}
+          <span style={{ fontSize: 18, fontWeight: 800, color: ev.avgScore >= 7 ? "var(--green)" : ev.avgScore >= 5 ? "var(--amber, #F59E0B)" : "var(--red)" }}>
+            {ev.count ? `${ev.avgScore}/10` : "—"}
           </span>
         </div>
-        {data.evaluation.count === 0 ? <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem avaliações ainda.</p> : (
+        {ev.count === 0 ? <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem avaliações ainda.</p> : (
           <>
-            <Bars rows={data.evaluation.categories} />
-            {data.evaluation.byVariant.length > 1 && (
+            <Bars rows={ev.categories} />
+            {ev.byVariant.length > 1 && (
               <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                 <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>A/B — score médio por variante</div>
-                {data.evaluation.byVariant.map((v) => (
+                {ev.byVariant.map((v) => (
                   <div key={v.variant} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" }}>
                     <span style={{ color: "var(--text-secondary)" }}>{v.variant}</span>
                     <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{v.avgScore}/10 · {v.count}</span>
@@ -729,10 +772,10 @@ function OverviewSection({ clientId, onNavigate }: { clientId: string; onNavigat
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
         <StatCard label="Status" value={status.txt} tone={status.tone} hint={status.hint} onClick={() => onNavigate("config")} />
         <StatCard label="Leads quentes (30d)" value={hot} tone={hot > 0 ? "var(--green)" : undefined} hint="ver inteligência" onClick={() => onNavigate("inteligencia")} />
-        <StatCard label="Custo hoje" value={usd(cost.today ?? 0)} hint={cfg.dailyUsdCap ? `teto US$ ${cfg.dailyUsdCap}` : "sem teto"} onClick={() => onNavigate("inteligencia")} />
-        <StatCard label="Qualidade (juiz IA)" value={quality} tone={(ins.evaluation?.avgScore ?? 0) >= 7 ? "var(--green)" : undefined} hint="últimos 30 dias" onClick={() => onNavigate("inteligencia")} />
+        <StatCard label="Custo hoje" value={usd(cost.today ?? 0)} hint={cfg.dailyUsdCap ? `teto US$ ${cfg.dailyUsdCap}` : "sem teto"} onClick={() => onNavigate("custos")} />
+        <StatCard label="Qualidade (juiz IA)" value={quality} tone={(ins.evaluation?.avgScore ?? 0) >= 7 ? "var(--green)" : undefined} hint="últimos 30 dias" onClick={() => onNavigate("avaliacao")} />
         <StatCard label="Risco de perda" value={dropRisk} tone={dropRisk > 0 ? "var(--red)" : undefined} hint="leads esfriando" onClick={() => onNavigate("inteligencia")} />
-        <StatCard label="Revisões pendentes" value={reviews} tone={reviews > 0 ? "var(--amber, #F59E0B)" : undefined} hint="calibrar o juiz" onClick={() => onNavigate("inteligencia")} />
+        <StatCard label="Revisões pendentes" value={reviews} tone={reviews > 0 ? "var(--amber, #F59E0B)" : undefined} hint="calibrar o juiz" onClick={() => onNavigate("avaliacao")} />
       </div>
 
       <p style={{ fontSize: 11, color: "var(--text-muted)" }}>Resumo de leitura. Toque num cartão para abrir a seção completa.</p>
@@ -741,7 +784,7 @@ function OverviewSection({ clientId, onNavigate }: { clientId: string; onNavigat
 }
 
 // ── Root (navegação interna em sidebar, agrupada por modo de uso) ─────────────
-type Section = "overview" | "config" | "conhecimento" | "catalogo" | "console" | "atividade" | "inteligencia";
+type Section = "overview" | "config" | "conhecimento" | "catalogo" | "console" | "avaliacao" | "atividade" | "custos" | "inteligencia";
 
 export function AiAgentTab({ clientId }: { clientId: string }) {
   const [section, setSection] = useState<Section>("overview");
@@ -753,8 +796,14 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
       { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={14} /> },
       { key: "catalogo", label: "Estoque", icon: <Package size={14} /> },
     ] },
-    { group: "Validar", items: [{ key: "console", label: "Console", icon: <FlaskConical size={14} /> }] },
-    { group: "Operar", items: [{ key: "atividade", label: "Atividade", icon: <Activity size={14} /> }] },
+    { group: "Validar", items: [
+      { key: "console", label: "Console", icon: <FlaskConical size={14} /> },
+      { key: "avaliacao", label: "Avaliação", icon: <ClipboardCheck size={14} /> },
+    ] },
+    { group: "Operar", items: [
+      { key: "atividade", label: "Atividade", icon: <Activity size={14} /> },
+      { key: "custos", label: "Custos", icon: <DollarSign size={14} /> },
+    ] },
     { group: "Inteligência", items: [{ key: "inteligencia", label: "Inteligência", icon: <Brain size={14} /> }] },
   ];
 
@@ -779,10 +828,12 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {section === "overview" && <OverviewSection clientId={clientId} onNavigate={setSection} />}
         {section === "config" && <ConfigSection clientId={clientId} />}
         {section === "console" && <ConsoleSection clientId={clientId} />}
+        {section === "avaliacao" && <EvaluationSection clientId={clientId} />}
         {section === "catalogo" && <CatalogSection clientId={clientId} />}
         {section === "conhecimento" && <KnowledgeSection clientId={clientId} />}
         {section === "inteligencia" && <InsightsSection clientId={clientId} />}
         {section === "atividade" && <ActivitySection clientId={clientId} />}
+        {section === "custos" && <CostSection clientId={clientId} />}
       </div>
     </div>
   );
