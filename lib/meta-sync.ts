@@ -79,11 +79,21 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   const acct = conn.adAccountId; // formato act_<id>
   const auth = `access_token=${encodeURIComponent(token)}`;
 
-  // 1) Estrutura — sempre por ID oficial
+  // 1) Estrutura — sempre por ID oficial.
+  // Sem effective_status, a Meta esconde ARCHIVED/PAUSED por padrão — então um
+  // anúncio arquivado que gastou aparecia com gasto (vem do /insights) mas sem
+  // nome/campanha (não vinha do /ads) → "Campanha não sincronizada / UNKNOWN".
+  // Passamos a lista explícita (inclui ARCHIVED) por endpoint, sem DELETED para
+  // não inflar com objetos antigos. Valores válidos no enum oficial da Meta.
+  const CAMPAIGN_STATUS = ["ACTIVE", "PAUSED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"];
+  const ADSET_STATUS = ["ACTIVE", "PAUSED", "ARCHIVED", "CAMPAIGN_PAUSED", "IN_PROCESS", "WITH_ISSUES"];
+  const AD_STATUS = ["ACTIVE", "PAUSED", "ARCHIVED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "PENDING_REVIEW", "DISAPPROVED", "PREAPPROVED", "PENDING_BILLING_INFO", "IN_PROCESS", "WITH_ISSUES"];
+  const es = (vals: string[]) => `effective_status=${encodeURIComponent(JSON.stringify(vals))}`;
+
   const [campaigns, adsets, ads] = await Promise.all([
-    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status&limit=200&${auth}`),
-    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id&limit=200&${auth}`),
-    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,creative{id}&limit=300&${auth}`),
+    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`),
+    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id&${es(ADSET_STATUS)}&limit=200&${auth}`),
+    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,creative{id}&${es(AD_STATUS)}&limit=300&${auth}`),
   ]);
 
   const creativeIds = [...new Set(ads.map((a) => a.creative?.id).filter((x): x is string => !!x))];
