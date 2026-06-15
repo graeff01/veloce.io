@@ -32,23 +32,32 @@ export async function runDueJobs(): Promise<void> {
   const isFirstOfMonth = p.ymd.endsWith("-01");
   const bucket4h = Math.floor(h / 4);  // janela de ~4h p/ alertas críticos
 
-  // Resumo do dia: a partir das 09h BRT (claim garante 1x/dia).
-  if (h >= 9 && h < 23) await safe("digest", runDailyDigest);
+  // JANELAS DE HORÁRIO (BRT). São estreitas de propósito: o claim/gate garante
+  // 1x, então a janela define O QUANDO. Se fossem largas (ex.: 9–23), um deploy
+  // às 19h dispararia o "bom dia" às 19h. Com tick de 5min + cron externo, uma
+  // janela de ~1–2h quase sempre é atingida; se o sistema ficar fora a janela
+  // toda, melhor PULAR do que enviar fora de hora.
+  const morning = h >= 9 && h < 11;    // resumo do dia / mensal / token / saúde
+  const evening = h >= 18 && h < 20;   // resumo de fim de dia
+  const businessHours = h >= 8 && h < 21; // alertas críticos (não acordar ninguém)
 
-  // Token Meta: 1x/dia (gate no banco evita martelar a Graph API).
-  if (h >= 9 && (await gateOnce(`gate:token:${day}`))) await safe("token", runTokenExpiryAlerts);
+  // Resumo do dia: manhã (claim garante 1x/dia).
+  if (morning) await safe("digest", runDailyDigest);
 
-  // Relatórios mensais: dia 1, a partir das 09h (claim garante 1x/mês).
-  if (isFirstOfMonth && h >= 9) await safe("monthly", runMonthlyReports);
+  // Token Meta: 1x/dia de manhã (gate no banco evita martelar a Graph API).
+  if (morning && (await gateOnce(`gate:token:${day}`))) await safe("token", runTokenExpiryAlerts);
 
-  // Resumo de fim de dia: a partir das 18h BRT (claim garante 1x/dia).
-  if (h >= 18 && h < 23) await safe("eod", runEndOfDay);
+  // Relatórios mensais: dia 1 de manhã (claim garante 1x/mês).
+  if (isFirstOfMonth && morning) await safe("monthly", runMonthlyReports);
 
-  // Resumo de saúde: 1x/dia a partir das 09h, se houve falhas.
-  if (h >= 9 && (await gateOnce(`gate:health:${day}`))) await safe("health", runFailureAlert);
+  // Resumo de fim de dia: começo da noite (claim garante 1x/dia).
+  if (evening) await safe("eod", runEndOfDay);
 
-  // Alertas críticos de mídia: 1x por janela de ~4h (gate no banco).
-  if (await gateOnce(`gate:critical:${day}:${bucket4h}`)) await safe("critical", runCriticalAlerts);
+  // Resumo de saúde: 1x/dia de manhã, se houve falhas.
+  if (morning && (await gateOnce(`gate:health:${day}`))) await safe("health", runFailureAlert);
+
+  // Alertas críticos de mídia: 1x por janela de ~4h, só em horário comercial.
+  if (businessHours && (await gateOnce(`gate:critical:${day}:${bucket4h}`))) await safe("critical", runCriticalAlerts);
 
   // Auto-limpeza das mensagens do Telegram com +24h.
   await safe("sweep", () => sweepExpiredTelegramMessages());

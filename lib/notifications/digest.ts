@@ -23,13 +23,18 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 
 // ── Conteúdo das notificações ────────────────────────────────────────────────
 // Tudo derivado do dado real. O resumo diário é da agência (time pequeno).
+// Cada mensagem tem duas formas: `body` (push, curto e em texto plano) e
+// `telegram` (mensagem rica em HTML, com seções e link).
 
 export interface DigestMessage {
   title: string;
-  body: string;
+  body: string;       // push: texto plano, curto
+  telegram: string;   // Telegram: HTML estruturado (mensagem completa)
   url: string;
   hasContent: boolean;
 }
+
+export const APP_URL = (process.env.NEXTAUTH_URL || "https://veloceio-production.up.railway.app").replace(/\/$/, "");
 
 // "Hoje" é o dia-calendário em BRT (não no fuso UTC do servidor Railway).
 function todayRange(): { start: Date; end: Date } {
@@ -44,6 +49,28 @@ function fmtTime(d: Date): string {
 
 function fmtDay(d: Date): string {
   return new Date(d).toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
+}
+
+// Data por extenso em BRT, ex.: "sábado, 14/06".
+function fmtLongDate(): string {
+  return new Date().toLocaleDateString("pt-BR", { timeZone: TZ, weekday: "long", day: "2-digit", month: "2-digit" });
+}
+
+// Escapa texto dinâmico para o parse_mode=HTML do Telegram (nomes de cliente,
+// títulos de tarefa etc. podem conter &, <, >).
+export function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Monta uma seção "título + linhas" (vazia some no join).
+function section(title: string, lines: string[]): string {
+  return lines.length ? `<b>${title}</b>\n${lines.join("\n")}` : "";
+}
+
+// Junta header + seções + rodapé, descartando os blocos vazios.
+function assemble(blocks: string[], footerUrl: string): string {
+  const body = blocks.filter(Boolean).join("\n\n");
+  return `${body}\n\n<a href="${APP_URL}${footerUrl}">Abrir no Veloce →</a>`;
 }
 
 // Resumo do dia (agência): tarefas de hoje, reuniões, visitas, atrasos.
@@ -90,44 +117,53 @@ export async function buildDailyDigest(): Promise<DigestMessage> {
   const semTarefas = activeClients.filter((c) => !withTaskSet.has(c.id)).length;
 
   const parts: string[] = [];
-  if (dueToday > 0) parts.push(`${dueToday} tarefa${dueToday > 1 ? "s" : ""} para hoje`);
+  if (dueToday > 0) parts.push(`${dueToday} tarefa${dueToday > 1 ? "s" : ""}`);
   if (meetings.length > 0) parts.push(`${meetings.length} reunião${meetings.length > 1 ? "ões" : ""}`);
   if (visits.length > 0) parts.push(`${visits.length} visita${visits.length > 1 ? "s" : ""}`);
 
-  const lines: string[] = [];
-  if (parts.length) lines.push(`Hoje: ${parts.join(", ")}.`);
-  for (const m of meetings.slice(0, 3)) lines.push(`• ${fmtTime(m.date)} — Reunião ${m.client.name}`);
-  for (const v of visits.slice(0, 3)) lines.push(`• ${fmtTime(v.scheduledAt)} — Visita ${v.client.name}`);
-  if (overdue > 0) lines.push(`⚠️ ${overdue} tarefa${overdue > 1 ? "s" : ""} em atraso.`);
-  if (upcoming.length > 0) {
-    lines.push(`\n📅 Prazos próximos:`);
-    for (const t of upcoming) lines.push(`• ${fmtDay(t.dueDate)} — ${t.title} (${t.client.name})`);
-  }
+  // Seções do Telegram (HTML).
+  const agenda: string[] = [];
+  for (const m of meetings.slice(0, 4)) agenda.push(`• ${fmtTime(m.date)} — Reunião <b>${esc(m.client.name)}</b>`);
+  for (const v of visits.slice(0, 4)) agenda.push(`• ${fmtTime(v.scheduledAt)} — Visita <b>${esc(v.client.name)}</b>`);
 
-  // Pendências da operação (só aparece o que existir).
+  const prazos = upcoming.map((t) => `• ${fmtDay(t.dueDate)} — ${esc(t.title)} <i>(${esc(t.client.name)})</i>`);
+
   const pend: string[] = [];
-  if (leadsWaiting > 0) pend.push(`💬 ${leadsWaiting} lead${leadsWaiting > 1 ? "s" : ""} sem resposta há +2h`);
-  if (semTarefas > 0) pend.push(`📋 ${semTarefas} cliente${semTarefas > 1 ? "s" : ""} sem tarefas no mês`);
-  if (syncParado > 0) pend.push(`🔴 ${syncParado} conta${syncParado > 1 ? "s" : ""} Meta com sync parado`);
-  if (pend.length > 0) {
-    lines.push(`\n🔎 Pendências:`);
-    for (const p of pend) lines.push(`• ${p}`);
-  }
-  if (followUps.length > 0) {
-    lines.push(`\n📞 Follow-up hoje:`);
-    for (const f of followUps.slice(0, 4)) lines.push(`• ${f.name}${f.followUpNote ? ` — ${f.followUpNote}` : ""}`);
-  }
+  if (leadsWaiting > 0) pend.push(`• 💬 ${leadsWaiting} lead${leadsWaiting > 1 ? "s" : ""} sem resposta há +2h`);
+  if (semTarefas > 0) pend.push(`• 📋 ${semTarefas} cliente${semTarefas > 1 ? "s" : ""} sem tarefas no mês`);
+  if (syncParado > 0) pend.push(`• 🔴 ${syncParado} conta${syncParado > 1 ? "s" : ""} Meta com sync parado`);
+
+  const follow = followUps.slice(0, 5).map((f) => `• <b>${esc(f.name)}</b>${f.followUpNote ? ` — ${esc(f.followUpNote)}` : ""}`);
 
   const hasContent =
     dueToday > 0 || meetings.length > 0 || visits.length > 0 || overdue > 0 ||
     upcoming.length > 0 || pend.length > 0 || followUps.length > 0;
 
-  return {
-    title: "☀️ Resumo do dia",
-    body: hasContent ? lines.join("\n") : "Sem compromissos ou pendências para hoje. Bom trabalho!",
-    url: "/today",
-    hasContent,
-  };
+  // Push: texto plano, curto.
+  const pushParts: string[] = [];
+  if (parts.length) pushParts.push(parts.join(", ") + " hoje");
+  if (overdue > 0) pushParts.push(`${overdue} em atraso`);
+  if (leadsWaiting > 0) pushParts.push(`${leadsWaiting} lead${leadsWaiting > 1 ? "s" : ""} esperando`);
+  const body = hasContent ? pushParts.join(" · ") : "Sem compromissos ou pendências para hoje. Bom trabalho!";
+
+  // Telegram: estruturado.
+  const header = `☀️ <b>Resumo do dia</b>\n<i>${fmtLongDate()}</i>`;
+  let telegram: string;
+  if (hasContent) {
+    telegram = assemble([
+      header,
+      section("📋 Hoje", parts.length ? [parts.join(" · ")] : []),
+      section("🕘 Agenda", agenda),
+      section("⚠️ Atrasos", overdue > 0 ? [`${overdue} tarefa${overdue > 1 ? "s" : ""} em atraso`] : []),
+      section("📅 Prazos próximos", prazos),
+      section("🔎 Pendências", pend),
+      section("📞 Follow-up hoje", follow),
+    ], "/today");
+  } else {
+    telegram = `${header}\n\nSem compromissos ou pendências para hoje. Bom trabalho! 🎉`;
+  }
+
+  return { title: "☀️ Resumo do dia", body, telegram, url: "/today", hasContent };
 }
 
 // Alertas críticos por cliente (reusa o motor de insights do co-piloto).
@@ -213,8 +249,19 @@ export async function buildEndOfDaySummary(): Promise<DigestMessage> {
   const conversoes = convs.filter((c) => c.funnelStage === "convertido").length;
   const times = convs.filter((c): c is typeof c & { firstResponseSec: number } => c.firstResponseSec != null).map((c) => c.firstResponseSec);
   const avgMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
-  const body = `Hoje: ${leads} lead${leads !== 1 ? "s" : ""}, ${respondidos} respondido${respondidos !== 1 ? "s" : ""}, ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}${avgMin != null ? `, tempo médio ${avgMin}min` : ""}.`;
-  return { title: "🌙 Resumo de fim de dia", body, url: "/today", hasContent: leads > 0 };
+  const taxa = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
+
+  const body = `${leads} lead${leads !== 1 ? "s" : ""}, ${respondidos} respondido${respondidos !== 1 ? "s" : ""}, ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}${avgMin != null ? ` · ${avgMin}min médio` : ""}.`;
+
+  const placar = [
+    `• 💬 ${leads} lead${leads !== 1 ? "s" : ""} recebido${leads !== 1 ? "s" : ""}`,
+    `• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>`,
+    `• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}`,
+    ...(avgMin != null ? [`• ⏱️ Tempo médio de resposta: ${avgMin}min`] : []),
+  ];
+  const telegram = assemble([`🌙 <b>Resumo de fim de dia</b>\n<i>${fmtLongDate()}</i>`, section("WhatsApp hoje", placar)], "/today");
+
+  return { title: "🌙 Resumo de fim de dia", body, telegram, url: "/today", hasContent: leads > 0 };
 }
 
 // ── Relatórios mensais (dia 1) ───────────────────────────────────────────────
@@ -254,11 +301,13 @@ export async function getFailureStats(maxAttempts: number): Promise<{ total: num
 export async function buildFailureAlert(maxAttempts: number): Promise<DigestMessage | null> {
   const { total, byType } = await getFailureStats(maxAttempts);
   if (total === 0) return null;
-  const detalhe = Object.entries(byType).map(([t, n]) => `• ${t}: ${n}`).join("\n");
-  return {
-    title: "⚠️ Notificações com falha",
-    body: `${total} notificação${total > 1 ? "ões" : ""} não saiu nas últimas 24h (esgotou as tentativas):\n${detalhe}\n\nVerifique a conexão do Telegram/push em Configurações.`,
-    url: "/settings",
-    hasContent: true,
-  };
+  const detalhe = Object.entries(byType).map(([t, n]) => `• ${esc(t)}: ${n}`);
+  const body = `${total} notificação${total > 1 ? "ões" : ""} não saiu nas últimas 24h. Verifique a conexão em Configurações.`;
+  const telegram = assemble([
+    "⚠️ <b>Notificações com falha</b>",
+    `${total} notificação${total > 1 ? "ões" : ""} esgotou as tentativas nas últimas 24h:`,
+    section("Por tipo", detalhe),
+    "<i>Verifique a conexão do Telegram/push em Configurações.</i>",
+  ], "/settings");
+  return { title: "⚠️ Notificações com falha", body, telegram, url: "/settings", hasContent: true };
 }

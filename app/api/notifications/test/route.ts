@@ -11,7 +11,7 @@ export async function POST() {
   const userId = session!.user.id;
 
   const digest = await buildDailyDigest();
-  const tg = `<b>${digest.title}</b> (teste)\n${digest.body}`;
+  const tg = `🧪 <i>teste</i>\n\n${digest.telegram}`;
 
   const [push, telegram] = await Promise.all([
     sendPushToUser(userId, { title: `${digest.title} (teste)`, body: digest.body, url: digest.url }).catch(() => false),

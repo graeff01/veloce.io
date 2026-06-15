@@ -1,8 +1,15 @@
 import {
   buildDailyDigest, buildCriticalAlerts, buildEndOfDaySummary,
   buildTokenExpiryAlerts, buildMonthlyReportMessage, buildFailureAlert,
+  esc, APP_URL,
 } from "@/lib/notifications/digest";
 import { claimDispatch, recipientsFor, MAX_ATTEMPTS } from "@/lib/notifications/dispatch";
+import { nowParts } from "@/lib/tz";
+
+const TZ = "America/Sao_Paulo";
+// Dia-calendário em BRT, p/ as chaves de dedupe baterem com a janela do scheduler.
+function brtDay(): string { return nowParts(TZ).ymd; }
+function brtMonth(): string { return nowParts(TZ).ymd.slice(0, 7); }
 
 // Lógica de envio reutilizada pelas rotas de cron E pelo agendador interno.
 // A idempotência (claim por dedupeKey) garante envio único; um envio que falha
@@ -13,13 +20,11 @@ export async function runDailyDigest(): Promise<{ sent: number; recipients: numb
   if (recipients.length === 0) return { sent: 0, recipients: 0 };
 
   const digest = await buildDailyDigest();
-  const now = new Date();
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const tgText = `<b>${digest.title}</b>\n${digest.body}`;
+  const day = brtDay();
 
   let sent = 0;
   for (const r of recipients) {
-    if (await claimDispatch(`digest:${day}:${r.userId}`, r.userId, "daily_digest", { title: digest.title, body: digest.body, url: digest.url }, tgText, r)) sent++;
+    if (await claimDispatch(`digest:${day}:${r.userId}`, r.userId, "daily_digest", { title: digest.title, body: digest.body, url: digest.url }, digest.telegram, r)) sent++;
   }
   return { sent, recipients: recipients.length };
 }
@@ -30,13 +35,11 @@ export async function runEndOfDay(): Promise<{ sent: number }> {
 
   const eod = await buildEndOfDaySummary();
   if (!eod.hasContent) return { sent: 0 }; // dia sem leads → não envia placar vazio
-  const now = new Date();
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const tg = `<b>${eod.title}</b>\n${eod.body}`;
+  const day = brtDay();
 
   let sent = 0;
   for (const r of recipients) {
-    if (await claimDispatch(`eod:${day}:${r.userId}`, r.userId, "end_of_day", { title: eod.title, body: eod.body, url: eod.url }, tg, r)) sent++;
+    if (await claimDispatch(`eod:${day}:${r.userId}`, r.userId, "end_of_day", { title: eod.title, body: eod.body, url: eod.url }, eod.telegram, r)) sent++;
   }
   return { sent };
 }
@@ -53,7 +56,7 @@ export async function runCriticalAlerts(): Promise<{ sent: number; alerts: numbe
     for (const a of alerts) {
       const title = `🚨 ${a.clientName}`;
       const body = `${a.insight.title} — ${a.insight.detail}`;
-      const tgText = `<b>🚨 ${a.clientName}</b>\n${a.insight.title}\n${a.insight.detail}`;
+      const tgText = `🚨 <b>${esc(a.clientName)}</b>\n\n<b>${esc(a.insight.title)}</b>\n${esc(a.insight.detail)}\n\n<a href="${APP_URL}/clients/${a.clientId}">Abrir cliente →</a>`;
       if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "critical_alert", { title, body, url: "/clients" }, tgText, r)) sent++;
     }
   }
@@ -71,11 +74,13 @@ export async function runTokenExpiryAlerts(): Promise<{ sent: number; alerts: nu
   let sent = 0;
   for (const r of recipients) {
     for (const a of alerts) {
+      const emoji = a.invalid ? "🔴" : "🟡";
       const title = a.invalid ? `🔴 Token Meta inválido — ${a.clientName}` : `🟡 Token Meta expira — ${a.clientName}`;
       const body = a.invalid
         ? `O token da conta Meta de ${a.clientName} está inválido/revogado. Reconecte em Anúncios.`
         : `O token Meta de ${a.clientName} expira em ${a.daysLeft} dia(s). Renove antes de parar o sync.`;
-      if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "token_expiry", { title, body, url: "/clients" }, `<b>${title}</b>\n${body}`, r)) sent++;
+      const tgText = `${emoji} <b>Token Meta — ${esc(a.clientName)}</b>\n${esc(body)}\n\n<a href="${APP_URL}/clients/${a.clientId}">Abrir cliente →</a>`;
+      if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "token_expiry", { title, body, url: "/clients" }, tgText, r)) sent++;
     }
   }
   return { sent, alerts: alerts.length };
@@ -88,8 +93,7 @@ export async function runMonthlyReports(): Promise<{ sent: number }> {
 
   const msg = await buildMonthlyReportMessage();
   if (!msg) return { sent: 0 };
-  const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const ym = brtMonth();
 
   let sent = 0;
   for (const r of recipients) {
@@ -106,13 +110,11 @@ export async function runFailureAlert(): Promise<{ sent: number }> {
 
   const msg = await buildFailureAlert(MAX_ATTEMPTS);
   if (!msg) return { sent: 0 };
-  const now = new Date();
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const tg = `<b>${msg.title}</b>\n${msg.body}`;
+  const day = brtDay();
 
   let sent = 0;
   for (const r of recipients) {
-    if (await claimDispatch(`health:${day}:${r.userId}`, r.userId, "failure_alert", { title: msg.title, body: msg.body, url: msg.url }, tg, r)) sent++;
+    if (await claimDispatch(`health:${day}:${r.userId}`, r.userId, "failure_alert", { title: msg.title, body: msg.body, url: msg.url }, msg.telegram, r)) sent++;
   }
   return { sent };
 }
