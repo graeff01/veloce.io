@@ -9,6 +9,8 @@ import { nowParts } from "@/lib/tz";
 import { captureException } from "@/lib/observability";
 import { pruneOldAiLogs } from "@/lib/ai-agent/retention";
 import { runCostAlerts } from "@/lib/ai-agent/cost-alerts";
+import { runAdsHealth } from "@/lib/notifications/ads-health";
+import { runSlaFirstResponse } from "@/lib/notifications/sla-first-response";
 
 // Núcleo de decisão "o que enviar agora", compartilhado pelo agendador interno
 // (setInterval) e pelo cron externo. Gates são no BANCO (gateOnce), não em
@@ -59,6 +61,13 @@ export async function runDueJobs(): Promise<void> {
 
   // Alertas críticos de mídia: 1x por janela de ~4h, só em horário comercial.
   if (businessHours && (await gateOnce(`gate:critical:${day}:${bucket4h}`))) await safe("critical", runCriticalAlerts);
+
+  // Saúde de anúncios intraday (reprovado / sem entrega): ~a cada 4h em horário comercial.
+  if (businessHours && (await gateOnce(`gate:ads-health:${day}:${bucket4h}`))) await safe("ads-health", runAdsHealth);
+
+  // SLA de 1º atendimento: a cada tick em horário comercial (a função refina a
+  // janela da agência e dedupa por lead). Não gated — precisa de granularidade fina.
+  if (businessHours) await safe("sla", runSlaFirstResponse);
 
   // Auto-limpeza das mensagens do Telegram com +24h.
   await safe("sweep", () => sweepExpiredTelegramMessages());

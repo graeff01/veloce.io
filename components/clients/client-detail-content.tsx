@@ -154,6 +154,15 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [clientId]);
 
+  // Deep-link: abre direto na aba pedida via ?tab= (usado pelos links das
+  // notificações, ex.: "Responder →" abre a aba WhatsApp).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "ia"];
+    if (t && (valid as string[]).includes(t)) setTab(t as Tab);
+  }, []);
+
   const isAdmin    = session?.user.role === "ADMIN";
   const currentPlan = client?.clientPlans?.[0];
 

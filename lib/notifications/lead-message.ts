@@ -30,7 +30,7 @@ export async function notifyLeadMessage(opts: {
   const who = (contactName || "").trim() || "Lead";
   const snippet = (text || "").replace(/\s+/g, " ").trim().slice(0, 120) || "(mídia)";
 
-  const push = { title: `💬 ${who} — ${clientName}`, body: snippet, url: `/clients/${clientId}?tab=whatsapp` };
+  const push = { title: `💬 ${who} — ${clientName}`, body: snippet, url: `/clients/${clientId}?tab=leads` };
   const tg = `💬 <b>${esc(who)}</b> — ${esc(clientName)}\n${esc(snippet)}`;
 
   await Promise.all(
