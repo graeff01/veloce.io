@@ -1,0 +1,34 @@
+name: Notificações (cron)
+
+# Dispara o bot de avisos nos horários certos, independente do processo web do
+# Railway estar de pé. O endpoint /api/cron/notifications decide O QUE enviar
+# pela hora BRT (resumo 09h, fim de dia 18h, críticos em horário comercial);
+# o gate/claim garante 1x. O agendador interno (setInterval) continua como backup.
+#
+# Horários em UTC (BRT = UTC-3):
+#   12:00 e 12:30 UTC = 09:00 e 09:30 BRT  → resumo do dia + token + saúde + mensal
+#   21:00 UTC         = 18:00 BRT          → resumo de fim de dia
+#   11:00/15:00/19:00 = 08:00/12:00/16:00  → janelas de alertas críticos
+#
+# PRÉ-REQUISITO: criar o secret CRON_SECRET no repositório (Settings → Secrets and
+# variables → Actions) com o mesmo valor da env CRON_SECRET no Railway.
+
+on:
+  schedule:
+    - cron: "0 12 * * *"     # 09:00 BRT — resumo do dia
+    - cron: "30 12 * * *"    # 09:30 BRT — reforço (caso o GitHub atrase o de 09:00)
+    - cron: "0 21 * * *"     # 18:00 BRT — fim de dia
+    - cron: "0 11,15,19 * * *" # 08/12/16 BRT — alertas críticos
+  workflow_dispatch: {}       # permite disparar manualmente pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar /api/cron/notifications
+        run: |
+          curl -fsS -X POST \
+            "https://veloceio-production.up.railway.app/api/cron/notifications" \
+            -H "authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "content-type: application/json" \
+            --max-time 120

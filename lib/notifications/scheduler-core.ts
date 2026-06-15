@@ -32,13 +32,14 @@ export async function runDueJobs(): Promise<void> {
   const isFirstOfMonth = p.ymd.endsWith("-01");
   const bucket4h = Math.floor(h / 4);  // janela de ~4h p/ alertas críticos
 
-  // JANELAS DE HORÁRIO (BRT). São estreitas de propósito: o claim/gate garante
-  // 1x, então a janela define O QUANDO. Se fossem largas (ex.: 9–23), um deploy
-  // às 19h dispararia o "bom dia" às 19h. Com tick de 5min + cron externo, uma
-  // janela de ~1–2h quase sempre é atingida; se o sistema ficar fora a janela
-  // toda, melhor PULAR do que enviar fora de hora.
-  const morning = h >= 9 && h < 11;    // resumo do dia / mensal / token / saúde
-  const evening = h >= 18 && h < 20;   // resumo de fim de dia
+  // JANELAS DE HORÁRIO (BRT). Estreitas de propósito: o claim/gate garante 1x,
+  // então a janela define O QUANDO. O resumo é às 09h (janela 09:00–09:59 → sai
+  // ~09:00 no primeiro disparo). O disparo determinístico vem do cron externo
+  // (GitHub Action) batendo 09:00 e 09:30 BRT; o scheduler interno (tick 5min) é
+  // backup. Se o sistema ficar fora a janela inteira, PULA em vez de enviar fora
+  // de hora.
+  const morning = h === 9;             // resumo do dia / mensal / token / saúde → 09h BRT
+  const evening = h === 18;            // resumo de fim de dia → 18h BRT
   const businessHours = h >= 8 && h < 21; // alertas críticos (não acordar ninguém)
 
   // Resumo do dia: manhã (claim garante 1x/dia).
