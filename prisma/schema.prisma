@@ -1250,6 +1250,7 @@ model NotificationPreference {
   userId          String   @id
   dailyDigest     Boolean  @default(false)
   criticalAlerts  Boolean  @default(false)
+  leadMessages    Boolean  @default(false) // push em tempo real quando um lead manda mensagem
   pushEnabled     Boolean  @default(true)
   telegramEnabled Boolean  @default(true)
   updatedAt       DateTime @updatedAt
