@@ -1275,6 +1275,13 @@ model NotificationLog {
   @@index([userId, createdAt])
 }
 
+// Batimento do agendador de notificações (liveness). Atualizado a cada ciclo,
+// pelo agendador interno E pelo cron externo. Permite detectar se o bot parou.
+model SchedulerHeartbeat {
+  name String   @id // "tick"
+  at   DateTime
+}
+
 // Mensagens enviadas pelo bot do Telegram, para auto-limpeza após 24h.
 // Guarda só o necessário pra chamar deleteMessage; a linha é removida após apagar.
 model TelegramMessage {

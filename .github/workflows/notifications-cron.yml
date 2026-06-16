@@ -15,8 +15,13 @@ name: Notificações (cron)
 
 on:
   schedule:
+    # Safety-net + batimento: a cada 15min, 24/7. Mantém o bot vivo mesmo se o
+    # processo web do Railway reiniciar/cair, e alimenta o dead-man's switch.
+    - cron: "*/15 * * * *"
+    # Reforços nos horários-chave (o GitHub atrasa cron; estes aumentam a chance
+    # de acertar o minuto certo das janelas).
     - cron: "0 12 * * *"     # 09:00 BRT — resumo do dia
-    - cron: "30 12 * * *"    # 09:30 BRT — reforço (caso o GitHub atrase o de 09:00)
+    - cron: "30 12 * * *"    # 09:30 BRT — reforço
     - cron: "0 21 * * *"     # 18:00 BRT — fim de dia
     - cron: "30 21 * * *"    # 18:30 BRT — reforço do fim de dia
     - cron: "0 11,15,19 * * *" # 08/12/16 BRT — alertas críticos
