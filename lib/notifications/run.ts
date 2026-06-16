@@ -33,8 +33,7 @@ export async function runEndOfDay(): Promise<{ sent: number }> {
   const recipients = await recipientsFor("dailyDigest");
   if (recipients.length === 0) return { sent: 0 };
 
-  const eod = await buildEndOfDaySummary();
-  if (!eod.hasContent) return { sent: 0 }; // dia sem leads → não envia placar vazio
+  const eod = await buildEndOfDaySummary(); // envia todo dia, mesmo sem leads (placar "0")
   const day = brtDay();
 
   let sent = 0;

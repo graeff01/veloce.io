@@ -41,7 +41,7 @@ export async function runDueJobs(): Promise<void> {
   // backup. Se o sistema ficar fora a janela inteira, PULA em vez de enviar fora
   // de hora.
   const morning = h === 9;             // resumo do dia / mensal / token / saúde → 09h BRT
-  const evening = h === 18;            // resumo de fim de dia → 18h BRT
+  const evening = h === 18 || h === 19; // resumo de fim de dia → 18h–19h BRT (janela folgada)
   const businessHours = h >= 8 && h < 21; // alertas críticos (não acordar ninguém)
 
   // Resumo do dia: manhã (claim garante 1x/dia).

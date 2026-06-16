@@ -18,6 +18,7 @@ on:
     - cron: "0 12 * * *"     # 09:00 BRT — resumo do dia
     - cron: "30 12 * * *"    # 09:30 BRT — reforço (caso o GitHub atrase o de 09:00)
     - cron: "0 21 * * *"     # 18:00 BRT — fim de dia
+    - cron: "30 21 * * *"    # 18:30 BRT — reforço do fim de dia
     - cron: "0 11,15,19 * * *" # 08/12/16 BRT — alertas críticos
   workflow_dispatch: {}       # permite disparar manualmente pela aba Actions
 

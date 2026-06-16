@@ -251,6 +251,19 @@ export async function buildEndOfDaySummary(): Promise<DigestMessage> {
   const avgMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
   const taxa = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
 
+  const header = `🌙 <b>Resumo de fim de dia</b>\n<i>${fmtLongDate()}</i>`;
+
+  // Dia sem nenhum lead: mensagem curta (mantém o hábito do aviso das 18h).
+  if (leads === 0) {
+    return {
+      title: "🌙 Resumo de fim de dia",
+      body: "Dia tranquilo: nenhum lead novo hoje.",
+      telegram: assemble([header, "Dia tranquilo — nenhum lead novo hoje. 🌿"], "/today"),
+      url: "/today",
+      hasContent: true,
+    };
+  }
+
   const body = `${leads} lead${leads !== 1 ? "s" : ""}, ${respondidos} respondido${respondidos !== 1 ? "s" : ""}, ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}${avgMin != null ? ` · ${avgMin}min médio` : ""}.`;
 
   const placar = [
@@ -259,9 +272,9 @@ export async function buildEndOfDaySummary(): Promise<DigestMessage> {
     `• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}`,
     ...(avgMin != null ? [`• ⏱️ Tempo médio de resposta: ${avgMin}min`] : []),
   ];
-  const telegram = assemble([`🌙 <b>Resumo de fim de dia</b>\n<i>${fmtLongDate()}</i>`, section("WhatsApp hoje", placar)], "/today");
+  const telegram = assemble([header, section("WhatsApp hoje", placar)], "/today");
 
-  return { title: "🌙 Resumo de fim de dia", body, telegram, url: "/today", hasContent: leads > 0 };
+  return { title: "🌙 Resumo de fim de dia", body, telegram, url: "/today", hasContent: true };
 }
 
 // ── Relatórios mensais (dia 1) ───────────────────────────────────────────────
