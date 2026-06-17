@@ -88,11 +88,13 @@ function fmtK(v: number) {
 }
 
 function statusColor(s: string) {
-  if (s === "ACTIVE")   return { color: "#16A34A", bg: "rgba(22,163,74,0.1)",   label: "Ativo"     };
-  if (s === "PAUSED")   return { color: "#D97706", bg: "rgba(217,119,6,0.1)",   label: "Pausado"   };
-  if (s === "ARCHIVED") return { color: "#64748B", bg: "rgba(100,116,139,0.1)", label: "Arquivado" };
-  return                       { color: "#64748B", bg: "rgba(100,116,139,0.1)", label: s           };
+  if (s === "ACTIVE")        return { color: "#16A34A", bg: "rgba(22,163,74,0.1)",   label: "Ativo"     };
+  if (s === "ARCHIVED")      return { color: "#64748B", bg: "rgba(100,116,139,0.1)", label: "Arquivado" };
+  if (s.includes("PAUSED"))  return { color: "#D97706", bg: "rgba(217,119,6,0.1)",   label: "Pausado"   };
+  return                            { color: "#64748B", bg: "rgba(100,116,139,0.1)", label: s           };
 }
+// Só "ACTIVE" entrega de verdade; o resto (pausado/arquivado) sai da visão principal.
+const isActiveStatus = (s: string) => s === "ACTIVE";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -400,13 +402,109 @@ function TokenBadge({ s }: { s: TokenStatus }) {
 // Accordion: campanhas; clicar expande os anúncios da campanha (fechado por padrão).
 const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";
 
+// Linha de um anúncio (reusada na visão principal e no menu de pausados/arquivados).
+function AdRow_({ a, connectedNumber, dim }: { a: AdRow; connectedNumber: string | null; dim?: boolean }) {
+  const ast = statusColor(a.status);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)", opacity: dim ? 0.65 : 1 }}>
+      <span />
+      <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)" }}>
+        <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
+        <AdMetaChips a={a} connectedNumber={connectedNumber} />
+      </div>
+      <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
+      <Cell v={fmtBRL(a.spend)} />
+      <Cell v={fmtK(a.impressions)} />
+      <Cell v={`${fmt(a.ctr)}%`} />
+      <Cell v={fmtBRL(a.cpc)} />
+      <Cell v={a.leads} leads />
+      <Cell v={a.cpl != null ? fmtBRL(a.cpl) : "—"} />
+    </div>
+  );
+}
+
 function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [showInactiveAds, setShowInactiveAds] = useState<Record<string, boolean>>({});
+  const [showInactiveCamps, setShowInactiveCamps] = useState(false);
+
   const adsByCampaign = new Map<string, AdRow[]>();
   for (const a of ads) {
     const arr = adsByCampaign.get(a.campaignId) ?? [];
     arr.push(a);
     adsByCampaign.set(a.campaignId, arr);
+  }
+
+  // Campanha "ativa" = tem pelo menos 1 anúncio rodando. As demais (só pausados/
+  // arquivados) saem da visão principal e vão para o menu recolhido.
+  const hasActiveAd = (c: CampaignRow) => (adsByCampaign.get(c.campaignId) ?? []).some((a) => isActiveStatus(a.status));
+  const activeCampaigns = campaigns.filter(hasActiveAd);
+  const inactiveCampaigns = campaigns.filter((c) => !hasActiveAd(c));
+
+  // Renderiza UMA campanha. allAds=true mostra todos os anúncios (usado no menu de
+  // pausados); senão mostra só os ativos + um expandir para os inativos da campanha.
+  function renderCampaign(c: CampaignRow, allAds: boolean) {
+    const st = statusColor(c.status);
+    const myAds = adsByCampaign.get(c.campaignId) ?? [];
+    const activeAds = myAds.filter((a) => isActiveStatus(a.status));
+    const inactiveAds = myAds.filter((a) => !isActiveStatus(a.status));
+    const visibleAds = allAds ? myAds : activeAds;
+    const shownCount = allAds ? myAds.length : activeAds.length;
+    const canExpand = visibleAds.length > 0 || (!allAds && inactiveAds.length > 0);
+    const isOpen = !!open[c.campaignId];
+    const revealInactive = !!showInactiveAds[c.campaignId];
+    return (
+      <div key={c.campaignId} style={{ borderBottom: "1px solid var(--border)" }}>
+        {/* Linha da campanha */}
+        <div
+          onClick={() => canExpand && setOpen((o) => ({ ...o, [c.campaignId]: !o[c.campaignId] }))}
+          style={{ display: "grid", gridTemplateColumns: COLS, padding: "12px 16px", alignItems: "center", cursor: canExpand ? "pointer" : "default", transition: "background 120ms" }}
+          onMouseEnter={(e) => { if (canExpand) e.currentTarget.style.background = "var(--bg-hover)"; }}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          <span style={{ display: "flex", color: "var(--text-muted)" }}>
+            {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</p>
+            <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0" }}>
+              {[
+                shownCount > 0 ? `${shownCount} anúncio${shownCount > 1 ? "s" : ""}${allAds ? "" : " ativo" + (shownCount > 1 ? "s" : "")}` : null,
+                daysSince(c.startedAt) != null ? `há ${daysSince(c.startedAt)}d` : null,
+                c.dailyBudget ? `${fmtBRL(c.dailyBudget)}/dia` : null,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
+          <Cell v={fmtBRL(c.spend)} bold />
+          <Cell v={fmtK(c.impressions)} />
+          <Cell v={`${fmt(c.ctr)}%`} />
+          <Cell v="—" />
+          <Cell v={c.leads} leads />
+          <Cell v={c.cpl != null ? fmtBRL(c.cpl) : "—"} />
+        </div>
+
+        {/* Anúncios */}
+        {isOpen && (
+          <>
+            {visibleAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim={allAds && !isActiveStatus(a.status)} />)}
+            {/* Inativos da campanha (só na visão principal) — expandir embutido */}
+            {!allAds && inactiveAds.length > 0 && (
+              <>
+                <div
+                  onClick={() => setShowInactiveAds((o) => ({ ...o, [c.campaignId]: !o[c.campaignId] }))}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px 8px 46px", cursor: "pointer", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}
+                >
+                  {revealInactive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  {inactiveAds.length} pausado{inactiveAds.length > 1 ? "s" : ""}/arquivado{inactiveAds.length > 1 ? "s" : ""}
+                </div>
+                {revealInactive && inactiveAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim />)}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -422,65 +520,31 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
 
         {campaigns.length === 0 ? (
           <p style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px" }}>Sem dados no período.</p>
-        ) : campaigns.map((c, i) => {
-          const st = statusColor(c.status);
-          const myAds = adsByCampaign.get(c.campaignId) ?? [];
-          const canExpand = myAds.length > 0;
-          const isOpen = !!open[c.campaignId];
-          return (
-            <div key={c.campaignId} style={{ borderBottom: i < campaigns.length - 1 ? "1px solid var(--border)" : "none" }}>
-              {/* Linha da campanha */}
-              <div
-                onClick={() => canExpand && setOpen((o) => ({ ...o, [c.campaignId]: !o[c.campaignId] }))}
-                style={{ display: "grid", gridTemplateColumns: COLS, padding: "12px 16px", alignItems: "center", cursor: canExpand ? "pointer" : "default", transition: "background 120ms" }}
-                onMouseEnter={(e) => { if (canExpand) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <span style={{ display: "flex", color: "var(--text-muted)" }}>
-                  {canExpand ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</p>
-                  <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0" }}>
-                    {[
-                      canExpand ? `${myAds.length} anúncio${myAds.length > 1 ? "s" : ""}` : null,
-                      daysSince(c.startedAt) != null ? `há ${daysSince(c.startedAt)}d` : null,
-                      c.dailyBudget ? `${fmtBRL(c.dailyBudget)}/dia` : null,
-                    ].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
-                <Cell v={fmtBRL(c.spend)} bold />
-                <Cell v={fmtK(c.impressions)} />
-                <Cell v={`${fmt(c.ctr)}%`} />
-                <Cell v="—" />
-                <Cell v={c.leads} leads />
-                <Cell v={c.cpl != null ? fmtBRL(c.cpl) : "—"} />
-              </div>
+        ) : (
+          <>
+            {activeCampaigns.map((c) => renderCampaign(c, false))}
+            {activeCampaigns.length === 0 && (
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px" }}>Nenhuma campanha ativa no período.</p>
+            )}
 
-              {/* Anúncios da campanha */}
-              {isOpen && myAds.map((a) => {
-                const ast = statusColor(a.status);
-                return (
-                  <div key={a.adId} style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)" }}>
-                    <span />
-                    <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)" }}>
-                      <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
-                      <AdMetaChips a={a} connectedNumber={connectedNumber} />
-                    </div>
-                    <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
-                    <Cell v={fmtBRL(a.spend)} />
-                    <Cell v={fmtK(a.impressions)} />
-                    <Cell v={`${fmt(a.ctr)}%`} />
-                    <Cell v={fmtBRL(a.cpc)} />
-                    <Cell v={a.leads} leads />
-                    <Cell v={a.cpl != null ? fmtBRL(a.cpl) : "—"} />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+            {/* Menu recolhido: campanhas só com pausados/arquivados */}
+            {inactiveCampaigns.length > 0 && (
+              <>
+                <div
+                  onClick={() => setShowInactiveCamps((v) => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 16px", cursor: "pointer", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 700, letterSpacing: "0.02em" }}
+                >
+                  {showInactiveCamps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Pausados e arquivados
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "1px 7px", borderRadius: 20 }}>
+                    {inactiveCampaigns.length}
+                  </span>
+                </div>
+                {showInactiveCamps && inactiveCampaigns.map((c) => renderCampaign(c, true))}
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
