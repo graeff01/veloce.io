@@ -49,16 +49,21 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  "Post Feed":  "#4338CA",
-  "Story":      "#15803D",
-  "Reels":      "#C2410C",
+  // Tags fixas atuais
+  "campanha meta ADS": "#B45309",
+  "Post Feed":         "#4338CA",
+  "Story":             "#15803D",
+  "Reels":             "#C2410C",
+  "Gravação Criativo": "#0F766E",
+  "Tarefas":           "#64748B", // interna (organização) — fora do relatório de entregas
+  // Legado (tarefas já criadas com tags antigas continuam coloridas)
   "Campanha":   "#B45309",
   "Criativo":   "#0F766E",
   "Relatório":  "#475569",
   "Copy":       "#1D4ED8",
   "Google Ads": "#92400E",
   "TikTok Ads": "#7E22CE",
-  "Tarefa":     "#64748B", // interna (organização) — fora do relatório de entregas
+  "Tarefa":     "#64748B",
 };
 
 function typeColor(type: string | null) {
@@ -91,9 +96,8 @@ function isOverdue(task: Task) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 const TASK_TAGS = [
-  "Post Feed", "Story", "Reels", "Campanha", "Criativo",
-  "Relatório", "Copy", "Google Ads", "TikTok Ads", "Outro",
-  "Tarefa", // INTERNA — organização do time; não entra no relatório de entregas
+  "campanha meta ADS", "Post Feed", "Story", "Reels", "Gravação Criativo",
+  "Tarefas", // INTERNA — organização do time; não entra no relatório de entregas
 ];
 
 export function KanbanBoard({ clientId, clientName }: { clientId: string; clientName: string }) {

@@ -9,7 +9,8 @@ export const runtime = "nodejs";
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 // Tarefas com esta tag são INTERNAS (organização do time) → fora do relatório.
-const INTERNAL_TAG = "tarefa";
+// Aceita "Tarefas" (tag atual) e "Tarefa" (legado).
+const INTERNAL_TAGS = new Set(["tarefas", "tarefa"]);
 
 // Datas são gravadas ao meio-dia UTC; lê em UTC p/ o dia ficar estável em qualquer fuso.
 function ddmm(d: Date): string {
@@ -27,7 +28,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const year = Number(url.searchParams.get("year")) || now.getFullYear();
   const month = Number(url.searchParams.get("month")) || now.getMonth() + 1;
 
-  const client = await prisma.client.findUnique({ where: { id }, select: { name: true, primaryContact: true } });
+  const client = await prisma.client.findUnique({ where: { id }, select: { name: true } });
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
 
   // Mesma janela do quadro: tarefas do plano do mês + avulsas com prazo no mês.
@@ -54,7 +55,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const acc = new Map<string, { labels: Map<string, number>; items: DeliverableGroup["items"] }>();
   for (const t of tasks) {
     const raw = (t.type ?? "").trim();
-    if (raw.toLowerCase() === INTERNAL_TAG) continue;
+    if (INTERNAL_TAGS.has(raw.toLowerCase())) continue;
     const display = raw || "Outros";
     const key = canon(display);
     let g = acc.get(key);
@@ -71,7 +72,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const data: DeliverablesReportData = {
     clientName: client.name,
-    responsavel: client.primaryContact ?? null,
+    responsavel: "Carla & Andressa",
     periodLabel: `${MONTHS[month - 1]} de ${year}`,
     generatedAt: now.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
     total,

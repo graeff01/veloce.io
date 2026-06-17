@@ -146,7 +146,7 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
           <Text style={s.coverPeriod}>{data.periodLabel}</Text>
           {data.responsavel ? <Text style={s.coverAccount}>Responsável: {data.responsavel}</Text> : null}
           <View style={s.coverRule} />
-          <Text style={s.coverFoot}>Resumo gerado pela Plataforma Veloce</Text>
+          <Text style={s.coverFoot}>Resumo gerado pela Veloce.io</Text>
         </View>
         <Text style={s.coverBrandBottom}>veloce</Text>
       </Page>
