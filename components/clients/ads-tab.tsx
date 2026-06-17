@@ -86,6 +86,10 @@ function fmtK(v: number) {
   if (v >= 1_000)     return `${(v / 1_000).toFixed(1)}k`;
   return String(v);
 }
+// Conversão real: % dos cliques pagos que viraram lead real no WhatsApp.
+function convLead(leads: number, clicks: number) {
+  return clicks > 0 ? `${((leads / clicks) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
+}
 
 function statusColor(s: string) {
   if (s === "ACTIVE")        return { color: "#16A34A", bg: "rgba(22,163,74,0.1)",   label: "Ativo"     };
@@ -415,8 +419,8 @@ function AdRow_({ a, connectedNumber, dim }: { a: AdRow; connectedNumber: string
       <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
       <Cell v={fmtBRL(a.spend)} />
       <Cell v={fmtK(a.impressions)} />
-      <Cell v={`${fmt(a.ctr)}%`} />
-      <Cell v={fmtBRL(a.cpc)} />
+      <Cell v={fmtK(a.clicks)} />
+      <Cell v={convLead(a.leads, a.clicks)} />
       <Cell v={a.leads} leads />
       <Cell v={a.cpl != null ? fmtBRL(a.cpl) : "—"} />
     </div>
@@ -483,8 +487,8 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
           <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
           <Cell v={fmtBRL(c.spend)} bold />
           <Cell v={fmtK(c.impressions)} />
-          <Cell v={`${fmt(c.ctr)}%`} />
-          <Cell v="—" />
+          <Cell v={fmtK(c.clicks)} />
+          <Cell v={convLead(c.leads, c.clicks)} />
           <Cell v={c.leads} leads />
           <Cell v={c.cpl != null ? fmtBRL(c.cpl) : "—"} />
         </div>
@@ -518,7 +522,7 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         {/* Header */}
         <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", alignItems: "center" }}>
-          {["", "Campanha", "Status", "Investimento", "Impr.", "CTR", "CPC", "Leads", "CPL"].map((h, i) => (
+          {["", "Campanha", "Status", "Investimento", "Impr.", "Cliques", "Conv.→Lead", "Leads", "CPL"].map((h, i) => (
             <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: i <= 2 ? "left" : "right" }}>{h}</span>
           ))}
         </div>
