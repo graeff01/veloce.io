@@ -458,14 +458,17 @@ model MetaConnection {
 // a renomeações. Vínculos entre dimensões são por ID oficial (soft, indexado),
 // não FK rígida — resiliente a sync parcial/fora de ordem.
 model MetaCampaign {
-  id           String   @id @default(cuid())
-  connectionId String
-  campaignId   String   // id oficial da Meta
-  name         String
-  objective    String?
-  status       String   // effective_status (ACTIVE | PAUSED | ...)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String    @id @default(cuid())
+  connectionId   String
+  campaignId     String   // id oficial da Meta
+  name           String
+  objective      String?
+  status         String   // effective_status (ACTIVE | PAUSED | ...)
+  startedAt      DateTime? // created_time da Meta — quando o objeto foi criado de fato (≠ quando sincronizamos)
+  dailyBudget    Float?    // orçamento diário configurado (CBO), em moeda da conta
+  lifetimeBudget Float?    // orçamento total configurado (CBO), em moeda da conta
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
@@ -474,14 +477,19 @@ model MetaCampaign {
 }
 
 model MetaAdSet {
-  id           String   @id @default(cuid())
-  connectionId String
-  adsetId      String   // id oficial
-  campaignId   String   // id oficial da campanha (join)
-  name         String
-  status       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  connectionId    String
+  adsetId         String   // id oficial
+  campaignId      String   // id oficial da campanha (join)
+  name            String
+  status          String
+  startedAt       DateTime? // created_time da Meta
+  dailyBudget     Float?    // orçamento diário do conjunto (quando o budget é no AdSet, não na campanha)
+  lifetimeBudget  Float?    // orçamento total do conjunto
+  learningStage   String?   // learning_stage_info.status: LEARNING | SUCCESS | LEARNING_LIMITED
+  destinationType String?   // destino do clique: WHATSAPP | MESSENGER | ON_AD | ... (identifica CTWA)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
@@ -490,16 +498,18 @@ model MetaAdSet {
 }
 
 model MetaAd {
-  id           String   @id @default(cuid())
-  connectionId String
-  adId         String   // id oficial — WaLead.adId casa aqui
-  adsetId      String   // id oficial do conjunto
-  campaignId   String   // id oficial da campanha
-  creativeId   String?  // id oficial do criativo
-  name         String
-  status       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String    @id @default(cuid())
+  connectionId   String
+  adId           String   // id oficial — WaLead.adId casa aqui
+  adsetId        String   // id oficial do conjunto
+  campaignId     String   // id oficial da campanha
+  creativeId     String?  // id oficial do criativo
+  name           String
+  status         String
+  startedAt      DateTime? // created_time da Meta — base para "há quantos dias está no ar"
+  whatsappNumber String?   // número de WhatsApp de destino (extraído do criativo CTWA) — bate com o número conectado?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   connection   MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
@@ -539,6 +549,7 @@ model MetaAdInsight {
   ctr          Float    @default(0)
   cpc          Float    @default(0)
   cpm          Float    @default(0)
+  frequency    Float    @default(0) // impressões/alcance no dia — sinal de saturação
   leads        Int      @default(0) // leads que a Meta reporta (modelado) — referência
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

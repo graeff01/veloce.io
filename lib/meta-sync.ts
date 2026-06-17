@@ -54,15 +54,53 @@ async function runChunked<T>(items: T[], make: (item: T) => Promise<unknown>): P
   }
 }
 
-interface CampaignRow { id: string; name: string; objective?: string; effective_status?: string }
-interface AdSetRow { id: string; name: string; effective_status?: string; campaign_id: string }
-interface AdRow { id: string; name: string; effective_status?: string; adset_id: string; campaign_id: string; creative?: { id: string } }
-interface CreativeRow { id: string; name?: string; title?: string; body?: string; thumbnail_url?: string }
+interface CampaignRow {
+  id: string; name: string; objective?: string; effective_status?: string;
+  created_time?: string; daily_budget?: string; lifetime_budget?: string;
+}
+interface AdSetRow {
+  id: string; name: string; effective_status?: string; campaign_id: string;
+  created_time?: string; daily_budget?: string; lifetime_budget?: string;
+  destination_type?: string;
+  learning_stage_info?: { status?: string };
+}
+interface AdRow {
+  id: string; name: string; effective_status?: string; adset_id: string; campaign_id: string;
+  created_time?: string; creative?: { id: string };
+}
+interface CreativeRow {
+  id: string; name?: string; title?: string; body?: string; thumbnail_url?: string;
+  object_story_spec?: unknown; asset_feed_spec?: unknown;
+}
 interface AdInsightRow {
   ad_id: string; date_start: string;
   spend?: string; impressions?: string; reach?: string; clicks?: string;
-  ctr?: string; cpc?: string; cpm?: string;
+  ctr?: string; cpc?: string; cpm?: string; frequency?: string;
   actions?: { action_type: string; value: string }[];
+}
+
+// Orçamento Meta vem em centavos (string) da moeda da conta → reais.
+function budget(v: string | undefined): number | null {
+  if (v == null) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n / 100 : null;
+}
+
+// created_time ISO → Date. Nulo se ausente/ inválido.
+function startedAt(v: string | undefined): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Extrai o número de WhatsApp de destino de um anúncio Click-to-WhatsApp.
+// O número aparece embutido em links wa.me / api.whatsapp.com dentro do criativo
+// (object_story_spec / asset_feed_spec). Best-effort: varre o JSON do criativo.
+function extractWhatsappNumber(creative: CreativeRow | undefined): string | null {
+  if (!creative) return null;
+  const blob = JSON.stringify(creative.object_story_spec ?? "") + JSON.stringify(creative.asset_feed_spec ?? "");
+  const m = blob.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\?[^"']*?phone=|whatsapp\.com\/[^"']*?phone=)(\d{8,15})/i);
+  return m ? m[1] : null;
 }
 
 export interface MetaSyncResult {
@@ -91,19 +129,22 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   const es = (vals: string[]) => `effective_status=${encodeURIComponent(JSON.stringify(vals))}`;
 
   const [campaigns, adsets, ads] = await Promise.all([
-    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`),
-    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id&${es(ADSET_STATUS)}&limit=200&${auth}`),
-    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,creative{id}&${es(AD_STATUS)}&limit=300&${auth}`),
+    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status,created_time,daily_budget,lifetime_budget&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`),
+    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id,created_time,daily_budget,lifetime_budget,destination_type,learning_stage_info&${es(ADSET_STATUS)}&limit=200&${auth}`),
+    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,created_time,creative{id}&${es(AD_STATUS)}&limit=300&${auth}`),
   ]);
 
   const creativeIds = [...new Set(ads.map((a) => a.creative?.id).filter((x): x is string => !!x))];
-  // Criativos: busca por id (em lotes pela própria conta) — best-effort
+  // Criativos: busca por id (em lotes pela própria conta) — best-effort.
+  // object_story_spec/asset_feed_spec trazem o link CTWA de onde extraímos o nº WhatsApp.
   const creatives = creativeIds.length
-    ? await graphGetAll<CreativeRow>(`${GRAPH}/${acct}/adcreatives?fields=id,name,title,body,thumbnail_url&limit=300&${auth}`)
+    ? await graphGetAll<CreativeRow>(`${GRAPH}/${acct}/adcreatives?fields=id,name,title,body,thumbnail_url,object_story_spec,asset_feed_spec&limit=300&${auth}`)
     : [];
+  const waByCreative = new Map<string, string | null>();
+  for (const cr of creatives) waByCreative.set(cr.id, extractWhatsappNumber(cr));
 
   // 2) Insights diários em nível de anúncio
-  const insightFields = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,actions";
+  const insightFields = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
   const timeRange = `{"since":"${since}","until":"${until}"}`;
   const insights = await graphGetAll<AdInsightRow>(
     `${GRAPH}/${acct}/insights?level=ad&fields=${insightFields}` +
@@ -115,21 +156,26 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   // em contas grandes (centenas de anúncios × dias).
   const now = new Date();
 
-  await runChunked(campaigns, (c) =>
-    prisma.metaCampaign.upsert({
+  await runChunked(campaigns, (c) => {
+    const extra = { startedAt: startedAt(c.created_time), dailyBudget: budget(c.daily_budget), lifetimeBudget: budget(c.lifetime_budget) };
+    return prisma.metaCampaign.upsert({
       where: { connectionId_campaignId: { connectionId, campaignId: c.id } },
-      create: { connectionId, campaignId: c.id, name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN" },
-      update: { name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN", updatedAt: now },
-    }),
-  );
+      create: { connectionId, campaignId: c.id, name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN", ...extra },
+      update: { name: c.name, objective: c.objective ?? null, status: c.effective_status ?? "UNKNOWN", ...extra, updatedAt: now },
+    });
+  });
 
-  await runChunked(adsets, (a) =>
-    prisma.metaAdSet.upsert({
+  await runChunked(adsets, (a) => {
+    const extra = {
+      startedAt: startedAt(a.created_time), dailyBudget: budget(a.daily_budget), lifetimeBudget: budget(a.lifetime_budget),
+      learningStage: a.learning_stage_info?.status ?? null, destinationType: a.destination_type ?? null,
+    };
+    return prisma.metaAdSet.upsert({
       where: { connectionId_adsetId: { connectionId, adsetId: a.id } },
-      create: { connectionId, adsetId: a.id, campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN" },
-      update: { campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
-    }),
-  );
+      create: { connectionId, adsetId: a.id, campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN", ...extra },
+      update: { campaignId: a.campaign_id, name: a.name, status: a.effective_status ?? "UNKNOWN", ...extra, updatedAt: now },
+    });
+  });
 
   await runChunked(creatives, (cr) =>
     prisma.metaCreative.upsert({
@@ -139,13 +185,17 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
     }),
   );
 
-  await runChunked(ads, (a) =>
-    prisma.metaAd.upsert({
+  await runChunked(ads, (a) => {
+    const extra = {
+      startedAt: startedAt(a.created_time),
+      whatsappNumber: a.creative?.id ? (waByCreative.get(a.creative.id) ?? null) : null,
+    };
+    return prisma.metaAd.upsert({
       where: { connectionId_adId: { connectionId, adId: a.id } },
-      create: { connectionId, adId: a.id, adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN" },
-      update: { adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN", updatedAt: now },
-    }),
-  );
+      create: { connectionId, adId: a.id, adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN", ...extra },
+      update: { adsetId: a.adset_id, campaignId: a.campaign_id, creativeId: a.creative?.id ?? null, name: a.name, status: a.effective_status ?? "UNKNOWN", ...extra, updatedAt: now },
+    });
+  });
 
   await runChunked(insights, (ins) => {
     const date = new Date(`${ins.date_start}T00:00:00.000Z`);
@@ -160,6 +210,7 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
       ctr: parseFloat(ins.ctr ?? "0"),
       cpc: parseFloat(ins.cpc ?? "0"),
       cpm: parseFloat(ins.cpm ?? "0"),
+      frequency: parseFloat(ins.frequency ?? "0"),
       leads: Math.round(leads),
     };
     return prisma.metaAdInsight.upsert({
