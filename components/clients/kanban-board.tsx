@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   AlertTriangle, Loader2, Plus, ChevronLeft, ChevronRight,
-  GripVertical, Calendar, Flag, X, Trash2,
+  GripVertical, Calendar, Flag, X, Trash2, FileText,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -58,6 +58,7 @@ const TYPE_COLOR: Record<string, string> = {
   "Copy":       "#1D4ED8",
   "Google Ads": "#92400E",
   "TikTok Ads": "#7E22CE",
+  "Tarefa":     "#64748B", // interna (organização) — fora do relatório de entregas
 };
 
 function typeColor(type: string | null) {
@@ -92,6 +93,7 @@ function isOverdue(task: Task) {
 const TASK_TAGS = [
   "Post Feed", "Story", "Reels", "Campanha", "Criativo",
   "Relatório", "Copy", "Google Ads", "TikTok Ads", "Outro",
+  "Tarefa", // INTERNA — organização do time; não entra no relatório de entregas
 ];
 
 export function KanbanBoard({ clientId, clientName }: { clientId: string; clientName: string }) {
@@ -354,11 +356,26 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
           )}
         </div>
 
-        {/* Right side: client label + new task button */}
+        {/* Right side: client label + report + new task button */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
             {clientName}
           </span>
+          <a
+            href={`/api/clients/${clientId}/deliverables/report?year=${year}&month=${month}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Gerar PDF com tudo que foi entregue ao cliente no mês (exclui tarefas internas)"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 12px", borderRadius: 8,
+              border: "1px solid var(--border-strong)", background: "var(--bg-surface)",
+              color: "var(--text-secondary)", textDecoration: "none",
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            <FileText size={13} /> Entregáveis (PDF)
+          </a>
           <button
             onClick={openCreate}
             style={{
