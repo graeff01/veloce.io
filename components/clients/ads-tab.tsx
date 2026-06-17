@@ -6,7 +6,6 @@ import {
   Eye, MousePointer, DollarSign, Link2,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText,
 } from "lucide-react";
-import { AdDiagnosisPanel } from "@/components/clients/ad-diagnosis-panel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -51,11 +50,15 @@ interface AdRow {
   adId: string; name: string; campaignId: string; campaignName: string; status: string;
   spend: number; impressions: number; clicks: number; ctr: number; cpc: number;
   leads: number; metaLeads: number; cpl: number | null;
+  startedAt: string | null; dailyBudget: number | null; learningStage: string | null;
+  frequency: number | null; whatsappNumber: string | null;
+  qualityRanking: string | null; engagementRanking: string | null; conversionRanking: string | null;
 }
 interface CampaignRow {
   campaignId: string; name: string; status: string;
   spend: number; impressions: number; clicks: number; ctr: number;
   leads: number; metaLeads: number; cpl: number | null;
+  startedAt: string | null; dailyBudget: number | null; lifetimeBudget: number | null;
 }
 interface AdsView {
   connected: boolean; hasData: boolean;
@@ -63,6 +66,7 @@ interface AdsView {
   campaigns: CampaignRow[];
   ads: AdRow[];
   leadsSemIdentificacao: number;
+  connectedNumber: string | null;
 }
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -98,6 +102,23 @@ function timeAgo(iso: string) {
   if (hrs < 24)   return `há ${hrs}h`;
   return `há ${Math.floor(hrs / 24)}d`;
 }
+
+// Idade (dias) a partir do created_time da Meta.
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  return d >= 0 ? d : null;
+}
+const onlyDigits = (s: string | null) => (s ?? "").replace(/\D/g, "");
+// Quais dimensões de relevância estão ABAIXO da média (Meta).
+function belowRanking(a: AdRow): string[] {
+  const out: string[] = [];
+  if (a.qualityRanking?.startsWith("BELOW_AVERAGE")) out.push("qualidade");
+  if (a.engagementRanking?.startsWith("BELOW_AVERAGE")) out.push("engajamento");
+  if (a.conversionRanking?.startsWith("BELOW_AVERAGE")) out.push("conversão");
+  return out;
+}
+const LEARNING_LABEL: Record<string, string> = { LEARNING: "Aprendizado", LEARNING_LIMITED: "Aprend. limitado" };
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
@@ -309,9 +330,6 @@ export function AdsTab({ clientId }: { clientId: string }) {
           </a>
         </div>
 
-        {/* Diagnóstico individual dos anúncios (motor determinístico + narrativa IA) */}
-        <AdDiagnosisPanel clientId={clientId} year={year} month={month} />
-
         {!ads ? (
           <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
             <Loader2 size={20} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
@@ -338,7 +356,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
             </div>
 
             {/* ── Campanhas (expande anúncios) ── */}
-            <CampaignAccordion campaigns={ads.campaigns} ads={ads.ads} />
+            <CampaignAccordion campaigns={ads.campaigns} ads={ads.ads} connectedNumber={ads.connectedNumber} />
 
             {ads.leadsSemIdentificacao > 0 && (
               <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "-8px 2px 0" }}>
@@ -375,7 +393,7 @@ function TokenBadge({ s }: { s: TokenStatus }) {
 // Accordion: campanhas; clicar expande os anúncios da campanha (fechado por padrão).
 const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";
 
-function CampaignAccordion({ campaigns, ads }: { campaigns: CampaignRow[]; ads: AdRow[] }) {
+function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const adsByCampaign = new Map<string, AdRow[]>();
   for (const a of ads) {
@@ -416,7 +434,13 @@ function CampaignAccordion({ campaigns, ads }: { campaigns: CampaignRow[]; ads: 
                 </span>
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</p>
-                  {canExpand && <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0" }}>{myAds.length} anúncio{myAds.length > 1 ? "s" : ""}</p>}
+                  <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "2px 0 0" }}>
+                    {[
+                      canExpand ? `${myAds.length} anúncio${myAds.length > 1 ? "s" : ""}` : null,
+                      daysSince(c.startedAt) != null ? `há ${daysSince(c.startedAt)}d` : null,
+                      c.dailyBudget ? `${fmtBRL(c.dailyBudget)}/dia` : null,
+                    ].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
                 <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
                 <Cell v={fmtBRL(c.spend)} bold />
@@ -435,6 +459,7 @@ function CampaignAccordion({ campaigns, ads }: { campaigns: CampaignRow[]; ads: 
                     <span />
                     <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)" }}>
                       <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
+                      <AdMetaChips a={a} connectedNumber={connectedNumber} />
                     </div>
                     <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
                     <Cell v={fmtBRL(a.spend)} />
@@ -452,6 +477,26 @@ function CampaignAccordion({ campaigns, ads }: { campaigns: CampaignRow[]; ads: 
       </div>
     </div>
   );
+}
+
+// Linha discreta de inteligência sob o nome do anúncio — só renderiza o que existe.
+function AdMetaChips({ a, connectedNumber }: { a: AdRow; connectedNumber: string | null }) {
+  const muted: React.CSSProperties = { fontSize: 10, color: "var(--text-muted)", background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 6, whiteSpace: "nowrap" };
+  const warn: React.CSSProperties = { ...muted, color: "#D97706", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.25)", fontWeight: 600 };
+  const danger: React.CSSProperties = { ...muted, color: "#DC2626", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", fontWeight: 600 };
+  const chips: React.ReactNode[] = [];
+  const age = daysSince(a.startedAt);
+  if (age != null) chips.push(<span key="age" style={muted}>há {age}d</span>);
+  if (a.dailyBudget) chips.push(<span key="bud" style={muted}>{fmtBRL(a.dailyBudget)}/dia</span>);
+  if (a.frequency != null && a.frequency > 0) chips.push(<span key="freq" style={a.frequency >= 2.5 ? warn : muted}>freq {a.frequency.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</span>);
+  if (a.learningStage && LEARNING_LABEL[a.learningStage]) chips.push(<span key="learn" style={warn}>{LEARNING_LABEL[a.learningStage]}</span>);
+  const below = belowRanking(a);
+  if (below.length) chips.push(<span key="rel" title={`Relevância abaixo da média (Meta): ${below.join(", ")}`} style={warn}>relevância ↓</span>);
+  if (a.whatsappNumber && connectedNumber && onlyDigits(a.whatsappNumber) !== connectedNumber) {
+    chips.push(<span key="dest" title={`Destino ${a.whatsappNumber} ≠ WhatsApp conectado ${connectedNumber}`} style={danger}>destino ≠ WhatsApp</span>);
+  }
+  if (!chips.length) return null;
+  return <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>{chips}</div>;
 }
 
 function Cell({ v, bold, leads }: { v: string | number; bold?: boolean; leads?: boolean }) {
