@@ -506,8 +506,11 @@ model MetaAd {
   creativeId     String?  // id oficial do criativo
   name           String
   status         String
-  startedAt      DateTime? // created_time da Meta — base para "há quantos dias está no ar"
-  whatsappNumber String?   // número de WhatsApp de destino (extraído do criativo CTWA) — bate com o número conectado?
+  startedAt         DateTime? // created_time da Meta — base para "há quantos dias está no ar"
+  whatsappNumber    String?   // número de WhatsApp de destino (extraído do criativo CTWA) — bate com o número conectado?
+  qualityRanking    String?   // quality_ranking da Meta (ABOVE_AVERAGE | AVERAGE | BELOW_AVERAGE_* ) — relevância do criativo vs concorrentes
+  engagementRanking String?   // engagement_rate_ranking
+  conversionRanking String?   // conversion_rate_ranking
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

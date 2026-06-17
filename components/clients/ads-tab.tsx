@@ -6,7 +6,7 @@ import {
   Eye, MousePointer, DollarSign, Link2,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText,
 } from "lucide-react";
-import { InsightsPanel } from "@/components/clients/insights-panel";
+import { AdDiagnosisPanel } from "@/components/clients/ad-diagnosis-panel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -301,8 +301,8 @@ export function AdsTab({ clientId }: { clientId: string }) {
           </a>
         </div>
 
-        {/* Co-piloto de operação (insights + narrativa IA) */}
-        <InsightsPanel clientId={clientId} year={year} month={month} />
+        {/* Diagnóstico individual dos anúncios (motor determinístico + narrativa IA) */}
+        <AdDiagnosisPanel clientId={clientId} year={year} month={month} />
 
         {!ads ? (
           <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>

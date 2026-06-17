@@ -78,6 +78,15 @@ interface AdInsightRow {
   ctr?: string; cpc?: string; cpm?: string; frequency?: string;
   actions?: { action_type: string; value: string }[];
 }
+interface AdRankingRow {
+  ad_id: string;
+  quality_ranking?: string; engagement_rate_ranking?: string; conversion_rate_ranking?: string;
+}
+
+// Ranking só é útil quando a Meta tem volume — "UNKNOWN" vira null (nada a dizer).
+function ranking(v: string | undefined): string | null {
+  return v && v !== "UNKNOWN" ? v : null;
+}
 
 // Orçamento Meta vem em centavos (string) da moeda da conta → reais.
 function budget(v: string | undefined): number | null {
@@ -143,13 +152,21 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   const waByCreative = new Map<string, string | null>();
   for (const cr of creatives) waByCreative.set(cr.id, extractWhatsappNumber(cr));
 
-  // 2) Insights diários em nível de anúncio
+  // 2) Insights diários em nível de anúncio + ranking de relevância (snapshot do período).
+  // O ranking NÃO é diário (não soma): puxamos agregado por anúncio no mesmo intervalo.
   const insightFields = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
   const timeRange = `{"since":"${since}","until":"${until}"}`;
-  const insights = await graphGetAll<AdInsightRow>(
-    `${GRAPH}/${acct}/insights?level=ad&fields=${insightFields}` +
-    `&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
-  );
+  const [insights, rankingRows] = await Promise.all([
+    graphGetAll<AdInsightRow>(
+      `${GRAPH}/${acct}/insights?level=ad&fields=${insightFields}` +
+      `&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
+    ),
+    graphGetAll<AdRankingRow>(
+      `${GRAPH}/${acct}/insights?level=ad&fields=ad_id,quality_ranking,engagement_rate_ranking,conversion_rate_ranking` +
+      `&time_range=${encodeURIComponent(timeRange)}&limit=500&${auth}`,
+    ),
+  ]);
+  const rankByAd = new Map(rankingRows.map((r) => [r.ad_id, r]));
 
   // 3) Persistência (upsert por ID oficial — imune a renomeação).
   // Em transações por lote (chunks) para reduzir round-trips e evitar timeout
@@ -186,9 +203,13 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   );
 
   await runChunked(ads, (a) => {
+    const rk = rankByAd.get(a.id);
     const extra = {
       startedAt: startedAt(a.created_time),
       whatsappNumber: a.creative?.id ? (waByCreative.get(a.creative.id) ?? null) : null,
+      qualityRanking: ranking(rk?.quality_ranking),
+      engagementRanking: ranking(rk?.engagement_rate_ranking),
+      conversionRanking: ranking(rk?.conversion_rate_ranking),
     };
     return prisma.metaAd.upsert({
       where: { connectionId_adId: { connectionId, adId: a.id } },
