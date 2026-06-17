@@ -147,24 +147,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
     // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
     // Sobrevive a deploy/restart e serializa em multi-instância; o 200 não espera o agente.
-    if (!outbound) {
-      const ref = mediaRef(m);
-      void enqueueAgentJob({
-        clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
-        idempotencyKey: m.id,
-        payload: { text: messageText(m), type: m.type, mediaId: ref?.id, mime: ref?.mime },
-      }).catch(() => {});
-
-      // Notificação em tempo real para o time (push/Telegram), com cooldown por
-      // conversa. Fire-and-forget: nunca bloqueia nem derruba o webhook.
-      void notifyLeadMessage({
-        clientId: conn.clientId, contactId: contact.id,
-        contactName: contact.name, text: messageText(m),
-      }).catch(() => {});
-    }
-
     // Atribuição de anúncio: pelo "referral" (Click-to-WhatsApp) E/OU pelo modelo
-    // detectado na mensagem de abertura ("anúncio do {modelo}").
+    // detectado na mensagem de abertura ("anúncio do {modelo}"). Capturamos ANTES
+    // de notificar para a notificação já saber de qual anúncio o lead veio —
+    // independente do texto que o lead digitou.
     const ref = m.referral;
     const adModel = outbound ? null : detectAdModel(messageText(m));
     const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel;
@@ -189,6 +175,25 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       } else if (adModel && !lead.adModel) {
         await prisma.waLead.update({ where: { contactId: contact.id }, data: { adModel } });
       }
+    }
+
+    // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
+    // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
+    // Sobrevive a deploy/restart e serializa em multi-instância; o 200 não espera o agente.
+    if (!outbound) {
+      const media = mediaRef(m);
+      void enqueueAgentJob({
+        clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
+        idempotencyKey: m.id,
+        payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
+      }).catch(() => {});
+
+      // Notificação em tempo real para o time (push/Telegram), com cooldown por
+      // conversa. Fire-and-forget: nunca bloqueia nem derruba o webhook.
+      void notifyLeadMessage({
+        clientId: conn.clientId, contactId: contact.id,
+        contactName: contact.name, text: messageText(m),
+      }).catch(() => {});
     }
   }
 }

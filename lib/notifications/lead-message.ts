@@ -27,11 +27,39 @@ export async function notifyLeadMessage(opts: {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   const clientName = client?.name ?? "Cliente";
 
+  // 3b) Origem do anúncio — identificada pelo referral (ad_id), NÃO pela mensagem.
+  // Assim o time já sabe de qual anúncio/veículo o lead veio mesmo que ele não
+  // tenha digitado o nome do veículo. Resolve o nome do anúncio pelo ID oficial;
+  // cai para o modelo detectado / headline do anúncio quando ainda não há MetaAd.
+  let origin: string | null = null;
+  const lead = await prisma.waLead.findUnique({
+    where: { contactId },
+    select: { adId: true, adTitle: true, adModel: true },
+  });
+  if (lead) {
+    if (lead.adId) {
+      const meta = await prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } });
+      if (meta) {
+        const ad = await prisma.metaAd.findUnique({
+          where: { connectionId_adId: { connectionId: meta.id, adId: lead.adId } },
+          select: { name: true },
+        });
+        origin = ad?.name ?? null;
+      }
+    }
+    origin = origin || lead.adModel || lead.adTitle || null;
+  }
+
   const who = (contactName || "").trim() || "Lead";
   const snippet = (text || "").replace(/\s+/g, " ").trim().slice(0, 120) || "(mídia)";
+  const originLine = origin ? `🎯 Anúncio: ${origin}` : null;
 
-  const push = { title: `💬 ${who} — ${clientName}`, body: snippet, url: `/clients/${clientId}?tab=leads` };
-  const tg = `💬 <b>${esc(who)}</b> — ${esc(clientName)}\n${esc(snippet)}`;
+  const push = {
+    title: `💬 ${who} — ${clientName}`,
+    body: originLine ? `${originLine}\n${snippet}` : snippet,
+    url: `/clients/${clientId}?tab=leads`,
+  };
+  const tg = `💬 <b>${esc(who)}</b> — ${esc(clientName)}\n${originLine ? `${esc(originLine)}\n` : ""}${esc(snippet)}`;
 
   await Promise.all(
     recipients.map((r) =>
