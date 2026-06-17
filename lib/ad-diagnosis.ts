@@ -152,10 +152,12 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
 
   // ── Série diária por anúncio (tendência de CTR + frequência média) ──
   const daily = new Map<string, { ctr: number; freq: number; impr: number }[]>();
+  const firstSeen = new Map<string, Date>(); // 1ª data com insight no período (fallback de idade)
   for (const r of dailyRows) {
     const arr = daily.get(r.adId) ?? [];
     arr.push({ ctr: r.ctr, freq: r.frequency, impr: r.impressions });
     daily.set(r.adId, arr);
+    if (!firstSeen.has(r.adId)) firstSeen.set(r.adId, r.date); // dailyRows vem ordenado asc
   }
   function trend(adId: string): { ctrStart: number | null; ctrEnd: number | null; avgFreq: number | null; declinePct: number | null } {
     const s = daily.get(adId);
@@ -174,8 +176,12 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
     return { ctrStart, ctrEnd, avgFreq, declinePct };
   }
 
-  const daysLiveOf = (startedAt: Date | null): number | null =>
-    startedAt ? Math.max(0, Math.floor((end.getTime() - startedAt.getTime()) / 86400_000)) : null;
+  // Idade: preferimos created_time da Meta; sem ele, caímos para a 1ª data com
+  // insight no período (subestima, mas evita "? dias" e nunca quebra).
+  const daysLiveOf = (startedAt: Date | null, adId: string): number | null => {
+    const ref = startedAt ?? firstSeen.get(adId) ?? null;
+    return ref ? Math.max(0, Math.floor((end.getTime() - ref.getTime()) / 86400_000)) : null;
+  };
 
   const out: AdDiagnosis[] = [];
 
@@ -184,7 +190,7 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
     const m = adMeta.get(a.adId);
     const s = m ? adsetMeta.get(m.adsetId) : null;
     const tr = trend(a.adId);
-    const daysLive = daysLiveOf(m?.startedAt ?? null);
+    const daysLive = daysLiveOf(m?.startedAt ?? null, a.adId);
     const adWa = m?.whatsappNumber ?? null;
     const learningStage = s?.learningStage ?? null;
     const dailyBudget = s?.dailyBudget ?? null;
@@ -226,6 +232,14 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
       scenario = "destino_divergente"; severity = "critical";
       title = "Destino aponta para outro WhatsApp";
       action = `O anúncio leva para o número ${adWa}, diferente do conectado (${connectedNumber}). Corrija o destino — os leads não chegam aqui.`;
+    } else if (m && m.status !== "ACTIVE") {
+      // Anúncio parado (arquivado/pausado): não está rodando — não cabe
+      // "aprendizado"/"sangria"/"escalar". Mostra o histórico, sem ação de mídia.
+      const label = m.status === "ARCHIVED" ? "Arquivado" : "Pausado";
+      scenario = "pausado"; severity = "neutral"; title = label;
+      action = realLeads > 0
+        ? `${label} — gerou ${realLeads} lead(s) real(is) enquanto rodou (${brl(a.spend)}).`
+        : `${label} — gastou ${brl(a.spend)} sem lead real registrado. Não está mais rodando.`;
     } else if (m?.status === "ACTIVE" && a.spend === 0 && daysLive != null && daysLive > 2) {
       scenario = "sem_entrega"; severity = "critical";
       title = "Ativo, mas sem entrega";
@@ -237,7 +251,7 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
     } else if (realLeads === 0 && (baselineCpl ? a.spend >= SANGRIA_SPEND_MULT * baselineCpl : a.spend >= SANGRIA_SPEND_MULT * SAMPLE_SPEND_ABS)) {
       scenario = "sangria"; severity = "critical";
       title = "Gastando sem gerar lead real";
-      action = `${brl(a.spend)} em ${daysLive ?? "?"} dias sem nenhum lead real no WhatsApp. Pause ou refaça criativo/oferta.`;
+      action = `${brl(a.spend)}${daysLive != null ? ` em ${daysLive} ${daysLive === 1 ? "dia" : "dias"}` : " no período"} sem nenhum lead real no WhatsApp. Pause ou refaça criativo/oferta.`;
     } else if (realLeads >= WIN_MIN_LEADS && realCpl != null && baselineCpl != null && realCpl <= baselineCpl) {
       scenario = "vencedor"; severity = "positive";
       title = "Melhor eficiência — candidato a escalar";
@@ -290,7 +304,7 @@ export async function diagnoseAds(clientId: string, start: Date, end: Date): Pro
   const inView = new Set(view.ads.map((a) => a.adId));
   for (const m of metaAds) {
     if (m.status !== "ACTIVE" || inView.has(m.adId)) continue;
-    const daysLive = daysLiveOf(m.startedAt);
+    const daysLive = daysLiveOf(m.startedAt, m.adId);
     if (daysLive == null || daysLive <= 2) continue; // recém-criado: ainda pode não ter entregue
     const camp = view.campaigns.find((c) => c.campaignId === m.campaignId);
     out.push({

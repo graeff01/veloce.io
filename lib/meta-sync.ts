@@ -39,6 +39,19 @@ async function graphGetAll<T>(url: string): Promise<T[]> {
   return out;
 }
 
+// Resiliente: tenta os campos ENRIQUECIDOS; se a Meta recusar um campo novo
+// (erro de query, não token/limite), cai para os campos-BASE — o sync nunca
+// morre por um campo indisponível. Loga qual caiu (observabilidade).
+async function graphGetAllResilient<T>(enriched: string, base: string, label: string): Promise<T[]> {
+  try {
+    return await graphGetAll<T>(enriched);
+  } catch (e) {
+    if (e instanceof MetaTokenError || e instanceof MetaRateLimitError) throw e;
+    console.warn(`[meta-sync] campos enriquecidos falharam em ${label} — usando base:`, e instanceof Error ? e.message : e);
+    return graphGetAll<T>(base);
+  }
+}
+
 function getAction(actions: { action_type: string; value: string }[] | undefined, type: string): number {
   if (!actions) return 0;
   const f = actions.find((a) => a.action_type === type);
@@ -137,35 +150,54 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   const AD_STATUS = ["ACTIVE", "PAUSED", "ARCHIVED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "PENDING_REVIEW", "DISAPPROVED", "PREAPPROVED", "PENDING_BILLING_INFO", "IN_PROCESS", "WITH_ISSUES"];
   const es = (vals: string[]) => `effective_status=${encodeURIComponent(JSON.stringify(vals))}`;
 
+  // Campos base (garantidos) × enriquecidos (campos novos). Cada chamada cai para
+  // o base se a Meta recusar algum campo novo — o sync NUNCA morre por isso.
+  const C_BASE = "id,name,objective,effective_status";
+  const S_BASE = "id,name,effective_status,campaign_id";
+  const A_BASE = "id,name,effective_status,adset_id,campaign_id,creative{id}";
+  const CR_BASE = "id,name,title,body,thumbnail_url";
   const [campaigns, adsets, ads] = await Promise.all([
-    graphGetAll<CampaignRow>(`${GRAPH}/${acct}/campaigns?fields=id,name,objective,effective_status,created_time,daily_budget,lifetime_budget&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`),
-    graphGetAll<AdSetRow>(`${GRAPH}/${acct}/adsets?fields=id,name,effective_status,campaign_id,created_time,daily_budget,lifetime_budget,destination_type,learning_stage_info&${es(ADSET_STATUS)}&limit=200&${auth}`),
-    graphGetAll<AdRow>(`${GRAPH}/${acct}/ads?fields=id,name,effective_status,adset_id,campaign_id,created_time,creative{id}&${es(AD_STATUS)}&limit=300&${auth}`),
+    graphGetAllResilient<CampaignRow>(
+      `${GRAPH}/${acct}/campaigns?fields=${C_BASE},created_time,daily_budget,lifetime_budget&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`,
+      `${GRAPH}/${acct}/campaigns?fields=${C_BASE}&${es(CAMPAIGN_STATUS)}&limit=200&${auth}`, "campaigns"),
+    graphGetAllResilient<AdSetRow>(
+      `${GRAPH}/${acct}/adsets?fields=${S_BASE},created_time,daily_budget,lifetime_budget,destination_type,learning_stage_info&${es(ADSET_STATUS)}&limit=200&${auth}`,
+      `${GRAPH}/${acct}/adsets?fields=${S_BASE}&${es(ADSET_STATUS)}&limit=200&${auth}`, "adsets"),
+    graphGetAllResilient<AdRow>(
+      `${GRAPH}/${acct}/ads?fields=${A_BASE},created_time&${es(AD_STATUS)}&limit=300&${auth}`,
+      `${GRAPH}/${acct}/ads?fields=${A_BASE}&${es(AD_STATUS)}&limit=300&${auth}`, "ads"),
   ]);
 
   const creativeIds = [...new Set(ads.map((a) => a.creative?.id).filter((x): x is string => !!x))];
-  // Criativos: busca por id (em lotes pela própria conta) — best-effort.
-  // object_story_spec/asset_feed_spec trazem o link CTWA de onde extraímos o nº WhatsApp.
+  // Criativos: object_story_spec/asset_feed_spec trazem o link CTWA do nº WhatsApp.
+  // São pesados — se falharem, cai para o base (sem nº WhatsApp) sem derrubar o sync.
   const creatives = creativeIds.length
-    ? await graphGetAll<CreativeRow>(`${GRAPH}/${acct}/adcreatives?fields=id,name,title,body,thumbnail_url,object_story_spec,asset_feed_spec&limit=300&${auth}`)
+    ? await graphGetAllResilient<CreativeRow>(
+        `${GRAPH}/${acct}/adcreatives?fields=${CR_BASE},object_story_spec,asset_feed_spec&limit=200&${auth}`,
+        `${GRAPH}/${acct}/adcreatives?fields=${CR_BASE}&limit=300&${auth}`, "adcreatives")
     : [];
   const waByCreative = new Map<string, string | null>();
   for (const cr of creatives) waByCreative.set(cr.id, extractWhatsappNumber(cr));
 
-  // 2) Insights diários em nível de anúncio + ranking de relevância (snapshot do período).
-  // O ranking NÃO é diário (não soma): puxamos agregado por anúncio no mesmo intervalo.
-  const insightFields = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
+  // 2) Insights diários em nível de anúncio (frequency cai para base se recusado).
   const timeRange = `{"since":"${since}","until":"${until}"}`;
-  const [insights, rankingRows] = await Promise.all([
-    graphGetAll<AdInsightRow>(
-      `${GRAPH}/${acct}/insights?level=ad&fields=${insightFields}` +
-      `&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
-    ),
-    graphGetAll<AdRankingRow>(
+  const I_BASE = "ad_id,spend,impressions,reach,clicks,ctr,cpc,cpm,actions";
+  const insights = await graphGetAllResilient<AdInsightRow>(
+    `${GRAPH}/${acct}/insights?level=ad&fields=${I_BASE.replace("cpm,", "cpm,frequency,")}&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`,
+    `${GRAPH}/${acct}/insights?level=ad&fields=${I_BASE}&time_range=${encodeURIComponent(timeRange)}&time_increment=1&limit=500&${auth}`, "insights");
+
+  // Ranking de relevância (snapshot, não diário) — ISOLADO: best-effort, nunca
+  // derruba o sync. Token expirado ainda propaga.
+  let rankingRows: AdRankingRow[] = [];
+  try {
+    rankingRows = await graphGetAll<AdRankingRow>(
       `${GRAPH}/${acct}/insights?level=ad&fields=ad_id,quality_ranking,engagement_rate_ranking,conversion_rate_ranking` +
       `&time_range=${encodeURIComponent(timeRange)}&limit=500&${auth}`,
-    ),
-  ]);
+    );
+  } catch (e) {
+    if (e instanceof MetaTokenError) throw e;
+    console.warn("[meta-sync] ranking de relevância indisponível:", e instanceof Error ? e.message : e);
+  }
   const rankByAd = new Map(rankingRows.map((r) => [r.ad_id, r]));
 
   // 3) Persistência (upsert por ID oficial — imune a renomeação).

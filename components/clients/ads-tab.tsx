@@ -143,13 +143,21 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
     // Insights agregados (campanha/adset) + estrutura/insights por ad_id
     // (base da atribuição determinística e do CPL real do portal).
-    const [res] = await Promise.all([
+    const [res, adsRes] = await Promise.all([
       fetch(`/api/clients/${clientId}/meta/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: period }),
       fetch(`/api/clients/${clientId}/meta/sync-ads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: period }).catch(() => null),
     ]);
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "Erro ao sincronizar");
-    else { await load(); await loadAds(); }
+    else {
+      // A sincronização de anúncios (estrutura/campos novos) NÃO pode falhar em
+      // silêncio — era o que escondia campos não populados.
+      if (!adsRes || !adsRes.ok) {
+        const adsErr = adsRes ? (await adsRes.json().catch(() => null))?.error : null;
+        setError(adsErr ?? "Os insights atualizaram, mas a sincronização de anúncios falhou. Tente sincronizar de novo.");
+      }
+      await load(); await loadAds();
+    }
     setSyncing(false);
   }
 
