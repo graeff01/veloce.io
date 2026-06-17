@@ -444,8 +444,13 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
   // Renderiza UMA campanha. allAds=true mostra todos os anúncios (usado no menu de
   // pausados); senão mostra só os ativos + um expandir para os inativos da campanha.
   function renderCampaign(c: CampaignRow, allAds: boolean) {
-    const st = statusColor(c.status);
     const myAds = adsByCampaign.get(c.campaignId) ?? [];
+    // A Meta mantém a campanha "ACTIVE" mesmo com conjuntos pausados — então o
+    // selo é DERIVADO da entrega real: ativo só se há anúncio efetivamente ativo.
+    const derivedStatus = myAds.some((a) => isActiveStatus(a.status))
+      ? "ACTIVE"
+      : myAds.length > 0 && myAds.every((a) => a.status === "ARCHIVED") ? "ARCHIVED" : "PAUSED";
+    const st = statusColor(derivedStatus);
     const activeAds = myAds.filter((a) => isActiveStatus(a.status));
     const inactiveAds = myAds.filter((a) => !isActiveStatus(a.status));
     const visibleAds = allAds ? myAds : activeAds;
