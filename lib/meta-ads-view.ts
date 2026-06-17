@@ -32,7 +32,8 @@ export interface AdRow {
   dailyBudget: number | null;     // orçamento/dia do conjunto (ou campanha)
   learningStage: string | null;   // LEARNING | LEARNING_LIMITED | SUCCESS
   frequency: number | null;       // frequência média no período (saturação)
-  whatsappNumber: string | null;  // nº de destino CTWA
+  whatsappNumber: string | null;  // nº de destino CTWA (quando o criativo expõe)
+  destinationType: string | null; // destino do clique (WHATSAPP, INSTAGRAM_PROFILE, ...)
   qualityRanking: string | null;
   engagementRanking: string | null;
   conversionRanking: string | null;
@@ -107,7 +108,7 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
     }),
     prisma.metaAdSet.findMany({
       where: { connectionId: metaConn.id },
-      select: { adsetId: true, learningStage: true, dailyBudget: true, lifetimeBudget: true },
+      select: { adsetId: true, learningStage: true, dailyBudget: true, lifetimeBudget: true, destinationType: true },
     }),
     // TODOS os leads de anúncio do período (com ou sem ad_id)
     waConn
@@ -185,6 +186,7 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
       learningStage: adset?.learningStage ?? null,
       frequency: sp?.frequency ?? null,
       whatsappNumber: m?.whatsappNumber ?? null,
+      destinationType: adset?.destinationType ?? null,
       qualityRanking: m?.qualityRanking ?? null,
       engagementRanking: m?.engagementRanking ?? null,
       conversionRanking: m?.conversionRanking ?? null,

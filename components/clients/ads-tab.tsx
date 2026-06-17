@@ -51,7 +51,7 @@ interface AdRow {
   spend: number; impressions: number; clicks: number; ctr: number; cpc: number;
   leads: number; metaLeads: number; cpl: number | null;
   startedAt: string | null; dailyBudget: number | null; learningStage: string | null;
-  frequency: number | null; whatsappNumber: string | null;
+  frequency: number | null; whatsappNumber: string | null; destinationType: string | null;
   qualityRanking: string | null; engagementRanking: string | null; conversionRanking: string | null;
 }
 interface CampaignRow {
@@ -119,6 +119,13 @@ function belowRanking(a: AdRow): string[] {
   return out;
 }
 const LEARNING_LABEL: Record<string, string> = { LEARNING: "Aprendizado", LEARNING_LIMITED: "Aprend. limitado" };
+// Destino do clique leva ao WhatsApp? (sem info = não sinaliza)
+const isWhatsappDest = (d: string | null) => !d || d.includes("WHATSAPP");
+const DEST_LABEL: Record<string, string> = {
+  INSTAGRAM_PROFILE: "Perfil Instagram", MESSENGER: "Messenger", ON_AD: "no próprio anúncio",
+  WEBSITE: "site", PHONE_CALL: "ligação", APP: "app", UNDEFINED: "indefinido",
+};
+const destLabel = (d: string) => DEST_LABEL[d] ?? d.toLowerCase().replace(/_/g, " ");
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
@@ -492,7 +499,11 @@ function AdMetaChips({ a, connectedNumber }: { a: AdRow; connectedNumber: string
   if (a.learningStage && LEARNING_LABEL[a.learningStage]) chips.push(<span key="learn" style={warn}>{LEARNING_LABEL[a.learningStage]}</span>);
   const below = belowRanking(a);
   if (below.length) chips.push(<span key="rel" title={`Relevância abaixo da média (Meta): ${below.join(", ")}`} style={warn}>relevância ↓</span>);
-  if (a.whatsappNumber && connectedNumber && onlyDigits(a.whatsappNumber) !== connectedNumber) {
+  // Destino: o sinal confiável é o destination_type do conjunto. Se não leva ao
+  // WhatsApp, o lead nunca chega aqui. (nº divergente é checagem extra quando há.)
+  if (a.destinationType && !isWhatsappDest(a.destinationType)) {
+    chips.push(<span key="dest" title={`O clique vai para ${destLabel(a.destinationType)}, não para o WhatsApp conectado — leads não chegam aqui.`} style={danger}>não vai pro WhatsApp</span>);
+  } else if (a.whatsappNumber && connectedNumber && onlyDigits(a.whatsappNumber) !== connectedNumber) {
     chips.push(<span key="dest" title={`Destino ${a.whatsappNumber} ≠ WhatsApp conectado ${connectedNumber}`} style={danger}>destino ≠ WhatsApp</span>);
   }
   if (!chips.length) return null;
