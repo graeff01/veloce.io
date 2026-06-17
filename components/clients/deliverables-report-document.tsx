@@ -53,11 +53,22 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.3, marginBottom: 20 },
   sectionLead: { fontSize: 9.5, color: MUTED, lineHeight: 1.5, marginBottom: 16 },
 
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 4 },
-  kpiCell: { width: "31.5%", marginBottom: 12, paddingVertical: 15, paddingHorizontal: 14, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 8 },
-  kpiLabel: { fontSize: 8.5, color: MUTED, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
-  kpiValue: { fontSize: 22, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5 },
-  kpiValuePos: { fontSize: 22, fontFamily: "Helvetica-Bold", color: POS, letterSpacing: -0.5 },
+  // Hero — duas métricas principais em destaque
+  heroRow: { flexDirection: "row", marginTop: 4, marginBottom: 30 },
+  heroCell: { flex: 1 },
+  heroCellRight: { flex: 1, borderLeftWidth: 1, borderLeftColor: LINE, paddingLeft: 22 },
+  heroLabel: { fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 },
+  heroValue: { fontSize: 40, fontFamily: "Helvetica-Bold", color: POS, letterSpacing: -1 },
+  heroValueMuted: { fontSize: 40, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -1 },
+  heroCaption: { fontSize: 9, color: FAINT, marginTop: 6 },
+
+  // Distribuição por categoria (barras de proporção)
+  distLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 14 },
+  barRow: { flexDirection: "row", alignItems: "center", marginBottom: 11 },
+  barLabel: { fontSize: 9, color: INK2, width: 120, flexShrink: 0 },
+  barTrack: { flex: 1, height: 10, backgroundColor: "#EEF2F6", borderRadius: 3, overflow: "hidden" },
+  barFill: { height: 10, backgroundColor: INK, borderRadius: 3 },
+  barValue: { width: 60, textAlign: "right", fontSize: 8.5, color: MUTED, fontFamily: "Helvetica-Bold" },
 
   note: { fontSize: 8, color: FAINT, marginTop: 18, lineHeight: 1.5 },
 
@@ -104,11 +115,14 @@ function SectionHead({ kicker, title }: { kicker: string; title: string }) {
   );
 }
 
-function KpiCell({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+function Bar({ label, count, max, total }: { label: string; count: number; max: number; total: number }) {
+  const w = max > 0 ? Math.max(4, (count / max) * 100) : 0;
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
-    <View style={s.kpiCell}>
-      <Text style={s.kpiLabel}>{label}</Text>
-      <Text style={positive ? s.kpiValuePos : s.kpiValue}>{value}</Text>
+    <View style={s.barRow} wrap={false}>
+      <Text style={s.barLabel}>{label}</Text>
+      <View style={s.barTrack}><View style={[s.barFill, { width: `${w}%` }]} /></View>
+      <Text style={s.barValue}>{count} · {pct}%</Text>
     </View>
   );
 }
@@ -135,6 +149,7 @@ function CategoryGroup({ group }: { group: DeliverableGroup }) {
 
 function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) {
   const categorias = data.groups.length;
+  const maxCount = Math.max(1, ...data.groups.map((g) => g.count));
   return (
     <Document title={`Relatório de Entregas — ${data.clientName}`} author="Plataforma Veloce">
       {/* ── CAPA ── */}
@@ -155,17 +170,27 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
       <Page size="A4" style={s.page}>
         <RunningHead data={data} />
         <SectionHead kicker="Página 1" title="Visão geral" />
-        <View style={s.kpiGrid}>
-          <KpiCell label="Entregas no mês" value={String(data.total)} positive />
-          <KpiCell label="Categorias" value={String(categorias)} />
-          {data.groups.slice(0, 7).map((g) => (
-            <KpiCell key={g.type} label={g.type} value={String(g.count)} />
-          ))}
+        <View style={s.heroRow}>
+          <View style={s.heroCell}>
+            <Text style={s.heroLabel}>Entregas no mês</Text>
+            <Text style={s.heroValue}>{data.total}</Text>
+            <Text style={s.heroCaption}>concluídas em {data.periodLabel}</Text>
+          </View>
+          <View style={s.heroCellRight}>
+            <Text style={s.heroLabel}>Categorias</Text>
+            <Text style={s.heroValueMuted}>{categorias}</Text>
+            <Text style={s.heroCaption}>{categorias === 1 ? "tipo de entrega" : "tipos de entrega"}</Text>
+          </View>
         </View>
+
+        <Text style={s.distLabel}>Distribuição por categoria</Text>
+        {data.groups.length === 0
+          ? <Text style={{ fontSize: 9, color: FAINT }}>Nenhuma entrega registrada neste período.</Text>
+          : data.groups.map((g) => <Bar key={g.type} label={g.type} count={g.count} max={maxCount} total={data.total} />)}
+
         <Text style={s.note}>
           Este relatório reúne tudo o que foi efetivamente entregue ao cliente no período — posts, stories, reels,
           campanhas, criativos e demais materiais concluídos. Tarefas internas de organização não entram aqui.
-          {"  "}Foram {data.total} {data.total === 1 ? "entrega realizada" : "entregas realizadas"} em {categorias} {categorias === 1 ? "categoria" : "categorias"} neste mês.
         </Text>
         <Footer data={data} />
       </Page>
