@@ -1,5 +1,5 @@
 import React from "react";
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, StyleSheet, Image } from "@react-pdf/renderer";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 export interface DeliverableItem {
@@ -14,6 +14,7 @@ export interface DeliverableGroup {
 }
 export interface DeliverablesReportData {
   clientName: string;
+  clientLogo: string | null;
   responsavel: string | null;
   periodLabel: string;
   generatedAt: string;
@@ -40,6 +41,7 @@ const s = StyleSheet.create({
   runningMeta: { fontSize: 8, color: FAINT },
 
   cover: { flex: 1, justifyContent: "center", paddingHorizontal: 56 },
+  coverLogo: { height: 46, width: 150, objectFit: "contain", marginBottom: 26 },
   coverKicker: { fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: 2, marginBottom: 22 },
   coverClient: { fontSize: 34, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5, lineHeight: 1.1 },
   coverTitle: { fontSize: 13, color: INK2, marginTop: 26, fontFamily: "Helvetica-Bold" },
@@ -101,6 +103,7 @@ function Footer({ data }: { data: DeliverablesReportData }) {
   return (
     <View style={s.footer} fixed>
       <Text style={s.footerText}>Entregas do mês · Veloce.io</Text>
+      <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`} />
       <Text style={s.footerText}>Gerado em {data.generatedAt}</Text>
     </View>
   );
@@ -155,6 +158,7 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
       {/* ── CAPA ── */}
       <Page size="A4" style={s.page}>
         <View style={s.cover}>
+          {data.clientLogo ? <Image src={data.clientLogo} style={s.coverLogo} /> : null}
           <Text style={s.coverKicker}>Relatório de Entregas</Text>
           <Text style={s.coverClient}>{data.clientName}</Text>
           <Text style={s.coverTitle}>O que entregamos no mês</Text>

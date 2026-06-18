@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { buildAdsReport, type AdsReportData } from "@/components/clients/ads-report-document";
+import { pdfSafeLogo } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const end = new Date(year, month, 1);
 
   const [client, conn, view] = await Promise.all([
-    prisma.client.findUnique({ where: { id }, select: { name: true } }),
+    prisma.client.findUnique({ where: { id }, select: { name: true, logoUrl: true } }),
     prisma.metaConnection.findUnique({ where: { clientId: id }, select: { adAccountId: true, accountName: true } }),
     computeMetaAdsView(id, start, end),
   ]);
@@ -32,6 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const data: AdsReportData = {
     clientName: client.name,
+    clientLogo: pdfSafeLogo(client.logoUrl),
     accountName: conn?.accountName ?? conn?.adAccountId ?? null,
     periodLabel: `${MONTHS[month - 1]} de ${year}`,
     generatedAt: now.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),

@@ -43,6 +43,15 @@ export function endOfMonthUTC(year: number, month: number): Date {
   return new Date(Date.UTC(year, month, 0, 12, 0, 0));
 }
 
+/**
+ * Devolve a logo só se for embutível com segurança num PDF (react-pdf lê
+ * PNG/JPG). SVG/WEBP/URL inválida → null, evitando derrubar a geração do PDF.
+ */
+export function pdfSafeLogo(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return /^data:image\/(png|jpe?g);base64,/i.test(url) ? url : null;
+}
+
 export function isOverdue(dueDate: Date | string): boolean {
   const due = typeof dueDate === "string" ? new Date(dueDate) : dueDate;
   return due < new Date() && due.toDateString() !== new Date().toDateString();
