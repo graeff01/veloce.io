@@ -163,7 +163,7 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
           <View style={s.coverRule} />
           <Text style={s.coverFoot}>Resumo gerado pela Veloce.io</Text>
         </View>
-        <Text style={s.coverBrandBottom}>veloce</Text>
+        <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
 
       {/* ── P1 · VISÃO GERAL ── */}
