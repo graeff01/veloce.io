@@ -14,6 +14,7 @@ const POS = "#067647";        // verde discreto
 const NEG = "#B42318";        // vermelho discreto
 const BAR = "#0F172A";        // barras (monocromático)
 const BARBG = "#EEF2F6";
+const ACCENT = "#4F46E5";     // acento de marca (indigo Veloce.io) — usado com parcimônia
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
@@ -55,13 +56,17 @@ const s = StyleSheet.create({
 
   // Capa
   cover: { flex: 1, justifyContent: "center", paddingHorizontal: 56 },
-  coverKicker: { fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: 2, marginBottom: 22 },
+  coverKicker: { fontSize: 9, color: ACCENT, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 2, marginBottom: 22 },
   coverClient: { fontSize: 34, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5, lineHeight: 1.1 },
   coverTitle: { fontSize: 13, color: INK2, marginTop: 26, fontFamily: "Helvetica-Bold" },
-  coverPeriod: { fontSize: 13, color: MUTED, marginTop: 4 },
-  coverRule: { height: 1, backgroundColor: LINE, marginTop: 30, marginBottom: 18, width: 120 },
-  coverFoot: { fontSize: 9, color: FAINT },
+  coverRule: { height: 3, backgroundColor: ACCENT, marginTop: 26, marginBottom: 24, width: 44, borderRadius: 2 },
   coverBrandBottom: { position: "absolute", bottom: 54, left: 56, fontSize: 10, fontFamily: "Helvetica-Bold", color: INK },
+
+  // Bloco de metadados (ficha do documento)
+  metaBlock: { marginTop: 2 },
+  metaRow: { flexDirection: "row", marginBottom: 9 },
+  metaLabel: { width: 120, fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: 0.6, paddingTop: 1 },
+  metaValue: { fontSize: 11, color: INK, fontFamily: "Helvetica-Bold", flex: 1 },
 
   // Seções
   sectionKicker: { fontSize: 8, color: FAINT, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 },
@@ -117,6 +122,15 @@ const s = StyleSheet.create({
   footer: { position: "absolute", bottom: 30, left: 56, right: 56, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: LINE, paddingTop: 8 },
   footerText: { fontSize: 7.5, color: FAINT },
 });
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.metaRow}>
+      <Text style={s.metaLabel}>{label}</Text>
+      <Text style={s.metaValue}>{value}</Text>
+    </View>
+  );
+}
 
 function RunningHead({ data }: { data: ExecutiveReportData }) {
   return (
@@ -216,9 +230,13 @@ function ExecutiveReportDocument({ data }: { data: ExecutiveReportData }) {
           <Text style={s.coverKicker}>Relatório Executivo</Text>
           <Text style={s.coverClient}>{data.clientName}</Text>
           <Text style={s.coverTitle}>Relatório Executivo Mensal</Text>
-          <Text style={s.coverPeriod}>{data.periodLabel}</Text>
           <View style={s.coverRule} />
-          <Text style={s.coverFoot}>Resumo gerado pela Veloce.io</Text>
+          <View style={s.metaBlock}>
+            <MetaRow label="Preparado para" value={data.clientName} />
+            <MetaRow label="Por" value="Veloce.io" />
+            <MetaRow label="Período" value={data.periodLabel} />
+            <MetaRow label="Emitido em" value={data.generatedAt} />
+          </View>
         </View>
         <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
