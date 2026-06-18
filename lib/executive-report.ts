@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { computeOverview } from "@/lib/wa-metrics";
-import { pdfSafeLogo } from "@/lib/utils";
 
 // ── Relatório Executivo Mensal ───────────────────────────────────────────────
 // Documento de negócio e atendimento (NÃO de mídia). Todos os números vêm do
@@ -15,7 +14,6 @@ export interface ExecKpi {
 
 export interface ExecutiveReportData {
   clientName: string;
-  clientLogo: string | null;
   periodLabel: string;
   prevPeriodLabel: string;
   generatedAt: string;
@@ -82,9 +80,8 @@ export async function computeExecutiveReport(
   year: number,
   month: number
 ): Promise<ExecutiveReportData | null> {
-  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   if (!client) return null;
-  const clientLogo = pdfSafeLogo(client.logoUrl);
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
 
@@ -96,7 +93,7 @@ export async function computeExecutiveReport(
 
   // Sem WhatsApp conectado → documento "sem dados" honesto.
   if (!conn) {
-    return emptyReport(client.name, clientLogo, periodLabel, prevPeriodLabel, generatedAt);
+    return emptyReport(client.name, periodLabel, prevPeriodLabel, generatedAt);
   }
 
   const start = new Date(year, month - 1, 1);
@@ -203,7 +200,6 @@ export async function computeExecutiveReport(
 
   return {
     clientName: client.name,
-    clientLogo,
     periodLabel,
     prevPeriodLabel,
     generatedAt,
@@ -225,10 +221,10 @@ export async function computeExecutiveReport(
   };
 }
 
-function emptyReport(clientName: string, clientLogo: string | null, periodLabel: string, prevPeriodLabel: string, generatedAt: string): ExecutiveReportData {
+function emptyReport(clientName: string, periodLabel: string, prevPeriodLabel: string, generatedAt: string): ExecutiveReportData {
   const z = kpi(null, null);
   return {
-    clientName, clientLogo, periodLabel, prevPeriodLabel, generatedAt, hasData: false,
+    clientName, periodLabel, prevPeriodLabel, generatedAt, hasData: false,
     summary: { leads: 0, avgResponseMin: null, attendanceRatePct: null, leadsGrowthPct: null, highlights: [], attentionPoints: [] },
     kpis: { leads: z, negociacoes: z, conversoes: z, avgResponseSec: z, attendanceRate: z, firstContactSec: z },
     attendance: { avgResponseSec: null, minResponseSec: null, maxResponseSec: null, attendanceRatePct: null, unanswered: 0, total: 0, buckets: { upTo5min: 0, upTo30min: 0, upTo1h: 0, over1h: 0, unanswered: 0 } },

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { buildDeliverablesReport, type DeliverablesReportData, type DeliverableGroup } from "@/components/clients/deliverables-report-document";
-import { pdfSafeLogo } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -29,7 +28,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const year = Number(url.searchParams.get("year")) || now.getFullYear();
   const month = Number(url.searchParams.get("month")) || now.getMonth() + 1;
 
-  const client = await prisma.client.findUnique({ where: { id }, select: { name: true, logoUrl: true } });
+  const client = await prisma.client.findUnique({ where: { id }, select: { name: true } });
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
 
   // Mesma janela do quadro: tarefas do plano do mês + avulsas com prazo no mês.
@@ -73,7 +72,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const data: DeliverablesReportData = {
     clientName: client.name,
-    clientLogo: pdfSafeLogo(client.logoUrl),
     responsavel: "Carla & Andressa",
     periodLabel: `${MONTHS[month - 1]} de ${year}`,
     generatedAt: now.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
