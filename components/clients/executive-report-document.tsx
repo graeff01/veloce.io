@@ -130,7 +130,7 @@ function RunningHead({ data }: { data: ExecutiveReportData }) {
 function Footer({ data }: { data: ExecutiveReportData }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>Plataforma Veloce</Text>
+      <Text style={s.footerText}>Veloce.io</Text>
       <Text style={s.footerText}>Gerado em {data.generatedAt}</Text>
     </View>
   );
@@ -208,7 +208,7 @@ function ExecutiveReportDocument({ data }: { data: ExecutiveReportData }) {
   const maxBand = Math.max(1, ...hourBands.map((b) => b.count));
 
   return (
-    <Document title={`Relatório Executivo — ${data.clientName}`} author="Plataforma Veloce">
+    <Document title={`Relatório Executivo — ${data.clientName}`} author="Veloce.io">
       {/* ── CAPA ── */}
       <Page size="A4" style={s.page}>
         <View style={s.cover}>
@@ -217,7 +217,7 @@ function ExecutiveReportDocument({ data }: { data: ExecutiveReportData }) {
           <Text style={s.coverTitle}>Relatório Executivo Mensal</Text>
           <Text style={s.coverPeriod}>{data.periodLabel}</Text>
           <View style={s.coverRule} />
-          <Text style={s.coverFoot}>Resumo gerado pela Plataforma Veloce</Text>
+          <Text style={s.coverFoot}>Resumo gerado pela Veloce.io</Text>
         </View>
         <Text style={s.coverBrandBottom}>veloce</Text>
       </Page>

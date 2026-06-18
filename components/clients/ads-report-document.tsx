@@ -142,7 +142,7 @@ function RunningHead({ data }: { data: AdsReportData }) {
 function Footer({ data }: { data: AdsReportData }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>Dados: Meta Ads + WhatsApp · Plataforma Veloce</Text>
+      <Text style={s.footerText}>Dados: Meta Ads + WhatsApp · Veloce.io</Text>
       <Text style={s.footerText}>Gerado em {data.generatedAt}</Text>
     </View>
   );
@@ -240,7 +240,7 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
   const orphanAds = data.ads.filter((a) => !campNames.has(a.sub ?? ""));
 
   return (
-    <Document title={`Relatório de Anúncios — ${data.clientName}`} author="Plataforma Veloce">
+    <Document title={`Relatório de Anúncios — ${data.clientName}`} author="Veloce.io">
       {/* ── CAPA ── */}
       <Page size="A4" style={s.page}>
         <View style={s.cover}>
@@ -250,7 +250,7 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
           <Text style={s.coverPeriod}>{data.periodLabel}</Text>
           {data.accountName ? <Text style={s.coverAccount}>Conta: {data.accountName}</Text> : null}
           <View style={s.coverRule} />
-          <Text style={s.coverFoot}>Resumo gerado pela Plataforma Veloce</Text>
+          <Text style={s.coverFoot}>Resumo gerado pela Veloce.io</Text>
         </View>
         <Text style={s.coverBrandBottom}>veloce</Text>
       </Page>

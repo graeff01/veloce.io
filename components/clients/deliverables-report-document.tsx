@@ -100,7 +100,7 @@ function RunningHead({ data }: { data: DeliverablesReportData }) {
 function Footer({ data }: { data: DeliverablesReportData }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>Entregas do mês · Plataforma Veloce</Text>
+      <Text style={s.footerText}>Entregas do mês · Veloce.io</Text>
       <Text style={s.footerText}>Gerado em {data.generatedAt}</Text>
     </View>
   );
@@ -151,7 +151,7 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
   const categorias = data.groups.length;
   const maxCount = Math.max(1, ...data.groups.map((g) => g.count));
   return (
-    <Document title={`Relatório de Entregas — ${data.clientName}`} author="Plataforma Veloce">
+    <Document title={`Relatório de Entregas — ${data.clientName}`} author="Veloce.io">
       {/* ── CAPA ── */}
       <Page size="A4" style={s.page}>
         <View style={s.cover}>
