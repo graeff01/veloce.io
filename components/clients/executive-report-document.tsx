@@ -1,6 +1,7 @@
 import React from "react";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import type { ExecutiveReportData, ExecKpi } from "@/lib/executive-report";
+import { VELOCE_CONTACT } from "@/lib/brand";
 
 // ── Paleta corporativa (clara, monocromática, sem roxo) ──────────────────────
 const INK = "#0F172A";       // quase-preto
@@ -390,6 +391,22 @@ function ExecutiveReportDocument({ data }: { data: ExecutiveReportData }) {
           </View>
         ) : <Text style={s.emptyBig}>Dado indisponível para gerar conclusões no período.</Text>}
         <Footer data={data} />
+      </Page>
+
+      {/* ── FECHAMENTO ── */}
+      <Page size="A4" style={s.page}>
+        <View style={s.cover}>
+          <Text style={s.coverKicker}>Fale com a gente</Text>
+          <Text style={s.coverClient}>Obrigado.</Text>
+          <Text style={s.coverTitle}>Seguimos à disposição para evoluir a operação no próximo ciclo.</Text>
+          <View style={s.coverRule} />
+          <View style={s.metaBlock}>
+            <MetaRow label="WhatsApp" value={VELOCE_CONTACT.whatsapp} />
+            <MetaRow label="E-mail" value={VELOCE_CONTACT.email} />
+            <MetaRow label="Instagram" value={VELOCE_CONTACT.instagram} />
+          </View>
+        </View>
+        <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
     </Document>
   );

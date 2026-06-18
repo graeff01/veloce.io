@@ -1,5 +1,6 @@
 import React from "react";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { VELOCE_CONTACT } from "@/lib/brand";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 export interface AdsReportRow {
@@ -311,6 +312,22 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
             ))}
         {orphanAds.length > 0 && <CampaignGroup camp={aggregate(orphanAds)} ads={orphanAds} />}
         <Footer data={data} />
+      </Page>
+
+      {/* ── FECHAMENTO ── */}
+      <Page size="A4" style={s.page}>
+        <View style={s.cover}>
+          <Text style={s.coverKicker}>Fale com a gente</Text>
+          <Text style={s.coverClient}>Obrigado.</Text>
+          <Text style={s.coverTitle}>Seguimos otimizando suas campanhas. Qualquer dúvida, é só chamar.</Text>
+          <View style={s.coverRule} />
+          <View style={s.metaBlock}>
+            <MetaRow label="WhatsApp" value={VELOCE_CONTACT.whatsapp} />
+            <MetaRow label="E-mail" value={VELOCE_CONTACT.email} />
+            <MetaRow label="Instagram" value={VELOCE_CONTACT.instagram} />
+          </View>
+        </View>
+        <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
     </Document>
   );
