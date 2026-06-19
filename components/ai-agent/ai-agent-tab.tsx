@@ -11,10 +11,12 @@ import {
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-const card: React.CSSProperties = { background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 };
-const label: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.4, display: "block", marginBottom: 6 };
-const input: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--text-primary)", fontSize: 13, fontFamily: "inherit" };
-const btn = (primary?: boolean): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: primary ? "var(--accent)" : "var(--bg-surface)", color: primary ? "#fff" : "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer" });
+// Primitivas alinhadas 1:1 aos tokens do design system (components/ui/*) — mesma
+// aparência de Card/Input/Button do resto do app (radius/sombra/espaçamento/tipografia).
+const card: React.CSSProperties = { background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-card)", padding: "var(--space-16)", boxShadow: "var(--shadow-card)" };
+const label: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", display: "block", marginBottom: 6, lineHeight: "16px" };
+const input: React.CSSProperties = { width: "100%", padding: "9px var(--space-12)", borderRadius: "var(--radius-input)", border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 13, fontFamily: "inherit", minHeight: 40 };
+const btn = (primary?: boolean): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px 16px", borderRadius: "var(--radius-button)", border: `1px solid ${primary ? "var(--accent)" : "var(--border)"}`, background: primary ? "var(--accent)" : "var(--bg-surface)", color: primary ? "#fff" : "var(--text-primary)", fontSize: 13, fontWeight: 500, cursor: "pointer", boxShadow: primary ? "var(--shadow-surface-subtle)" : undefined });
 
 interface Window { weekday: number; start: string; end: string }
 
