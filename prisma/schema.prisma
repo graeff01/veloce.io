@@ -802,6 +802,7 @@ model AiAgentConfig {
   blockedTopics     Json    @default("[]") // override por tenant: [{pattern,reason}] (vazio = padrão do vertical)
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
   model           String   @default("gpt-4o-mini")
+  assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
   persona         String?  // tom de voz / personalidade
   goals           String?  // objetivos do atendimento
   rules           String?  // regras específicas do cliente (entram no prompt)
