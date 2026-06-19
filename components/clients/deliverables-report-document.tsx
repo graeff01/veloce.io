@@ -1,6 +1,7 @@
 import React from "react";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { VELOCE_CONTACT } from "@/lib/brand";
+import "@/lib/pdf-fonts";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 export interface DeliverableItem {
@@ -43,8 +44,8 @@ const s = StyleSheet.create({
 
   cover: { flex: 1, justifyContent: "center", paddingHorizontal: 56 },
   coverKicker: { fontSize: 9, color: ACCENT, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 2, marginBottom: 22 },
-  coverClient: { fontSize: 34, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5, lineHeight: 1.1 },
-  coverTitle: { fontSize: 13, color: INK2, marginTop: 26, fontFamily: "Helvetica-Bold" },
+  coverClient: { fontSize: 36, fontFamily: "Inter Tight", fontWeight: 800, color: INK, letterSpacing: -0.6, lineHeight: 1.05 },
+  coverTitle: { fontSize: 13, color: INK2, marginTop: 26, fontFamily: "Helvetica-Bold", lineHeight: 1.45 },
   coverRule: { height: 3, backgroundColor: ACCENT, marginTop: 26, marginBottom: 24, width: 44, borderRadius: 2 },
   coverBrandBottom: { position: "absolute", bottom: 54, left: 56, fontSize: 10, fontFamily: "Helvetica-Bold", color: INK },
 
@@ -178,7 +179,6 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
             <MetaRow label="Preparado para" value={data.clientName} />
             <MetaRow label="Por" value="Veloce.io" />
             <MetaRow label="Período" value={data.periodLabel} />
-            <MetaRow label="Emitido em" value={data.generatedAt} />
             {data.responsavel ? <MetaRow label="Responsável" value={data.responsavel} /> : null}
           </View>
         </View>
@@ -232,7 +232,7 @@ function DeliverablesReportDocument({ data }: { data: DeliverablesReportData }) 
         <View style={s.cover}>
           <Text style={s.coverKicker}>Fale com a gente</Text>
           <Text style={s.coverClient}>Obrigado.</Text>
-          <Text style={s.coverTitle}>Obrigado pela parceria — seguimos com tudo para o próximo mês.</Text>
+          <Text style={s.coverTitle}>{"Obrigado pela parceria.\nseguimos com tudo para o próximo mês..."}</Text>
           <View style={s.coverRule} />
           <View style={s.metaBlock}>
             <MetaRow label="WhatsApp" value={VELOCE_CONTACT.whatsapp} />
