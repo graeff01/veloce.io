@@ -24,16 +24,28 @@ interface Task {
   checklists: { id: string; text: string; done: boolean; order: number }[];
   planMonth: number | null;
   planYear: number | null;
+  fixedDemandId: string | null;
   order: number;
 }
 
 // ── Column config ──────────────────────────────────────────────────────────────
+// "FIXED" é uma coluna VIRTUAL (não é um status): mostra as tarefas das demandas
+// fixas ainda em aberto (fixedDemandId + status TODO), separadas das avulsas.
+// "Em execução" também acolhe REVIEW legado (a coluna Revisão foi removida).
+type ColKey = "FIXED" | "TODO" | "IN_PROGRESS" | "DONE";
 
-const COLUMNS: { key: Status; label: string; color: string; soft: string; accent: string }[] = [
-  { key: "TODO",        label: "A fazer",     color: "#64748B", soft: "rgba(100,116,139,0.08)", accent: "#94A3B8" },
-  { key: "IN_PROGRESS", label: "Em execução", color: "#2563EB", soft: "rgba(37,99,235,0.08)",   accent: "#60A5FA" },
-  { key: "REVIEW",      label: "Revisão",     color: "#D97706", soft: "rgba(217,119,6,0.08)",   accent: "#FCD34D" },
-  { key: "DONE",        label: "Concluído",   color: "#16A34A", soft: "rgba(22,163,74,0.08)",   accent: "#4ADE80" },
+const COLUMNS: {
+  key: ColKey; label: string; color: string; soft: string; accent: string;
+  dropStatus: Status; match: (t: Task) => boolean;
+}[] = [
+  { key: "FIXED",       label: "Entregáveis fixos", color: "#4F46E5", soft: "rgba(79,70,229,0.08)",  accent: "#818CF8",
+    dropStatus: "TODO",        match: (t) => t.status === "TODO" && t.fixedDemandId != null },
+  { key: "TODO",        label: "A fazer",     color: "#64748B", soft: "rgba(100,116,139,0.08)", accent: "#94A3B8",
+    dropStatus: "TODO",        match: (t) => t.status === "TODO" && t.fixedDemandId == null },
+  { key: "IN_PROGRESS", label: "Em execução", color: "#2563EB", soft: "rgba(37,99,235,0.08)",   accent: "#60A5FA",
+    dropStatus: "IN_PROGRESS", match: (t) => t.status === "IN_PROGRESS" || t.status === "REVIEW" },
+  { key: "DONE",        label: "Concluído",   color: "#16A34A", soft: "rgba(22,163,74,0.08)",   accent: "#4ADE80",
+    dropStatus: "DONE",        match: (t) => t.status === "DONE" },
 ];
 
 const MONTHS = [
@@ -129,10 +141,10 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
   // Drag state
   const dragTaskId   = useRef<string | null>(null);
-  const dragOverCol  = useRef<Status | null>(null);
+  const dragOverCol  = useRef<ColKey | null>(null);
   const dragOverIdx  = useRef<number | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [overCol, setOverCol]   = useState<Status | null>(null);
+  const [overCol, setOverCol]   = useState<ColKey | null>(null);
   const [overIdx, setOverIdx]   = useState<number | null>(null);
 
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
@@ -244,7 +256,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
     setOverIdx(null);
   }
 
-  function handleDragOver(e: React.DragEvent, col: Status, idx: number) {
+  function handleDragOver(e: React.DragEvent, col: ColKey, idx: number) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     dragOverCol.current = col;
@@ -253,7 +265,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
     setOverIdx(idx);
   }
 
-  function handleDrop(e: React.DragEvent, targetStatus: Status) {
+  function handleDrop(e: React.DragEvent, targetKey: ColKey) {
     e.preventDefault();
     const id = dragTaskId.current;
     if (!id) return;
@@ -261,12 +273,19 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
     const task = tasks.find(t => t.id === id);
     if (!task) return;
 
+    const col = COLUMNS.find(c => c.key === targetKey);
+    if (!col) return;
+    const targetStatus = col.dropStatus;
+    const updatedDragged = { ...task, status: targetStatus };
+
     const targetIdx = dragOverIdx.current ?? 0;
     const colTasks = tasks
-      .filter(t => t.status === targetStatus && t.id !== id)
+      .filter(t => t.id !== id && col.match(t))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-    colTasks.splice(targetIdx, 0, { ...task, status: targetStatus });
+    // Só insere o card aqui se ele de fato pertence à coluna após a mudança de
+    // status (evita "prender" tarefa avulsa na coluna de Entregáveis fixos).
+    if (col.match(updatedDragged)) colTasks.splice(targetIdx, 0, updatedDragged);
 
     const newOrders = colTasks.map((t, i) => ({ id: t.id, order: i }));
     const orderedIds = colTasks.map(t => t.id);
@@ -300,9 +319,9 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const tasksByCol = (col: Status) =>
+  const tasksByCol = (col: typeof COLUMNS[number]) =>
     tasks
-      .filter(t => t.status === col)
+      .filter(col.match)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   const total = tasks.length;
@@ -629,7 +648,7 @@ export function KanbanBoard({ clientId, clientName }: { clientId: string; client
           minWidth: 0,
         }}>
           {COLUMNS.map(col => {
-            const colTasks = tasksByCol(col.key);
+            const colTasks = tasksByCol(col);
             const isDraggingOver = overCol === col.key;
 
             return (
@@ -675,8 +694,8 @@ function Column({
   isDraggingOver: boolean;
   overIdx: number | null;
   draggingId: string | null;
-  onDragOver: (e: React.DragEvent, col: Status, idx: number) => void;
-  onDrop: (e: React.DragEvent, col: Status) => void;
+  onDragOver: (e: React.DragEvent, col: ColKey, idx: number) => void;
+  onDrop: (e: React.DragEvent, col: ColKey) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
   onDelete: (id: string) => void;
