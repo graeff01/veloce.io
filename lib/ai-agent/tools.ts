@@ -3,6 +3,7 @@ import type { ToolDef } from "@/lib/openai";
 import { scoreLead, funnelStageFor, shouldAdvanceStage } from "./scoring";
 import { createEscalationTask } from "./escalation";
 import { sendWhatsAppImage } from "@/lib/whatsapp-send";
+import { searchCatalog } from "./catalog-search";
 
 export interface ToolCtx {
   clientId: string;
@@ -69,10 +70,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
   switch (name) {
     case "buscar_estoque": {
       const termo = String(args.termo ?? "").trim();
-      const items = await prisma.catalogItem.findMany({
-        where: { clientId: ctx.clientId, available: true, title: { contains: termo, mode: "insensitive" } },
-        take: 6, orderBy: { price: "asc" },
-      });
+      const items = await searchCatalog(ctx.clientId, termo);
       if (items.length === 0) {
         const total = await prisma.catalogItem.count({ where: { clientId: ctx.clientId, available: true } });
         return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item encontrado para "${termo}".`, decision: "respondeu_duvida" };

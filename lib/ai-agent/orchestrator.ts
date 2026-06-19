@@ -84,6 +84,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 6. Use escalar_humano quando o lead INSISTIR num número/condição/aprovação, pedir algo fora do seu alcance, ou quando não houver fonte para responder.`,
     `PERGUNTAS MAIS FREQUENTES (esteja pronto, por ordem de frequência real):
 - FICHA TÉCNICA (ano, km, itens, câmbio) é a dúvida nº 1 — responda pelo estoque (buscar_estoque); se faltar o dado, diga que confirma com o vendedor.
+- Se você JÁ buscou um veículo, USE os dados que voltaram (ano, km, cor, itens) para responder os follow-ups ("qual o ano dele?", "e a cor?") — não busque de novo nem diga que "não encontrou" algo que já está no resultado.
 - PREÇO — só pelo estoque, nunca de cabeça.
 - FINANCIAMENTO e TROCA — colete e adiante (item 3 e 4), não apenas escape.
 - LOCALIZAÇÃO, HORÁRIO e DOCUMENTAÇÃO (transferência, quitação, IPVA) — responda pelo CONHECIMENTO; se não houver fonte, encaminhe ao vendedor.
