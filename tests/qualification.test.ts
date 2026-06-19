@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slotState, scoreLead, urgencyScore, type ProfileLike } from "../lib/ai-agent/scoring";
+import { slotState, scoreLead, urgencyScore, funnelStageFor, shouldAdvanceStage, type ProfileLike } from "../lib/ai-agent/scoring";
 
 test("slotState: perfil vazio = tudo faltando", () => {
   const s = slotState({});
@@ -53,4 +53,18 @@ test("orçamento atualizado não duplica — score reflete o estado final", () =
 test("Cenário 4 — evasivo permanece COLD (sem sinais fortes)", () => {
   const r = scoreLead({ productInterest: "Taos", urgency: "depois vejo" });
   assert.equal(r.temperature, "cold");
+});
+
+test("auto-funil mapeia qualificação para estágio", () => {
+  assert.equal(funnelStageFor({ productInterest: "Taos" }), "respondido");
+  assert.equal(funnelStageFor({ productInterest: "Taos", budget: "120k", wantsFinancing: true, hasTradeIn: true }), "qualificado");
+  assert.equal(funnelStageFor({ productInterest: "Taos", readyToBuy: true }), "negociacao");
+});
+
+test("auto-funil só AVANÇA e nunca toca estágio terminal/manual", () => {
+  assert.equal(shouldAdvanceStage("recebido", "qualificado"), true);
+  assert.equal(shouldAdvanceStage("negociacao", "respondido"), false); // não regride
+  assert.equal(shouldAdvanceStage("convertido", "negociacao"), false); // terminal
+  assert.equal(shouldAdvanceStage("perdido", "qualificado"), false);   // terminal
+  assert.equal(shouldAdvanceStage(null, "respondido"), true);
 });

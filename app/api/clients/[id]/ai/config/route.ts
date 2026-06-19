@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
+import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
 
 const windowSchema = z.object({ weekday: z.number().int().min(0).max(6), start: z.string(), end: z.string() });
@@ -40,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:update");
+  const { error, session } = await requireAuth("clients:update");
   if (error) return error;
 
   const parsed = putSchema.safeParse(await req.json());
@@ -52,5 +53,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     create: { clientId: id, ...d, businessHours: d.businessHours ?? [] },
     update: d,
   });
+  // Auditoria de mudanças sensíveis (kill-switch, status, escopo, teto, canário).
+  if (d.paused !== undefined || d.status !== undefined || d.scopeMode !== undefined || d.dailyUsdCap !== undefined || d.testMode !== undefined) {
+    await recordAudit({
+      clientId: id, userId: session?.user?.id ?? null, action: "ai.config",
+      meta: { paused: d.paused, status: d.status, scopeMode: d.scopeMode, dailyUsdCap: d.dailyUsdCap, testMode: d.testMode },
+    });
+  }
   return NextResponse.json(cfg);
 }

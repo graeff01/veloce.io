@@ -232,6 +232,15 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
       body: JSON.stringify({ aiSilenced: next }),
     });
   }
+  // Gera a ficha do lead (handoff) e copia pro clipboard.
+  async function genFicha() {
+    if (!selected) return;
+    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}/ficha`);
+    const d = await r.json().catch(() => ({}));
+    if (!d.ficha) { alert("Não foi possível gerar a ficha."); return; }
+    try { await navigator.clipboard.writeText(d.ficha); alert("✅ Ficha copiada! Cole no grupo ou mande direto pro vendedor."); }
+    catch { window.prompt("Copie a ficha:", d.ficha); }
+  }
   // LGPD — apaga o que a IA guardou deste contato (irreversível).
   async function eraseAi() {
     if (!selected) return;
@@ -402,6 +411,10 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <button onClick={genFicha} title="Gerar ficha do lead e copiar (handoff pro vendedor)"
+                    style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", cursor: "pointer", padding: "0 10px", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "#fff" }}>
+                    <FileText size={14} /> Ficha
+                  </button>
                   {detail?.contact.aiOptedOut ? (
                     <span title="O lead pediu para não receber mensagens automáticas (opt-out)" style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-muted)", padding: "0 10px", fontSize: 12 }}>
                       <BotOff size={14} /> Opt-out

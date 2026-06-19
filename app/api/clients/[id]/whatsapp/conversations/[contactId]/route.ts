@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { logWaEvent } from "@/lib/wa-events";
 import { eraseContactAiData } from "@/lib/ai-agent/retention";
+import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
 
 const FUNNEL_STAGES = ["recebido", "respondido", "qualificado", "negociacao", "perdido", "convertido"] as const;
@@ -100,6 +101,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (d.eraseAiData === true) {
     const res = await eraseContactAiData(contact.id);
     await logWaEvent(conn.id, "ai.erased", contact.id, { ...res, by: session?.user?.id ?? null });
+    await recordAudit({ clientId: id, userId: session?.user?.id ?? null, action: "data.erase", target: contact.id, meta: res });
     return NextResponse.json({ ok: true, erased: res });
   }
 

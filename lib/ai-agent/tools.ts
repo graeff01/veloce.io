@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import type { ToolDef } from "@/lib/openai";
-import { scoreLead } from "./scoring";
+import { scoreLead, funnelStageFor, shouldAdvanceStage } from "./scoring";
 import { createEscalationTask } from "./escalation";
+import { sendWhatsAppImage } from "@/lib/whatsapp-send";
 
 export interface ToolCtx {
   clientId: string;
@@ -39,6 +40,14 @@ export const TOOL_DEFS: ToolDef[] = [
         quer_visitar: { type: "boolean", description: "demonstrou intenção de ir à loja / ver de perto / test drive" },
         pronto_para_comprar: { type: "boolean", description: "sinal forte: quer fechar, pediu proposta, decidido" },
       } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_foto",
+      description: "Envia ao lead a FOTO do veículo de interesse. Use quando o lead pedir foto/imagem ou para mostrar o carro. Só envia se houver foto cadastrada.",
+      parameters: { type: "object", properties: { termo: { type: "string", description: "modelo do veículo, se diferente do de interesse do lead" } } },
     },
   },
   {
@@ -98,6 +107,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const { score, temperature } = scoreLead(prof);
       await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { score, temperature, qualified: temperature !== "cold" } });
 
+      // Classificação automática no funil (avanço-only; nunca regride nem toca estágio
+      // terminal/manual do operador).
+      const convo = await prisma.waConversation.findUnique({ where: { contactId: ctx.contactId }, select: { funnelStage: true } });
+      const nextStage = funnelStageFor(prof);
+      if (shouldAdvanceStage(convo?.funnelStage, nextStage)) {
+        await prisma.waConversation.updateMany({ where: { contactId: ctx.contactId }, data: { funnelStage: nextStage } }).catch(() => {});
+      }
+
       // CRM/comercial: ao esquentar para HOT, avisa o time (idempotente, 1x/dia).
       if (temperature === "hot" && prevTemp !== "hot") {
         await createEscalationTask({
@@ -107,6 +124,30 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         }).catch(() => {});
       }
       return { result: `Perfil atualizado (score ${score}, ${temperature}).` };
+    }
+
+    case "enviar_foto": {
+      let term = String(args.termo ?? "").trim();
+      if (!term) {
+        const lead = await prisma.waLead.findUnique({ where: { contactId: ctx.contactId }, select: { adModel: true, adTitle: true } });
+        term = (lead?.adModel || lead?.adTitle || "").trim();
+      }
+      const item = await prisma.catalogItem.findFirst({
+        where: { clientId: ctx.clientId, available: true, imageUrl: { not: null }, ...(term ? { title: { contains: term.split(" ").slice(0, 2).join(" "), mode: "insensitive" } } : {}) },
+        orderBy: { price: "asc" },
+      });
+      if (!item?.imageUrl) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
+      if (ctx.mode === "test") return { result: `(teste) Enviaria a foto de ${item.title} (não enviado).` };
+
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível para enviar a foto." };
+      const sent = await sendWhatsAppImage(conn, ctx.contactWaId, item.imageUrl, item.title);
+      if (!sent.ok) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-img-${Date.now()}`,
+        direction: "out", type: "image", text: `[foto] ${item.title}`, aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: `Foto de ${item.title} enviada ao lead. Comente brevemente (ex: "te mandei uma foto dele 📸") e siga a conversa.` };
     }
 
     case "escalar_humano": {

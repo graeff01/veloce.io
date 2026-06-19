@@ -62,6 +62,28 @@ export function scoreLead(p: ProfileLike): LeadScore {
   return { score, temperature, breakdown: { intent, urgency, engagement, budget } };
 }
 
+// Classificação automática no funil a partir dos sinais do lead. Mapeia para os
+// estágios da WaConversation. NÃO retorna estágios terminais (perdido/convertido) nem
+// "recebido" — esses são do operador/pré-resposta. Avanço determinístico e explicável.
+export type AutoStage = "respondido" | "qualificado" | "negociacao";
+
+export function funnelStageFor(p: ProfileLike): AutoStage {
+  const { score, temperature } = scoreLead(p);
+  if (p.readyToBuy || score >= 70 || temperature === "hot") return "negociacao";
+  const qualified = temperature !== "cold" || slotState(p).filled.length >= 3;
+  if (qualified) return "qualificado";
+  return "respondido"; // a IA respondeu, mas ainda não qualificou
+}
+
+// Ordem do funil (p/ avançar sem regredir e sem tocar estágios terminais/manuais).
+export const FUNNEL_ORDER = ["recebido", "respondido", "qualificado", "negociacao", "perdido", "convertido"] as const;
+export function shouldAdvanceStage(current: string | null | undefined, next: AutoStage): boolean {
+  if (current === "perdido" || current === "convertido") return false; // terminal = humano decide
+  const ci = current ? FUNNEL_ORDER.indexOf(current as (typeof FUNNEL_ORDER)[number]) : -1;
+  const ni = FUNNEL_ORDER.indexOf(next);
+  return ni > ci; // só avança
+}
+
 // Rótulo amigável dos slots faltantes para guiar a condução natural da IA.
 export const SLOT_LABEL: Record<SlotKey, string> = {
   interesse: "qual veículo/produto procura",
