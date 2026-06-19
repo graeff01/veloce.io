@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { resolveBlockRules, checkReply } from "../lib/ai-agent/guardrail";
 import { isOptOut } from "../lib/ai-agent/optout";
 import { looksLikeTrafficLead, detectAdModel } from "../lib/wa-ad-detect";
+import { catalogTokens } from "../lib/ai-agent/catalog-search";
 
 // ── Guardrail: a última linha de defesa contra a IA prometer o que não pode ──
 
@@ -95,6 +96,15 @@ test("escopo ads_only: detecta lead de tráfego de marketplace/anúncio (não s�
   assert.equal(detectAdModel("Olá, vim pelo anúncio do Taos Highline"), "Taos Highline");
   // Conversa orgânica comum NÃO é marcada como tráfego.
   assert.equal(looksLikeTrafficLead("bom dia, vocês têm carro popular?"), false);
+});
+
+test("busca de catálogo: tokeniza removendo ruído/stopwords", () => {
+  assert.deepEqual(catalogTokens("taos launching edition"), ["taos", "launching", "edition"]);
+  // "qual"/"ano"/"do" são ruído → ficam só os tokens do veículo.
+  assert.deepEqual(catalogTokens("qual o ano do Taos Launching"), ["taos", "launching"]);
+  // letras isoladas (R) caem fora.
+  assert.deepEqual(catalogTokens("Tiguan R-Line"), ["tiguan", "line"]);
+  assert.deepEqual(catalogTokens(""), []);
 });
 
 test("opt-out NÃO dispara em falsos positivos", () => {
