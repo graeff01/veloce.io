@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveBlockRules, checkReply } from "../lib/ai-agent/guardrail";
 import { isOptOut } from "../lib/ai-agent/optout";
+import { looksLikeTrafficLead, detectAdModel } from "../lib/wa-ad-detect";
 
 // ── Guardrail: a última linha de defesa contra a IA prometer o que não pode ──
 
@@ -83,6 +84,17 @@ test("opt-out detecta pedidos inequívocos de parada", () => {
   ]) {
     assert.equal(isOptOut(frase), true, `deveria ser opt-out: ${frase}`);
   }
+});
+
+test("escopo ads_only: detecta lead de tráfego de marketplace/anúncio (não só modelo)", () => {
+  // Casos reais da Boqueirão que o modo ads_only PRECISA capturar.
+  assert.equal(looksLikeTrafficLead("*AUTOCARRO*: Olá, tenho interesse neste anúncio. Aguardo contato. - https://m.autocarro.com.br/boque"), true);
+  assert.equal(looksLikeTrafficLead("Olá, vi o anúncio do Taos"), true);
+  assert.equal(looksLikeTrafficLead("vim pelo anúncio"), true);
+  // O detector de modelo continua funcionando p/ agrupamento.
+  assert.equal(detectAdModel("Olá, vim pelo anúncio do Taos Highline"), "Taos Highline");
+  // Conversa orgânica comum NÃO é marcada como tráfego.
+  assert.equal(looksLikeTrafficLead("bom dia, vocês têm carro popular?"), false);
 });
 
 test("opt-out NÃO dispara em falsos positivos", () => {

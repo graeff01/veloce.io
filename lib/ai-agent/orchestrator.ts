@@ -36,11 +36,15 @@ interface PromptCfg { language: string; persona: string | null; goals: string | 
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-06-13.qualificacao.2-sem-agenda";
+const PROMPT_VERSION = "2026-06-19.fronteira-loja";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const DEFAULT_FALLBACK = "Sobre isso, quem te ajuda melhor é um vendedor — já registrei aqui pra ele te dar os detalhes. 😊";
-const DISCLOSURE = "🤖 Atendimento automático (fora do horário). Posso tirar suas dúvidas e já deixo tudo encaminhado pra um vendedor te atender no horário comercial, tá?";
+
+// Apresentação como CANAL DA LOJA (fora do horário) — não como "robô". Transparente,
+// sem fingir ser humano nem assustar com "atendimento automático".
+const buildDisclosure = (store: string) =>
+  `Oi! Aqui é o atendimento da ${store || "loja"} (fora do horário 😊). Posso te ajudar com as dúvidas do veículo e já deixo tudo anotado pro vendedor te chamar no horário comercial.`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,17 +57,17 @@ async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; too
   throw lastErr;
 }
 
-const disclose = (text: string, isFirst: boolean) => (isFirst ? `${DISCLOSURE}\n\n${text}` : text);
 
 // Bloco ESTÁVEL do prompt: igual em toda chamada da mesma conversa/cliente → vira o
 // prefixo cacheável (prompt caching da OpenAI desconta ~50% dos tokens repetidos).
 // NÃO inclua nada dinâmico aqui (sem timestamp, sem RAG, sem perfil).
 function buildStablePrompt(cfg: PromptCfg): string {
   return [
-    `Você é o atendente virtual de uma loja, atendendo leads pelo WhatsApp FORA do horário comercial. Idioma: ${cfg.language}. Tom: ${cfg.persona || "cordial, objetivo e humano"}.`,
+    `Você é o atendimento da loja pelo WhatsApp FORA do horário comercial. Idioma: ${cfg.language}. Tom: ${cfg.persona || "cordial, objetivo e humano"}.`,
+    `SEU ESCOPO É ESTRITO — só faça duas coisas: (1) responder dúvidas sobre o PRODUTO/veículo e (2) entender a situação e o estado do lead para adiantar ao vendedor. Você NUNCA compromete a loja: preço, desconto, disponibilidade garantida, financiamento, prazo, condições e negociação são SEMPRE do vendedor — você apenas registra e encaminha. Você NÃO agenda visita.`,
     cfg.goals
       ? `OBJETIVO: ${cfg.goals}`
-      : `OBJETIVO: entender exatamente o que o lead procura, tirar dúvidas permitidas e QUALIFICAR bem, para o vendedor já chegar sabendo de tudo no horário comercial. Você NÃO agenda visita.`,
+      : `OBJETIVO: tirar as dúvidas do produto, QUALIFICAR bem (entender o que o lead quer e em que pé está) e deixar tudo anotado, para o vendedor já chegar sabendo de tudo no horário comercial.`,
     `REGRAS ABSOLUTAS (segurança — nunca quebre):
 - NUNCA passe preço/desconto, NUNCA simule parcelas ou valor de entrada, NUNCA aprove financiamento, NUNCA dê valor de avaliação da troca, NUNCA prometa fechamento. Esses números e aprovações são SEMPRE do vendedor — você apenas COLETA as informações e adianta.
 - Preço e estoque SÓ via ferramenta buscar_estoque. Sem fonte, diga que confirma com um vendedor. NUNCA invente.
@@ -90,8 +94,9 @@ function buildStablePrompt(cfg: PromptCfg): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string): string {
+function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string): string {
   return [
+    vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por este anúncio — já saiba responder ano/km/itens e ofereça a foto):\n${vehicle}` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
     qualif || "",
@@ -137,6 +142,14 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     : (opts.transcript ?? []).filter((m) => m.role === "assistant").length;
   const isFirst = turns === 0;
 
+  // Disclosure como CANAL DA LOJA (só na 1ª msg, em produção, se habilitado).
+  let disclosureText = "";
+  if (isFirst && mode === "live" && cfg?.disclosureEnabled !== false) {
+    const c = await prisma.client.findUnique({ where: { id: input.clientId }, select: { name: true } }).catch(() => null);
+    disclosureText = buildDisclosure(c?.name ?? "");
+  }
+  const withDisclosure = (text: string) => (disclosureText ? `${disclosureText}\n\n${text}` : text);
+
   // Teto de custo por contato (só produção).
   if (mode === "live" && turns >= MAX_TURNS) {
     await log({ outbound: null, decision: "limite", status: "skipped" });
@@ -148,7 +161,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const unresolved = await prisma.aiInteraction.count({ where: { clientId: input.clientId, contactId: input.contact.id, createdAt: { gte: since }, decision: { notIn: ["agendou", "escalou", "limite"] } } });
     if (unresolved >= handoffAfter) {
-      const reply = disclose(fallback, isFirst);
+      const reply = withDisclosure(fallback);
       await log({ outbound: reply, decision: "escalou", status: "ok" });
       return { reply, status: "ok", decision: "escalou" };
     }
@@ -161,13 +174,30 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   let perfil = "";
   let memory = "";
   let qualif = "";
+  let vehicle = "";
   let priorMessages: ChatMessage[];
   if (mode === "live") {
-    const [profile, convo, variant] = await Promise.all([
+    const [profile, convo, variant, lead] = await Promise.all([
       prisma.leadProfile.findUnique({ where: { contactId: input.contact.id } }),
       prisma.waConversation.findUnique({ where: { contactId: input.contact.id }, select: { agentMemory: true } }),
       resolveVariant(input.clientId, input.contact.id),
+      prisma.waLead.findUnique({ where: { contactId: input.contact.id }, select: { adModel: true, adTitle: true } }),
     ]);
+    // Veículo de interesse: o lead entrou por um anúncio específico → carrega a ficha
+    // do item do catálogo p/ a IA já responder ano/km/itens e oferecer foto. Genérico
+    // (produto de interesse). Se o catálogo estiver vazio, nada é injetado (graceful).
+    const vterm = (lead?.adModel || lead?.adTitle || profile?.productInterest || "").trim();
+    if (vterm) {
+      const item = await prisma.catalogItem.findFirst({
+        where: { clientId: input.clientId, available: true, title: { contains: vterm.split(" ").slice(0, 2).join(" "), mode: "insensitive" } },
+        orderBy: { price: "asc" },
+      });
+      if (item) {
+        vehicle = `${item.title}${item.price ? ` — R$ ${item.price.toLocaleString("pt-BR")}` : ""}`
+          + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`
+          + `${item.imageUrl ? " — foto disponível (use enviar_foto se pedirem)" : " — sem foto cadastrada"}`;
+      }
+    }
     // A/B: variante (se houver) sobrescreve o prompt base; registrada p/ comparar métricas.
     if (variant) {
       promptVariant = variant.key;
@@ -231,7 +261,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle) },
     ...priorMessages,
   ];
 
@@ -283,7 +313,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
   stages.push({ name: "guardrail", ms: Date.now() - stageStart });
 
-  if (cfg?.disclosureEnabled !== false) final = disclose(final, isFirst);
+  final = withDisclosure(final);
 
   if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed, stages, guardrails, error: errorMsg });
   return { reply: final, status, decision, toolCalls: toolLog, promptVersion: PROMPT_VERSION, promptVariant, model };

@@ -4,7 +4,7 @@ import {
   verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
-import { detectAdModel } from "@/lib/wa-ad-detect";
+import { detectAdModel, looksLikeTrafficLead } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { notifyLeadMessage } from "@/lib/notifications/lead-message";
@@ -152,8 +152,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     // de notificar para a notificação já saber de qual anúncio o lead veio —
     // independente do texto que o lead digitou.
     const ref = m.referral;
-    const adModel = outbound ? null : detectAdModel(messageText(m));
-    const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel;
+    const text = outbound ? null : messageText(m);
+    const adModel = outbound ? null : detectAdModel(text);
+    const trafficLead = !outbound && looksLikeTrafficLead(text);
+    const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel || trafficLead;
     if (isAdLead) {
       const lead = await prisma.waLead.findUnique({ where: { contactId: contact.id } });
       if (!lead) {
@@ -165,7 +167,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
             adTitle: ref?.headline ?? adModel ?? null,
             adModel: adModel ?? null,
             adBody: ref?.body ?? null,
-            sourceType: ref?.source_type ?? (adModel ? "message" : null),
+            sourceType: ref?.source_type ?? (adModel ? "message" : (trafficLead ? "marketplace" : null)),
             sourceUrl: ref?.source_url ?? null,
             ctwaClid: ref?.ctwa_clid ?? null,
             enteredAt: ts,

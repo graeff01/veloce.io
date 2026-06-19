@@ -27,3 +27,15 @@ export function detectAdModel(text: string | null | undefined): string | null {
   if (!model || model.length > 60) return null;
   return model;
 }
+
+// Sinal AMPLO de lead de tráfego/anúncio pela mensagem (além do referral CTWA, que é
+// checado no webhook). Captura o lead que veio de campanha mas não casou o modelo:
+// frases de interesse em anúncio e links de marketplace (autocarro/olx/webmotors...).
+// Usado pelo modo "ads_only" para não deixar lead de tráfego de fora.
+const TRAFFIC_INTENT_RE = /(tenho interesse (neste|nesse) an[úu]ncio|interesse no an[úu]ncio|vim pelo an[úu]ncio|vi o an[úu]ncio|pelo an[úu]ncio|do an[úu]ncio|aguardo contato)/i;
+const MARKETPLACE_RE = /(autocarro|webmotors|\bolx\b|mercadolivre|mercado\s*livre|icarros|usadosbr|napista|chavesnamao|seminovos|\.com\.br\/)/i;
+
+export function looksLikeTrafficLead(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return TRAFFIC_INTENT_RE.test(text) || MARKETPLACE_RE.test(text);
+}
