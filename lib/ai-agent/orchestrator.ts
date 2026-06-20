@@ -169,8 +169,9 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   }
   const withDisclosure = (text: string) => (disclosureText ? `${disclosureText}\n\n${text}` : text);
   // Evita a IA cumprimentar/apresentar de novo (a saudação já foi prefixada).
+  const trust = cfg?.trustHighlights?.trim();
   const firstNote = (isFirst && disclosureText)
-    ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Vá direto: se houver VEÍCULO DE INTERESSE, (1) mande a foto dele (enviar_foto); (2) ADIANTE os dados que todo lead pergunta — ano, km e preço — sem esperar ele perguntar; (3) cite um diferencial de confiança SE existir no CONHECIMENTO (ex: laudo cautelar, garantia); (4) termine com UMA pergunta que engaje (ex: "é pra cidade, viagem ou os dois?"). Tudo curto e natural, em 2-3 linhas.`
+    ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Vá direto: se houver VEÍCULO DE INTERESSE, (1) mande UMA foto dele (enviar_foto, quantidade 1 — só mande mais se o lead pedir); (2) ADIANTE de forma natural os 3 dados que todo lead pergunta: ano, km E PREÇO; (3) ${trust ? `cite o diferencial de confiança da loja: ${trust}` : "cite um diferencial de confiança se houver no CONHECIMENTO (laudo, garantia)"}; (4) termine com UMA pergunta que engaje (ex: "é pra cidade, viagem ou os dois?"). Tudo curto e natural, em 2-3 linhas — sem poluir.`
     : "";
 
   // Teto de custo por contato (só produção).
