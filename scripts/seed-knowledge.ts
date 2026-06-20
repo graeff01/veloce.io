@@ -17,7 +17,7 @@ if (!url) { console.error("DATABASE_URL ausente"); process.exit(1); }
 
 // FAQ da Boqueirão Veículos (fonte: site oficial + perfil Autocarro).
 const CHUNKS: { title: string; content: string }[] = [
-  { title: "Localização e horário", content: "A Boqueirão Veículos fica na Av. Boqueirão, 1705, bairro Mal. Rondon, em Canoas/RS. Horário de funcionamento: segunda a sexta das 9h às 18h e sábados das 9h às 12h. A visita é gratuita e sem compromisso." },
+  { title: "Localização e horário", content: "A Boqueirão Veículos fica na Av. Boqueirão, 1705, bairro Mal. Rondon, em Canoas/RS. Horário de funcionamento: de segunda a sexta das 9h às 18h, aos sábados das 9h às 12h, e aos domingos a loja não abre. A visita é gratuita e sem compromisso." },
   { title: "Contato", content: "Telefone e WhatsApp da Boqueirão Veículos: (51) 3478-5521. E-mail: boqueiraoveiculosrs@gmail.com. Instagram: @boqueiraoveiculosrs. Facebook: Boqueirão Veículos." },
   { title: "Sobre a loja", content: "A Boqueirão Veículos é uma empresa familiar, há 11 anos em Canoas/RS e com raízes no mercado automotivo desde 1994. Trabalha com carros usados e seminovos de várias marcas, todos revisados e com procedência. O estoque tem cerca de 40 modelos de 12 marcas: Chevrolet, Fiat, Ford, Honda, Hyundai, Jeep, Nissan, Peugeot, Toyota, Volkswagen, Citroën e Caoa Chery." },
   { title: "Garantia e procedência", content: "Todos os veículos da Boqueirão são revisados e passam por laudo cautelar. A loja oferece garantia de 1 ano, podendo chegar a 2 anos, para mais confiança na compra. Os detalhes da garantia de cada veículo são confirmados com o vendedor." },
