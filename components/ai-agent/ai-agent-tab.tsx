@@ -41,7 +41,7 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[] }
+interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[]; operatorNumbers: string[] }
 
 const VERTICALS: { key: string; label: string }[] = [
   { key: "automotivo", label: "Automotivo (veículos)" },
@@ -66,7 +66,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [] });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [], operatorNumbers: Array.isArray(d?.operatorNumbers) ? d.operatorNumbers : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -158,6 +158,14 @@ function ConfigSection({ clientId }: { clientId: string }) {
             {cfg.testNumbers.length === 0 && <p style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>⚠️ Lista vazia: a IA não responderá ninguém enquanto o modo canário estiver ligado.</p>}
           </div>
         )}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+          <label style={label}>Números da triagem (operador) — recebem as fichas dos leads</label>
+          <textarea style={{ ...input, minHeight: 60, resize: "vertical", fontFamily: "monospace" }}
+            value={cfg.operatorNumbers.join("\n")}
+            onChange={(e) => set({ operatorNumbers: e.target.value.split("\n").map((s) => s.replace(/\D/g, "")).filter(Boolean) })}
+            placeholder={"5551999990000"} />
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>Esses números NÃO são tratados como lead. Quando mandam mensagem, a IA devolve as fichas dos leads triados (e empurra os quentes na hora, com a janela aberta). Use qualquer WhatsApp, menos o da própria IA.</p>
+        </div>
       </div>
 
       <div style={card}>
