@@ -33,6 +33,7 @@ const putSchema = z.object({
   disclosureEnabled: z.boolean().optional(),
   testMode: z.boolean().optional(),
   testNumbers: z.array(z.string().max(30)).max(50).optional(),
+  operatorNumbers: z.array(z.string().max(30)).max(20).optional(),
 });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

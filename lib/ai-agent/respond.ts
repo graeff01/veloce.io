@@ -8,6 +8,8 @@ import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
+import { isOperator, handleOperatorCommand } from "./operator";
+import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
@@ -61,15 +63,23 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
 
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: conn.clientId } });
 
+  // 0) Modo operador: se quem mandou é um número da triagem, NÃO é lead — entrega as
+  //    fichas pendentes e retorna. A própria mensagem dela abre a janela de 24h, então
+  //    respondemos free-form (sem template). Ignora horário comercial de propósito
+  //    (a triadora trabalha de manhã). Só roda com a IA ligada e não pausada.
+  if (cfg?.enabled && !cfg.paused && isOperator(cfg, contact.waId)) {
+    return handleOperatorCommand({ conn, operatorWaId: contact.waId, operatorContactId: contact.id });
+  }
+
   // 1) Gatekeeper: kill-switch global, pause por cliente, status live, fora do horário.
   const gate = shouldRespond(cfg);
   if (!gate.respond) return "skipped";
 
   // 2) Modo canário: responde SOMENTE os números de teste liberados (validação em PRD
-  //    sem risco com cliente real). Comparação por dígitos (E.164 sem máscara).
+  //    sem risco com cliente real). Tolera o 9º dígito do celular BR (canário/operador).
   if (cfg?.testMode) {
-    const allowed = new Set(((cfg.testNumbers as unknown as string[]) ?? []).map((n) => String(n).replace(/\D/g, "")));
-    if (!allowed.has(contact.waId.replace(/\D/g, ""))) return "skipped";
+    const allowed = ((cfg.testNumbers as unknown as string[]) ?? []);
+    if (!allowed.some((n) => sameBrazilNumber(n, contact.waId))) return "skipped";
   }
 
   // 3) Operador assumiu manualmente este contato → IA silenciada.
