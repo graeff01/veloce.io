@@ -2,6 +2,9 @@ import { prismaUnscoped } from "@/lib/prisma";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { buildFicha } from "./ficha";
 import { sameBrazilNumber, brVariants } from "@/lib/phone-br";
+import { isWithinBusinessHours } from "./gatekeeper";
+import { nowParts } from "@/lib/tz";
+import type { Window } from "@/lib/visit-availability";
 
 // ── Modo Operador ──────────────────────────────────────────────────────────────
 // A triadora (operador) NÃO é lead: ela recebe as FICHAS dos leads triados pela IA
@@ -104,13 +107,19 @@ async function openOperators(clientId: string, operatorNumbers: string[]): Promi
 
 // PUSH (Fase 2): varre clientes com operador e empurra as fichas PRONTAS (HOT na hora /
 // conversa assentada) p/ os operadores com janela aberta. Chamado por tick agendado.
+// Entrega só DENTRO do horário comercial (simetria: a IA atende fora, a triagem recebe
+// dentro) — leads da madrugada acumulam e saem no lote da manhã (pull). Reseta no fim do dia.
 export async function deliverReadyToOperators(): Promise<{ delivered: number }> {
   const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
     where: { enabled: true, paused: false, operatorNumbers: { isEmpty: false } },
-    select: { clientId: true, operatorNumbers: true },
+    select: { clientId: true, operatorNumbers: true, businessHours: true, timezone: true },
   });
   let delivered = 0;
   for (const cfg of cfgs) {
+    const hours = (cfg.businessHours as unknown as Window[]) ?? [];
+    if (!hours.length) continue; // sem horário configurado → só pull
+    const { weekday, minutes } = nowParts(cfg.timezone || "America/Sao_Paulo");
+    if (!isWithinBusinessHours(hours, weekday, minutes)) continue; // fora do horário → acumula p/ o lote da manhã
     const ops = await openOperators(cfg.clientId, cfg.operatorNumbers);
     if (!ops.length) continue; // janela fechada → fica pro próximo "pull"
     const ready = await pendingFichas(cfg.clientId, cfg.operatorNumbers, { readyOnly: true });
