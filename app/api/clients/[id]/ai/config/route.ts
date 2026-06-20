@@ -14,6 +14,7 @@ const putSchema = z.object({
   audioTranscription: z.boolean().optional(),
   model: z.string().optional(),
   assistantName: z.string().max(60).nullable().optional(),
+  greetingMessage: z.string().max(500).nullable().optional(),
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),
   rules: z.string().max(6000).nullable().optional(),

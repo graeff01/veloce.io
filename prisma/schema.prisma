@@ -803,6 +803,7 @@ model AiAgentConfig {
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
   model           String   @default("gpt-4o-mini")
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
+  greetingMessage String?  // saudação fixa enviada na 1ª mensagem (a loja controla o texto)
   persona         String?  // tom de voz / personalidade
   goals           String?  // objetivos do atendimento
   rules           String?  // regras específicas do cliente (entram no prompt)
