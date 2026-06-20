@@ -113,7 +113,7 @@ function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, 
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
     qualif || "",
     perfil ? `PERFIL DO LEAD: ${perfil}` : "",
-    `Agora: ${new Date().toLocaleString("pt-BR", { timeZone: cfg.timezone || "America/Sao_Paulo" })}.`,
+    `Agora é ${new Date().toLocaleString("pt-BR", { timeZone: cfg.timezone || "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}. Ao falar de horário de funcionamento, use o dia CORRETO da semana — atenção que "amanhã" pode cair no sábado ou domingo, que têm horário diferente (ou fechado).`,
   ].filter(Boolean).join("\n\n");
 }
 
