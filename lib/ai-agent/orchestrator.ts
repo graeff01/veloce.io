@@ -5,6 +5,7 @@ import { checkReply, resolveBlockRules } from "./guardrail";
 import { budgetedWindow } from "./memory";
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant } from "./variants";
+import { searchCatalog } from "./catalog-search";
 import { Prisma } from "@prisma/client";
 
 interface RunInput {
@@ -113,7 +114,7 @@ function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, 
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
     qualif || "",
     perfil ? `PERFIL DO LEAD: ${perfil}` : "",
-    `Agora é ${new Date().toLocaleString("pt-BR", { timeZone: cfg.timezone || "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}. Ao falar de horário de funcionamento, use o dia CORRETO da semana — atenção que "amanhã" pode cair no sábado ou domingo, que têm horário diferente (ou fechado).`,
+    `Agora é ${new Date().toLocaleString("pt-BR", { timeZone: cfg.timezone || "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}. Ao falar de horário de funcionamento, use o dia CORRETO da semana — atenção que "amanhã" pode cair no sábado ou domingo, que têm horário diferente (ou fechado). Você NÃO sabe quais dias são feriado: se perguntarem sobre feriado, diga que confirma com o vendedor.`,
   ].filter(Boolean).join("\n\n");
 }
 
@@ -207,10 +208,9 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     // (produto de interesse). Se o catálogo estiver vazio, nada é injetado (graceful).
     const vterm = (lead?.adModel || lead?.adTitle || profile?.productInterest || "").trim();
     if (vterm) {
-      const item = await prisma.catalogItem.findFirst({
-        where: { clientId: input.clientId, available: true, title: { contains: vterm.split(" ").slice(0, 2).join(" "), mode: "insensitive" } },
-        orderBy: { price: "asc" },
-      });
+      // Busca robusta (tokens + fuzzy) — casa o modelo do anúncio mesmo com typo/palavras
+      // não contíguas no título (ex: "Taos Highline" vs "Taos 1.4 HIGHLINE").
+      const item = (await searchCatalog(input.clientId, vterm))[0];
       if (item) {
         vehicle = `${item.title}${item.price ? ` — R$ ${item.price.toLocaleString("pt-BR")}` : ""}`
           + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`

@@ -130,10 +130,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const lead = await prisma.waLead.findUnique({ where: { contactId: ctx.contactId }, select: { adModel: true, adTitle: true } });
         term = (lead?.adModel || lead?.adTitle || "").trim();
       }
-      const item = await prisma.catalogItem.findFirst({
-        where: { clientId: ctx.clientId, available: true, imageUrl: { not: null }, ...(term ? { title: { contains: term.split(" ").slice(0, 2).join(" "), mode: "insensitive" } } : {}) },
-        orderBy: { price: "asc" },
-      });
+      if (!term) return { result: "Não sei qual veículo o lead quer ver. Pergunte qual modelo e tente de novo." };
+      // Busca robusta (tokens + fuzzy) — casa "Taos Highline" mesmo com "1.4" no meio do título.
+      const matches = await searchCatalog(ctx.clientId, term);
+      const item = matches.find((i) => i.imageUrl) ?? null;
       if (!item?.imageUrl) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
       if (ctx.mode === "test") return { result: `(teste) Enviaria a foto de ${item.title} (não enviado).` };
 
