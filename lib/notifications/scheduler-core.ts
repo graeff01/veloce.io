@@ -9,6 +9,7 @@ import { nowParts } from "@/lib/tz";
 import { captureException } from "@/lib/observability";
 import { pruneOldAiLogs } from "@/lib/ai-agent/retention";
 import { runCostAlerts } from "@/lib/ai-agent/cost-alerts";
+import { syncAllCatalogs } from "@/lib/ai-agent/catalog-sync";
 import { runAdsHealth } from "@/lib/notifications/ads-health";
 import { runSlaFirstResponse } from "@/lib/notifications/sla-first-response";
 import { lastTickAt, recordTick } from "@/lib/notifications/heartbeat";
@@ -93,6 +94,9 @@ export async function runDueJobs(): Promise<void> {
 
   // Custo: alertas de limiar (70/85/95/100%) + auto-pause. gateOnce interno garante 1x/dia.
   await safe("cost-alerts", runCostAlerts);
+
+  // Estoque: re-sync diário do catálogo (anti "carro vendido"), a partir das 4h.
+  if (h >= 4 && (await gateOnce(`gate:catalog-sync:${day}`))) await safe("catalog-sync", syncAllCatalogs);
 
   // Batimento + ping do dead-man's switch externo. Por último: só "vivo" se o
   // ciclo chegou até aqui. Se algo acima travar o ciclo inteiro, o ping não sai

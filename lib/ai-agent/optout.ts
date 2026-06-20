@@ -16,7 +16,13 @@ const OPT_OUT_PATTERNS: RegExp[] = [
   /\bcancelar?\s+(a\s+)?(inscri[cç][ãa]o|cadastro|recebimento)/,
   /\bn[ãa]o\s+perturbe?\b/,
   /\bpare\s+de\s+me/,
-  /^\s*(stop|sair|cancelar|parar)\s*[!.]*\s*$/, // mensagem isolada com a palavra-chave
+  /\bme\s+esque[cç]/,                                      // "me esquece", "me esqueça", "me esquecer"
+  /\bme\s+(deixa|deixe)\s+(em\s+paz|quieto|sossegad)/,     // "me deixa em paz"
+  /\bn[ãa]o\s+(me\s+)?(manda|mande|envia|envie|chama|chame)\s+mais/, // "não me manda mais"
+  /\bperdi\s+o\s+interesse|\bdesisti\b|\bn[ãa]o\s+tenho\s+(mais\s+)?interesse/,
+  /\bme\s+(bloqueia|exclui|apaga)\b/,
+  /\bpara\s+com\s+isso\b/,
+  /^\s*(stop|sair|cancelar|parar|chega|para)\s*[!.]*\s*$/,  // mensagem isolada com a palavra-chave
 ];
 
 export function isOptOut(text: string | null | undefined): boolean {

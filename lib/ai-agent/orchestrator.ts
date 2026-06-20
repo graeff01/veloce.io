@@ -6,6 +6,7 @@ import { budgetedWindow } from "./memory";
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant } from "./variants";
 import { searchCatalog } from "./catalog-search";
+import { redactPII } from "@/lib/redact";
 import { Prisma } from "@prisma/client";
 
 interface RunInput {
@@ -97,6 +98,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 - FICHA TÉCNICA (ano, km, itens, câmbio) é a dúvida nº 1 — responda pelo estoque (buscar_estoque); se faltar o dado, diga que confirma com o vendedor.
 - NUNCA invente detalhe que NÃO veio do estoque. Se perguntarem algo que não está nos dados (ex: estepe, consumo/km por litro, potência, nº de revisões, garantia) e não houver no CONHECIMENTO, NÃO chute nem deduza — diga com naturalidade que confirma esse detalhe com o vendedor. Só afirme o que está nos dados.
 - Se você JÁ buscou um veículo, USE os dados que voltaram (ano, km, cor, itens) para responder os follow-ups ("qual o ano dele?", "e a cor?") — não busque de novo nem diga que "não encontrou" algo que já está no resultado.
+- Se NÃO houver o modelo/ano/cor exato que o lead pediu, mas houver algo PARECIDO no estoque (mesma categoria, modelo próximo, outro ano), ofereça a alternativa em vez de só dizer "não temos" — como uma boa vendedora faria.
 - PREÇO — só pelo estoque, nunca de cabeça.
 - FINANCIAMENTO e TROCA — colete e adiante (item 3 e 4), não apenas escape.
 - LOCALIZAÇÃO, HORÁRIO e DOCUMENTAÇÃO (transferência, quitação, IPVA) — responda pelo CONHECIMENTO; se não houver fonte, encaminhe ao vendedor.
@@ -141,8 +143,8 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   const log = (fields: { outbound: string | null; decision: string; status: RunOutput["status"]; tokensIn?: number; tokensOut?: number; toolCalls?: unknown[]; contextUsed?: unknown; stages?: { name: string; ms: number }[]; guardrails?: string[]; error?: string | null }) =>
     prisma.aiInteraction.create({ data: {
-      clientId: input.clientId, contactId: input.contact.id, inbound: input.inboundText,
-      outbound: fields.outbound, toolCalls: fields.toolCalls?.length ? (fields.toolCalls as unknown as Prisma.InputJsonValue) : undefined,
+      clientId: input.clientId, contactId: input.contact.id, inbound: redactPII(input.inboundText),
+      outbound: redactPII(fields.outbound), toolCalls: fields.toolCalls?.length ? (fields.toolCalls as unknown as Prisma.InputJsonValue) : undefined,
       decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
       latencyMs: Date.now() - start, status: fields.status,
       promptVersion: PROMPT_VERSION, promptVariant: promptVariant ?? undefined, idempotencyKey: input.idempotencyKey ?? undefined,

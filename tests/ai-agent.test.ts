@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveBlockRules, checkReply } from "../lib/ai-agent/guardrail";
 import { isOptOut } from "../lib/ai-agent/optout";
+import { redactPII } from "../lib/redact";
 import { looksLikeTrafficLead, detectAdModel } from "../lib/wa-ad-detect";
 import { catalogTokens } from "../lib/ai-agent/catalog-search";
 
@@ -105,6 +106,20 @@ test("busca de catálogo: tokeniza removendo ruído/stopwords", () => {
   // letras isoladas (R) caem fora.
   assert.deepEqual(catalogTokens("Tiguan R-Line"), ["tiguan", "line"]);
   assert.deepEqual(catalogTokens(""), []);
+});
+
+test("opt-out (ampliado) pega mais variações reais", () => {
+  for (const t of ["me esquece", "me esqueça", "me deixa em paz", "não me manda mais mensagem", "perdi o interesse", "desisti", "para com isso", "chega"]) {
+    assert.equal(isOptOut(t), true, `deveria ser opt-out: ${t}`);
+  }
+});
+
+test("redactPII mascara CPF/email mas preserva preço/telefone de contato", () => {
+  assert.ok(redactPII("meu cpf é 123.456.789-00")?.includes("[CPF]"));
+  assert.ok(redactPII("12345678900 esse é o cpf")?.includes("[CPF]"));
+  assert.ok(redactPII("email joao@gmail.com")?.includes("[email]"));
+  // Preço e ano NÃO são mascarados.
+  assert.equal(redactPII("o Taos custa R$ 136.900 ano 2022"), "o Taos custa R$ 136.900 ano 2022");
 });
 
 test("opt-out NÃO dispara em falsos positivos", () => {
