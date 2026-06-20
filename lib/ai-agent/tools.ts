@@ -47,8 +47,11 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "enviar_foto",
-      description: "Envia ao lead a FOTO do veículo de interesse. Use quando o lead pedir foto/imagem ou para mostrar o carro. Só envia se houver foto cadastrada.",
-      parameters: { type: "object", properties: { termo: { type: "string", description: "modelo do veículo, se diferente do de interesse do lead" } } },
+      description: "Envia ao lead a(s) FOTO(s) do veículo. Na abertura mande SÓ 1 (a capa). Só mande mais (2-3) se o lead PEDIR mais fotos ou perguntar do interior — nunca encha de fotos.",
+      parameters: { type: "object", properties: {
+        termo: { type: "string", description: "modelo do veículo, se diferente do de interesse do lead" },
+        quantidade: { type: "number", description: "quantas fotos enviar (1 = só a capa; 2-3 só quando o lead pedir mais)" },
+      } },
     },
   },
   {
@@ -133,19 +136,29 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!term) return { result: "Não sei qual veículo o lead quer ver. Pergunte qual modelo e tente de novo." };
       // Busca robusta (tokens + fuzzy) — casa "Taos Highline" mesmo com "1.4" no meio do título.
       const matches = await searchCatalog(ctx.clientId, term);
-      const item = matches.find((i) => i.imageUrl) ?? null;
-      if (!item?.imageUrl) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
-      if (ctx.mode === "test") return { result: `(teste) Enviaria a foto de ${item.title} (não enviado).` };
+      const item = (matches.find((i) => i.imageUrl) ?? matches[0]) as (typeof matches)[number] & { images?: string[] } | undefined;
+      // Lista de fotos: capa + galeria, sem duplicar. Quantidade limitada (1 na abertura, até 3 sob pedido).
+      const gallery = Array.isArray(item?.images) ? item!.images : [];
+      const photos = [...new Set([item?.imageUrl, ...gallery].filter(Boolean))] as string[];
+      if (!photos.length) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
+      const qtd = Math.max(1, Math.min(3, Number(args.quantidade) || 1));
+      const toSend = photos.slice(0, qtd);
+      if (ctx.mode === "test") return { result: `(teste) Enviaria ${toSend.length} foto(s) de ${item!.title} (não enviado).` };
 
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar a foto." };
-      const sent = await sendWhatsAppImage(conn, ctx.contactWaId, item.imageUrl, item.title);
-      if (!sent.ok) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
-      await prisma.waMessage.create({ data: {
-        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-img-${Date.now()}`,
-        direction: "out", type: "image", text: `[foto] ${item.title}`, aiGenerated: true, timestamp: new Date(),
-      } }).catch(() => {});
-      return { result: `Foto de ${item.title} enviada ao lead. Comente brevemente (ex: "te mandei uma foto dele 📸") e siga a conversa.` };
+      let okCount = 0;
+      for (const link of toSend) {
+        const sent = await sendWhatsAppImage(conn, ctx.contactWaId, link, okCount === 0 ? item!.title : undefined);
+        if (!sent.ok) break;
+        okCount++;
+        await prisma.waMessage.create({ data: {
+          connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-img-${Date.now()}-${okCount}`,
+          direction: "out", type: "image", text: `[foto] ${item!.title}`, aiGenerated: true, timestamp: new Date(),
+        } }).catch(() => {});
+      }
+      if (okCount === 0) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
+      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente brevemente e siga a conversa (não reenvie fotos sem o lead pedir).` };
     }
 
     case "escalar_humano": {

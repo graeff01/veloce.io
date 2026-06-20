@@ -22,7 +22,7 @@ export function catalogTokens(termo: string): string[] {
 const SELECT = { take: 6, orderBy: { price: "asc" as const } };
 const FUZZY_MIN = 0.4; // calibrado contra o estoque real (typo "lauching" ~0.58–0.69)
 
-interface Row { id: string; title: string; price: number | null; attributes: unknown; imageUrl: string | null; url: string | null }
+interface Row { id: string; title: string; price: number | null; attributes: unknown; imageUrl: string | null; url: string | null; images: string[] }
 
 export async function searchCatalog(clientId: string, termo: string) {
   const base = { clientId, available: true };
@@ -42,7 +42,7 @@ export async function searchCatalog(clientId: string, termo: string) {
 
   // 2) Fuzzy: tolera typo no termo ou no dado (pg_trgm). Ordena por similaridade.
   return prisma.$queryRaw<Row[]>`
-    SELECT id, title, price, attributes, "imageUrl", url
+    SELECT id, title, price, attributes, "imageUrl", url, images
     FROM "CatalogItem"
     WHERE "clientId" = ${clientId} AND available = true
       AND word_similarity(${termo}, title) > ${FUZZY_MIN}

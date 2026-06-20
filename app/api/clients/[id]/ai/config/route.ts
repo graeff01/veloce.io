@@ -15,6 +15,8 @@ const putSchema = z.object({
   model: z.string().optional(),
   assistantName: z.string().max(60).nullable().optional(),
   greetingMessage: z.string().max(500).nullable().optional(),
+  trustHighlights: z.string().max(300).nullable().optional(),
+  catalogSourceUrl: z.string().max(500).nullable().optional(),
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),
   rules: z.string().max(6000).nullable().optional(),

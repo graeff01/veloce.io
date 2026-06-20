@@ -31,13 +31,26 @@ function fetchInsecure(url: string, redirects = 0): Promise<string> {
   });
 }
 
+function nextData(html: string): unknown {
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  return m ? JSON.parse(m[1]) : null;
+}
+
+// Galeria do anúncio (capa + interior...). Só buscada para carro novo/sem galeria.
+async function fetchGallery(link: string): Promise<string[]> {
+  try {
+    const d = nextData(await fetchInsecure(link)) as { props?: { pageProps?: { offer?: { photos?: { src: string }[] } } } } | null;
+    const photos = d?.props?.pageProps?.offer?.photos ?? [];
+    return photos.slice(0, 5).map((p) => `https://imgserver.autocarro.com.br/fotos/grande/${p.src}`).filter(Boolean);
+  } catch { return []; }
+}
+
 export async function syncCatalogFromUrl(clientId: string, url: string): Promise<{ ok: boolean; total?: number; created?: number; updated?: number; unavailable?: number; error?: string }> {
   let offers: Offer[];
   try {
-    const html = await fetchInsecure(url);
-    const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (!m) return { ok: false, error: "estrutura da página mudou" };
-    offers = JSON.parse(m[1])?.props?.pageProps?.offers ?? [];
+    const d = nextData(await fetchInsecure(url)) as { props?: { pageProps?: { offers?: Offer[] } } } | null;
+    if (!d) return { ok: false, error: "estrutura da página mudou" };
+    offers = d.props?.pageProps?.offers ?? [];
   } catch (e) { return { ok: false, error: String(e).slice(0, 200) }; }
   if (!offers.length) return { ok: false, error: "estoque vazio na página" };
 
@@ -52,9 +65,11 @@ export async function syncCatalogFromUrl(clientId: string, url: string): Promise
       cor: cap(o.color), portas: o.doors, opcionais: (o.options ?? []).slice(0, 12).map((x) => x.label).join(", ") || undefined,
     };
     const data = { title, price: o.price || null, available: true, attributes, url: o.link, imageUrl: o.photoCover || null, syncedAt: new Date() };
-    const existing = await prismaUnscoped.catalogItem.findFirst({ where: { clientId, externalId }, select: { id: true } });
-    if (existing) { await prismaUnscoped.catalogItem.update({ where: { id: existing.id }, data }); updated++; }
-    else { await prismaUnscoped.catalogItem.create({ data: { clientId, externalId, ...data } }); created++; }
+    const existing = await prismaUnscoped.catalogItem.findFirst({ where: { clientId, externalId }, select: { id: true, images: true } });
+    // Busca galeria só p/ carro novo ou sem galeria (evita 44 fetches por re-sync).
+    const images = (!existing || !existing.images?.length) ? await fetchGallery(o.link) : undefined;
+    if (existing) { await prismaUnscoped.catalogItem.update({ where: { id: existing.id }, data: { ...data, ...(images?.length ? { images } : {}) } }); updated++; }
+    else { await prismaUnscoped.catalogItem.create({ data: { clientId, externalId, ...data, images: images ?? [] } }); created++; }
   }
   const gone = await prismaUnscoped.catalogItem.updateMany({ where: { clientId, available: true, externalId: { notIn: seen } }, data: { available: false } });
   return { ok: true, total: offers.length, created, updated, unavailable: gone.count };
