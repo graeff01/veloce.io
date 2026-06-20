@@ -41,7 +41,7 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[] }
+interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[] }
 
 const VERTICALS: { key: string; label: string }[] = [
   { key: "automotivo", label: "Automotivo (veículos)" },
@@ -66,7 +66,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [] });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -170,6 +170,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <label style={label}>Nome da assistente</label>
         <input style={input} value={cfg.assistantName ?? ""} onChange={(e) => set({ assistantName: e.target.value })} placeholder="Ex: Helena" />
         <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>A IA se apresenta com esse nome (humaniza). Ex.: &quot;Oi! Aqui é a Helena, da {"{loja}"}&quot;.</p>
+        <label style={{ ...label, marginTop: 14 }}>Mensagem de saudação (1ª mensagem)</label>
+        <textarea style={{ ...input, minHeight: 56, resize: "vertical" }} value={cfg.greetingMessage ?? ""} onChange={(e) => set({ greetingMessage: e.target.value })} placeholder="Ex: Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗" />
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Enviada exatamente assim na abertura. Depois a IA segue (manda a foto do veículo + pergunta). Em branco usa uma saudação padrão.</p>
         <label style={{ ...label, marginTop: 14 }}>Tom de voz / personalidade</label>
         <input style={input} value={cfg.persona ?? ""} onChange={(e) => set({ persona: e.target.value })} placeholder="Ex: cordial, objetivo, simpático, sem gírias" />
         <label style={{ ...label, marginTop: 14 }}>Objetivo do atendimento</label>

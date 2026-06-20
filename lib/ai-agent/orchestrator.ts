@@ -105,8 +105,9 @@ function buildStablePrompt(cfg: PromptCfg): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string): string {
+function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string): string {
   return [
+    firstNote || "",
     vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por este anúncio — já saiba responder ano/km/itens e ofereça a foto):\n${vehicle}` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
@@ -156,12 +157,17 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     : (opts.transcript ?? []).filter((m) => m.role === "assistant").length;
   const isFirst = turns === 0;
 
-  // Disclosure como CANAL DA LOJA (só na 1ª msg, em produção, se habilitado).
+  // Saudação na 1ª mensagem: usa o texto fixo da loja (greetingMessage) se houver,
+  // senão a saudação padrão. Vale em live e em teste (Console) para refletir o real.
   let disclosureText = "";
-  if (isFirst && mode === "live" && cfg?.disclosureEnabled !== false) {
-    disclosureText = buildDisclosure(storeName ?? "", cfg?.assistantName);
+  if (isFirst && cfg?.disclosureEnabled !== false) {
+    disclosureText = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
   }
   const withDisclosure = (text: string) => (disclosureText ? `${disclosureText}\n\n${text}` : text);
+  // Evita a IA cumprimentar/apresentar de novo (a saudação já foi prefixada).
+  const firstNote = (isFirst && disclosureText)
+    ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Vá direto: se houver veículo de interesse, mande a foto dele (enviar_foto) e faça UMA pergunta que engaje.`
+    : "";
 
   // Teto de custo por contato (só produção).
   if (mode === "live" && turns >= MAX_TURNS) {
@@ -274,7 +280,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote) },
     ...priorMessages,
   ];
 
