@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, Lock, MessageCircle } from "lucide-react";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -13,7 +13,66 @@ interface Overview {
   funnel: { recebido: number; respondido: number; qualificado: number; negociacao: number; perdido: number; convertido: number };
 }
 
+interface FunnelLead { contactId: string; name: string | null; waId: string; lastMessageAt: string | null; origin: string | null; manual: boolean }
+
 const card: React.CSSProperties = { background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, boxShadow: "var(--shadow-card)" };
+
+const LEAD_STAGES: { key: string; label: string; color: string }[] = [
+  { key: "negociacao", label: "Em negociação", color: "#7C3AED" },
+  { key: "convertido", label: "Convertidos", color: "#16A34A" },
+  { key: "qualificado", label: "Qualificados", color: "#2563EB" },
+  { key: "perdido", label: "Perdidos", color: "#94A3B8" },
+];
+
+function fmtPhone(waId: string): string {
+  const d = (waId || "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) {
+    const ddd = d.slice(2, 4); const rest = d.slice(4);
+    const p = rest.length === 9 ? `${rest.slice(0, 5)}-${rest.slice(5)}` : `${rest.slice(0, 4)}-${rest.slice(4)}`;
+    return `(${ddd}) ${p}`;
+  }
+  return d ? `+${d}` : "—";
+}
+
+function fmtWhen(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function LeadSection({ label, color, items, open, onToggle }: { label: string; color: string; items: FunnelLead[]; open: boolean; onToggle: () => void }) {
+  return (
+    <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+      <button onClick={onToggle} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer" }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flex: 1, textAlign: "left" }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: items.length ? color : "var(--text-muted)", background: items.length ? `${color}1A` : "transparent", padding: "1px 8px", borderRadius: 20, minWidth: 22, textAlign: "center" }}>{items.length}</span>
+        <ChevronDown size={15} style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+      </button>
+      {open && (
+        <div style={{ borderTop: "1px solid var(--border)" }}>
+          {items.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "12px 16px" }}>Nenhum lead nesta etapa no período.</p>
+          ) : items.map((l) => (
+            <a key={l.contactId} href={l.waId ? `https://wa.me/${l.waId.replace(/\D/g, "")}` : undefined} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderTop: "1px solid var(--border)", textDecoration: "none", color: "inherit" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name || "Sem nome"}</span>
+                  {l.manual && <Lock size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                  {fmtPhone(l.waId)}{l.origin ? ` · ${l.origin}` : ""}{l.lastMessageAt ? ` · ${fmtWhen(l.lastMessageAt)}` : ""}
+                </div>
+              </div>
+              <MessageCircle size={14} style={{ color: "#16A34A", flexShrink: 0 }} />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function fmtDur(sec: number | null): string {
   if (sec == null) return "—";
@@ -65,6 +124,8 @@ export function FunnelTab({ clientId }: { clientId: string }) {
   const [state, setState] = useState<"loading" | "ok" | "noconn">("loading");
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+  const [leads, setLeads] = useState<Record<string, FunnelLead[]>>({});
+  const [openStages, setOpenStages] = useState<Record<string, boolean>>({ negociacao: true, convertido: true });
 
   const load = useCallback(async () => {
     setState("loading");
@@ -72,8 +133,10 @@ export function FunnelTab({ clientId }: { clientId: string }) {
     if (res.status === 404) { setState("noconn"); return; }
     if (res.ok) {
       const d = await res.json();
+      const lr = await fetch(`/api/clients/${clientId}/whatsapp/funnel-leads?year=${year}&month=${month}`);
+      const ld = lr.ok ? await lr.json() : { stages: {} };
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setData(d); setState("ok");
+      setData(d); setLeads(ld.stages ?? {}); setState("ok");
     }
   }, [clientId, month, year]);
 
@@ -162,8 +225,23 @@ export function FunnelTab({ clientId }: { clientId: string }) {
               )}
             </div>
 
+            {/* Leads por etapa — clicar abre o WhatsApp do lead */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Leads por etapa</div>
+              {LEAD_STAGES.map((st) => (
+                <LeadSection
+                  key={st.key}
+                  label={st.label}
+                  color={st.color}
+                  items={leads[st.key] ?? []}
+                  open={!!openStages[st.key]}
+                  onToggle={() => setOpenStages((o) => ({ ...o, [st.key]: !o[st.key] }))}
+                />
+              ))}
+            </div>
+
             <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              As etapas são preenchidas automaticamente pela conversa (sem custo de IA). O operador pode ajustar a etapa de qualquer lead na aba WhatsApp — ao fazer isso, o automático passa a respeitar essa definição.
+              As etapas são preenchidas automaticamente pela conversa (sem custo de IA). Toque num lead para abrir o WhatsApp dele. O operador pode ajustar a etapa na aba WhatsApp (o cadeado indica ajuste manual) — aí o automático respeita.
             </p>
           </>
         );
