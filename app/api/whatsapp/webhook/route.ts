@@ -4,6 +4,7 @@ import {
   verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
+import { applyFunnelFromMessage } from "@/lib/wa-funnel";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
@@ -144,6 +145,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
+    // Auto-classificação do funil (determinística, sem custo). Vale para lead E
+    // loja (ex.: "parabéns pela compra"). Fire-and-forget: nunca bloqueia o webhook.
+    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m) }).catch(() => {});
+
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
     // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
     // Sobrevive a deploy/restart e serializa em multi-instância; o 200 não espera o agente.
@@ -232,6 +237,8 @@ async function processMessageEchoes(conn: WaConnection, value: WaChangeValue) {
       },
     });
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: "out", timestamp: ts });
+    // Funil: mensagem da loja também sinaliza (ex.: "parabéns pela compra").
+    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m) }).catch(() => {});
   }
 }
 

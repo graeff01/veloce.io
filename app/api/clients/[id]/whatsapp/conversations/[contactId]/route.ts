@@ -114,16 +114,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     ]);
   }
 
-  // Funil (mantém comportamento atual).
+  // Funil — gestão manual. Define etapa → trava (funnelManual=true): o
+  // auto-classificador deixa de tocar. Limpar a etapa (null) reabre o automático.
   let funnelStage = undefined as string | null | undefined;
   if (d.funnelStage !== undefined) {
+    const manual = d.funnelStage !== null;
     const conversation = await prisma.waConversation.upsert({
       where: { contactId: contact.id },
-      create: { connectionId: conn.id, contactId: contact.id, funnelStage: d.funnelStage },
-      update: { funnelStage: d.funnelStage },
+      create: { connectionId: conn.id, contactId: contact.id, funnelStage: d.funnelStage, funnelManual: manual },
+      update: { funnelStage: d.funnelStage, funnelManual: manual },
     });
     funnelStage = conversation.funnelStage;
-    await logWaEvent(conn.id, "funnel.changed", contact.id, { stage: d.funnelStage, by: session?.user?.id ?? null });
+    await logWaEvent(conn.id, "funnel.changed", contact.id, { stage: d.funnelStage, manual, by: session?.user?.id ?? null });
   }
 
   if (d.reportValid !== undefined) {

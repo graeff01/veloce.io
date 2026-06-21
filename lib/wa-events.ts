@@ -7,6 +7,7 @@ export type WaEventType =
   | "first.response"
   | "status.changed"
   | "funnel.changed"
+  | "funnel.auto"
   | "report.validity"
   | "ai.silenced"
   | "ai.erased"

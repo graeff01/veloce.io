@@ -724,7 +724,8 @@ model WaConversation {
   connectionId     String
   contactId        String    @unique
   status           String    @default("open") // open | waiting | closed (rótulo interno)
-  funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido (manual)
+  funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido
+  funnelManual     Boolean   @default(false) // operador definiu a etapa → auto-classificador não toca
   aiSummary        String?    // resumo da conversa p/ o CRM (gerado sob demanda pelo operador)
   aiSuggestedStage String?    // etapa de funil sugerida pela IA
   aiUpdatedAt      DateTime?
