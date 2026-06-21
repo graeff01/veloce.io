@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Loader2, ChevronLeft, ChevronRight, RefreshCw, ChevronDown, Lock, MessageCircle } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 interface Overview {
-  leads: number;
   responded: number;
   converted: number;
   avgFirstResponseSec: number | null;
@@ -40,7 +40,7 @@ function fmtWhen(iso: string | null): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function LeadSection({ label, color, items, open, onToggle }: { label: string; color: string; items: FunnelLead[]; open: boolean; onToggle: () => void }) {
+function LeadSection({ label, color, items, open, onToggle, onSelect }: { label: string; color: string; items: FunnelLead[]; open: boolean; onToggle: () => void; onSelect: (l: FunnelLead) => void }) {
   return (
     <div style={{ ...card, padding: 0, overflow: "hidden" }}>
       <button onClick={onToggle} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer" }}>
@@ -54,8 +54,8 @@ function LeadSection({ label, color, items, open, onToggle }: { label: string; c
           {items.length === 0 ? (
             <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "12px 16px" }}>Nenhum lead nesta etapa no período.</p>
           ) : items.map((l) => (
-            <a key={l.contactId} href={l.waId ? `https://wa.me/${l.waId.replace(/\D/g, "")}` : undefined} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderTop: "1px solid var(--border)", textDecoration: "none", color: "inherit" }}>
+            <button key={l.contactId} onClick={() => onSelect(l)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderTop: "1px solid var(--border)", background: "transparent", border: "none", borderTopColor: "var(--border)", cursor: "pointer", textAlign: "left" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name || "Sem nome"}</span>
@@ -65,8 +65,8 @@ function LeadSection({ label, color, items, open, onToggle }: { label: string; c
                   {fmtPhone(l.waId)}{l.origin ? ` · ${l.origin}` : ""}{l.lastMessageAt ? ` · ${fmtWhen(l.lastMessageAt)}` : ""}
                 </div>
               </div>
-              <MessageCircle size={14} style={{ color: "#16A34A", flexShrink: 0 }} />
-            </a>
+              <MessageCircle size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            </button>
           ))}
         </div>
       )}
@@ -116,6 +116,45 @@ function FunnelBar({ label, count, base, prevCount, color }: { label: string; co
   );
 }
 
+interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
+
+function LeadHistoryModal({ clientId, lead, onClose }: { clientId: string; lead: FunnelLead; onClose: () => void }) {
+  const [items, setItems] = useState<Msg[] | null>(null);
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/whatsapp/conversations/${lead.contactId}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setItems(Array.isArray(d.items) ? d.items : []))
+      .catch(() => setItems([]));
+  }, [clientId, lead.contactId]);
+
+  return (
+    <Modal open onClose={onClose} title={lead.name || fmtPhone(lead.waId)} size="md">
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
+        {fmtPhone(lead.waId)}{lead.origin ? ` · ${lead.origin}` : ""}
+      </div>
+      {items === null ? (
+        <div style={{ padding: 30, textAlign: "center" }}><Loader2 size={18} className="animate-spin" style={{ color: "var(--text-muted)" }} /></div>
+      ) : items.length === 0 ? (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem mensagens.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
+          {items.map((m) => {
+            const out = m.direction === "out";
+            return (
+              <div key={m.id} style={{ alignSelf: out ? "flex-end" : "flex-start", maxWidth: "82%" }}>
+                <div style={{ fontSize: 9.5, color: "var(--text-muted)", marginBottom: 2, textAlign: out ? "right" : "left" }}>{out ? "Loja" : "Lead"} · {new Date(m.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                <div style={{ padding: "8px 11px", borderRadius: 12, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.4, background: out ? "var(--accent)" : "var(--bg-elevated)", color: out ? "#fff" : "var(--text-primary)", border: out ? "none" : "1px solid var(--border)" }}>
+                  {m.text || (m.type !== "text" ? `(${m.type})` : "")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function FunnelTab({ clientId }: { clientId: string }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -125,18 +164,17 @@ export function FunnelTab({ clientId }: { clientId: string }) {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [leads, setLeads] = useState<Record<string, FunnelLead[]>>({});
-  const [openStages, setOpenStages] = useState<Record<string, boolean>>({ negociacao: true, convertido: true });
+  const [openStages, setOpenStages] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<FunnelLead | null>(null);
 
   const load = useCallback(async () => {
     setState("loading");
-    const res = await fetch(`/api/clients/${clientId}/whatsapp/overview?year=${year}&month=${month}`);
+    const res = await fetch(`/api/clients/${clientId}/whatsapp/funnel?year=${year}&month=${month}`);
     if (res.status === 404) { setState("noconn"); return; }
     if (res.ok) {
       const d = await res.json();
-      const lr = await fetch(`/api/clients/${clientId}/whatsapp/funnel-leads?year=${year}&month=${month}`);
-      const ld = lr.ok ? await lr.json() : { stages: {} };
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setData(d); setLeads(ld.stages ?? {}); setState("ok");
+      setData(d); setLeads(d.stages ?? {}); setState("ok");
     }
   }, [clientId, month, year]);
 
@@ -197,7 +235,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
           <>
             {/* KPIs principais */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-              <Kpi label="Leads" value={recebidos.toLocaleString("pt-BR")} hint="recebidos no mês" />
+              <Kpi label="Leads de anúncio" value={recebidos.toLocaleString("pt-BR")} hint="da Meta · no mês" />
               <Kpi label="Taxa de resposta" value={`${respRate}%`} tone={respRate >= 80 ? "var(--green)" : respRate >= 50 ? "var(--amber)" : "var(--red)"} hint="leads atendidos" />
               <Kpi label="Em negociação" value={emNegociacao.toLocaleString("pt-BR")} hint="chegaram a negociar" />
               <Kpi label="Convertidos" value={convertidos.toLocaleString("pt-BR")} tone={convertidos > 0 ? "var(--green)" : undefined} />
@@ -236,16 +274,19 @@ export function FunnelTab({ clientId }: { clientId: string }) {
                   items={leads[st.key] ?? []}
                   open={!!openStages[st.key]}
                   onToggle={() => setOpenStages((o) => ({ ...o, [st.key]: !o[st.key] }))}
+                  onSelect={setSelected}
                 />
               ))}
             </div>
 
             <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              As etapas são preenchidas automaticamente pela conversa (sem custo de IA). Toque num lead para abrir o WhatsApp dele. O operador pode ajustar a etapa na aba WhatsApp (o cadeado indica ajuste manual) — aí o automático respeita.
+              O funil considera <b>apenas leads de anúncio (Meta)</b>. As etapas são preenchidas automaticamente pela conversa (sem custo de IA). Toque num lead para ver o histórico de mensagens. O cadeado indica etapa ajustada manualmente — aí o automático respeita.
             </p>
           </>
         );
       })()}
+
+      {selected && <LeadHistoryModal clientId={clientId} lead={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

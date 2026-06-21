@@ -78,10 +78,14 @@ export function stageFromHistory(texts: string[], vertical?: string | null): str
 // Backfill: classifica conversas JÁ existentes pelo histórico. Ignora as travadas
 // manualmente (funnelManual). Idempotente — pode rodar quantas vezes quiser.
 export async function backfillFunnelForConnection(connectionId: string, vertical?: string | null): Promise<{ scanned: number; updated: number }> {
-  const convs = await prisma.waConversation.findMany({
+  // Só leads de anúncio (Meta) entram no funil.
+  const adIds = new Set(
+    (await prisma.waLead.findMany({ where: { connectionId }, select: { contactId: true } })).map((l) => l.contactId),
+  );
+  const convs = (await prisma.waConversation.findMany({
     where: { connectionId, funnelManual: false },
     select: { contactId: true, funnelStage: true },
-  });
+  })).filter((c) => adIds.has(c.contactId));
   if (convs.length === 0) return { scanned: 0, updated: 0 };
 
   const msgs = await prisma.waMessage.findMany({
@@ -122,6 +126,10 @@ export async function applyFunnelFromMessage(opts: {
     });
     if (!conv || conv.funnelManual) return;            // operador é dono → não toca
     if (conv.funnelStage === "convertido") return;     // terminal de topo
+
+    // O funil trabalha SÓ com leads de anúncio (Meta). Orgânico não entra.
+    const isAd = await prisma.waLead.findUnique({ where: { contactId }, select: { contactId: true } });
+    if (!isAd) return;
 
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { vertical: true } });
     const candidate = detectStageFromMessage(text, cfg?.vertical);
