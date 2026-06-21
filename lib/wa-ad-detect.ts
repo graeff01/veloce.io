@@ -5,7 +5,21 @@
 
 const AD_RE = /an[úu]ncio\s+(?:d[oa]s?|de)\s+(.+)/i;
 
-// Extrai o modelo/anúncio da mensagem. Retorna null se não casar o padrão.
+// Origens que NÃO são nossos anúncios da Meta (site próprio, classificados, redes,
+// outras mídias). Se o "modelo" detectado for uma dessas, NÃO é lead de anúncio
+// nosso (ex.: "anúncio do site", "anúncio do auto carros").
+const NON_AD_SOURCES = new Set([
+  "site", "auto carros", "autocarros", "autocarro", "olx", "webmotors", "web motors",
+  "mercado livre", "mercadolivre", "marketplace", "icarros", "mobiauto", "usados br",
+  "usadosbr", "napista", "chaves na mao", "chavesnamao", "seminovos",
+  "instagram", "insta", "facebook", "face", "tiktok", "google", "status",
+  "loja", "vitrine", "patio", "jornal", "radio", "panfleto", "outdoor", "placa",
+  "indicacao", "amigo", "vizinho",
+]);
+const normSource = (str: string) => str.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+// Extrai o modelo/anúncio da mensagem. Retorna null se não casar o padrão OU se
+// a origem detectada não for um anúncio nosso da Meta (site/marketplace/etc.).
 export function detectAdModel(text: string | null | undefined): string | null {
   if (!text) return null;
   const firstLine = text.split(/\r?\n/)[0];
@@ -25,6 +39,12 @@ export function detectAdModel(text: string | null | undefined): string | null {
   if (words.length > 5) model = words.slice(0, 5).join(" ");
 
   if (!model || model.length > 60) return null;
+
+  // Descarta origens que não são nossos anúncios da Meta.
+  const ns = normSource(model);
+  if (NON_AD_SOURCES.has(ns)) return null;
+  for (const b of NON_AD_SOURCES) if (ns.startsWith(b + " ")) return null;
+
   return model;
 }
 

@@ -4,7 +4,7 @@ import {
   verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
-import { detectAdModel, looksLikeTrafficLead } from "@/lib/wa-ad-detect";
+import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { notifyLeadMessage } from "@/lib/notifications/lead-message";
@@ -151,11 +151,13 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     // detectado na mensagem de abertura ("anúncio do {modelo}"). Capturamos ANTES
     // de notificar para a notificação já saber de qual anúncio o lead veio —
     // independente do texto que o lead digitou.
+    // Lead de anúncio NOSSO (Meta) = referral (Click-to-WhatsApp) OU a mensagem
+    // padrão com o modelo do carro ("anúncio do {modelo}"). Marketplace/site
+    // (AutoCarro, OLX, "anúncio do site"...) NÃO contam como nosso lead de Meta.
     const ref = m.referral;
     const text = outbound ? null : messageText(m);
     const adModel = outbound ? null : detectAdModel(text);
-    const trafficLead = !outbound && looksLikeTrafficLead(text);
-    const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel || trafficLead;
+    const isAdLead = (ref && (ref.source_id || ref.source_type === "ad")) || !!adModel;
     if (isAdLead) {
       const lead = await prisma.waLead.findUnique({ where: { contactId: contact.id } });
       if (!lead) {
@@ -167,7 +169,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
             adTitle: ref?.headline ?? adModel ?? null,
             adModel: adModel ?? null,
             adBody: ref?.body ?? null,
-            sourceType: ref?.source_type ?? (adModel ? "message" : (trafficLead ? "marketplace" : null)),
+            sourceType: ref?.source_type ?? (adModel ? "message" : null),
             sourceUrl: ref?.source_url ?? null,
             ctwaClid: ref?.ctwa_clid ?? null,
             enteredAt: ts,
