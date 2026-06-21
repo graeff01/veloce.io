@@ -27,8 +27,11 @@ interface Signal { stage: SignalStage; re: RegExp }
 // frases fortes; qualificado/negociação com intenção clara.
 const SIGNALS_BASE: Signal[] = [
   { stage: "perdido", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
-  { stage: "convertido", re: /(vou comprar|vou levar|pode fechar|quero fechar|fechar neg[óo]cio|neg[óo]cio fechado|fechamos|parab[ée]ns pela compra|venda (confirmada|fechada)|compra confirmada|tá fechado|ta fechado)/i },
-  { stage: "negociacao", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|agendar|\bvisita\b|passar a[íi]|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
+  // Convertido EXIGE frase de compra inequívoca. NÃO inclui "fechado/fechamos/tá
+  // fechado" isolados — em PT-BR isso é "combinado/ok" (ex.: marcar visita), e não
+  // venda. "fechar/fechamos/fechei" só conta junto de negócio/compra/venda.
+  { stage: "convertido", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra|venda)|neg[óo]cio fechado|parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
+  { stage: "negociacao", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|agendar|\bvisita\b|marcar (uma )?(visita|hor[áa]rio)|passar (na loja|aqui|a[íi])|(vir|venha) (na loja|aqui|at[ée] a loja)|te espero|ver (o |a )?(carro|ve[íi]culo|modelo|im[óo]vel|apartamento|casa)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
   { stage: "qualificado", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda tem|ainda (est[áa]|t[áa]) dispon[íi]vel|tem em estoque|gostaria de (saber|informa)|tenho interesse|quero saber)/i },
 ];
 
@@ -105,8 +108,11 @@ export async function backfillFunnelForConnection(connectionId: string, vertical
   for (const c of convs) {
     const texts = byContact.get(c.contactId);
     if (!texts || texts.length === 0) continue;
+    // Re-sincroniza: recomputa do histórico e grava o resultado, inclusive
+    // CORRIGINDO para baixo ou limpando (null) — só em conversas não-travadas.
+    // Assim "Recalcular histórico" conserta falsos-positivos antigos.
     const stage = stageFromHistory(texts, vertical);
-    if (stage && stage !== c.funnelStage) {
+    if (stage !== c.funnelStage) {
       await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { funnelStage: stage } });
       updated++;
     }
