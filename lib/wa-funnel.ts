@@ -37,9 +37,9 @@ const SIGNALS_BASE: Signal[] = [
   // Negociação — SÓ quando o LEAD demonstra a intenção (pede financiamento, troca,
   // ou QUER agendar/visitar/ver). Convite da loja NÃO avança o funil.
   { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|marcar (uma )?(visita|hor[áa]rio)|posso (ir|passar|visitar)|quero (agendar|marcar|visitar|ir|passar|ver (o |a )?(carro|ve[íi]culo|im[óo]vel))|vou (passar|a[íi]|na loja)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
-  // Qualificado — SÓ quando o LEAD faz uma pergunta CONCRETA (valor, ano, km,
-  // disponibilidade). O "gostaria de saber" do template de anúncio NÃO qualifica.
-  { stage: "qualificado", who: "lead", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|kilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda (tem|est[áa]|t[áa] dispon[íi]vel)|tem em estoque|aceita (pix|cart[ãa]o))/i },
+  // Qualificado — SÓ pergunta CONCRETA de preço ou atributo específico do LEAD.
+  // NÃO inclui "disponível/tem interesse/gostaria de saber" (são template de anúncio).
+  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|kilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|[úu]ltimo (valor|pre[çc]o)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito))/i },
 ];
 
 // Reforços por vertical (opcionais — a base já cobre bem). Também só do LEAD.
