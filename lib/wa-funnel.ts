@@ -34,19 +34,21 @@ const SIGNALS_BASE: Signal[] = [
   { stage: "convertido", who: "lead", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra)|neg[óo]cio fechado)/i },
   // Convertido — LOJA só com confirmação INEQUÍVOCA de venda.
   { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
-  // Negociação — SÓ quando o LEAD demonstra a intenção (pede financiamento, troca,
-  // ou QUER agendar/visitar/ver). Convite da loja NÃO avança o funil.
-  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|marcar (uma )?(visita|hor[áa]rio)|posso (ir|passar|visitar)|quero (agendar|marcar|visitar|ir|passar|ver (o |a )?(carro|ve[íi]culo|im[óo]vel))|vou (passar|a[íi]|na loja)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
-  // Qualificado — SÓ pergunta CONCRETA de preço ou atributo específico do LEAD.
-  // NÃO inclui "disponível/tem interesse/gostaria de saber" (são template de anúncio).
-  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|kilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|[úu]ltimo (valor|pre[çc]o)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito))/i },
+  // Negociação — SÓ conversa de DINHEIRO/negócio do LEAD: pagamento (financiamento/
+  // parcela/entrada-de-pagamento/à vista), troca DO CARRO, ou barganha (desconto/
+  // melhor preço). NÃO inclui "condições" (= estado do carro), "entrada" solta
+  // (= horário/porta) nem "troca" solta (= troca de óleo). Visita é qualificado.
+  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bfinancia\b|parcela(s|r|do|mento)?|em quantas vezes|quantas parcelas|dar (de )?entrada|valor de entrada|quanto (de |fica de )?entrada|sem entrada|entrada de (r\$|\d)|[àa] vista|aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|aceita meu (carro|ve[íi]culo)|\bdesconto\b|abaixa|faz por|consegue por|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor))/i },
+  // Qualificado — interesse CONCRETO no carro pelo LEAD: preço, specs, ESTADO/
+  // condição, fotos, ou pedido de visita. NÃO inclui template de anúncio.
+  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo)|condi[çc][ãa]o do (carro|ve[íi]culo)|em (bom|boas) (estado|condi[çc][õo]es)|estado do (carro|ve[íi]culo)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa|le[íi]l[ãa]o)|\b[ée] de leil[ãa]o|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito)|agendar (uma )?visita|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o)|posso (ir|passar|visitar)|test[ -]?drive)/i },
 ];
 
 // Reforços por vertical (opcionais — a base já cobre bem). Também só do LEAD.
 const SIGNALS_BY_VERTICAL: Record<string, Signal[]> = {
   imobiliario: [
-    { stage: "negociacao", who: "lead", re: /(\bfgts\b|documenta[çc][ãa]o|escritura|\bsinal\b|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
-    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te)/i },
+    { stage: "negociacao", who: "lead", re: /(\bfgts\b|financiamento|documenta[çc][ãa]o|escritura|\bsinal\b|parcela)/i },
+    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
   ],
 };
 
