@@ -261,6 +261,17 @@ export function FunnelTab({ clientId }: { clientId: string }) {
         const convertidos = f.convertido;
         const respRate = recebidos > 0 ? Math.round((data.responded / recebidos) * 100) : 0;
         const convRate = recebidos > 0 ? Math.round((convertidos / recebidos) * 100) : 0;
+
+        // Listas CUMULATIVAS (quem alcançou a etapa) — batem com as barras. Um lead
+        // em negociação também consta em qualificados. Perdido é à parte (terminal).
+        const recent = (a: FunnelLead, b: FunnelLead) => (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
+        const q = leads.qualificado ?? [], n = leads.negociacao ?? [], c = leads.convertido ?? [];
+        const cumLeads: Record<string, FunnelLead[]> = {
+          qualificado: [...q, ...n, ...c].sort(recent),
+          negociacao: [...n, ...c].sort(recent),
+          convertido: [...c].sort(recent),
+          perdido: (leads.perdido ?? []).slice().sort(recent),
+        };
         return (
           <>
             {/* KPIs principais */}
@@ -293,7 +304,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
               )}
             </div>
 
-            {/* Leads por etapa — clicar abre o WhatsApp do lead */}
+            {/* Leads por etapa (cumulativo: quem alcançou a etapa) — bate com as barras */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Leads por etapa</div>
               {LEAD_STAGES.map((st) => (
@@ -301,7 +312,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
                   key={st.key}
                   label={st.label}
                   color={st.color}
-                  items={leads[st.key] ?? []}
+                  items={cumLeads[st.key] ?? []}
                   open={!!openStages[st.key]}
                   onToggle={() => setOpenStages((o) => ({ ...o, [st.key]: !o[st.key] }))}
                   onSelect={(l) => setSelected({ lead: l, stage: st.key })}
@@ -310,7 +321,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
             </div>
 
             <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              O funil considera <b>apenas leads de anúncio (Meta)</b>. As etapas são preenchidas automaticamente pela conversa (sem custo de IA). Toque num lead para ver o histórico de mensagens. O cadeado indica etapa ajustada manualmente — aí o automático respeita.
+              O funil considera <b>apenas leads de anúncio (Meta)</b>, e é <b>cumulativo</b>: cada etapa mostra quem a <b>alcançou</b> (um lead em negociação também consta em qualificados). As etapas são preenchidas automaticamente pela conversa (sem custo de IA). Toque num lead para ver o histórico de mensagens. O cadeado indica etapa ajustada manualmente — aí o automático respeita.
             </p>
           </>
         );
