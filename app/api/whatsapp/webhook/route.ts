@@ -147,7 +147,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 
     // Auto-classificação do funil (determinística, sem custo). Vale para lead E
     // loja (ex.: "parabéns pela compra"). Fire-and-forget: nunca bloqueia o webhook.
-    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m) }).catch(() => {});
+    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: outbound ? "out" : "in" }).catch(() => {});
 
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
     // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
@@ -237,8 +237,8 @@ async function processMessageEchoes(conn: WaConnection, value: WaChangeValue) {
       },
     });
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: "out", timestamp: ts });
-    // Funil: mensagem da loja também sinaliza (ex.: "parabéns pela compra").
-    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m) }).catch(() => {});
+    // Funil: mensagem da loja (echo). Só converte com confirmação de venda real.
+    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: "out" }).catch(() => {});
   }
 }
 

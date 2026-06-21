@@ -21,25 +21,28 @@ function currentRank(stage: string | null | undefined): number {
 }
 
 type SignalStage = "qualificado" | "negociacao" | "convertido" | "perdido";
-interface Signal { stage: SignalStage; re: RegExp }
+type Who = "lead" | "store" | "any"; // quem precisa ter dito a frase
+interface Signal { stage: SignalStage; re: RegExp; who: Who }
 
-// Sinais base (cobrem automotivo/serviços/genérico). Convertido e perdido com
-// frases fortes; qualificado/negociação com intenção clara.
+// Sinais base. CONVERTIDO é ciente de quem falou — a loja NUNCA converte por
+// "fechado/combinado" (isso é marcar visita), só com confirmação de venda real.
 const SIGNALS_BASE: Signal[] = [
-  { stage: "perdido", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
-  // Convertido EXIGE frase de compra inequívoca. NÃO inclui "fechado/fechamos/tá
-  // fechado" isolados — em PT-BR isso é "combinado/ok" (ex.: marcar visita), e não
-  // venda. "fechar/fechamos/fechei" só conta junto de negócio/compra/venda.
-  { stage: "convertido", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra|venda)|neg[óo]cio fechado|parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
-  { stage: "negociacao", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|agendar|\bvisita\b|marcar (uma )?(visita|hor[áa]rio)|passar (na loja|aqui|a[íi])|(vir|venha) (na loja|aqui|at[ée] a loja)|te espero|ver (o |a )?(carro|ve[íi]culo|modelo|im[óo]vel|apartamento|casa)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
-  { stage: "qualificado", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda tem|ainda (est[áa]|t[áa]) dispon[íi]vel|tem em estoque|gostaria de (saber|informa)|tenho interesse|quero saber)/i },
+  // Perdido: o LEAD declara que saiu / já comprou. (A loja não "perde" por texto.)
+  { stage: "perdido", who: "lead", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
+  // Convertido — só o LEAD declara compra (intenção/ação explícita). "fechar/fechamos"
+  // SÓ junto de negócio/compra; nunca "fechado/tá fechado" isolado (= combinado).
+  { stage: "convertido", who: "lead", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra)|neg[óo]cio fechado)/i },
+  // Convertido — LOJA só com confirmação INEQUÍVOCA de venda.
+  { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
+  { stage: "negociacao", who: "any", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|agendar|\bvisita\b|marcar (uma )?(visita|hor[áa]rio)|passar (na loja|aqui|a[íi])|(vir|venha) (na loja|aqui|at[ée] a loja)|te espero|ver (o |a )?(carro|ve[íi]culo|modelo|im[óo]vel|apartamento|casa)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
+  { stage: "qualificado", who: "any", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda tem|ainda (est[áa]|t[áa]) dispon[íi]vel|tem em estoque|gostaria de (saber|informa)|tenho interesse|quero saber)/i },
 ];
 
 // Reforços por vertical (opcionais — a base já cobre bem).
 const SIGNALS_BY_VERTICAL: Record<string, Signal[]> = {
   imobiliario: [
-    { stage: "negociacao", re: /(\bfgts\b|documenta[çc][ãa]o|escritura|\bsinal\b|agendar visita|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
-    { stage: "qualificado", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te)/i },
+    { stage: "negociacao", who: "any", re: /(\bfgts\b|documenta[çc][ãa]o|escritura|\bsinal\b|agendar visita|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
+    { stage: "qualificado", who: "any", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te)/i },
   ],
 };
 
@@ -51,25 +54,28 @@ function score(stage: SignalStage): number {
   return RANK[stage];
 }
 
-// Detecta a etapa mais forte sinalizada por UMA mensagem. null = nenhum sinal.
-export function detectStageFromMessage(text: string | null | undefined, vertical?: string | null): SignalStage | null {
+// Detecta a etapa sinalizada por UMA mensagem, considerando quem falou
+// (direction "in" = lead, "out" = loja). null = nenhum sinal.
+export function detectStageFromMessage(text: string | null | undefined, vertical?: string | null, direction?: "in" | "out"): SignalStage | null {
   if (!text) return null;
   const t = text.normalize("NFC");
+  const who: Who = direction === "out" ? "store" : "lead";
   const signals = [...SIGNALS_BASE, ...(vertical && SIGNALS_BY_VERTICAL[vertical] ? SIGNALS_BY_VERTICAL[vertical] : [])];
   let best: SignalStage | null = null;
   let bestScore = -Infinity;
   for (const s of signals) {
+    if (s.who !== "any" && s.who !== who) continue;
     if (s.re.test(t) && score(s.stage) > bestScore) { bestScore = score(s.stage); best = s.stage; }
   }
   return best;
 }
 
-// Reproduz o classificador sobre o histórico (em ordem) e devolve a etapa final.
-// Mesma lógica forward-only do tempo real. null = nenhum sinal (fica recebido/respondido).
-export function stageFromHistory(texts: string[], vertical?: string | null): string | null {
+// Reproduz o classificador sobre o histórico (em ordem, com a direção de cada
+// mensagem) e devolve a etapa final. Mesma lógica forward-only do tempo real.
+export function stageFromHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null): string | null {
   let cur: string | null = null;
-  for (const t of texts) {
-    const cand = detectStageFromMessage(t, vertical);
+  for (const m of msgs) {
+    const cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
     if (!cand) continue;
     if (cur === "convertido") break; // terminal de topo
     if (cand === "perdido") cur = "perdido";
@@ -93,25 +99,25 @@ export async function backfillFunnelForConnection(connectionId: string, vertical
 
   const msgs = await prisma.waMessage.findMany({
     where: { connectionId },
-    select: { contactId: true, text: true },
+    select: { contactId: true, text: true, direction: true },
     orderBy: { timestamp: "asc" },
   });
-  const byContact = new Map<string, string[]>();
+  const byContact = new Map<string, { text: string | null; direction: string }[]>();
   for (const m of msgs) {
     if (!m.text) continue;
     const arr = byContact.get(m.contactId) ?? [];
-    arr.push(m.text);
+    arr.push({ text: m.text, direction: m.direction });
     byContact.set(m.contactId, arr);
   }
 
   let updated = 0;
   for (const c of convs) {
-    const texts = byContact.get(c.contactId);
-    if (!texts || texts.length === 0) continue;
+    const hist = byContact.get(c.contactId);
+    if (!hist || hist.length === 0) continue;
     // Re-sincroniza: recomputa do histórico e grava o resultado, inclusive
     // CORRIGINDO para baixo ou limpando (null) — só em conversas não-travadas.
     // Assim "Recalcular histórico" conserta falsos-positivos antigos.
-    const stage = stageFromHistory(texts, vertical);
+    const stage = stageFromHistory(hist, vertical);
     if (stage !== c.funnelStage) {
       await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { funnelStage: stage } });
       updated++;
@@ -122,9 +128,9 @@ export async function backfillFunnelForConnection(connectionId: string, vertical
 
 // Aplica a classificação a partir de uma mensagem. Best-effort: nunca lança.
 export async function applyFunnelFromMessage(opts: {
-  connectionId: string; contactId: string; clientId: string; text: string | null;
+  connectionId: string; contactId: string; clientId: string; text: string | null; direction: "in" | "out";
 }): Promise<void> {
-  const { connectionId, contactId, clientId, text } = opts;
+  const { connectionId, contactId, clientId, text, direction } = opts;
   try {
     const conv = await prisma.waConversation.findUnique({
       where: { contactId },
@@ -138,7 +144,7 @@ export async function applyFunnelFromMessage(opts: {
     if (!isAd) return;
 
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { vertical: true } });
-    const candidate = detectStageFromMessage(text, cfg?.vertical);
+    const candidate = detectStageFromMessage(text, cfg?.vertical, direction);
     if (!candidate) return;
 
     const cur = conv.funnelStage;

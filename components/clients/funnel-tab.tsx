@@ -24,6 +24,14 @@ const LEAD_STAGES: { key: string; label: string; color: string }[] = [
   { key: "perdido", label: "Perdidos", color: "#94A3B8" },
 ];
 
+const STAGE_OPTS: { value: string; label: string }[] = [
+  { value: "", label: "— Sem etapa (volta ao automático) —" },
+  { value: "qualificado", label: "Qualificado" },
+  { value: "negociacao", label: "Em negociação" },
+  { value: "convertido", label: "Convertido" },
+  { value: "perdido", label: "Perdido" },
+];
+
 function fmtPhone(waId: string): string {
   const d = (waId || "").replace(/\D/g, "");
   if (d.length >= 12 && d.startsWith("55")) {
@@ -118,8 +126,10 @@ function FunnelBar({ label, count, base, prevCount, color }: { label: string; co
 
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
 
-function LeadHistoryModal({ clientId, lead, onClose }: { clientId: string; lead: FunnelLead; onClose: () => void }) {
+function LeadHistoryModal({ clientId, lead, stage, onClose, onChanged }: { clientId: string; lead: FunnelLead; stage: string; onClose: () => void; onChanged: () => void }) {
   const [items, setItems] = useState<Msg[] | null>(null);
+  const [stg, setStg] = useState(stage);
+  const [savingStg, setSavingStg] = useState(false);
   useEffect(() => {
     fetch(`/api/clients/${clientId}/whatsapp/conversations/${lead.contactId}`)
       .then((r) => (r.ok ? r.json() : { items: [] }))
@@ -127,10 +137,30 @@ function LeadHistoryModal({ clientId, lead, onClose }: { clientId: string; lead:
       .catch(() => setItems([]));
   }, [clientId, lead.contactId]);
 
+  async function saveStage(v: string) {
+    setStg(v); setSavingStg(true);
+    await fetch(`/api/clients/${clientId}/whatsapp/conversations/${lead.contactId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ funnelStage: v || null }),
+    }).catch(() => {});
+    setSavingStg(false);
+    onChanged();
+  }
+
   return (
     <Modal open onClose={onClose} title={lead.name || fmtPhone(lead.waId)} size="md">
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
         {fmtPhone(lead.waId)}{lead.origin ? ` · ${lead.origin}` : ""}
+      </div>
+
+      {/* Corrigir a etapa na hora (trava o automático) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>Etapa:</span>
+        <select value={stg} onChange={(e) => saveStage(e.target.value)} disabled={savingStg}
+          style={{ flex: 1, height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13 }}>
+          {STAGE_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {savingStg && <Loader2 size={14} className="animate-spin" style={{ color: "var(--text-muted)" }} />}
       </div>
       {items === null ? (
         <div style={{ padding: 30, textAlign: "center" }}><Loader2 size={18} className="animate-spin" style={{ color: "var(--text-muted)" }} /></div>
@@ -165,7 +195,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [leads, setLeads] = useState<Record<string, FunnelLead[]>>({});
   const [openStages, setOpenStages] = useState<Record<string, boolean>>({});
-  const [selected, setSelected] = useState<FunnelLead | null>(null);
+  const [selected, setSelected] = useState<{ lead: FunnelLead; stage: string } | null>(null);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -274,7 +304,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
                   items={leads[st.key] ?? []}
                   open={!!openStages[st.key]}
                   onToggle={() => setOpenStages((o) => ({ ...o, [st.key]: !o[st.key] }))}
-                  onSelect={setSelected}
+                  onSelect={(l) => setSelected({ lead: l, stage: st.key })}
                 />
               ))}
             </div>
@@ -286,7 +316,7 @@ export function FunnelTab({ clientId }: { clientId: string }) {
         );
       })()}
 
-      {selected && <LeadHistoryModal clientId={clientId} lead={selected} onClose={() => setSelected(null)} />}
+      {selected && <LeadHistoryModal clientId={clientId} lead={selected.lead} stage={selected.stage} onClose={() => setSelected(null)} onChanged={load} />}
     </div>
   );
 }
