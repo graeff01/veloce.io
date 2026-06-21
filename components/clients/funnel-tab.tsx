@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -63,6 +63,8 @@ export function FunnelTab({ clientId }: { clientId: string }) {
   const [year, setYear] = useState(now.getFullYear());
   const [data, setData] = useState<Overview | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "noconn">("loading");
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -80,6 +82,20 @@ export function FunnelTab({ clientId }: { clientId: string }) {
   function prevMonth() { if (month === 1) { setMonth(12); setYear((y) => y - 1); } else setMonth((m) => m - 1); }
   function nextMonth() { if (month === 12) { setMonth(1); setYear((y) => y + 1); } else setMonth((m) => m + 1); }
 
+  async function runBackfill() {
+    if (backfilling) return;
+    setBackfilling(true); setBackfillMsg(null);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/whatsapp/funnel-backfill`, { method: "POST" });
+      const d = await res.json();
+      setBackfillMsg(res.ok ? `${d.updated} conversa(s) classificada(s) de ${d.scanned}.` : (d.error ?? "Erro ao recalcular."));
+      if (res.ok) load();
+    } catch {
+      setBackfillMsg("Erro de rede.");
+    }
+    setBackfilling(false);
+  }
+
   const navBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
   return (
@@ -89,6 +105,12 @@ export function FunnelTab({ clientId }: { clientId: string }) {
         <button onClick={prevMonth} style={navBtn}><ChevronLeft size={15} /></button>
         <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", minWidth: 130 }}>{MONTHS[month - 1]} {year}</span>
         <button onClick={nextMonth} style={navBtn}><ChevronRight size={15} /></button>
+        <div style={{ flex: 1 }} />
+        {backfillMsg && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{backfillMsg}</span>}
+        <button onClick={runBackfill} disabled={backfilling} title="Classifica o funil das conversas já existentes pelo histórico"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, cursor: backfilling ? "default" : "pointer", opacity: backfilling ? 0.6 : 1 }}>
+          {backfilling ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Recalcular histórico
+        </button>
       </div>
 
       {state === "loading" && <div style={{ padding: 60, textAlign: "center" }}><Loader2 size={22} className="animate-spin" style={{ color: "var(--text-muted)" }} /></div>}

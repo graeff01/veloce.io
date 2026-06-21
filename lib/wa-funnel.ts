@@ -61,6 +61,55 @@ export function detectStageFromMessage(text: string | null | undefined, vertical
   return best;
 }
 
+// Reproduz o classificador sobre o histórico (em ordem) e devolve a etapa final.
+// Mesma lógica forward-only do tempo real. null = nenhum sinal (fica recebido/respondido).
+export function stageFromHistory(texts: string[], vertical?: string | null): string | null {
+  let cur: string | null = null;
+  for (const t of texts) {
+    const cand = detectStageFromMessage(t, vertical);
+    if (!cand) continue;
+    if (cur === "convertido") break; // terminal de topo
+    if (cand === "perdido") cur = "perdido";
+    else if (RANK[cand] > currentRank(cur)) cur = cand;
+  }
+  return cur;
+}
+
+// Backfill: classifica conversas JÁ existentes pelo histórico. Ignora as travadas
+// manualmente (funnelManual). Idempotente — pode rodar quantas vezes quiser.
+export async function backfillFunnelForConnection(connectionId: string, vertical?: string | null): Promise<{ scanned: number; updated: number }> {
+  const convs = await prisma.waConversation.findMany({
+    where: { connectionId, funnelManual: false },
+    select: { contactId: true, funnelStage: true },
+  });
+  if (convs.length === 0) return { scanned: 0, updated: 0 };
+
+  const msgs = await prisma.waMessage.findMany({
+    where: { connectionId },
+    select: { contactId: true, text: true },
+    orderBy: { timestamp: "asc" },
+  });
+  const byContact = new Map<string, string[]>();
+  for (const m of msgs) {
+    if (!m.text) continue;
+    const arr = byContact.get(m.contactId) ?? [];
+    arr.push(m.text);
+    byContact.set(m.contactId, arr);
+  }
+
+  let updated = 0;
+  for (const c of convs) {
+    const texts = byContact.get(c.contactId);
+    if (!texts || texts.length === 0) continue;
+    const stage = stageFromHistory(texts, vertical);
+    if (stage && stage !== c.funnelStage) {
+      await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { funnelStage: stage } });
+      updated++;
+    }
+  }
+  return { scanned: convs.length, updated };
+}
+
 // Aplica a classificação a partir de uma mensagem. Best-effort: nunca lança.
 export async function applyFunnelFromMessage(opts: {
   connectionId: string; contactId: string; clientId: string; text: string | null;
