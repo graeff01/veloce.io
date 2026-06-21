@@ -34,15 +34,19 @@ const SIGNALS_BASE: Signal[] = [
   { stage: "convertido", who: "lead", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra)|neg[óo]cio fechado)/i },
   // Convertido — LOJA só com confirmação INEQUÍVOCA de venda.
   { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
-  { stage: "negociacao", who: "any", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|agendar|\bvisita\b|marcar (uma )?(visita|hor[áa]rio)|passar (na loja|aqui|a[íi])|(vir|venha) (na loja|aqui|at[ée] a loja)|te espero|ver (o |a )?(carro|ve[íi]culo|modelo|im[óo]vel|apartamento|casa)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
-  { stage: "qualificado", who: "any", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda tem|ainda (est[áa]|t[áa]) dispon[íi]vel|tem em estoque|gostaria de (saber|informa)|tenho interesse|quero saber)/i },
+  // Negociação — SÓ quando o LEAD demonstra a intenção (pede financiamento, troca,
+  // ou QUER agendar/visitar/ver). Convite da loja NÃO avança o funil.
+  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bentrada\b|parcela|parcelar|[àa] vista|\btroca\b|test[ -]?drive|marcar (uma )?(visita|hor[áa]rio)|posso (ir|passar|visitar)|quero (agendar|marcar|visitar|ir|passar|ver (o |a )?(carro|ve[íi]culo|im[óo]vel))|vou (passar|a[íi]|na loja)|simula[çc][ãa]o|simular|proposta|\bdesconto\b|condi[çc][õo]es?( de pagamento)?)/i },
+  // Qualificado — SÓ quando o LEAD faz uma pergunta CONCRETA (valor, ano, km,
+  // disponibilidade). O "gostaria de saber" do template de anúncio NÃO qualifica.
+  { stage: "qualificado", who: "lead", re: /(qual (o |a )?(valor|pre[çc]o|ano|km|quilometragem|kilometragem|cor)|quanto (custa|fica|sai|é|esta|está)|\bpre[çc]o\b|tem dispon[íi]vel|ainda (tem|est[áa]|t[áa] dispon[íi]vel)|tem em estoque|aceita (pix|cart[ãa]o))/i },
 ];
 
-// Reforços por vertical (opcionais — a base já cobre bem).
+// Reforços por vertical (opcionais — a base já cobre bem). Também só do LEAD.
 const SIGNALS_BY_VERTICAL: Record<string, Signal[]> = {
   imobiliario: [
-    { stage: "negociacao", who: "any", re: /(\bfgts\b|documenta[çc][ãa]o|escritura|\bsinal\b|agendar visita|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
-    { stage: "qualificado", who: "any", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te)/i },
+    { stage: "negociacao", who: "lead", re: /(\bfgts\b|documenta[çc][ãa]o|escritura|\bsinal\b|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
+    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te)/i },
   ],
 };
 
