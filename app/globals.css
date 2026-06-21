@@ -2,20 +2,23 @@
 @import "tailwindcss";
 
 :root {
-  /* Backgrounds — off-white clean */
-  --bg-base: #F1F2F4;
-  --bg-surface: #FBFBFC;
-  --bg-elevated: #F0F1F4;
-  --bg-hover: #EDEFF3;
-  --bg-sidebar: #FBFBFC;
-  --bg-panel: rgba(255,255,255,0.78);
-  --bg-card: rgba(255,255,255,0.9);
-  --bg-board: rgba(255,255,255,0.52);
-  --bg-column: rgba(255,255,255,0.58);
+  /* Backgrounds — off-white quente/acinzentado (papel), menos branco */
+  --bg-base: #E7E6E2;
+  --bg-surface: #F4F3EF;
+  --bg-elevated: #ECEAE5;
+  --bg-hover: #E5E3DD;
+  --bg-sidebar: #F2F1EC;
+  --bg-panel: rgba(245,244,240,0.80);
+  --bg-card: rgba(249,248,244,0.92);
+  --bg-board: rgba(242,241,237,0.55);
+  --bg-column: rgba(242,241,237,0.62);
 
   /* Borders */
-  --border: #E4E6EF;
-  --border-strong: #C9CEDE;
+  --border: #DCDAD2;
+  --border-strong: #C6C2B8;
+
+  /* Grão (textura sutil) */
+  --grain-opacity: 0.055;
 
   /* Text */
   --text-primary: #111827;
@@ -132,6 +135,7 @@
   --shadow-card: var(--shadow-surface-subtle);
   --shadow-hover: var(--shadow-surface-elevated);
   --glow-subtle: 0 0 0 1px rgba(139,140,255,0.10), 0 16px 44px rgba(0,0,0,0.22);
+  --grain-opacity: 0.04;
 }
 
 * {
@@ -150,6 +154,19 @@ body {
   line-height: var(--type-body-line);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Grão de filme sutil sobre toda a tela — dá textura "papel" e tira o ar clínico
+   do branco puro. Não intercepta cliques; intensidade controlada por tema. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
 }
 
 a,

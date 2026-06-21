@@ -36,9 +36,10 @@ type ColKey = "FIXED" | "TODO" | "IN_PROGRESS" | "DONE";
 
 const COLUMNS: {
   key: ColKey; label: string; color: string; soft: string; accent: string;
-  dropStatus: Status; match: (t: Task) => boolean;
+  dropStatus: Status; match: (t: Task) => boolean; tint?: string;
 }[] = [
-  { key: "FIXED",       label: "Entregáveis fixos", color: "#4F46E5", soft: "rgba(79,70,229,0.08)",  accent: "#818CF8",
+  { key: "FIXED",       label: "Entregáveis fixos", color: "#4F46E5", soft: "rgba(79,70,229,0.14)",  accent: "#818CF8",
+    tint: "color-mix(in srgb, #4F46E5 8%, var(--bg-elevated))",
     dropStatus: "TODO",        match: (t) => t.status === "TODO" && t.fixedDemandId != null },
   { key: "TODO",        label: "A fazer",     color: "#64748B", soft: "rgba(100,116,139,0.08)", accent: "#94A3B8",
     dropStatus: "TODO",        match: (t) => t.status === "TODO" && t.fixedDemandId == null },
@@ -706,8 +707,8 @@ function Column({
       style={{
         display: "flex", flexDirection: "column",
         flex: 1, minWidth: 220,
-        background: isDraggingOver ? col.soft : "var(--bg-elevated)",
-        border: `1.5px solid ${isDraggingOver ? col.color + "55" : "var(--border)"}`,
+        background: isDraggingOver ? col.soft : (col.tint ?? "var(--bg-elevated)"),
+        border: `1.5px solid ${isDraggingOver ? col.color + "55" : (col.tint ? col.color + "33" : "var(--border)")}`,
         borderRadius: 14,
         transition: "background 150ms ease, border-color 150ms ease",
       }}
