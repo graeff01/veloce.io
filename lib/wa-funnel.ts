@@ -78,9 +78,15 @@ export function detectStageFromMessage(text: string | null | undefined, vertical
 // mensagem) e devolve a etapa final. Mesma lógica forward-only do tempo real.
 export function stageFromHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null): string | null {
   let cur: string | null = null;
+  let firstInboundSeen = false;
   for (const m of msgs) {
+    const isOpener = m.direction !== "out" && !firstInboundSeen; // 1ª msg do lead = template do anúncio
+    if (m.direction !== "out") firstInboundSeen = true;
     const cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
     if (!cand) continue;
+    // O opener do anúncio (template automático) NUNCA qualifica/negocia. Só conta
+    // engajamento real (mensagem seguinte do lead). Compra/perda ainda valem.
+    if (isOpener && (cand === "qualificado" || cand === "negociacao")) continue;
     if (cur === "convertido") break; // terminal de topo
     if (cand === "perdido") cur = "perdido";
     else if (RANK[cand] > currentRank(cur)) cur = cand;
@@ -150,6 +156,13 @@ export async function applyFunnelFromMessage(opts: {
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { vertical: true } });
     const candidate = detectStageFromMessage(text, cfg?.vertical, direction);
     if (!candidate) return;
+
+    // O opener do anúncio (1ª mensagem do lead) é template automático e NÃO
+    // qualifica/negocia. Só conta a partir da 2ª mensagem do lead (engajamento real).
+    if (direction === "in" && (candidate === "qualificado" || candidate === "negociacao")) {
+      const inboundCount = await prisma.waMessage.count({ where: { contactId, direction: "in" } });
+      if (inboundCount <= 1) return;
+    }
 
     const cur = conv.funnelStage;
     let next: string | null = null;
