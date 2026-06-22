@@ -24,6 +24,13 @@ const LEAD_STAGES: { key: string; label: string; color: string }[] = [
   { key: "perdido", label: "Perdidos", color: "#94A3B8" },
 ];
 
+const STAGE_BADGE: Record<string, { label: string; color: string }> = {
+  qualificado: { label: "Qualificado", color: "#2563EB" },
+  negociacao: { label: "Negociação", color: "#7C3AED" },
+  convertido: { label: "Convertido", color: "#16A34A" },
+  perdido: { label: "Perdido", color: "#94A3B8" },
+};
+
 const STAGE_OPTS: { value: string; label: string }[] = [
   { value: "", label: "— Sem etapa (volta ao automático) —" },
   { value: "qualificado", label: "Qualificado" },
@@ -128,12 +135,13 @@ interface Msg { id: string; text: string | null; direction: string; type: string
 
 function LeadHistoryModal({ clientId, lead, stage, onClose, onChanged }: { clientId: string; lead: FunnelLead; stage: string; onClose: () => void; onChanged: () => void }) {
   const [items, setItems] = useState<Msg[] | null>(null);
+  const [auto, setAuto] = useState<{ final: string | null; perMsg: (string | null)[] } | null>(null);
   const [stg, setStg] = useState(stage);
   const [savingStg, setSavingStg] = useState(false);
   useEffect(() => {
     fetch(`/api/clients/${clientId}/whatsapp/conversations/${lead.contactId}`)
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setItems(Array.isArray(d.items) ? d.items : []))
+      .then((d) => { setItems(Array.isArray(d.items) ? d.items : []); setAuto(d.funnelAuto ?? null); })
       .catch(() => setItems([]));
   }, [clientId, lead.contactId]);
 
@@ -162,20 +170,32 @@ function LeadHistoryModal({ clientId, lead, stage, onClose, onChanged }: { clien
         </select>
         {savingStg && <Loader2 size={14} className="animate-spin" style={{ color: "var(--text-muted)" }} />}
       </div>
+
+      {auto && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.5 }}>
+          {auto.final
+            ? <>Classificação automática: <b style={{ color: STAGE_BADGE[auto.final]?.color ?? "var(--text-primary)" }}>{STAGE_BADGE[auto.final]?.label ?? auto.final}</b> — pela mensagem destacada abaixo. Se não bater, ajuste a etapa acima.</>
+            : <>Nenhum sinal automático de etapa (lead só recebido/respondido). Ajuste manualmente acima se necessário.</>}
+        </div>
+      )}
+
       {items === null ? (
         <div style={{ padding: 30, textAlign: "center" }}><Loader2 size={18} className="animate-spin" style={{ color: "var(--text-muted)" }} /></div>
       ) : items.length === 0 ? (
         <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem mensagens.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
-          {items.map((m) => {
+          {items.map((m, i) => {
             const out = m.direction === "out";
+            const trig = auto?.perMsg?.[i] ?? null;
+            const badge = trig ? STAGE_BADGE[trig] : null;
             return (
               <div key={m.id} style={{ alignSelf: out ? "flex-end" : "flex-start", maxWidth: "82%" }}>
                 <div style={{ fontSize: 9.5, color: "var(--text-muted)", marginBottom: 2, textAlign: out ? "right" : "left" }}>{out ? "Loja" : "Lead"} · {new Date(m.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
-                <div style={{ padding: "8px 11px", borderRadius: 12, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.4, background: out ? "var(--accent)" : "var(--bg-elevated)", color: out ? "#fff" : "var(--text-primary)", border: out ? "none" : "1px solid var(--border)" }}>
+                <div style={{ padding: "8px 11px", borderRadius: 12, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.4, background: out ? "var(--accent)" : "var(--bg-elevated)", color: out ? "#fff" : "var(--text-primary)", border: out ? "none" : "1px solid var(--border)", boxShadow: badge ? `0 0 0 2px ${badge.color}` : "none" }}>
                   {m.text || (m.type !== "text" ? `(${m.type})` : "")}
                 </div>
+                {badge && <div style={{ fontSize: 9.5, fontWeight: 700, color: badge.color, marginTop: 3, textAlign: out ? "right" : "left" }}>↑ classificou como {badge.label}</div>}
               </div>
             );
           })}

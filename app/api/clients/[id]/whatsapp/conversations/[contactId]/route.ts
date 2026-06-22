@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { logWaEvent } from "@/lib/wa-events";
+import { explainHistory } from "@/lib/wa-funnel";
 import { eraseContactAiData } from "@/lib/ai-agent/retention";
 import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
@@ -35,13 +36,17 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  const [messages, lead, conversation, tags, profile] = await Promise.all([
+  const [messages, lead, conversation, tags, profile, aiCfg] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000 }),
     prisma.waLead.findUnique({ where: { contactId: contact.id } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id } }),
     prisma.waContactTag.findMany({ where: { contactId: contact.id }, include: { tag: true } }),
     prisma.leadProfile.findUnique({ where: { contactId: contact.id }, select: { score: true, temperature: true, qualified: true } }),
+    prisma.aiAgentConfig.findUnique({ where: { clientId: id }, select: { vertical: true } }),
   ]);
+
+  // Explicação da classificação automática (qual mensagem disparou cada etapa).
+  const funnelAuto = explainHistory(messages.map((m) => ({ text: m.text, direction: m.direction })), aiCfg?.vertical);
 
   return NextResponse.json({
     contact: {
@@ -54,6 +59,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),
     lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, adModel: lead.adModel, sourceType: lead.sourceType, sourceUrl: lead.sourceUrl, ctwaClid: lead.ctwaClid, enteredAt: lead.enteredAt, imported: lead.imported } : null,
     funnelStage: conversation?.funnelStage ?? null,
+    funnelAuto, // { final, perMsg } — perMsg alinhado a items (mesma ordem)
     status: conversation?.status ?? null,
     leadScore: profile ? { score: profile.score, temperature: profile.temperature, qualified: profile.qualified } : null,
     aiSummary: conversation?.aiSummary ?? null,

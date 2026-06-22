@@ -38,7 +38,7 @@ const SIGNALS_BASE: Signal[] = [
   // parcela/entrada-de-pagamento/à vista), troca DO CARRO, ou barganha (desconto/
   // melhor preço). NÃO inclui "condições" (= estado do carro), "entrada" solta
   // (= horário/porta) nem "troca" solta (= troca de óleo). Visita é qualificado.
-  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bfinancia\b|parcela(s|r|do|mento)?|em quantas vezes|quantas parcelas|dar (de )?entrada|valor de entrada|quanto (de |fica de )?entrada|sem entrada|entrada de (r\$|\d)|[àa] vista|aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|aceita meu (carro|ve[íi]culo)|\bdesconto\b|abaixa|faz por|consegue por|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor))/i },
+  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bfinancia\b|parcela(s|r|do|mento)?|em quantas vezes|quantas parcelas|dar (de )?entrada|valor de entrada|quanto (de |fica de )?entrada|sem entrada|entrada de (r\$|\d)|[àa] vista|aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|aceita meu (carro|ve[íi]culo)|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor))/i },
   // Qualificado — interesse CONCRETO no carro pelo LEAD: preço, specs, ESTADO/
   // condição, fotos, ou pedido de visita. NÃO inclui template de anúncio.
   { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo)|condi[çc][ãa]o do (carro|ve[íi]culo)|em (bom|boas) (estado|condi[çc][õo]es)|estado do (carro|ve[íi]culo)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa|le[íi]l[ãa]o)|\b[ée] de leil[ãa]o|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito)|agendar (uma )?visita|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o)|posso (ir|passar|visitar)|test[ -]?drive)/i },
@@ -94,6 +94,35 @@ export function stageFromHistory(msgs: { text: string | null; direction: string 
     else if (RANK[cand] > currentRank(cur)) cur = cand;
   }
   return cur;
+}
+
+// Explica a classificação: replay do histórico marcando, por mensagem, a etapa
+// que ela DISPAROU (null = não contribuiu). final = etapa resultante. Mesma lógica
+// do stageFromHistory → o que aparece no funil é exatamente o que se destaca aqui.
+export function explainHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null): { final: string | null; perMsg: (string | null)[] } {
+  let cur: string | null = null;
+  let firstInboundSeen = false;
+  const perMsg: (string | null)[] = [];
+  for (const m of msgs) {
+    const isOpener = m.direction !== "out" && !firstInboundSeen;
+    if (m.direction !== "out") firstInboundSeen = true;
+    let cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
+    if (cand && isOpener && (cand === "qualificado" || cand === "negociacao")) cand = null;
+    let contributed: string | null = null;
+    if (cand) {
+      if (cur === "convertido") {
+        // terminal — nada muda
+      } else if (cand === "perdido") {
+        if (cur !== "perdido") contributed = "perdido";
+        cur = "perdido";
+      } else if (RANK[cand] > currentRank(cur)) {
+        cur = cand;
+        contributed = cand;
+      }
+    }
+    perMsg.push(contributed);
+  }
+  return { final: cur, perMsg };
 }
 
 // Backfill: classifica conversas JÁ existentes pelo histórico. Ignora as travadas
