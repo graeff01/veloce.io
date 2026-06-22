@@ -282,6 +282,7 @@ model ContentPost {
   artUrl      String?                       // arte (data URL) — versão atual
   feedback    String?                       // feedback do gestor para ajuste
   order       Int       @default(0)
+  recurrenceId String?                      // origem: slot de recorrência (auto-gerado)
   approvedAt  DateTime?
   approvedBy  String?                       // userId de quem aprovou (gestor)
   createdById String?
@@ -289,7 +290,35 @@ model ContentPost {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  versions    ContentVersion[]
+
   @@index([status])
+  @@index([recurrenceId])
+}
+
+// Slot recorrente — define quais posts entram todo mês (ex.: feed terça, carrossel quinta).
+model ContentRecurrence {
+  id        String   @id @default(cuid())
+  label     String
+  type      String   @default("feed") // feed | carrossel
+  weekday   Int      @default(2)       // 0=dom ... 6=sáb
+  active    Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+}
+
+// Histórico de versões da arte de um post (V1, V2, ...).
+model ContentVersion {
+  id          String   @id @default(cuid())
+  postId      String
+  artUrl      String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  post ContentPost @relation(fields: [postId], references: [id])
+
+  @@index([postId])
 }
 
 model Brain {

@@ -66,6 +66,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const updated = await prisma.contentPost.update({ where: { id }, data });
+
+  // Nova arte → guarda no histórico de versões (V1, V2, ...).
+  if (d.artUrl && d.artUrl !== post.artUrl) {
+    await prisma.contentVersion.create({ data: { postId: id, artUrl: d.artUrl, createdById: session!.user.id } }).catch(() => {});
+  }
+
   return NextResponse.json(updated);
 }
 
