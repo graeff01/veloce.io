@@ -5,7 +5,7 @@ import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
-  History, Target, FileText, ScrollText, LineChart,
+  History, Target, FileText, ScrollText, LineChart, Sparkles,
 } from "lucide-react";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
@@ -1185,6 +1185,30 @@ function AnalyticsSection({ clientId }: { clientId: string }) {
 // ── Root (navegação interna em sidebar, agrupada por modo de uso) ─────────────
 type Section = "overview" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
+// Item de navegação da sidebar da IA — com hover e indicador ativo.
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "left",
+        padding: "8px 11px", borderRadius: 9, border: "none", cursor: "pointer",
+        fontSize: 13, fontWeight: 600, position: "relative",
+        background: active ? "var(--accent-soft)" : hover ? "var(--bg-hover)" : "transparent",
+        color: active ? "var(--accent)" : hover ? "var(--text-primary)" : "var(--text-secondary)",
+        transition: "background 120ms ease, color 120ms ease",
+      }}
+    >
+      {active && <span style={{ position: "absolute", left: 3, top: 8, bottom: 8, width: 3, borderRadius: 999, background: "var(--accent)" }} />}
+      <span style={{ display: "flex", color: active ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+    </button>
+  );
+}
+
 export function AiAgentTab({ clientId }: { clientId: string }) {
   const [section, setSection] = useState<Section>("overview");
 
@@ -1213,19 +1237,22 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
     ] },
   ];
 
-  const navItem = (it: { key: Section; label: string; icon: React.ReactNode }) => (
-    <button key={it.key} onClick={() => setSection(it.key)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: section === it.key ? "var(--accent-soft)" : "transparent", color: section === it.key ? "var(--accent)" : "var(--text-secondary)" }}>
-      {it.icon} {it.label}
-    </button>
-  );
-
   return (
     <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-      <aside style={{ width: 200, flexShrink: 0, position: "sticky", top: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <aside style={{ width: 216, flexShrink: 0, position: "sticky", top: 16, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: 10, display: "flex", flexDirection: "column" }}>
+        {/* Header do painel */}
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 8px 12px", borderBottom: "1px solid var(--border)", marginBottom: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Sparkles size={15} color="var(--accent)" />
+          </div>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>Agente de IA</span>
+        </div>
         {nav.map((grp, gi) => (
-          <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {grp.group && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "4px 10px" }}>{grp.group}</div>}
-            {grp.items.map(navItem)}
+          <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 2, ...(grp.group ? { marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--border)" } : {}) }}>
+            {grp.group && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.7, padding: "0 11px 6px" }}>{grp.group}</div>}
+            {grp.items.map((it) => (
+              <NavItem key={it.key} icon={it.icon} label={it.label} active={section === it.key} onClick={() => setSection(it.key)} />
+            ))}
           </div>
         ))}
       </aside>
