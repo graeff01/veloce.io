@@ -85,10 +85,10 @@ export function BotTab({ clientId }: { clientId: string }) {
     void patch({ [key]: next });
   }
 
-  async function genInvite(role: "gestor" | "corretor") {
+  async function genInvite() {
     setInvite(null); setCopied(false);
     const res = await fetch(`/api/clients/${clientId}/bot/invite`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     });
     if (res.ok) setInvite((await res.json()).link);
   }
@@ -142,8 +142,7 @@ export function BotTab({ clientId }: { clientId: string }) {
       {state.connected && (
         <Card title="👥 Destinatários">
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <Button variant="secondary" size="sm" onClick={() => genInvite("gestor")}>Convidar gestor</Button>
-            <Button variant="secondary" size="sm" onClick={() => genInvite("corretor")}>Convidar corretor</Button>
+            <Button variant="secondary" size="sm" onClick={genInvite}>Gerar link de convite</Button>
           </div>
           {invite && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, marginBottom: 14 }}>
@@ -154,7 +153,7 @@ export function BotTab({ clientId }: { clientId: string }) {
             </div>
           )}
           <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
-            Envie o link ao responsável. Ele abre, toca em <b>Iniciar</b> e passa a receber os alertas. O link vale 24h e é de uso único.
+            Envie o link ao responsável. Ele abre, toca em <b>Iniciar</b> e passa a <b>receber os alertas</b> — sem acesso ao painel nem como alterar o bot. O link vale 24h e é de uso único.
           </p>
           {state.recipients.length === 0 ? (
             <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Ninguém conectado ainda.</p>
@@ -163,7 +162,7 @@ export function BotTab({ clientId }: { clientId: string }) {
               {state.recipients.map((r) => (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg-base)", borderRadius: 8 }}>
                   <span style={{ fontSize: 12.5, color: "var(--text-primary)" }}>
-                    {r.username ? `@${r.username}` : "Conectado"} <span style={{ color: "var(--text-muted)" }}>· {r.role}</span>
+                    {r.username ? `@${r.username}` : "Conectado"} <span style={{ color: "var(--text-muted)" }}>· só recebe</span>
                   </span>
                   <button type="button" onClick={() => removeRecipient(r.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}><Trash2 size={13} /></button>
                 </div>

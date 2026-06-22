@@ -65,11 +65,13 @@ export async function clientBotByWebhook(webhookSecret: string): Promise<{ clien
 
 // ── Convite / destinatários ──────────────────────────────────────────────────
 
-export async function makeInviteToken(clientId: string, role: string): Promise<string | null> {
+// Convite genérico: quem entra é só destinatário (recebe alertas), sem papel
+// específico e sem qualquer acesso de edição.
+export async function makeInviteToken(clientId: string, role = "membro"): Promise<string | null> {
   const bot = await prisma.clientBot.findUnique({ where: { clientId }, select: { username: true } });
   if (!bot) return null;
   const token = crypto.randomBytes(12).toString("base64url");
-  await prisma.clientBotLinkToken.create({ data: { token, clientId, role: role === "gestor" ? "gestor" : "corretor", expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
+  await prisma.clientBotLinkToken.create({ data: { token, clientId, role, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
   return `https://t.me/${bot.username}?start=${token}`;
 }
 
