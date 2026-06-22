@@ -8,7 +8,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   password: z.string().min(6).optional().or(z.literal("")),
-  role: z.enum(["ADMIN", "OPERATIONAL"]).optional(),
+  role: z.enum(["ADMIN", "OPERATIONAL", "DESIGNER"]).optional(),
   operationalRole: z.string().optional(),
   active: z.boolean().optional(),
 });

@@ -23,7 +23,7 @@ interface UserData {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "OPERATIONAL";
+  role: "ADMIN" | "OPERATIONAL" | "DESIGNER";
   operationalRole?: string | null;
   active: boolean;
   createdAt: string;
@@ -69,7 +69,7 @@ export function SettingsContent() {
     load();
   }
 
-  async function changeRole(user: UserData, role: "ADMIN" | "OPERATIONAL") {
+  async function changeRole(user: UserData, role: "ADMIN" | "OPERATIONAL" | "DESIGNER") {
     await fetch(`/api/users/${user.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -415,7 +415,7 @@ function UserRow({
   user: UserData;
   currentUserId?: string;
   last: boolean;
-  onRoleChange: (user: UserData, role: "ADMIN" | "OPERATIONAL") => void;
+  onRoleChange: (user: UserData, role: "ADMIN" | "OPERATIONAL" | "DESIGNER") => void;
   onOperationalRoleChange: (user: UserData, operationalRole: string) => void;
   onToggleActive: (user: UserData) => void;
   onEdit: (user: UserData) => void;
@@ -495,12 +495,12 @@ function UserRow({
         {isCurrent ? (
           <Badge variant={user.role === "ADMIN" ? "purple" : "blue"}>
             {user.role === "ADMIN" ? <Shield size={10} /> : <UserRound size={10} />}
-            {user.role === "ADMIN" ? "Admin" : "Operacional"}
+            {user.role === "ADMIN" ? "Admin" : user.role === "DESIGNER" ? "Designer" : "Operacional"}
           </Badge>
         ) : (
           <select
             value={user.role}
-            onChange={(event) => onRoleChange(user, event.target.value as "ADMIN" | "OPERATIONAL")}
+            onChange={(event) => onRoleChange(user, event.target.value as "ADMIN" | "OPERATIONAL" | "DESIGNER")}
             style={{
               width: 150,
               height: 34,
@@ -515,6 +515,7 @@ function UserRow({
           >
             <option value="ADMIN">Admin</option>
             <option value="OPERATIONAL">Operacional</option>
+            <option value="DESIGNER">Designer</option>
           </select>
         )}
       </div>
@@ -593,7 +594,7 @@ function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: (
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "OPERATIONAL">(user?.role ?? "OPERATIONAL");
+  const [role, setRole] = useState<"ADMIN" | "OPERATIONAL" | "DESIGNER">(user?.role ?? "OPERATIONAL");
   const [operationalRole, setOperationalRole] = useState(user?.operationalRole ?? "Operacoes");
   const [active, setActive] = useState(user?.active ?? true);
   const [loading, setLoading] = useState(false);
@@ -648,9 +649,10 @@ function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: (
         <option value="Social">Social</option>
         <option value="Atendimento">Atendimento</option>
       </Select>
-      <Select label="Funcao" value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "OPERATIONAL")}>
+      <Select label="Funcao" value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "OPERATIONAL" | "DESIGNER")}>
         <option value="OPERATIONAL">Operacional</option>
         <option value="ADMIN">Administrador</option>
+        <option value="DESIGNER">Designer (só Conteúdo)</option>
       </Select>
       {user && (
         <Select label="Status" value={active ? "active" : "inactive"} onChange={(e) => setActive(e.target.value === "active")}>
