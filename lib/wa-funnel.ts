@@ -38,17 +38,22 @@ const SIGNALS_BASE: Signal[] = [
   // parcela/entrada-de-pagamento/à vista), troca DO CARRO, ou barganha (desconto/
   // melhor preço). NÃO inclui "condições" (= estado do carro), "entrada" solta
   // (= horário/porta) nem "troca" solta (= troca de óleo). Visita é qualificado.
-  { stage: "negociacao", who: "lead", re: /(financiamento|financiar|\bfinancia\b|parcela(s|r|do|mento)?|em quantas vezes|quantas parcelas|dar (de )?entrada|valor de entrada|quanto (de |fica de )?entrada|sem entrada|entrada de (r\$|\d)|[àa] vista|aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|aceita meu (carro|ve[íi]culo)|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor))/i },
-  // Qualificado — interesse CONCRETO no carro pelo LEAD: preço, specs, ESTADO/
-  // condição, fotos, ou pedido de visita. NÃO inclui template de anúncio.
-  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo)|condi[çc][ãa]o do (carro|ve[íi]culo)|em (bom|boas) (estado|condi[çc][õo]es)|estado do (carro|ve[íi]culo)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa|le[íi]l[ãa]o)|\b[ée] de leil[ãa]o|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito)|agendar (uma )?visita|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o)|posso (ir|passar|visitar)|test[ -]?drive)/i },
+  // Negociação — SÓ quando o LEAD está CLARAMENTE negociando o negócio: oferta de
+  // troca, pechincha de preço, ou COMPROMISSO de pagamento (financiar/parcelar em X,
+  // dar X de entrada). Pergunta sobre financiamento/entrada é interesse (qualificado),
+  // não negociação. "à vista"/orçamento solto NÃO avança (não garante fechamento).
+  { stage: "negociacao", who: "lead", re: /(aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|\bna troca\b|aceita meu (carro|ve[íi]culo)|tenho .{0,20}(pra|para) (dar na )?troca|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor)|quero financiar|vou financiar|quero parcelar|vou parcelar|parcelar em \d|financiar em \d|(r\$ ?)?\d[\d.,]* ?(mil )?de entrada|de entrada de (r\$|\d)|dar (de |o )?entrada|quero fechar|vamos fechar|pode fechar)/i },
+  // Qualificado — interesse do LEAD: preço, specs, ESTADO/condição, fotos, OU
+  // pergunta sobre condições de pagamento (tem financiamento? qual a entrada?),
+  // OU pedido de visita. NÃO inclui template de anúncio.
+  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo)|condi[çc][ãa]o do (carro|ve[íi]culo)|em (bom|boas) (estado|condi[çc][õo]es)|estado do (carro|ve[íi]culo)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa)|\b[ée] de leil[ãa]o|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito)|tem financiamento|trabalha(m)? com financiamento|aceita financiamento|tem como (parcelar|financiar)|qual (a |o )?entrada|tem entrada|em quantas (vezes|parcelas)|quantas parcelas|agendar (uma )?visita|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o)|posso (ir|passar|visitar)|test[ -]?drive)/i },
 ];
 
 // Reforços por vertical (opcionais — a base já cobre bem). Também só do LEAD.
 const SIGNALS_BY_VERTICAL: Record<string, Signal[]> = {
   imobiliario: [
-    { stage: "negociacao", who: "lead", re: /(\bfgts\b|financiamento|documenta[çc][ãa]o|escritura|\bsinal\b|parcela)/i },
-    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
+    { stage: "negociacao", who: "lead", re: /(dar (o )?sinal|pagar (o )?sinal|fa[çz]er (uma )?proposta|fechar (a )?proposta|quero financiar)/i },
+    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te|\bfgts\b|documenta[çc][ãa]o|aceita financiamento|tem financiamento|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
   ],
 };
 
