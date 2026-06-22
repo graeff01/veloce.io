@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Megaphone, Bot, BarChart3, Filter,
+  Columns3, User, Mic, Megaphone, Bot, BarChart3, Filter, Send,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -21,6 +21,7 @@ import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
 import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
+import { BotTab } from "@/components/clients/bot-tab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "funil" | "ia";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "funil" | "ia" | "bot";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "ia"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "funil", "ia", "bot"];
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
 
@@ -192,6 +193,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "anuncios",  label: "Anúncios",  icon: <BarChart3 size={13} /> },
     { key: "funil",     label: "Funil",     icon: <Filter size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
+    { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
 
@@ -307,6 +309,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {tab === "ia" && (
         <AiAgentTab clientId={clientId} />
+      )}
+
+      {tab === "bot" && (
+        <BotTab clientId={clientId} />
       )}
 
       {tab === "perfil" && (

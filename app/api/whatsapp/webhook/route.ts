@@ -9,6 +9,7 @@ import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { notifyLeadMessage } from "@/lib/notifications/lead-message";
+import { notifyNovoLead } from "@/lib/notifications/novo-lead";
 import { captureException } from "@/lib/observability";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
@@ -202,6 +203,12 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       void notifyLeadMessage({
         clientId: conn.clientId, contactId: contact.id,
         contactName: contact.name, text: messageText(m),
+      }).catch(() => {});
+
+      // Alerta "Novo lead" no BOT DO CLIENTE (só no 1º contato). Fire-and-forget.
+      void notifyNovoLead({
+        clientId: conn.clientId, contactId: contact.id,
+        contactName: contact.name, waId: customerWaId, text: messageText(m),
       }).catch(() => {});
     }
   }

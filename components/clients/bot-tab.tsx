@@ -1,0 +1,205 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Send, Copy, Check, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+interface Recipient { id: string; username: string | null; role: string; createdAt: string }
+interface BotState {
+  connected: boolean;
+  username: string | null;
+  alerts: { novoLead: boolean; slaAlerts: boolean; leadQuente: boolean; leadEsfriando: boolean; resumoDiario: boolean };
+  quietStart: string | null;
+  quietEnd: string | null;
+  recipients: Recipient[];
+}
+
+const ALERTS: { key: keyof BotState["alerts"]; label: string; desc: string }[] = [
+  { key: "novoLead",      label: "🚨 Novo lead",         desc: "Avisa na 1ª mensagem de um lead novo" },
+  { key: "slaAlerts",     label: "⏱️ Tempo de resposta",  desc: "Lead aguardando há muito tempo (5/15/30 min)" },
+  { key: "leadQuente",    label: "🔥 Lead quente",        desc: "Lead com sinais fortes de compra" },
+  { key: "leadEsfriando", label: "🧊 Lead esfriando",     desc: "Lead sem retorno, esfriando no funil" },
+  { key: "resumoDiario",  label: "📊 Resumo diário",      desc: "Placar do atendimento do dia" },
+];
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} style={{
+      width: 38, height: 22, borderRadius: 20, border: "none", cursor: "pointer", flexShrink: 0,
+      background: on ? "var(--accent)" : "var(--border)", position: "relative", transition: "background 150ms",
+    }}>
+      <span style={{
+        position: "absolute", top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: "50%",
+        background: "#fff", transition: "left 150ms",
+      }} />
+    </button>
+  );
+}
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 14 }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+export function BotTab({ clientId }: { clientId: string }) {
+  const [state, setState] = useState<BotState | null>(null);
+  const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+
+  async function load() {
+    const res = await fetch(`/api/clients/${clientId}/bot`);
+    if (res.ok) { const d = await res.json(); setState(d); setUsername(d.username ?? ""); }
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [clientId]);
+
+  async function connect() {
+    setErr(null); setBusy(true);
+    const res = await fetch(`/api/clients/${clientId}/bot`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token.trim(), username: username.trim() }),
+    });
+    setBusy(false);
+    if (!res.ok) { setErr((await res.json().catch(() => ({})))?.error ?? "Falha ao conectar."); return; }
+    setToken(""); await load();
+  }
+
+  async function patch(body: Record<string, unknown>) {
+    await fetch(`/api/clients/${clientId}/bot`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+
+  function toggleAlert(key: keyof BotState["alerts"]) {
+    if (!state) return;
+    const next = !state.alerts[key];
+    setState({ ...state, alerts: { ...state.alerts, [key]: next } });
+    void patch({ [key]: next });
+  }
+
+  async function genInvite(role: "gestor" | "corretor") {
+    setInvite(null); setCopied(false);
+    const res = await fetch(`/api/clients/${clientId}/bot/invite`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }),
+    });
+    if (res.ok) setInvite((await res.json()).link);
+  }
+
+  async function removeRecipient(rid: string) {
+    await fetch(`/api/clients/${clientId}/bot/recipients/${rid}`, { method: "DELETE" });
+    await load();
+  }
+
+  async function test() {
+    setTestMsg(null);
+    const res = await fetch(`/api/clients/${clientId}/bot/test`, { method: "POST" });
+    const { sent } = await res.json();
+    setTestMsg(sent > 0 ? `✅ Enviado para ${sent} destinatário(s).` : "Nenhum destinatário conectado ainda.");
+  }
+
+  if (!state) return <div style={{ padding: 40, color: "var(--text-muted)" }}><Loader2 size={16} className="animate-spin" /></div>;
+
+  return (
+    <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+        Bot do Telegram exclusivo deste cliente. Crie um bot no <b>@BotFather</b>, cole o token aqui e conecte os
+        responsáveis — eles recebem em tempo real os alertas dos leads <b>só deste cliente</b>.
+      </p>
+
+      {/* Conexão */}
+      <Card title="🔌 Conexão">
+        {state.connected ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
+              <span style={{ fontSize: 13, color: "var(--text-primary)" }}>Conectado a <b>@{state.username}</b></span>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="secondary" size="sm" onClick={test}><Send size={12} /> Testar</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setToken(""); setState({ ...state, connected: false }); }}><RefreshCw size={12} /> Trocar token</Button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Input label="Token do BotFather" placeholder="123456789:ABCdef..." value={token} onChange={(e) => setToken(e.target.value)} />
+            <Input label="@username do bot (sem @)" placeholder="imobiliariax_bot" value={username} onChange={(e) => setUsername(e.target.value)} />
+            {err && <span style={{ fontSize: 12, color: "var(--red)" }}>{err}</span>}
+            <div><Button variant="primary" size="sm" loading={busy} onClick={connect} disabled={!token.trim() || !username.trim()}>Conectar bot</Button></div>
+          </div>
+        )}
+        {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>{testMsg}</p>}
+      </Card>
+
+      {/* Destinatários */}
+      {state.connected && (
+        <Card title="👥 Destinatários">
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <Button variant="secondary" size="sm" onClick={() => genInvite("gestor")}>Convidar gestor</Button>
+            <Button variant="secondary" size="sm" onClick={() => genInvite("corretor")}>Convidar corretor</Button>
+          </div>
+          {invite && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, marginBottom: 14 }}>
+              <span style={{ fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{invite}</span>
+              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(invite); setCopied(true); }}>
+                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copiado" : "Copiar"}
+              </Button>
+            </div>
+          )}
+          <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
+            Envie o link ao responsável. Ele abre, toca em <b>Iniciar</b> e passa a receber os alertas. O link vale 24h e é de uso único.
+          </p>
+          {state.recipients.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Ninguém conectado ainda.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {state.recipients.map((r) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg-base)", borderRadius: 8 }}>
+                  <span style={{ fontSize: 12.5, color: "var(--text-primary)" }}>
+                    {r.username ? `@${r.username}` : "Conectado"} <span style={{ color: "var(--text-muted)" }}>· {r.role}</span>
+                  </span>
+                  <button type="button" onClick={() => removeRecipient(r.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}><Trash2 size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Alertas */}
+      {state.connected && (
+        <Card title="🔔 Alertas">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {ALERTS.map((a) => (
+              <div key={a.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{a.label}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{a.desc}</div>
+                </div>
+                <Toggle on={state.alerts[a.key]} onClick={() => toggleAlert(a.key)} />
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>🌙 Não perturbe</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input type="time" value={state.quietStart ?? ""} onChange={(e) => { setState({ ...state, quietStart: e.target.value }); void patch({ quietStart: e.target.value }); }}
+                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
+              <input type="time" value={state.quietEnd ?? ""} onChange={(e) => { setState({ ...state, quietEnd: e.target.value }); void patch({ quietEnd: e.target.value }); }}
+                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>(fora disso, só alertas críticos)</span>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

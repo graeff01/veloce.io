@@ -1315,6 +1315,52 @@ model TelegramMessage {
   @@index([sentAt])
 }
 
+// ── Bot do Telegram POR CLIENTE (marca branca) ───────────────────────────────
+// Cada cliente pode ter o próprio bot (criado no BotFather). Os alertas DELE
+// (novo lead, SLA, lead quente…) saem por esse bot, isolados dos outros clientes.
+// O bot da Veloce continua de base para os alertas internos da agência.
+model ClientBot {
+  clientId      String   @id // 1 bot por cliente
+  token         String   // token do BotFather (criptografado at-rest)
+  username      String   // @username do bot (sem @)
+  webhookSecret String   @unique // identifica o bot no webhook (path) + valida header
+  active        Boolean  @default(true)
+  // Alertas (liga/desliga por cliente)
+  novoLead      Boolean  @default(true)
+  slaAlerts     Boolean  @default(true)
+  leadQuente    Boolean  @default(true)
+  leadEsfriando Boolean  @default(true)
+  resumoDiario  Boolean  @default(true)
+  // Não perturbe (HH:MM em BRT; fora disso, só crítico)
+  quietStart    String?
+  quietEnd      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Quem recebe os alertas de um cliente (gestor/corretor), no bot dele.
+model ClientBotRecipient {
+  id        String   @id @default(cuid())
+  clientId  String
+  chatId    String
+  username  String?
+  role      String   @default("corretor") // gestor | corretor
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, chatId])
+  @@index([clientId])
+}
+
+// Token de convite (escopo cliente + papel), uso único, expira.
+model ClientBotLinkToken {
+  token     String   @id
+  clientId  String
+  role      String   @default("corretor")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 // Token curto de vínculo do Telegram (uso único, expira). Charset compatível
 // com o parâmetro start do Telegram (base64url).
 model TelegramLinkToken {
