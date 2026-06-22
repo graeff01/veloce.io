@@ -10,6 +10,7 @@ import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { notifyLeadMessage } from "@/lib/notifications/lead-message";
 import { notifyNovoLead } from "@/lib/notifications/novo-lead";
+import { notifyLeadQuente } from "@/lib/notifications/lead-quente";
 import { captureException } from "@/lib/observability";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
@@ -148,7 +149,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 
     // Auto-classificação do funil (determinística, sem custo). Vale para lead E
     // loja (ex.: "parabéns pela compra"). Fire-and-forget: nunca bloqueia o webhook.
-    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: outbound ? "out" : "in" }).catch(() => {});
+    // Encadeia o alerta de "lead quente" (lê o funil já atualizado).
+    void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: outbound ? "out" : "in" })
+      .then(() => { if (!outbound) return notifyLeadQuente({ clientId: conn.clientId, contactId: contact.id, contactName: contact.name }); })
+      .catch(() => {});
 
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
     // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
