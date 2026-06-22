@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Modal } from "@/components/ui/modal";
-import { Plus, Loader2, Trash2, Check, Upload, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
+import { Plus, Loader2, Trash2, Check, Upload, Download, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 
 interface Post {
   id: string; title: string; type: string; copy: string | null; references: string | null;
@@ -283,12 +283,28 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
   async function saveBriefing() { if (await patch({ title, type, copy, references: refs, publishDate: publishDate || null, feedback })) onSaved(); }
   async function uploadArt(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (file && e.target) e.target.value = "";
-    if (!file) return;
+    if (!file || !post) return;
     if (!file.type.startsWith("image/")) { setErr("Selecione uma imagem."); return; }
-    if (file.size > 3 * 1024 * 1024) { setErr("Arte muito grande (máx. 3MB)."); return; }
-    const reader = new FileReader();
-    reader.onload = async () => { const url = reader.result as string; setArtUrl(url); if (await patch({ artUrl: url })) onSaved(); };
-    reader.readAsDataURL(file);
+    if (file.size > 25 * 1024 * 1024) { setErr("Arte muito grande (máx. 25MB)."); return; }
+    setBusy(true); setErr("");
+    try {
+      // 1) Storage R2: o navegador sobe direto, em alta resolução, sem passar
+      //    pelo servidor nem inchar o banco.
+      const pres = await fetch("/api/content/upload-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId: post.id, contentType: file.type }) });
+      const info = await pres.json().catch(() => ({}));
+      if (pres.ok && info.configured) {
+        const put = await fetch(info.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+        if (!put.ok) { setErr("Falha ao enviar a arte ao storage."); setBusy(false); return; }
+        setArtUrl(info.publicUrl);
+        if (await patch({ artUrl: info.publicUrl })) onSaved();
+        return;
+      }
+      // 2) Fallback (R2 ainda não ligado): data URL no banco, limite menor.
+      if (file.size > 3 * 1024 * 1024) { setErr("Storage não configurado — máx. 3MB. Ligue o R2 para alta resolução."); setBusy(false); return; }
+      const reader = new FileReader();
+      reader.onload = async () => { const url = reader.result as string; setArtUrl(url); if (await patch({ artUrl: url })) onSaved(); };
+      reader.readAsDataURL(file);
+    } catch { setErr("Falha no upload."); setBusy(false); }
   }
   async function move(to: string) { if (await patch({ status: to })) onSaved(); }
   async function del() { if (!post || !confirm("Excluir esta pauta?")) return; await fetch(`/api/content/${post.id}`, { method: "DELETE" }); onSaved(); }
@@ -340,10 +356,22 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
               ) : (
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px", textAlign: "center", border: "1px dashed var(--border-strong)", borderRadius: 10 }}>Sem arte ainda.</div>
               )}
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                <Upload size={13} /> {artUrl ? "Subir nova versão" : "Subir arte"}
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={uploadArt} />
-              </label>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
+                  <Upload size={13} /> {busy ? "Enviando…" : artUrl ? "Subir nova versão" : "Subir arte"}
+                  <input type="file" accept="image/*" disabled={busy} style={{ display: "none" }} onChange={uploadArt} />
+                </label>
+                {artUrl && (
+                  <a
+                    href={artUrl.startsWith("http") ? `/api/content/${post?.id}/download` : artUrl}
+                    {...(artUrl.startsWith("http") ? {} : { download: true })}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}
+                    title="Baixar a arte original, qualidade 100%"
+                  >
+                    <Download size={13} /> Baixar 100%
+                  </a>
+                )}
+              </div>
 
               {/* Histórico de versões */}
               {versions.length > 1 && (
