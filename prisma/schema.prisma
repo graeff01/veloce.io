@@ -9,6 +9,7 @@ datasource db {
 enum Role {
   ADMIN
   OPERATIONAL
+  DESIGNER
 }
 
 enum ClientStatus {
@@ -266,6 +267,29 @@ model Movement {
 
   client   Client @relation(fields: [clientId], references: [id])
   assignee User?  @relation("AssignedMovements", fields: [assignedTo], references: [id])
+}
+
+// Conteúdo interno da Veloce (Instagram da própria agência). NÃO é por cliente.
+// Fluxo: pauta → criacao → revisao → aprovado → agendado → publicado.
+model ContentPost {
+  id          String    @id @default(cuid())
+  title       String                       // tema do post
+  type        String    @default("feed")   // feed | carrossel
+  copy        String?                       // legenda / copy
+  references  String?                       // links / referências do briefing
+  status      String    @default("pauta")  // pauta|criacao|revisao|aprovado|agendado|publicado
+  publishDate DateTime?                     // data de publicação planejada
+  artUrl      String?                       // arte (data URL) — versão atual
+  feedback    String?                       // feedback do gestor para ajuste
+  order       Int       @default(0)
+  approvedAt  DateTime?
+  approvedBy  String?                       // userId de quem aprovou (gestor)
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([status])
 }
 
 model Brain {

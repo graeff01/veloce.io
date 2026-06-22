@@ -17,7 +17,12 @@ type Permission =
   | "users:read"
   | "users:create"
   | "users:update"
-  | "users:delete";
+  | "users:delete"
+  | "content:read"
+  | "content:create"
+  | "content:update"
+  | "content:delete"
+  | "content:approve";
 
 const rolePermissions: Record<Role, Permission[] | ["*"]> = {
   ADMIN: ["*"],
@@ -29,6 +34,16 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
     "tasks:delete",
     "plans:read",
     "checklist:update",
+    "content:read",
+    "content:create",
+    "content:update",
+  ] as Permission[],
+  // DESIGNER: papel ENXUTO — só o módulo de Conteúdo da Veloce. Lê a pauta, sobe
+  // arte e move o card (criação→revisão). NÃO cria pauta, NÃO aprova, NÃO apaga,
+  // e não tem acesso a clientes/finanças/IA/etc.
+  DESIGNER: [
+    "content:read",
+    "content:update",
   ] as Permission[],
 };
 

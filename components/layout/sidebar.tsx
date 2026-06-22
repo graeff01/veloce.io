@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
   Wallet,
   Users,
   UserRound,
+  Palette,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -31,6 +32,7 @@ interface ClientRow {
 const bottomNavItems = [
   { href: "/",             icon: LayoutDashboard, label: "Visao geral" },
   { href: "/clients",      icon: UserRound,       label: "Clientes" },
+  { href: "/content",      icon: Palette,         label: "Conteudo" },
   { href: "/finances",     icon: Wallet,          label: "Financas" },
   { href: "/hr",           icon: Users,           label: "Equipe" },
 ];
@@ -41,8 +43,16 @@ const adminNavItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { data: session } = useSession();
+  const isDesigner = session?.user?.role === "DESIGNER"; // papel enxuto: só Conteúdo
   const [clients, setClients] = useState<ClientRow[]>([]);
+
+  // Trava de rota: designer só acessa /content. As APIs já barram o resto por
+  // permissão (sem vazar dado); aqui só evita o designer cair em página sem acesso.
+  useEffect(() => {
+    if (isDesigner && pathname && !pathname.startsWith("/content")) router.replace("/content");
+  }, [isDesigner, pathname, router]);
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -168,6 +178,7 @@ export function Sidebar() {
           minHeight: 0,
         }}
       >
+        {!isDesigner && (<>
         <div style={{ margin: "0 12px 12px" }}>
           <button
             type="button"
@@ -273,6 +284,7 @@ export function Sidebar() {
             Carteira vazia
           </p>
         )}
+        </>)}
       </div>
 
       {/* ── Zone 3: Bottom nav + user ────────────────── */}
@@ -284,7 +296,7 @@ export function Sidebar() {
       >
         {/* Bottom nav items */}
         <div style={{ padding: "10px 8px 6px" }}>
-          {bottomNavItems.map((item) => (
+          {(isDesigner ? bottomNavItems.filter((i) => i.href === "/content") : bottomNavItems).map((item) => (
             <BottomNavItem key={item.href} {...item} active={isActive(item.href)} />
           ))}
           {session?.user.role === "ADMIN" &&

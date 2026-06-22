@@ -10,7 +10,8 @@ type Permission =
   | "tasks:read" | "tasks:create" | "tasks:update" | "tasks:delete"
   | "plans:read" | "plans:create" | "plans:update" | "plans:delete"
   | "checklist:update"
-  | "users:read" | "users:create" | "users:update" | "users:delete";
+  | "users:read" | "users:create" | "users:update" | "users:delete"
+  | "content:read" | "content:create" | "content:update" | "content:delete" | "content:approve";
 
 export async function requireAuth(permission?: Permission) {
   const session = await getServerSession(authOptions);
