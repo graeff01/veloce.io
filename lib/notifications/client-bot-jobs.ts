@@ -85,24 +85,50 @@ async function runResumo(clientId: string): Promise<void> {
   const start = wallToInstant(nowParts(TZ).ymd, "00:00", TZ);
   const end = new Date(start.getTime() + 24 * 3600_000);
 
-  const convs = await prisma.waConversation.findMany({
-    where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: end } },
-    select: { firstResponseSec: true, funnelStage: true },
-  });
+  // Placar do dia + termômetro da carteira (quem está aguardando agora, por temperatura).
+  const [convs, waiting] = await Promise.all([
+    prisma.waConversation.findMany({
+      where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: end } },
+      select: { firstResponseSec: true, funnelStage: true },
+    }),
+    prisma.waConversation.findMany({
+      where: { connectionId: { in: connIds }, status: "waiting", funnelStage: { notIn: ["convertido", "perdido"] } },
+      select: { contactId: true, funnelStage: true },
+    }),
+  ]);
+
   const leads = convs.length;
   const respondidos = convs.filter((c) => c.firstResponseSec != null).length;
+  const semResposta = leads - respondidos;
   const conversoes = convs.filter((c) => c.funnelStage === "convertido").length;
   const times = convs.map((c) => c.firstResponseSec).filter((s): s is number => s != null);
   const avgMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
   const taxa = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
 
-  const tg = leads === 0
+  // Termômetro: temperatura por lead (funil grátis + score da IA quando houver).
+  const profiles = waiting.length
+    ? await prisma.leadProfile.findMany({ where: { contactId: { in: waiting.map((w) => w.contactId) } }, select: { contactId: true, score: true, temperature: true } })
+    : [];
+  const pmap = new Map(profiles.map((p) => [p.contactId, p]));
+  let hot = 0, warm = 0, cold = 0;
+  for (const w of waiting) {
+    const p = pmap.get(w.contactId);
+    if (w.funnelStage === "negociacao" || (p?.score ?? 0) >= 70 || p?.temperature === "hot") hot++;
+    else if (w.funnelStage === "qualificado" || (p?.score ?? 0) >= 40 || p?.temperature === "warm") warm++;
+    else cold++;
+  }
+
+  const termometro = waiting.length > 0 ? `\n🌡️ Aguardando agora: 🔥 ${hot} · 🟠 ${warm} · 🧊 ${cold}` : "";
+
+  const tg = leads === 0 && waiting.length === 0
     ? `🌙 <b>Resumo do dia</b>\nDia tranquilo — nenhum lead novo hoje. 🌿`
     : `🌙 <b>Resumo do dia</b>\n` +
-      `• 💬 ${leads} lead${leads > 1 ? "s" : ""}\n` +
-      `• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>\n` +
-      `• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}` +
-      (avgMin != null ? `\n• ⏱️ Tempo médio de resposta: ${avgMin} min` : "");
+      `• 💬 ${leads} lead${leads !== 1 ? "s" : ""}\n` +
+      `• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>` +
+      (semResposta > 0 ? `\n• ⏳ ${semResposta} sem resposta` : "") +
+      `\n• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}` +
+      (avgMin != null ? `\n• ⏱️ Tempo médio de resposta: ${avgMin} min` : "") +
+      termometro;
   await sendClientAlert(clientId, "resumoDiario", tg);
 }
 

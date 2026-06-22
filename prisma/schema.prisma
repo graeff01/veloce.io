@@ -1325,6 +1325,9 @@ model ClientBot {
   username      String   // @username do bot (sem @)
   webhookSecret String   @unique // identifica o bot no webhook (path) + valida header
   active        Boolean  @default(true)
+  // Marca branca (por cliente)
+  brandName     String?  // nome da marca exibido (ex.: "Imobiliária X"); também vira o nome do bot no Telegram
+  welcomeMessage String? // boas-vindas custom no /start (fallback: texto padrão)
   // Alertas (liga/desliga por cliente)
   novoLead      Boolean  @default(true)
   slaAlerts     Boolean  @default(true)

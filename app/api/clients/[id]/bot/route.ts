@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { connectClientBot } from "@/lib/notifications/client-bot";
+import { decryptSecret } from "@/lib/crypto";
+import { connectClientBot, applyBranding } from "@/lib/notifications/client-bot";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,8 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json({
     connected: !!bot?.active,
     username: bot?.username ?? null,
+    brandName: bot?.brandName ?? null,
+    welcomeMessage: bot?.welcomeMessage ?? null,
     alerts: bot
       ? { novoLead: bot.novoLead, slaAlerts: bot.slaAlerts, leadQuente: bot.leadQuente, leadEsfriando: bot.leadEsfriando, resumoDiario: bot.resumoDiario }
       : { novoLead: true, slaAlerts: true, leadQuente: true, leadEsfriando: true, resumoDiario: true },
@@ -43,15 +46,23 @@ export async function PUT(req: Request, { params }: Params) {
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
   }
 
-  // (2) Atualizar flags de alerta / quiet hours (só se o bot existir).
+  // (2) Atualizar flags de alerta / quiet hours / marca branca (só se o bot existir).
   const data: Record<string, unknown> = {};
   for (const k of ["novoLead", "slaAlerts", "leadQuente", "leadEsfriando", "resumoDiario"] as const) {
     if (typeof body[k] === "boolean") data[k] = body[k];
   }
   if ("quietStart" in body) data.quietStart = body.quietStart || null;
   if ("quietEnd" in body) data.quietEnd = body.quietEnd || null;
+  if ("brandName" in body) data.brandName = (body.brandName as string)?.trim() || null;
+  if ("welcomeMessage" in body) data.welcomeMessage = (body.welcomeMessage as string)?.trim() || null;
   if (Object.keys(data).length > 0) {
     await prisma.clientBot.updateMany({ where: { clientId: id }, data });
+  }
+
+  // (3) Aplicar a marca no Telegram (nome do bot) quando o nome muda.
+  if (typeof body.brandName === "string" && body.brandName.trim()) {
+    const bot = await prisma.clientBot.findUnique({ where: { clientId: id }, select: { token: true } });
+    if (bot) { try { await applyBranding(decryptSecret(bot.token), body.brandName); } catch { /* best-effort */ } }
   }
 
   return NextResponse.json({ ok: true });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clientBotByWebhook, consumeInvite, deactivateRecipientByChat, sendMessage } from "@/lib/notifications/client-bot";
+import { clientBotByWebhook, consumeInvite, deactivateRecipientByChat, sendMessage, welcomeText } from "@/lib/notifications/client-bot";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ref
       await sendMessage(bot.token, chatId, "Convite inválido ou expirado. Peça um novo link à sua agência.");
       return NextResponse.json({ ok: true });
     }
-    await sendMessage(bot.token, chatId, "✅ Conectado! Você vai receber aqui os alertas de novos leads e atendimento.");
+    await sendMessage(bot.token, chatId, welcomeText(bot.welcomeMessage, bot.brandName));
     return NextResponse.json({ ok: true });
   }
 

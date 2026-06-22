@@ -52,15 +52,30 @@ async function setClientWebhook(token: string, webhookSecret: string): Promise<{
 }
 
 // Resolve o bot pelo segredo do webhook (path), com o token já decifrado.
-export async function clientBotByWebhook(webhookSecret: string): Promise<{ clientId: string; token: string; webhookSecret: string } | null> {
+export async function clientBotByWebhook(webhookSecret: string): Promise<{ clientId: string; token: string; webhookSecret: string; welcomeMessage: string | null; brandName: string | null } | null> {
   const bot = await prisma.clientBot.findUnique({ where: { webhookSecret } });
   if (!bot) return null;
   try {
-    return { clientId: bot.clientId, token: decryptSecret(bot.token), webhookSecret: bot.webhookSecret };
+    return { clientId: bot.clientId, token: decryptSecret(bot.token), webhookSecret: bot.webhookSecret, welcomeMessage: bot.welcomeMessage, brandName: bot.brandName };
   } catch (e) {
     captureException(e, { where: "client-bot.decrypt", clientId: bot.clientId });
     return null;
   }
+}
+
+// Mensagem de boas-vindas (custom do cliente ou padrão, com a marca se houver).
+export function welcomeText(welcomeMessage: string | null, brandName: string | null): string {
+  if (welcomeMessage?.trim()) return welcomeMessage.trim();
+  const marca = brandName?.trim() ? ` da <b>${brandName.trim()}</b>` : "";
+  return `✅ Conectado ao assistente${marca}! Você vai receber aqui os novos leads e o andamento do atendimento.`;
+}
+
+// Marca branca: nome do bot no Telegram (best-effort; o Telegram limita trocas/dia).
+export async function applyBranding(token: string, brandName: string): Promise<void> {
+  const name = brandName.trim().slice(0, 64);
+  if (!name) return;
+  await tg(token, "setMyName", { name }).catch(() => {});
+  await tg(token, "setMyShortDescription", { short_description: `Assistente de atendimento — ${name}`.slice(0, 120) }).catch(() => {});
 }
 
 // ── Convite / destinatários ──────────────────────────────────────────────────
