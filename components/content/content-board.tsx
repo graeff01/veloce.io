@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Modal } from "@/components/ui/modal";
-import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
+import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat, Send } from "lucide-react";
 
 interface Post {
   id: string; title: string; type: string; copy: string | null; references: string | null;
   status: string; publishDate: string | null; artUrl: string | null; feedback: string | null; notes: string | null; approvedAt: string | null;
 }
 interface Recurrence { id: string; label: string; type: string; weekday: number }
+interface Activity { id: string; authorId: string | null; authorName: string | null; kind: string; body: string | null; createdAt: string }
 
 const STAGES: { key: string; label: string; color: string }[] = [
   { key: "pauta",     label: "Pauta",       color: "#64748B" },
@@ -270,11 +271,14 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
   const [refs, setRefs] = useState(post?.references ?? "");
   const [publishDate, setPublishDate] = useState(post?.publishDate ? post.publishDate.slice(0, 10) : "");
   const [artUrl, setArtUrl] = useState(post?.artUrl ?? "");
-  const [feedback, setFeedback] = useState(post?.feedback ?? "");
-  const [notes, setNotes] = useState(post?.notes ?? "");
   const [status, setStatus] = useState(post?.status ?? "pauta");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const { data: session } = useSession();
+  const meId = session?.user?.id;
+  const [activity, setActivity] = useState<Activity[] | null>(null);
+  const [comment, setComment] = useState("");
+  const [posting, setPosting] = useState(false);
 
   async function patch(body: Record<string, unknown>) {
     if (!post) return false;
@@ -292,17 +296,31 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
     if (!r.ok) { setErr("Erro ao criar"); return; }
     onSaved();
   }
-  // Salva só o que o papel pode mexer. Designer: link + observações. Gestor: tudo.
+  // Salva só o que o papel pode mexer. Designer: só o link. Gestor: o briefing inteiro.
   async function save() {
-    const body: Record<string, unknown> = { artUrl: artUrl || null, notes: notes || null };
+    const body: Record<string, unknown> = { artUrl: artUrl || null };
     if (canBrief) {
       body.title = title; body.type = type; body.copy = copy || null; body.references = refs || null;
-      body.publishDate = publishDate || null; body.feedback = feedback || null;
+      body.publishDate = publishDate || null;
     }
     if (await patch(body)) onSaved();
   }
   async function move(to: string) { if (await patch({ status: to })) onSaved(); }
   async function del() { if (!post || !confirm("Excluir esta pauta?")) return; await fetch(`/api/content/${post.id}`, { method: "DELETE" }); onSaved(); }
+
+  function loadActivity() {
+    if (mode !== "edit" || !post) return;
+    fetch(`/api/content/${post.id}/activity`).then((r) => (r.ok ? r.json() : [])).then((d) => setActivity(Array.isArray(d) ? d : []));
+  }
+  useEffect(() => { loadActivity(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sendComment() {
+    if (!comment.trim() || !post || posting) return;
+    setPosting(true);
+    const r = await fetch(`/api/content/${post.id}/activity`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: comment.trim() }) });
+    setPosting(false);
+    if (r.ok) { setComment(""); loadActivity(); }
+  }
 
   const ro = !canBrief; // designer: briefing é só leitura
   const isUrl = /^https?:\/\//i.test(artUrl);
@@ -318,7 +336,7 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {ro && mode === "edit" && (
           <div style={{ fontSize: 11.5, color: "var(--text-muted)", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", lineHeight: 1.5 }}>
-            👀 Você está vendo a pauta do gestor (só leitura). Edite apenas o <b>link da arte</b> e suas <b>observações</b>, e arraste o card pra mudar de etapa.
+            👀 Você está vendo a pauta do gestor (só leitura). Edite só o <b>link da arte</b>, fale pela <b>atividade</b> e arraste o card pra mudar de etapa.
           </div>
         )}
         <div>
@@ -360,19 +378,42 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
               )}
             </div>
 
-            {/* Observações / impedimentos — canal do designer */}
+            {/* Atividade — conversa (comentários) + linha do tempo (eventos) num feed só */}
             <div>
-              <label style={label}>Observações / impedimentos {ro && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· você pode escrever aqui</span>}</label>
-              <textarea style={{ ...field, height: "auto", minHeight: 48, padding: "8px 10px", resize: "vertical" }} value={notes ?? ""} onChange={(e) => setNotes(e.target.value)} placeholder="Dúvidas, impedimentos ou comentários sobre a arte…" />
-            </div>
-
-            {/* Feedback do gestor — só o gestor escreve */}
-            {(canBrief || feedback) && (
-              <div>
-                <label style={label}>Feedback do gestor</label>
-                <textarea style={{ ...field, height: "auto", minHeight: 48, padding: "8px 10px", resize: "vertical" }} value={feedback ?? ""} onChange={(e) => setFeedback(e.target.value)} readOnly={!canBrief} placeholder="Ajustes pedidos…" />
+              <label style={label}>Atividade</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflowY: "auto", padding: 10, border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-base)" }}>
+                {activity === null ? (
+                  <Loader2 size={15} className="animate-spin" style={{ color: "var(--text-muted)", margin: "8px auto" }} />
+                ) : activity.length === 0 ? (
+                  <p style={{ fontSize: 11.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Sem atividade ainda. Comece a conversa abaixo.</p>
+                ) : activity.map((a) => {
+                  const time = new Date(a.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+                  if (a.kind === "comment") {
+                    const mine = !!a.authorId && a.authorId === meId;
+                    return (
+                      <div key={a.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
+                        <div style={{ maxWidth: "84%", background: mine ? "var(--accent-soft)" : "var(--bg-elevated)", border: `1px solid ${mine ? "var(--accent)" : "var(--border)"}`, borderRadius: 10, padding: "7px 10px" }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: mine ? "var(--accent)" : "var(--text-secondary)", marginBottom: 2 }}>{a.authorName ?? "—"} <span style={{ fontWeight: 500, color: "var(--text-muted)" }}>· {time}</span></div>
+                          <div style={{ fontSize: 12.5, color: "var(--text-primary)", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{a.body}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", fontSize: 10.5, color: "var(--text-muted)" }}>
+                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--text-muted)", opacity: 0.5, flexShrink: 0 }} />
+                      <span style={{ textAlign: "center" }}><b style={{ fontWeight: 600 }}>{a.authorName ?? "Sistema"}</b> {a.body} · {time}</span>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input style={field} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Escreva um comentário…" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendComment(); } }} />
+                <button onClick={sendComment} disabled={posting || !comment.trim()} title="Comentar" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer", opacity: posting || !comment.trim() ? 0.5 : 1 }}>
+                  {posting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                </button>
+              </div>
+            </div>
 
             <div>
               <label style={label}>Etapa</label>

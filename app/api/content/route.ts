@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { parseDueDate } from "@/lib/utils";
+import { logActivity } from "@/lib/content/activity";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -48,5 +49,6 @@ export async function POST(req: Request) {
       createdById: session!.user.id,
     },
   });
+  await logActivity({ postId: post.id, authorId: session!.user.id, authorName: session!.user.name ?? "Alguém", kind: "created", body: "criou a pauta" });
   return NextResponse.json(post, { status: 201 });
 }

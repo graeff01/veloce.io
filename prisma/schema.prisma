@@ -292,9 +292,26 @@ model ContentPost {
   deletedAt   DateTime?
 
   versions    ContentVersion[]
+  activities  ContentActivity[]
 
   @@index([status])
   @@index([recurrenceId])
+}
+
+// Feed unificado da pauta: comentários (kind=comment) + eventos automáticos
+// (kind=status|art|created). Vira a "conversa" + a linha do tempo.
+model ContentActivity {
+  id         String   @id @default(cuid())
+  postId     String
+  authorId   String?
+  authorName String?                 // snapshot do nome (não quebra se o user mudar)
+  kind       String                  // comment | status | art | created
+  body       String?                 // texto do comentário ou descrição do evento
+  createdAt  DateTime @default(now())
+
+  post ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
 }
 
 // Slot recorrente — define quais posts entram todo mês (ex.: feed terça, carrossel quinta).

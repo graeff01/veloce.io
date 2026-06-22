@@ -3,12 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/permissions";
 import { parseDueDate } from "@/lib/utils";
+import { logActivity, notifyHandoff } from "@/lib/content/activity";
 import type { Role } from "@prisma/client";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
 const APPROVAL_STATUSES = ["aprovado", "agendado", "publicado"];
+const STAGE_LABEL: Record<string, string> = {
+  pauta: "Pauta", criacao: "Em criação", revisao: "Revisão",
+  aprovado: "Aprovado", agendado: "Agendado", publicado: "Publicado",
+};
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -68,6 +73,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const updated = await prisma.contentPost.update({ where: { id }, data });
+
+  // Linha do tempo + handoff. authorName denormalizado p/ o feed.
+  const actorName = session!.user.name ?? "Alguém";
+  const actorId = session!.user.id;
+  if (d.status !== undefined && d.status !== post.status) {
+    await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "status", body: `moveu para ${STAGE_LABEL[d.status] ?? d.status}` });
+    if (d.status === "revisao") await notifyHandoff({ event: "revisao", postTitle: updated.title, actorName, actorId, actorIsDesigner: !canBrief });
+    if (d.status === "aprovado") await notifyHandoff({ event: "aprovado", postTitle: updated.title, actorName, actorId, actorIsDesigner: !canBrief });
+  }
+  if (d.artUrl !== undefined && (d.artUrl || null) !== (post.artUrl || null)) {
+    await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: d.artUrl ? "atualizou o link da arte" : "removeu o link da arte" });
+  }
+
   return NextResponse.json(updated);
 }
 
