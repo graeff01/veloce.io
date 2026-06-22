@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Modal } from "@/components/ui/modal";
-import { Plus, Loader2, Trash2, Check, Upload, Download, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
+import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 
 interface Post {
   id: string; title: string; type: string; copy: string | null; references: string | null;
-  status: string; publishDate: string | null; artUrl: string | null; feedback: string | null; approvedAt: string | null;
+  status: string; publishDate: string | null; artUrl: string | null; feedback: string | null; notes: string | null; approvedAt: string | null;
 }
 interface Recurrence { id: string; label: string; type: string; weekday: number }
-interface Version { id: string; artUrl: string; createdAt: string }
 
 const STAGES: { key: string; label: string; color: string }[] = [
   { key: "pauta",     label: "Pauta",       color: "#64748B" },
@@ -52,11 +51,22 @@ export function ContentBoard() {
   const [showRec, setShowRec] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overStage, setOverStage] = useState<string | null>(null);
 
   function load() {
     fetch("/api/content").then((r) => (r.ok ? r.json() : [])).then((d) => setPosts(Array.isArray(d) ? d : []));
   }
   useEffect(() => { load(); }, []);
+
+  async function movePost(id: string, to: string) {
+    const p = posts?.find((x) => x.id === id);
+    if (!p || p.status === to) return;
+    setPosts((xs) => (xs ?? []).map((x) => (x.id === id ? { ...x, status: to } : x))); // otimista
+    const r = await fetch(`/api/content/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: to }) });
+    if (!r.ok) setSeedMsg("Sem permissão para essa etapa.");
+    load();
+  }
 
   async function seedMonth() {
     if (seeding) return;
@@ -89,9 +99,9 @@ export function ContentBoard() {
           ))}
         </div>
 
+        {seedMsg && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{seedMsg}</span>}
         {canBrief && (
           <>
-            {seedMsg && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{seedMsg}</span>}
             <button onClick={() => setShowRec(true)} style={ghostBtn}><Repeat size={13} /> Recorrência</button>
             <button onClick={seedMonth} disabled={seeding} style={ghostBtn} title="Gera as pautas do mês a partir dos slots recorrentes">
               {seeding ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Gerar mês
@@ -107,8 +117,14 @@ export function ContentBoard() {
         <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden", display: "flex", gap: 12, padding: "8px 24px 24px" }}>
           {STAGES.map((st) => {
             const items = posts.filter((p) => p.status === st.key);
+            const canDrop = !(APPROVAL.includes(st.key) && !isAdmin); // designer não solta em aprovado/agendado/publicado
+            const isOver = overStage === st.key && canDrop;
             return (
-              <div key={st.key} style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 230, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 14 }}>
+              <div key={st.key}
+                onDragOver={(e) => { if (dragId && canDrop) { e.preventDefault(); setOverStage(st.key); } }}
+                onDragLeave={() => setOverStage((s) => (s === st.key ? null : s))}
+                onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || dragId; if (id && canDrop) movePost(id, st.key); setOverStage(null); setDragId(null); }}
+                style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 230, background: isOver ? "var(--accent-soft)" : "var(--bg-elevated)", border: `1px solid ${isOver ? "var(--accent)" : "var(--border)"}`, borderRadius: 14, transition: "background .12s, border-color .12s" }}>
                 <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)" }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: st.color }} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)", flex: 1 }}>{st.label}</span>
@@ -117,20 +133,20 @@ export function ContentBoard() {
                 <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                   {items.length === 0 && <p style={{ fontSize: 11.5, color: "var(--text-muted)", textAlign: "center", padding: "20px 8px", opacity: 0.6 }}>—</p>}
                   {items.map((p) => (
-                    <button key={p.id} onClick={() => setOpen(p)} style={{ ...card, textAlign: "left", cursor: "pointer", padding: 0, overflow: "hidden", borderLeft: `3px solid ${st.color}` }}>
-                      {p.artUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.artUrl} alt="" style={{ width: "100%", height: 96, objectFit: "cover", display: "block" }} />
-                      )}
-                      <div style={{ padding: "9px 11px" }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.3 }}>{p.title}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                          <span style={typePill(p.type)}>{p.type === "carrossel" ? "Carrossel" : "Feed"}</span>
-                          {p.publishDate && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>📅 {ddmm(p.publishDate)}</span>}
-                          {!p.artUrl && <ImageIcon size={11} style={{ color: "var(--text-muted)", opacity: 0.6 }} />}
-                        </div>
+                    <div key={p.id} draggable
+                      onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.id); }}
+                      onDragEnd={() => { setDragId(null); setOverStage(null); }}
+                      onClick={() => setOpen(p)}
+                      style={{ ...card, textAlign: "left", cursor: "grab", padding: "9px 11px", borderLeft: `3px solid ${st.color}`, opacity: dragId === p.id ? 0.5 : 1 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.3 }}>{p.title}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                        <span style={typePill(p.type)}>{p.type === "carrossel" ? "Carrossel" : "Feed"}</span>
+                        {p.publishDate && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>📅 {ddmm(p.publishDate)}</span>}
+                        {p.artUrl
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: "var(--green)", background: "var(--green-soft, #16A34A1A)", padding: "1px 6px", borderRadius: 20 }}><Link2 size={10} /> Arte</span>
+                          : <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--text-muted)", opacity: 0.7 }}><ImageIcon size={10} /> sem arte</span>}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -255,14 +271,10 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
   const [publishDate, setPublishDate] = useState(post?.publishDate ? post.publishDate.slice(0, 10) : "");
   const [artUrl, setArtUrl] = useState(post?.artUrl ?? "");
   const [feedback, setFeedback] = useState(post?.feedback ?? "");
+  const [notes, setNotes] = useState(post?.notes ?? "");
   const [status, setStatus] = useState(post?.status ?? "pauta");
-  const [versions, setVersions] = useState<Version[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-
-  useEffect(() => {
-    if (mode === "edit" && post) fetch(`/api/content/${post.id}/versions`).then((r) => (r.ok ? r.json() : [])).then((d) => setVersions(Array.isArray(d) ? d : []));
-  }, [mode, post]);
 
   async function patch(body: Record<string, unknown>) {
     if (!post) return false;
@@ -280,36 +292,20 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
     if (!r.ok) { setErr("Erro ao criar"); return; }
     onSaved();
   }
-  async function saveBriefing() { if (await patch({ title, type, copy, references: refs, publishDate: publishDate || null, feedback })) onSaved(); }
-  async function uploadArt(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (file && e.target) e.target.value = "";
-    if (!file || !post) return;
-    if (!file.type.startsWith("image/")) { setErr("Selecione uma imagem."); return; }
-    if (file.size > 25 * 1024 * 1024) { setErr("Arte muito grande (máx. 25MB)."); return; }
-    setBusy(true); setErr("");
-    try {
-      // 1) Storage R2: o navegador sobe direto, em alta resolução, sem passar
-      //    pelo servidor nem inchar o banco.
-      const pres = await fetch("/api/content/upload-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId: post.id, contentType: file.type }) });
-      const info = await pres.json().catch(() => ({}));
-      if (pres.ok && info.configured) {
-        const put = await fetch(info.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-        if (!put.ok) { setErr("Falha ao enviar a arte ao storage."); setBusy(false); return; }
-        setArtUrl(info.publicUrl);
-        if (await patch({ artUrl: info.publicUrl })) onSaved();
-        return;
-      }
-      // 2) Fallback (R2 ainda não ligado): data URL no banco, limite menor.
-      if (file.size > 3 * 1024 * 1024) { setErr("Storage não configurado — máx. 3MB. Ligue o R2 para alta resolução."); setBusy(false); return; }
-      const reader = new FileReader();
-      reader.onload = async () => { const url = reader.result as string; setArtUrl(url); if (await patch({ artUrl: url })) onSaved(); };
-      reader.readAsDataURL(file);
-    } catch { setErr("Falha no upload."); setBusy(false); }
+  // Salva só o que o papel pode mexer. Designer: link + observações. Gestor: tudo.
+  async function save() {
+    const body: Record<string, unknown> = { artUrl: artUrl || null, notes: notes || null };
+    if (canBrief) {
+      body.title = title; body.type = type; body.copy = copy || null; body.references = refs || null;
+      body.publishDate = publishDate || null; body.feedback = feedback || null;
+    }
+    if (await patch(body)) onSaved();
   }
   async function move(to: string) { if (await patch({ status: to })) onSaved(); }
   async function del() { if (!post || !confirm("Excluir esta pauta?")) return; await fetch(`/api/content/${post.id}`, { method: "DELETE" }); onSaved(); }
 
-  const readOnlyBrief = !canBrief;
+  const ro = !canBrief; // designer: briefing é só leitura
+  const isUrl = /^https?:\/\//i.test(artUrl);
 
   return (
     <Modal open onClose={onClose} title={mode === "create" ? "Nova pauta" : (post?.title || "Post")} size="md"
@@ -317,79 +313,60 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
         ? <button onClick={create} disabled={busy} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Criando…" : "Criar pauta"}</button>
         : <>
             {isAdmin && <button onClick={del} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", fontSize: 13, fontWeight: 600, cursor: "pointer", marginRight: "auto" }}><Trash2 size={13} /></button>}
-            {canBrief && <button onClick={saveBriefing} disabled={busy} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Salvar</button>}
+            <button onClick={save} disabled={busy} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Salvar</button>
           </>}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {ro && mode === "edit" && (
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", lineHeight: 1.5 }}>
+            👀 Você está vendo a pauta do gestor (só leitura). Edite apenas o <b>link da arte</b> e suas <b>observações</b>, e arraste o card pra mudar de etapa.
+          </div>
+        )}
         <div>
           <label style={label}>Tema do post</label>
-          <input style={field} value={title} onChange={(e) => setTitle(e.target.value)} readOnly={readOnlyBrief} placeholder="Ex: Lei da atração — carrossel educativo" />
+          <input style={field} value={title} onChange={(e) => setTitle(e.target.value)} readOnly={ro} placeholder="Ex: Lei da atração — carrossel educativo" />
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}>
             <label style={label}>Formato</label>
-            <select style={field} value={type} onChange={(e) => setType(e.target.value)} disabled={readOnlyBrief}>
+            <select style={field} value={type} onChange={(e) => setType(e.target.value)} disabled={ro}>
               <option value="feed">Feed</option>
               <option value="carrossel">Carrossel</option>
             </select>
           </div>
           <div style={{ flex: 1 }}>
             <label style={label}>Data de publicação</label>
-            <input type="date" style={field} value={publishDate} onChange={(e) => setPublishDate(e.target.value)} readOnly={readOnlyBrief} />
+            <input type="date" style={field} value={publishDate} onChange={(e) => setPublishDate(e.target.value)} readOnly={ro} />
           </div>
         </div>
         <div>
           <label style={label}>Copy / legenda</label>
-          <textarea style={{ ...field, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical" }} value={copy ?? ""} onChange={(e) => setCopy(e.target.value)} readOnly={readOnlyBrief} placeholder="Texto da legenda…" />
+          <textarea style={{ ...field, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical" }} value={copy ?? ""} onChange={(e) => setCopy(e.target.value)} readOnly={ro} placeholder="Texto da legenda…" />
         </div>
         <div>
           <label style={label}>Referências</label>
-          <textarea style={{ ...field, height: "auto", minHeight: 44, padding: "8px 10px", resize: "vertical" }} value={refs ?? ""} onChange={(e) => setRefs(e.target.value)} readOnly={readOnlyBrief} placeholder="Links / ideias de referência…" />
+          <textarea style={{ ...field, height: "auto", minHeight: 44, padding: "8px 10px", resize: "vertical" }} value={refs ?? ""} onChange={(e) => setRefs(e.target.value)} readOnly={ro} placeholder="Links / ideias de referência…" />
         </div>
 
         {mode === "edit" && (
           <>
+            {/* Link da arte (Drive) — editável pelo designer e pelo gestor */}
             <div>
-              <label style={label}>Arte {versions.length > 0 ? `· V${versions.length}` : ""}</label>
-              {artUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={artUrl} alt="arte" style={{ width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)" }} />
-              ) : (
-                <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "16px", textAlign: "center", border: "1px dashed var(--border-strong)", borderRadius: 10 }}>Sem arte ainda.</div>
-              )}
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
-                  <Upload size={13} /> {busy ? "Enviando…" : artUrl ? "Subir nova versão" : "Subir arte"}
-                  <input type="file" accept="image/*" disabled={busy} style={{ display: "none" }} onChange={uploadArt} />
-                </label>
-                {artUrl && (
-                  <a
-                    href={artUrl.startsWith("http") ? `/api/content/${post?.id}/download` : artUrl}
-                    {...(artUrl.startsWith("http") ? {} : { download: true })}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}
-                    title="Baixar a arte original, qualidade 100%"
-                  >
-                    <Download size={13} /> Baixar 100%
-                  </a>
-                )}
-              </div>
-
-              {/* Histórico de versões */}
-              {versions.length > 1 && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Versões</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {versions.map((v, i) => (
-                      <a key={v.id} href={v.artUrl} target="_blank" rel="noopener noreferrer" title={`V${i + 1} · ${new Date(v.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`} style={{ display: "block", position: "relative" }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={v.artUrl} alt={`V${i + 1}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `2px solid ${v.artUrl === artUrl ? "var(--accent)" : "var(--border)"}` }} />
-                        <span style={{ position: "absolute", bottom: 2, left: 2, fontSize: 9, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,.6)", padding: "0 4px", borderRadius: 4 }}>V{i + 1}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
+              <label style={label}>Link da arte (Drive)</label>
+              <input style={field} value={artUrl} onChange={(e) => setArtUrl(e.target.value)} placeholder="Cole o link do Google Drive com a arte…" />
+              {isUrl && (
+                <a href={artUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
+                  <ExternalLink size={13} /> Abrir arte
+                </a>
               )}
             </div>
 
+            {/* Observações / impedimentos — canal do designer */}
+            <div>
+              <label style={label}>Observações / impedimentos {ro && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· você pode escrever aqui</span>}</label>
+              <textarea style={{ ...field, height: "auto", minHeight: 48, padding: "8px 10px", resize: "vertical" }} value={notes ?? ""} onChange={(e) => setNotes(e.target.value)} placeholder="Dúvidas, impedimentos ou comentários sobre a arte…" />
+            </div>
+
+            {/* Feedback do gestor — só o gestor escreve */}
             {(canBrief || feedback) && (
               <div>
                 <label style={label}>Feedback do gestor</label>

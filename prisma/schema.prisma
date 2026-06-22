@@ -279,8 +279,9 @@ model ContentPost {
   references  String?                       // links / referências do briefing
   status      String    @default("pauta")  // pauta|criacao|revisao|aprovado|agendado|publicado
   publishDate DateTime?                     // data de publicação planejada
-  artUrl      String?                       // arte (data URL) — versão atual
+  artUrl      String?                       // link da arte (Google Drive)
   feedback    String?                       // feedback do gestor para ajuste
+  notes       String?                       // observações / impedimentos do designer
   order       Int       @default(0)
   recurrenceId String?                      // origem: slot de recorrência (auto-gerado)
   approvedAt  DateTime?
