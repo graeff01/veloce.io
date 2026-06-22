@@ -8,7 +8,6 @@ import { applyFunnelFromMessage } from "@/lib/wa-funnel";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
-import { notifyLeadMessage } from "@/lib/notifications/lead-message";
 import { notifyNovoLead } from "@/lib/notifications/novo-lead";
 import { notifyLeadQuente } from "@/lib/notifications/lead-quente";
 import { captureException } from "@/lib/observability";
@@ -200,13 +199,6 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
         clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
         idempotencyKey: m.id,
         payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
-      }).catch(() => {});
-
-      // Notificação em tempo real para o time (push/Telegram), com cooldown por
-      // conversa. Fire-and-forget: nunca bloqueia nem derruba o webhook.
-      void notifyLeadMessage({
-        clientId: conn.clientId, contactId: contact.id,
-        contactName: contact.name, text: messageText(m),
       }).catch(() => {});
 
       // Alerta "Novo lead" no BOT DO CLIENTE (só no 1º contato). Fire-and-forget.

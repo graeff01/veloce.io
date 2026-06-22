@@ -110,7 +110,7 @@ export async function claimDispatch(
 }
 
 // Usuários ativos que optaram por um tipo de notificação, com suas preferências.
-export async function recipientsFor(type: "dailyDigest" | "criticalAlerts" | "leadMessages") {
+export async function recipientsFor(type: "dailyDigest" | "criticalAlerts") {
   const prefs = await prisma.notificationPreference.findMany({
     where: { [type]: true, user: { active: true, deletedAt: null } },
     select: { userId: true, pushEnabled: true, telegramEnabled: true },

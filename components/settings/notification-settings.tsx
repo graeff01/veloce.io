@@ -6,7 +6,6 @@ import { Bell, Send, Loader2, Check, Zap } from "lucide-react";
 interface Prefs {
   dailyDigest: boolean;
   criticalAlerts: boolean;
-  leadMessages: boolean;
   pushEnabled: boolean;
   telegramEnabled: boolean;
   telegramLinked: boolean;
@@ -105,8 +104,7 @@ export function NotificationSettings() {
       </div>
 
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* O QUE receber */}
-        <Toggle label="Nova mensagem de lead" hint="Aviso na hora que um lead manda mensagem no WhatsApp (no máx. 1 a cada 10 min por conversa)." checked={prefs.leadMessages} onChange={(v) => savePref({ leadMessages: v })} />
+        {/* O QUE receber — bot da Veloce: avisos do NOSSO sistema (não leads de cliente) */}
         <Toggle label="Resumo do dia" hint="Compromissos e pendências, toda manhã." checked={prefs.dailyDigest} onChange={(v) => savePref({ dailyDigest: v })} />
         <Toggle label="Alertas críticos" hint="Avisos urgentes do co-piloto (ex.: CPL disparou)." checked={prefs.criticalAlerts} onChange={(v) => savePref({ criticalAlerts: v })} />
 

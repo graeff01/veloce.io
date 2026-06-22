@@ -1272,7 +1272,7 @@ model NotificationPreference {
   userId          String   @id
   dailyDigest     Boolean  @default(false)
   criticalAlerts  Boolean  @default(false)
-  leadMessages    Boolean  @default(false) // push em tempo real quando um lead manda mensagem
+  leadMessages    Boolean  @default(false) // DESCONTINUADO: lead-por-cliente migrou para o bot do cliente (ClientBot). Coluna dormente.
   pushEnabled     Boolean  @default(true)
   telegramEnabled Boolean  @default(true)
   updatedAt       DateTime @updatedAt

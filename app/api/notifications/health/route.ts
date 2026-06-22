@@ -18,12 +18,11 @@ export async function GET() {
   if (error) return error;
 
   const activeUser = { user: { active: true, deletedAt: null } };
-  const [stats, tick, digestR, criticalR, leadR, tgLinks, pushSubs] = await Promise.all([
+  const [stats, tick, digestR, criticalR, tgLinks, pushSubs] = await Promise.all([
     getFailureStats(MAX_ATTEMPTS),
     lastTickAt(),
     prisma.notificationPreference.count({ where: { dailyDigest: true, ...activeUser } }),
     prisma.notificationPreference.count({ where: { criticalAlerts: true, ...activeUser } }),
-    prisma.notificationPreference.count({ where: { leadMessages: true, ...activeUser } }),
     prisma.telegramLink.count(),
     prisma.pushSubscription.count(),
   ]);
@@ -37,7 +36,7 @@ export async function GET() {
     secondsSinceTick,
     channels: { telegram: telegramAvailable(), push: pushAvailable() },
     deadMansSwitch: !!process.env.HEARTBEAT_URL,
-    recipients: { dailyDigest: digestR, criticalAlerts: criticalR, leadMessages: leadR },
+    recipients: { dailyDigest: digestR, criticalAlerts: criticalR },
     links: { telegram: tgLinks, push: pushSubs },
     failures24h: stats,
     maxAttempts: MAX_ATTEMPTS,

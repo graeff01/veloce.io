@@ -17,7 +17,6 @@ export async function GET() {
   return NextResponse.json({
     dailyDigest: pref?.dailyDigest ?? false,
     criticalAlerts: pref?.criticalAlerts ?? false,
-    leadMessages: pref?.leadMessages ?? false,
     pushEnabled: pref?.pushEnabled ?? true,
     telegramEnabled: pref?.telegramEnabled ?? true,
     telegramLinked: !!telegram,
@@ -28,7 +27,6 @@ export async function GET() {
 const schema = z.object({
   dailyDigest: z.boolean().optional(),
   criticalAlerts: z.boolean().optional(),
-  leadMessages: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
   telegramEnabled: z.boolean().optional(),
 });
