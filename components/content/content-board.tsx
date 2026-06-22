@@ -7,7 +7,7 @@ import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGri
 
 interface Post {
   id: string; title: string; type: string; copy: string | null; references: string | null;
-  status: string; publishDate: string | null; artUrl: string | null; feedback: string | null; notes: string | null; approvedAt: string | null;
+  status: string; publishDate: string | null; artUrl: string | null; previewUrl: string | null; feedback: string | null; notes: string | null; approvedAt: string | null;
 }
 interface Recurrence { id: string; label: string; type: string; weekday: number }
 interface Activity { id: string; authorId: string | null; authorName: string | null; kind: string; body: string | null; createdAt: string }
@@ -138,14 +138,19 @@ export function ContentBoard() {
                       onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.id); }}
                       onDragEnd={() => { setDragId(null); setOverStage(null); }}
                       onClick={() => setOpen(p)}
-                      style={{ ...card, textAlign: "left", cursor: "grab", padding: "9px 11px", borderLeft: `3px solid ${st.color}`, opacity: dragId === p.id ? 0.5 : 1 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.3 }}>{p.title}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                        <span style={typePill(p.type)}>{p.type === "carrossel" ? "Carrossel" : "Feed"}</span>
-                        {p.publishDate && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>📅 {ddmm(p.publishDate)}</span>}
-                        {p.artUrl
-                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: "var(--green)", background: "var(--green-soft, #16A34A1A)", padding: "1px 6px", borderRadius: 20 }}><Link2 size={10} /> Arte</span>
-                          : <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--text-muted)", opacity: 0.7 }}><ImageIcon size={10} /> sem arte</span>}
+                      style={{ ...card, textAlign: "left", cursor: "grab", padding: 0, overflow: "hidden", borderLeft: `3px solid ${st.color}`, opacity: dragId === p.id ? 0.5 : 1 }}>
+                      {p.previewUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.previewUrl} alt="" style={{ width: "100%", height: 96, objectFit: "cover", display: "block", pointerEvents: "none" }} />
+                      )}
+                      <div style={{ padding: "9px 11px" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.3 }}>{p.title}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                          <span style={typePill(p.type)}>{p.type === "carrossel" ? "Carrossel" : "Feed"}</span>
+                          {p.publishDate && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>📅 {ddmm(p.publishDate)}</span>}
+                          {p.artUrl && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: "var(--green)", background: "var(--green-soft, #16A34A1A)", padding: "1px 6px", borderRadius: 20 }}><Link2 size={10} /> Final</span>}
+                          {!p.previewUrl && !p.artUrl && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--text-muted)", opacity: 0.7 }}><ImageIcon size={10} /> sem arte</span>}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -158,8 +163,8 @@ export function ContentBoard() {
         <CalendarView posts={posts} month={month} year={year} onPrev={prevMonth} onNext={nextMonth} onOpen={setOpen} />
       )}
 
-      {creating && <PostModal mode="create" canBrief={canBrief} isAdmin={isAdmin} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load(); }} />}
-      {open && <PostModal mode="edit" post={open} canBrief={canBrief} isAdmin={isAdmin} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); }} />}
+      {creating && <PostModal mode="create" canBrief={canBrief} isAdmin={isAdmin} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load(); }} onRefresh={load} />}
+      {open && <PostModal mode="edit" post={open} canBrief={canBrief} isAdmin={isAdmin} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); }} onRefresh={load} />}
       {showRec && <RecurrenceModal onClose={() => setShowRec(false)} />}
     </div>
   );
@@ -264,13 +269,36 @@ function RecurrenceModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: "create" | "edit"; post?: Post; canBrief: boolean; isAdmin: boolean; onClose: () => void; onSaved: () => void }) {
+// Comprime a imagem no navegador (redimensiona + JPEG) — a prévia é só pra avaliar,
+// fica leve no banco. O arquivo final em alta vai pelo link do Drive.
+function fileToPreviewDataUrl(file: File, maxDim = 1280, quality = 0.72): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (Math.max(w, h) > maxDim) { const r = maxDim / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r); }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("no ctx")); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("img error")); };
+    img.src = url;
+  });
+}
+
+function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh }: { mode: "create" | "edit"; post?: Post; canBrief: boolean; isAdmin: boolean; onClose: () => void; onSaved: () => void; onRefresh: () => void }) {
   const [title, setTitle] = useState(post?.title ?? "");
   const [type, setType] = useState(post?.type ?? "feed");
   const [copy, setCopy] = useState(post?.copy ?? "");
   const [refs, setRefs] = useState(post?.references ?? "");
   const [publishDate, setPublishDate] = useState(post?.publishDate ? post.publishDate.slice(0, 10) : "");
   const [artUrl, setArtUrl] = useState(post?.artUrl ?? "");
+  const [previewUrl, setPreviewUrl] = useState(post?.previewUrl ?? "");
   const [status, setStatus] = useState(post?.status ?? "pauta");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -322,6 +350,21 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
     if (r.ok) { setComment(""); loadActivity(); }
   }
 
+  // Prévia pra avaliação — comprime no navegador e salva (sem fechar o modal).
+  async function uploadPreview(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = "";
+    if (!file || !post) return;
+    if (!file.type.startsWith("image/")) { setErr("Selecione uma imagem."); return; }
+    setBusy(true); setErr("");
+    try {
+      const dataUrl = await fileToPreviewDataUrl(file);
+      if (await patch({ previewUrl: dataUrl })) { setPreviewUrl(dataUrl); onRefresh(); loadActivity(); }
+    } catch { setErr("Falha ao processar a imagem."); } finally { setBusy(false); }
+  }
+  async function removePreview() {
+    if (await patch({ previewUrl: null })) { setPreviewUrl(""); onRefresh(); }
+  }
+
   const ro = !canBrief; // designer: briefing é só leitura
   const isUrl = /^https?:\/\//i.test(artUrl);
 
@@ -367,9 +410,28 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved }: { mode: 
 
         {mode === "edit" && (
           <>
+            {/* Prévia da arte — imagem leve só pra avaliar dentro do sistema */}
+            <div>
+              <label style={label}>Prévia da arte · para avaliação</label>
+              {previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewUrl} alt="prévia" style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)" }} />
+              ) : (
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: 16, textAlign: "center", border: "1px dashed var(--border-strong)", borderRadius: 10 }}>Sem prévia ainda.</div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
+                  <ImageIcon size={13} /> {busy ? "Processando…" : previewUrl ? "Trocar prévia" : "Subir prévia"}
+                  <input type="file" accept="image/*" disabled={busy} style={{ display: "none" }} onChange={uploadPreview} />
+                </label>
+                {previewUrl && <button onClick={removePreview} disabled={busy} style={{ ...ghostBtn, padding: "7px 12px", color: "var(--red)" }}><Trash2 size={12} /> Remover</button>}
+              </div>
+              <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Imagem leve só pra visualizar aqui. O arquivo final em 100% vai no link do Drive abaixo.</p>
+            </div>
+
             {/* Link da arte (Drive) — editável pelo designer e pelo gestor */}
             <div>
-              <label style={label}>Link da arte (Drive)</label>
+              <label style={label}>Link da arte final (Drive) · 100%</label>
               <input style={field} value={artUrl} onChange={(e) => setArtUrl(e.target.value)} placeholder="Cole o link do Google Drive com a arte…" />
               {isUrl && (
                 <a href={artUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "7px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>

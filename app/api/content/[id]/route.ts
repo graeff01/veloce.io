@@ -23,6 +23,7 @@ const updateSchema = z.object({
   publishDate: z.string().optional().nullable(),
   status: z.enum(["pauta", "criacao", "revisao", "aprovado", "agendado", "publicado"]).optional(),
   artUrl: z.string().optional().nullable(),
+  previewUrl: z.string().optional().nullable(),
   feedback: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
@@ -55,8 +56,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const data: Record<string, unknown> = {};
-  if (d.artUrl !== undefined) data.artUrl = d.artUrl || null;   // link do Drive (designer ok)
-  if (d.notes !== undefined) data.notes = d.notes || null;      // observações do designer (designer ok)
+  if (d.artUrl !== undefined) data.artUrl = d.artUrl || null;           // link do Drive (designer ok)
+  if (d.previewUrl !== undefined) data.previewUrl = d.previewUrl || null; // prévia p/ avaliação (designer ok)
+  if (d.notes !== undefined) data.notes = d.notes || null;             // observações do designer (designer ok)
   if (d.status !== undefined) data.status = d.status;
   if (canBrief) {
     if (d.title !== undefined) data.title = d.title.trim();
@@ -83,7 +85,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (d.status === "aprovado") await notifyHandoff({ event: "aprovado", postTitle: updated.title, actorName, actorId, actorIsDesigner: !canBrief });
   }
   if (d.artUrl !== undefined && (d.artUrl || null) !== (post.artUrl || null)) {
-    await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: d.artUrl ? "atualizou o link da arte" : "removeu o link da arte" });
+    await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: d.artUrl ? "atualizou o link da arte final" : "removeu o link da arte" });
+  }
+  if (d.previewUrl !== undefined && (d.previewUrl || null) !== (post.previewUrl || null) && d.previewUrl) {
+    await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: "subiu uma prévia da arte" });
   }
 
   return NextResponse.json(updated);
