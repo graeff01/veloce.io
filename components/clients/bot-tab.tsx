@@ -60,6 +60,8 @@ export function BotTab({ clientId }: { clientId: string }) {
   const [brand, setBrand] = useState("");
   const [welcome, setWelcome] = useState("");
   const [brandSaved, setBrandSaved] = useState(false);
+  const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string } | null>(null);
+  const [portalCopied, setPortalCopied] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/bot`);
@@ -72,8 +74,17 @@ export function BotTab({ clientId }: { clientId: string }) {
     setBrandSaved(true);
     setTimeout(() => setBrandSaved(false), 2500);
   }
+
+  async function loadPortal() {
+    const res = await fetch(`/api/clients/${clientId}/portal`);
+    if (res.ok) setPortal(await res.json());
+  }
+  async function savePortal(body: Record<string, unknown>) {
+    const res = await fetch(`/api/clients/${clientId}/portal`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) setPortal(await res.json());
+  }
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load(); }, [clientId]);
+  useEffect(() => { load(); loadPortal(); }, [clientId]);
 
   async function connect() {
     setErr(null); setBusy(true);
@@ -148,6 +159,44 @@ export function BotTab({ clientId }: { clientId: string }) {
           </div>
         )}
         {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>{testMsg}</p>}
+      </Card>
+
+      {/* Painel do cliente (dashboard sem login) */}
+      <Card title="📊 Painel do cliente">
+        {!portal ? (
+          <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Carregando…</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+              Link <b>sem login</b> com o painel de performance do cliente (marca dele). Envie ou use o comando <b>/painel</b> no bot.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{portal.link}</span>
+              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(portal.link); setPortalCopied(true); setTimeout(() => setPortalCopied(false), 2000); }}>
+                {portalCopied ? <Check size={12} /> : <Copy size={12} />} {portalCopied ? "Copiado" : "Copiar"}
+              </Button>
+              <a href={portal.link} target="_blank" rel="noreferrer"><Button variant="secondary" size="sm">Abrir</Button></a>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-secondary)" }}>
+                Cor da marca
+                <input type="color" value={portal.accentColor ?? "#1e66f5"} onChange={(e) => { setPortal({ ...portal, accentColor: e.target.value }); void savePortal({ accentColor: e.target.value }); }}
+                  style={{ width: 36, height: 28, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer" }} />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-secondary)" }}>
+                Modo
+                <select value={portal.mode} onChange={(e) => { setPortal({ ...portal, mode: e.target.value }); void savePortal({ mode: e.target.value }); }}
+                  style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-primary)", padding: "5px 8px", fontSize: 12.5 }}>
+                  <option value="light">Claro</option>
+                  <option value="dark">Escuro</option>
+                </select>
+              </label>
+              <Button variant="ghost" size="sm" onClick={() => { if (confirm("Gerar um novo link? O link atual deixa de funcionar.")) void savePortal({ rotate: true }); }}>
+                <RefreshCw size={12} /> Novo link
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Marca branca */}

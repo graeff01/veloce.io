@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clientBotByWebhook, consumeInvite, deactivateRecipientByChat, sendMessage, welcomeText, isActiveRecipient } from "@/lib/notifications/client-bot";
 import { statusNow, quentesAguardando, resultadosHoje, ajuda } from "@/lib/notifications/client-report";
+import { getOrCreatePortal } from "@/lib/notifications/client-portal";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ref
     if (cmd === "/status" || cmd === "/agora") reply = await statusNow(bot.clientId);
     else if (cmd === "/quentes") reply = await quentesAguardando(bot.clientId);
     else if (cmd === "/resultados" || cmd === "/hoje") reply = await resultadosHoje(bot.clientId);
+    else if (cmd === "/painel") { const p = await getOrCreatePortal(bot.clientId); reply = `📊 <b>Seu painel</b>\n${p.link}`; }
     else reply = ajuda(bot.brandName); // /ajuda, /help e desconhecidos
     await sendMessage(bot.token, chatId, reply);
   }

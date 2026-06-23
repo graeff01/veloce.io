@@ -44,6 +44,7 @@ export async function connectClientBot(clientId: string, rawToken: string, usern
       { command: "status", description: "Leads aguardando agora" },
       { command: "quentes", description: "Leads quentes na fila" },
       { command: "resultados", description: "Placar de hoje" },
+      { command: "painel", description: "Abrir o painel completo" },
       { command: "ajuda", description: "Ver comandos" },
     ],
   }).catch(() => {});

@@ -1427,6 +1427,18 @@ model ClientBotRecipient {
   @@index([clientId])
 }
 
+// Painel do cliente (camada client-facing, sem login). O token é a credencial
+// (capability URL /r/<token>): rotativo e revogável. Tema por cliente (marca branca).
+model ClientPortal {
+  clientId    String   @id
+  token       String   @unique
+  accentColor String?  // hex da marca, ex.: "#1E66F5" (deriva a paleta)
+  mode        String   @default("light") // light | dark | auto
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // Token de convite (escopo cliente + papel), uso único, expira.
 model ClientBotLinkToken {
   token     String   @id

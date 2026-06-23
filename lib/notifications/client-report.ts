@@ -94,6 +94,75 @@ export async function resultadosHoje(clientId: string): Promise<string> {
   );
 }
 
+// ── Read-model do DASHBOARD (client-safe) ────────────────────────────────────
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+export interface ClientDashboard {
+  generatedAt: string;
+  periodLabel: string;
+  atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
+  termometro: { hot: number; warm: number; cold: number; total: number };
+  midia: { spend: number; leads: number; cpl: number | null } | null;
+}
+
+export async function getClientDashboard(clientId: string): Promise<ClientDashboard> {
+  const p = nowParts(TZ);
+  const [y, m] = p.ymd.split("-").map(Number);
+  const mm = (yy: number, mo: number) => wallToInstant(`${yy}-${String(mo).padStart(2, "0")}-01`, "00:00", TZ);
+  const monthStart = mm(y, m);
+  const now = new Date();
+  const span = now.getTime() - monthStart.getTime();
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevStart = mm(prevY, prevM);
+  const prevEnd = new Date(prevStart.getTime() + span); // mesmo nº de dias do mês (comparável)
+
+  const connIds = await connIdsFor(clientId);
+
+  // Atendimento (este mês até agora) + leads do período comparável do mês passado.
+  const [convs, prevLeads, waiting, metaConn] = await Promise.all([
+    connIds.length ? prisma.waConversation.findMany({
+      where: { connectionId: { in: connIds }, firstInboundAt: { gte: monthStart, lt: now } },
+      select: { firstResponseSec: true, funnelStage: true },
+    }) : Promise.resolve([]),
+    connIds.length ? prisma.waConversation.count({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
+    waitingWithTemp(connIds),
+    prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
+  ]);
+
+  const leads = convs.length;
+  const respondidos = convs.filter((c) => c.firstResponseSec != null).length;
+  const conversoes = convs.filter((c) => c.funnelStage === "convertido").length;
+  const times = convs.map((c) => c.firstResponseSec).filter((s): s is number => s != null);
+  const tempoMedioMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
+  const taxaResposta = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
+  const deltaPct = prevLeads > 0 ? Math.round(((leads - prevLeads) / prevLeads) * 100) : null;
+
+  const hot = waiting.filter((w) => w.temp === "hot").length;
+  const warm = waiting.filter((w) => w.temp === "warm").length;
+  const cold = waiting.filter((w) => w.temp === "cold").length;
+
+  // Mídia (se tem conexão Meta): gasto do mês + leads reais de anúncio + CPL.
+  let midia: ClientDashboard["midia"] = null;
+  if (metaConn) {
+    const wa = connIds.length ? await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }) : null;
+    const [spendAgg, adLeads] = await Promise.all([
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: monthStart } } }),
+      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: monthStart, lt: now } } }) : Promise.resolve(0),
+    ]);
+    const spend = spendAgg._sum.spend ?? 0;
+    midia = { spend, leads: adLeads, cpl: adLeads > 0 ? spend / adLeads : null };
+  }
+
+  return {
+    generatedAt: now.toISOString(),
+    periodLabel: `${MONTHS[m - 1]} ${y}`,
+    atendimento: { leads, leadsPrev: prevLeads, deltaPct, respondidos, taxaResposta, tempoMedioMin, conversoes },
+    termometro: { hot, warm, cold, total: waiting.length },
+    midia,
+  };
+}
+
 export function ajuda(brandName: string | null): string {
   const marca = brandName?.trim() ? ` da <b>${esc(brandName.trim())}</b>` : "";
   return (
@@ -101,6 +170,7 @@ export function ajuda(brandName: string | null): string {
     `• /status — leads aguardando agora\n` +
     `• /quentes — leads quentes na fila\n` +
     `• /resultados — placar de hoje\n` +
+    `• /painel — abrir o painel completo\n` +
     `• /ajuda — ver esta lista`
   );
 }
