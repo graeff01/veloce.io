@@ -624,88 +624,84 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
   );
 }
 
-// ── Prévia do criativo: abre o anúncio no formato real (iframe oficial da Meta) ──
-const PREVIEW_FORMATS: { key: string; label: string }[] = [
-  { key: "MOBILE_FEED_STANDARD", label: "Feed" },
-  { key: "INSTAGRAM_STORY", label: "Story" },
-  { key: "INSTAGRAM_REELS", label: "Reels" },
-];
+// ── Prévia do criativo: mostra os 3 formatos (Feed/Story/Reels) lado a lado ──
+// Dimensões-padrão por formato (Story/Reels em 9:16; Feed mais alto). Cada coluna
+// usa as suas — assim nenhum formato herda o tamanho do outro.
+const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
+  MOBILE_FEED_STANDARD: { w: 360, h: 720 },
+  INSTAGRAM_STORY: { w: 340, h: 604 },   // 9:16
+  INSTAGRAM_REELS: { w: 340, h: 604 },   // 9:16
+};
+interface Preview { format: string; label: string; src: string | null; width: number | null; height: number | null }
 
 function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adId: string; name: string }; onClose: () => void }) {
-  const [format, setFormat] = useState("MOBILE_FEED_STANDARD");
-  const { data, loading } = useCachedFetch<{ src: string | null; width: number | null; height: number | null; error?: string }>(
-    `/api/clients/${clientId}/meta/ad-preview?adId=${encodeURIComponent(ad.adId)}&format=${format}`,
+  const { data, loading } = useCachedFetch<{ previews: Preview[]; error?: string }>(
+    `/api/clients/${clientId}/meta/ad-preview?adId=${encodeURIComponent(ad.adId)}`,
   );
-  // Viewport p/ escalar a prévia inteira na tela (sem rolagem). Inicializa do
-  // window (client component) e acompanha resize — listener só, sem setState no corpo.
-  const [vp, setVp] = useState(() => (typeof window !== "undefined" ? { w: window.innerWidth, h: window.innerHeight } : { w: 1200, h: 800 }));
+  // Viewport p/ escalar tudo na tela (sem rolagem). Listener só — sem setState no corpo.
+  const [vp, setVp] = useState(() => (typeof window !== "undefined" ? { w: window.innerWidth, h: window.innerHeight } : { w: 1280, h: 800 }));
   useEffect(() => {
     const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener("resize", upd);
     return () => window.removeEventListener("resize", upd);
   }, []);
 
-  // Dimensões corretas por formato (a Meta às vezes devolve altura curta no
-  // retrato → cortava). Story/Reels em 9:16; Feed mais alto.
-  const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
-    MOBILE_FEED_STANDARD: { w: 360, h: 700 },
-    INSTAGRAM_STORY: { w: 360, h: 660 },
-    INSTAGRAM_REELS: { w: 360, h: 720 },
-  };
-  const fb = FORMAT_DIMS[format] ?? { w: 360, h: 700 };
-  // Nunca menor que o padrão do formato — a Meta às vezes devolve altura curta
-  // que cortava o anúncio (com scrolling=no). max() garante o anúncio inteiro.
-  const natW = Math.max(data?.width || 0, fb.w);
-  const natH = Math.max(data?.height || 0, fb.h);
-  // Escala só pra caber na tela — orçamento generoso (modal grande).
-  const maxW = Math.min(vp.w * 0.94, 560);
-  const maxH = vp.h * 0.86;
-  const scale = Math.min(maxW / natW, maxH / natH, 1);
-  const boxW = Math.round(natW * scale);
-  const boxH = Math.round(natH * scale);
-  // Largura do modal acomoda o cabeçalho (título + abas) mesmo se a prévia for estreita.
-  const modalW = Math.max(boxW + 24, 420);
+  const previews = data?.previews ?? [];
+  // Cada coluna escala pra caber: 1/3 da largura disponível e ~80% da altura.
+  const gap = 18;
+  const colMaxW = Math.max(170, (Math.min(vp.w * 0.94, 1340) - 36 - gap * 2) / 3);
+  const maxH = vp.h * 0.8;
 
   return (
     <div
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
     >
-      <div style={{ width: modalW, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+      <div style={{ maxWidth: "95vw", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)" }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ad.name}</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            {PREVIEW_FORMATS.map((f) => (
-              <button key={f.key} onClick={() => setFormat(f.key)}
-                style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", border: `1px solid ${format === f.key ? "var(--accent)" : "var(--border)"}`, background: format === f.key ? "var(--accent-soft)" : "var(--bg-elevated)", color: format === f.key ? "var(--accent)" : "var(--text-muted)" }}>
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Feed · Story · Reels</span>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={18} /></button>
         </div>
-        {/* Conteúdo — prévia inteira, escalada pra caber (sem rolagem) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--bg-base)" }}>
+        {/* 3 formatos lado a lado, cada um no seu tamanho */}
+        <div style={{ display: "flex", gap, alignItems: "flex-start", justifyContent: "center", padding: 18, background: "var(--bg-base)" }}>
           {loading ? (
-            <div style={{ height: 420, display: "flex", alignItems: "center" }}>
+            <div style={{ height: 460, display: "flex", alignItems: "center" }}>
               <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
             </div>
-          ) : data?.src ? (
-            <div style={{ width: boxW, height: boxH, overflow: "hidden", borderRadius: 8, background: "#fff" }}>
-              <iframe
-                src={data.src}
-                width={natW}
-                height={natH}
-                scrolling="no"
-                allow="autoplay; encrypted-media"
-                title="Prévia do anúncio"
-                style={{ border: 0, width: natW, height: natH, transform: `scale(${scale})`, transformOrigin: "top left" }}
-              />
-            </div>
-          ) : (
-            <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 320, padding: "40px 0" }}>{data?.error ?? "Prévia indisponível neste formato. Tente outro."}</p>
-          )}
+          ) : previews.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "60px 20px" }}>{data?.error ?? "Prévia indisponível."}</p>
+          ) : previews.map((p) => {
+            const fb = FORMAT_DIMS[p.format] ?? { w: 360, h: 700 };
+            const natW = Math.max(p.width || 0, fb.w);
+            const natH = Math.max(p.height || 0, fb.h);
+            const scale = Math.min(colMaxW / natW, maxH / natH, 1);
+            const boxW = Math.round(natW * scale);
+            const boxH = Math.round(natH * scale);
+            return (
+              <div key={p.format} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{p.label}</span>
+                {p.src ? (
+                  <div style={{ width: boxW, height: boxH, overflow: "hidden", borderRadius: 10, background: "#fff", border: "1px solid var(--border)" }}>
+                    <iframe
+                      src={p.src}
+                      width={natW}
+                      height={natH}
+                      scrolling="no"
+                      allow="autoplay; encrypted-media"
+                      title={`Prévia ${p.label}`}
+                      style={{ border: 0, width: natW, height: natH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ width: boxW, height: boxH, borderRadius: 10, border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 12 }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Sem prévia neste formato</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
