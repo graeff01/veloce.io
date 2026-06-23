@@ -29,9 +29,11 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Gate de borda só para PÁGINAS. Todo /api fica de fora: as rotas se protegem
-  // com requireAuth e devem responder 401 JSON limpo (não redirect 302 → HTML).
+  // Gate de borda só para PÁGINAS internas. Fora do gate:
+  //  • /api — rotas se protegem com requireAuth (401 JSON, não redirect HTML);
+  //  • /r/ — PAINEL DO CLIENTE (capability link público, sem login);
+  //  • assets do Next e arquivos com extensão.
   matcher: [
-    "/((?!api|login|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+    "/((?!api|login|r/|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };
