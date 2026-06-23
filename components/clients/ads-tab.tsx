@@ -636,14 +636,32 @@ function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adI
   const { data, loading } = useCachedFetch<{ src: string | null; width: number | null; height: number | null; error?: string }>(
     `/api/clients/${clientId}/meta/ad-preview?adId=${encodeURIComponent(ad.adId)}&format=${format}`,
   );
-  const w = data?.width ?? 360;
-  const h = data?.height ?? 600;
+  // Viewport p/ escalar a prévia inteira na tela (sem rolagem). Inicializa do
+  // window (client component) e acompanha resize — listener só, sem setState no corpo.
+  const [vp, setVp] = useState(() => (typeof window !== "undefined" ? { w: window.innerWidth, h: window.innerHeight } : { w: 1200, h: 800 }));
+  useEffect(() => {
+    const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
+  }, []);
+
+  // Tamanho nativo do iframe da Meta → escala pra caber no orçamento da tela.
+  const natW = data?.width ?? 360;
+  const natH = data?.height ?? 640;
+  const maxW = Math.min(vp.w * 0.92, 460);
+  const maxH = vp.h * 0.74;
+  const scale = Math.min(maxW / natW, maxH / natH, 1);
+  const boxW = Math.round(natW * scale);
+  const boxH = Math.round(natH * scale);
+  // Largura do modal acomoda o cabeçalho (título + abas) mesmo se a prévia for estreita.
+  const modalW = Math.max(boxW + 24, 380);
+
   return (
     <div
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
     >
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, maxWidth: "92vw", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+      <div style={{ width: modalW, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ad.name}</span>
@@ -657,14 +675,26 @@ function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adI
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={18} /></button>
         </div>
-        {/* Conteúdo */}
-        <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--bg-base)", minWidth: 360, minHeight: 420 }}>
+        {/* Conteúdo — prévia inteira, escalada pra caber (sem rolagem) */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--bg-base)" }}>
           {loading ? (
-            <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+            <div style={{ height: 420, display: "flex", alignItems: "center" }}>
+              <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+            </div>
           ) : data?.src ? (
-            <iframe src={data.src} width={w} height={h} style={{ border: 0, borderRadius: 8, background: "#fff", maxWidth: "100%" }} allow="autoplay; encrypted-media" title="Prévia do anúncio" />
+            <div style={{ width: boxW, height: boxH, overflow: "hidden", borderRadius: 8, background: "#fff" }}>
+              <iframe
+                src={data.src}
+                width={natW}
+                height={natH}
+                scrolling="no"
+                allow="autoplay; encrypted-media"
+                title="Prévia do anúncio"
+                style={{ border: 0, width: natW, height: natH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+              />
+            </div>
           ) : (
-            <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 320 }}>{data?.error ?? "Prévia indisponível neste formato. Tente outro."}</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 320, padding: "40px 0" }}>{data?.error ?? "Prévia indisponível neste formato. Tente outro."}</p>
           )}
         </div>
       </div>
