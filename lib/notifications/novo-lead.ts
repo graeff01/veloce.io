@@ -1,20 +1,23 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert } from "@/lib/notifications/client-bot";
-import { esc, APP_URL } from "@/lib/notifications/digest";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
+import { getOrCreatePortal } from "@/lib/notifications/client-portal";
+import { esc } from "@/lib/notifications/digest";
 
 // Alerta "🚨 Novo lead" — vai para o BOT DO CLIENTE, só no 1º contato do lead.
-// Idempotente por contato. Formato pensado pra clareza imediata: quem é, de onde
-// veio e a 1ª mensagem.
+// Idempotente por contato. Em pico (rajada), o individual é suprimido e vira
+// digest agrupado (ver client-bot-jobs). Links apontam para FORA do sistema:
+// "Responder" abre o WhatsApp do lead; "Painel" abre o /r do cliente.
+
+const BURST_WINDOW_MS = 8 * 60 * 1000; // janela de rajada
+const BURST_MAX = 3;                   // até 3 individuais por janela; o resto vira digest
 
 function formatPhone(waId: string | null): string | null {
   if (!waId) return null;
   const d = waId.replace(/\D/g, "");
-  // BR: 55 + DDD(2) + número(8-9)
   const m = d.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : `+${d}`;
 }
 
-// Origem legível a partir do WaLead (atribuição de anúncio já capturada no webhook).
 function origem(lead: { adModel: string | null; adTitle: string | null; sourceType: string | null } | null): string {
   if (!lead) return "Orgânico / Direto";
   if (lead.adTitle || lead.adModel) return `Campanha Meta — ${lead.adTitle ?? lead.adModel}`;
@@ -31,27 +34,46 @@ export async function notifyNovoLead(opts: {
 }): Promise<void> {
   const { clientId, contactId, contactName, waId, text } = opts;
 
-  // Só no PRIMEIRO contato: inboundCount === 1 logo após a 1ª mensagem entrar.
-  const conv = await prisma.waConversation.findUnique({ where: { contactId }, select: { inboundCount: true } });
+  // Só no PRIMEIRO contato.
+  const conv = await prisma.waConversation.findUnique({ where: { contactId }, select: { inboundCount: true, connectionId: true } });
   if (!conv || conv.inboundCount !== 1) return;
 
-  const lead = await prisma.waLead.findUnique({
-    where: { contactId },
-    select: { adModel: true, adTitle: true, sourceType: true },
-  });
+  // Exclusão: família do dono / nomes marcados não viram lead.
+  const excl = await excludedTokens(clientId);
+  if (nameExcluded(contactName, excl)) return;
+
+  // Anti-rajada: se já houve muitos leads novos nesta janela, suprime o individual
+  // (o digest agrupado é enviado pelo agendador).
+  const burst = await prisma.waConversation.count({ where: { connectionId: conv.connectionId, firstInboundAt: { gte: new Date(Date.now() - BURST_WINDOW_MS) } } });
+  if (burst > BURST_MAX) return;
+
+  const [lead, profile, portal] = await Promise.all([
+    prisma.waLead.findUnique({ where: { contactId }, select: { adModel: true, adTitle: true, sourceType: true } }),
+    prisma.leadProfile.findUnique({ where: { contactId }, select: { productInterest: true, budget: true, wantsFinancing: true, visitIntent: true } }),
+    getOrCreatePortal(clientId),
+  ]);
 
   const nome = (contactName || "").trim() || "Lead";
   const fone = formatPhone(waId);
   const primeira = (text || "").replace(/\s+/g, " ").trim().slice(0, 280) || "(mídia / sem texto)";
   const linha2 = [esc(nome), fone].filter(Boolean).join(" · ");
 
+  // Linha de perfil (só o que já se sabe).
+  const perfil: string[] = [];
+  if (profile?.productInterest) perfil.push(`Interesse: ${esc(profile.productInterest)}`);
+  if (profile?.budget) perfil.push(`Orçamento: ${esc(profile.budget)}`);
+  if (profile?.visitIntent) perfil.push("quer visitar");
+  if (profile?.wantsFinancing) perfil.push("pergunta financiamento");
+
+  const wa = waMe(waId);
   const tg =
     `🚨 <b>Novo lead</b>\n` +
     `👤 ${linha2}\n` +
     `📍 Origem: ${esc(origem(lead))}\n` +
-    `💬 Primeira mensagem:\n“${esc(primeira)}”\n\n` +
-    `<a href="${APP_URL}/clients/${clientId}?tab=leads">Responder agora →</a>`;
+    (perfil.length ? `📋 ${perfil.join(" · ")}\n` : "") +
+    `💬 “${esc(primeira)}”\n\n` +
+    (wa ? `<a href="${wa}">💬 Responder no WhatsApp →</a>\n` : "") +
+    `<a href="${portal.link}">📊 Painel</a>`;
 
-  // "Novo lead" é importante: fura quiet hours (urgent) — é o evento âncora do produto.
   await sendClientAlert(clientId, "novoLead", tg, { urgent: true }).catch(() => {});
 }

@@ -11,6 +11,7 @@ interface BotState {
   username: string | null;
   brandName: string | null;
   welcomeMessage: string | null;
+  excludedNames: string | null;
   alerts: { novoLead: boolean; slaAlerts: boolean; leadQuente: boolean; leadEsfriando: boolean; resumoDiario: boolean };
   quietStart: string | null;
   quietEnd: string | null;
@@ -60,12 +61,13 @@ export function BotTab({ clientId }: { clientId: string }) {
   const [brand, setBrand] = useState("");
   const [welcome, setWelcome] = useState("");
   const [brandSaved, setBrandSaved] = useState(false);
+  const [excluded, setExcluded] = useState("");
   const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string; logoUrl: string | null } | null>(null);
   const [portalCopied, setPortalCopied] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/bot`);
-    if (res.ok) { const d = await res.json(); setState(d); setUsername(d.username ?? ""); setBrand(d.brandName ?? ""); setWelcome(d.welcomeMessage ?? ""); }
+    if (res.ok) { const d = await res.json(); setState(d); setUsername(d.username ?? ""); setBrand(d.brandName ?? ""); setWelcome(d.welcomeMessage ?? ""); setExcluded(d.excludedNames ?? ""); }
   }
 
   async function saveBrand() {
@@ -257,6 +259,25 @@ export function BotTab({ clientId }: { clientId: string }) {
               <Button variant="primary" size="sm" onClick={saveBrand}>Salvar marca</Button>
               {brandSaved && <span style={{ fontSize: 12, color: "var(--green)" }}>✓ Salvo</span>}
             </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Ignorar contatos */}
+      {state.connected && (
+        <Card title="🙈 Ignorar contatos">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+              Nomes/sobrenomes que <b>não</b> devem virar lead nem gerar alerta (ex.: família do dono). Um por linha ou separados por vírgula.
+            </p>
+            <textarea
+              value={excluded}
+              onChange={(e) => setExcluded(e.target.value)}
+              onBlur={() => void patch({ excludedNames: excluded })}
+              placeholder="Erling"
+              rows={2}
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-input)", color: "var(--text-primary)", padding: "9px 12px", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
+            />
           </div>
         </Card>
       )}

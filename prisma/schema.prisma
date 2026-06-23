@@ -1409,19 +1409,23 @@ model ClientBot {
   // Não perturbe (HH:MM em BRT; fora disso, só crítico)
   quietStart    String?
   quietEnd      String?
+  // Nomes/sobrenomes a IGNORAR (não viram lead/alerta) — ex.: família do dono.
+  // Separados por vírgula/linha; match por "contém" (case-insensitive).
+  excludedNames String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
 
 // Quem recebe os alertas de um cliente (gestor/corretor), no bot dele.
 model ClientBotRecipient {
-  id        String   @id @default(cuid())
-  clientId  String
-  chatId    String
-  username  String?
-  role      String   @default("corretor") // gestor | corretor
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  clientId   String
+  chatId     String
+  username   String?
+  role       String    @default("corretor") // gestor | corretor
+  active     Boolean   @default(true)
+  mutedUntil DateTime? // snooze temporário (/silenciar) — não recebe alertas até aqui
+  createdAt  DateTime  @default(now())
 
   @@unique([clientId, chatId])
   @@index([clientId])

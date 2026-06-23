@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert } from "@/lib/notifications/client-bot";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { gateOnce } from "@/lib/notifications/dispatch";
-import { esc, APP_URL } from "@/lib/notifications/digest";
+import { esc } from "@/lib/notifications/digest";
 import { detectStageFromMessage } from "@/lib/wa-funnel";
 
 // Alerta "🔥 Lead altamente qualificado" — vai para o BOT DO CLIENTE.
@@ -14,8 +14,12 @@ import { detectStageFromMessage } from "@/lib/wa-funnel";
 
 const TEMP_LABEL: Record<string, string> = { hot: "Quente", warm: "Morno", cold: "Frio" };
 
-export async function notifyLeadQuente(opts: { clientId: string; contactId: string; contactName: string | null; text: string | null }): Promise<void> {
-  const { clientId, contactId, contactName, text } = opts;
+export async function notifyLeadQuente(opts: { clientId: string; contactId: string; contactName: string | null; waId: string | null; text: string | null }): Promise<void> {
+  const { clientId, contactId, contactName, waId, text } = opts;
+
+  // Exclusão: família do dono / nomes marcados.
+  const excl = await excludedTokens(clientId);
+  if (nameExcluded(contactName, excl)) return;
 
   const [conv, profile, cfg] = await Promise.all([
     prisma.waConversation.findUnique({ where: { contactId }, select: { funnelStage: true } }),
@@ -45,11 +49,12 @@ export async function notifyLeadQuente(opts: { clientId: string; contactId: stri
   const score = profile?.score && profile.score > 0 ? ` · Score ${profile.score}/100` : "";
   const temp = profile?.temperature && TEMP_LABEL[profile.temperature] ? ` · 🌡️ ${TEMP_LABEL[profile.temperature]}` : "";
 
+  const wa = waMe(waId);
   const tg =
     `🔥 <b>Lead altamente qualificado</b>\n` +
     `👤 ${esc(nome)}${score}${temp}\n` +
     motivos.map((m) => `• ${esc(m)}`).join("\n") +
-    `\n\n<a href="${APP_URL}/clients/${clientId}?tab=leads">Abrir conversa →</a>`;
+    (wa ? `\n\n<a href="${wa}">💬 Responder no WhatsApp →</a>` : "");
 
   await sendClientAlert(clientId, "leadQuente", tg, { urgent: true }).catch(() => {});
 }

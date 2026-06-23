@@ -24,6 +24,7 @@ export async function GET(_req: Request, { params }: Params) {
     username: bot?.username ?? null,
     brandName: bot?.brandName ?? null,
     welcomeMessage: bot?.welcomeMessage ?? null,
+    excludedNames: bot?.excludedNames ?? null,
     alerts: bot
       ? { novoLead: bot.novoLead, slaAlerts: bot.slaAlerts, leadQuente: bot.leadQuente, leadEsfriando: bot.leadEsfriando, resumoDiario: bot.resumoDiario }
       : { novoLead: true, slaAlerts: true, leadQuente: true, leadEsfriando: true, resumoDiario: true },
@@ -55,6 +56,7 @@ export async function PUT(req: Request, { params }: Params) {
   if ("quietEnd" in body) data.quietEnd = body.quietEnd || null;
   if ("brandName" in body) data.brandName = (body.brandName as string)?.trim() || null;
   if ("welcomeMessage" in body) data.welcomeMessage = (body.welcomeMessage as string)?.trim() || null;
+  if ("excludedNames" in body) data.excludedNames = (body.excludedNames as string)?.trim() || null;
   if (Object.keys(data).length > 0) {
     await prisma.clientBot.updateMany({ where: { clientId: id }, data });
   }

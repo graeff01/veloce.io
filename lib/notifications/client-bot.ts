@@ -44,7 +44,9 @@ export async function connectClientBot(clientId: string, rawToken: string, usern
       { command: "status", description: "Leads aguardando agora" },
       { command: "quentes", description: "Leads quentes na fila" },
       { command: "resultados", description: "Placar de hoje" },
+      { command: "semana", description: "Placar dos últimos 7 dias" },
       { command: "painel", description: "Abrir o painel completo" },
+      { command: "silenciar", description: "Pausar alertas por 2h" },
       { command: "ajuda", description: "Ver comandos" },
     ],
   }).catch(() => {});
@@ -120,6 +122,32 @@ export async function deactivateRecipientByChat(clientId: string, chatId: string
   await prisma.clientBotRecipient.updateMany({ where: { clientId, chatId }, data: { active: false } });
 }
 
+// Snooze temporário (/silenciar): pausa alertas deste destinatário por `hours`.
+export async function snoozeRecipient(clientId: string, chatId: string, hours: number): Promise<void> {
+  await prisma.clientBotRecipient.updateMany({ where: { clientId, chatId }, data: { mutedUntil: new Date(Date.now() + hours * 3600_000) } });
+}
+
+// ── Link do WhatsApp do lead + exclusão de nomes ─────────────────────────────
+
+// Abre o WhatsApp direto na conversa com o lead (telefone E.164 sem "+").
+export function waMe(waId: string | null): string | null {
+  const d = (waId || "").replace(/\D/g, "");
+  return d ? `https://wa.me/${d}` : null;
+}
+
+// Tokens (sobrenomes/nomes) que o cliente marcou para ignorar.
+export async function excludedTokens(clientId: string): Promise<string[]> {
+  const bot = await prisma.clientBot.findUnique({ where: { clientId }, select: { excludedNames: true } });
+  return (bot?.excludedNames || "").split(/[,\n;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
+// O nome do contato bate com algum termo ignorado? (ex.: "Erling").
+export function nameExcluded(name: string | null, tokens: string[]): boolean {
+  if (!name || tokens.length === 0) return false;
+  const n = name.toLowerCase();
+  return tokens.some((t) => n.includes(t));
+}
+
 // Só destinatários ativos podem consultar dados (comandos /status etc.).
 export async function isActiveRecipient(clientId: string, chatId: string): Promise<boolean> {
   const r = await prisma.clientBotRecipient.findUnique({
@@ -153,7 +181,10 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
   let token: string;
   try { token = decryptSecret(bot.token); } catch (e) { captureException(e, { where: "client-bot.send.decrypt", clientId }); return 0; }
 
-  const recipients = await prisma.clientBotRecipient.findMany({ where: { clientId, active: true }, select: { chatId: true } });
+  const recipients = await prisma.clientBotRecipient.findMany({
+    where: { clientId, active: true, OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }] },
+    select: { chatId: true },
+  });
   if (recipients.length === 0) return 0;
 
   let sent = 0;

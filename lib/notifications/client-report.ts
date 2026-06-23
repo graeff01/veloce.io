@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { esc, APP_URL } from "@/lib/notifications/digest";
+import { esc } from "@/lib/notifications/digest";
+import { waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
+import { getOrCreatePortal } from "@/lib/notifications/client-portal";
 import { nowParts, wallToInstant } from "@/lib/tz";
 
 // Read-model client-safe: respostas sob demanda do bot do cliente. Só lê dado que
@@ -21,10 +23,11 @@ function tempOf(funnelStage: string | null, score: number | null, temperature: s
 }
 
 // Leads aguardando agora, com temperatura de cada um (funil grátis + score IA).
-async function waitingWithTemp(connIds: string[]) {
+// Filtra nomes excluídos (ex.: família do dono).
+async function waitingWithTemp(connIds: string[], excluded: string[] = []) {
   const waiting = await prisma.waConversation.findMany({
     where: { connectionId: { in: connIds }, status: "waiting", funnelStage: { notIn: ["convertido", "perdido"] } },
-    select: { contactId: true, funnelStage: true, lastInboundAt: true, contact: { select: { name: true } } },
+    select: { contactId: true, funnelStage: true, lastInboundAt: true, contact: { select: { name: true, waId: true } } },
     orderBy: { lastInboundAt: "asc" },
   });
   if (waiting.length === 0) return [];
@@ -33,10 +36,12 @@ async function waitingWithTemp(connIds: string[]) {
     select: { contactId: true, score: true, temperature: true },
   });
   const pmap = new Map(profiles.map((p) => [p.contactId, p]));
-  return waiting.map((w) => {
-    const p = pmap.get(w.contactId);
-    return { name: (w.contact.name || "").trim() || "Lead", lastInboundAt: w.lastInboundAt, temp: tempOf(w.funnelStage, p?.score ?? null, p?.temperature ?? null) };
-  });
+  return waiting
+    .filter((w) => !nameExcluded(w.contact.name, excluded))
+    .map((w) => {
+      const p = pmap.get(w.contactId);
+      return { name: (w.contact.name || "").trim() || "Lead", waId: w.contact.waId, lastInboundAt: w.lastInboundAt, temp: tempOf(w.funnelStage, p?.score ?? null, p?.temperature ?? null) };
+    });
 }
 
 function hoursAgo(d: Date | null): string {
@@ -50,7 +55,7 @@ function hoursAgo(d: Date | null): string {
 export async function statusNow(clientId: string): Promise<string> {
   const connIds = await connIdsFor(clientId);
   if (connIds.length === 0) return "Sem WhatsApp conectado ainda.";
-  const w = await waitingWithTemp(connIds);
+  const w = await waitingWithTemp(connIds, await excludedTokens(clientId));
   if (w.length === 0) return "🔔 <b>Status agora</b>\nNenhum lead aguardando resposta. 👌";
   const hot = w.filter((x) => x.temp === "hot").length;
   const warm = w.filter((x) => x.temp === "warm").length;
@@ -58,14 +63,18 @@ export async function statusNow(clientId: string): Promise<string> {
   return `🔔 <b>Status agora</b>\n${w.length} lead${w.length > 1 ? "s" : ""} aguardando resposta\n🌡️ 🔥 ${hot} · 🟠 ${warm} · 🧊 ${cold}`;
 }
 
-// /quentes — leads quentes aguardando.
+// /quentes — leads quentes aguardando (cada um abre o WhatsApp direto).
 export async function quentesAguardando(clientId: string): Promise<string> {
   const connIds = await connIdsFor(clientId);
   if (connIds.length === 0) return "Sem WhatsApp conectado ainda.";
-  const hot = (await waitingWithTemp(connIds)).filter((x) => x.temp === "hot");
+  const hot = (await waitingWithTemp(connIds, await excludedTokens(clientId))).filter((x) => x.temp === "hot");
   if (hot.length === 0) return "🔥 <b>Leads quentes</b>\nNenhum lead quente aguardando agora.";
-  const lines = hot.slice(0, 10).map((x) => `• <b>${esc(x.name)}</b> ${hoursAgo(x.lastInboundAt)}`);
-  return `🔥 <b>Leads quentes aguardando</b> (${hot.length})\n${lines.join("\n")}\n\n<a href="${APP_URL}/clients/${clientId}?tab=leads">Abrir conversas →</a>`;
+  const lines = hot.slice(0, 10).map((x) => {
+    const wa = waMe(x.waId);
+    const nome = wa ? `<a href="${wa}">${esc(x.name)}</a>` : `<b>${esc(x.name)}</b>`;
+    return `• ${nome} ${hoursAgo(x.lastInboundAt)}`;
+  });
+  return `🔥 <b>Leads quentes aguardando</b> (${hot.length})\n${lines.join("\n")}\n<i>toque no nome para responder</i>`;
 }
 
 // /resultados — placar de hoje.
@@ -156,14 +165,16 @@ function narrative(a: ClientDashboard["atendimento"], hot: number, periodWord: s
 export async function getClientDashboard(clientId: string, period: Period = "month"): Promise<ClientDashboard> {
   const { start, now, prevStart, prevEnd, label } = periodRanges(period);
   const connIds = await connIdsFor(clientId);
+  const excluded = await excludedTokens(clientId);
 
-  const [convs, prevLeads, waiting, metaConn, wa] = await Promise.all([
-    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true } }) : Promise.resolve([]),
+  const [convsRaw, prevLeads, waiting, metaConn, wa] = await Promise.all([
+    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     connIds.length ? prisma.waConversation.count({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
-    waitingWithTemp(connIds),
+    waitingWithTemp(connIds, excluded),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
     prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
   ]);
+  const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
 
   const leads = convs.length;
   const respondidos = convs.filter((c) => c.firstResponseSec != null).length;
@@ -239,6 +250,23 @@ export async function getBenchmark(clientId: string, period: Period = "month"): 
   return Math.round((beats / (rates.length - 1)) * 100);
 }
 
+// /semana e /mes — placar do período (reusa o read-model do dashboard).
+export async function resumoPeriodo(clientId: string, period: Period): Promise<string> {
+  const d = await getClientDashboard(clientId, period);
+  const a = d.atendimento;
+  const titulo = period === "week" ? "Últimos 7 dias" : "Este mês";
+  if (a.leads === 0) return `📊 <b>${titulo}</b>\nNenhum lead no período.`;
+  const portal = await getOrCreatePortal(clientId);
+  return (
+    `📊 <b>${titulo}</b>\n` +
+    `• 💬 ${a.leads} leads${a.deltaPct != null ? ` <i>(${a.deltaPct >= 0 ? "+" : ""}${a.deltaPct}%)</i>` : ""}\n` +
+    `• ✅ ${a.respondidos} respondidos <i>(${a.taxaResposta}%)</i>\n` +
+    `• 🎯 ${a.conversoes} conversões` +
+    (a.tempoMedioMin != null ? `\n• ⏱️ Tempo médio: ${a.tempoMedioMin} min` : "") +
+    `\n\n<a href="${portal.link}">📊 Painel completo</a>`
+  );
+}
+
 export function ajuda(brandName: string | null): string {
   const marca = brandName?.trim() ? ` da <b>${esc(brandName.trim())}</b>` : "";
   return (
@@ -246,7 +274,9 @@ export function ajuda(brandName: string | null): string {
     `• /status — leads aguardando agora\n` +
     `• /quentes — leads quentes na fila\n` +
     `• /resultados — placar de hoje\n` +
+    `• /semana — placar dos últimos 7 dias\n` +
     `• /painel — abrir o painel completo\n` +
+    `• /silenciar — pausar alertas por 2h\n` +
     `• /ajuda — ver esta lista`
   );
 }

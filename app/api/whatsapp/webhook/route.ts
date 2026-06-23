@@ -150,7 +150,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     // loja (ex.: "parabéns pela compra"). Fire-and-forget: nunca bloqueia o webhook.
     // Encadeia o alerta de "lead quente" (lê o funil já atualizado).
     void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: outbound ? "out" : "in" })
-      .then(() => { if (!outbound) return notifyLeadQuente({ clientId: conn.clientId, contactId: contact.id, contactName: contact.name, text: messageText(m) }); })
+      .then(() => { if (!outbound) return notifyLeadQuente({ clientId: conn.clientId, contactId: contact.id, contactName: contact.name, waId: customerWaId, text: messageText(m) }); })
       .catch(() => {});
 
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
