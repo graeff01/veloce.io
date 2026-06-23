@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCachedFetch } from "@/lib/use-cached-fetch";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Link2,
@@ -409,22 +410,31 @@ function TokenBadge({ s }: { s: TokenStatus }) {
 const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";
 
 // Linha de um anúncio (reusada na visão principal e no menu de pausados/arquivados).
-function AdRow_({ a, connectedNumber, dim }: { a: AdRow; connectedNumber: string | null; dim?: boolean }) {
+function AdRow_({ a, connectedNumber, dim, onPreview }: { a: AdRow; connectedNumber: string | null; dim?: boolean; onPreview?: (ad: { adId: string; name: string }) => void }) {
   const ast = statusColor(a.status);
   return (
     <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)", opacity: dim ? 0.65 : 1 }}>
       <span />
       <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)", display: "flex", gap: 9, alignItems: "flex-start" }}>
         {a.thumbnailUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={a.thumbnailUrl}
-            alt=""
-            width={34}
-            height={34}
-            style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover", flexShrink: 0, border: "1px solid var(--border)", background: "var(--bg-elevated)" }}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-          />
+          <button
+            onClick={(e) => { e.stopPropagation(); onPreview?.({ adId: a.adId, name: a.name }); }}
+            title="Ver o criativo (abre o anúncio no formato real)"
+            style={{ position: "relative", width: 34, height: 34, padding: 0, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-elevated)", cursor: "pointer", flexShrink: 0, overflow: "hidden", lineHeight: 0 }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={a.thumbnailUrl}
+              alt=""
+              width={34}
+              height={34}
+              style={{ width: 34, height: 34, objectFit: "cover", display: "block" }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.28)" }}>
+              <Play size={12} color="#fff" fill="#fff" />
+            </span>
+          </button>
         )}
         <div style={{ minWidth: 0 }}>
           <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
@@ -449,6 +459,8 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
   // Override otimista do status após pausar/reativar (o próximo sync confirma).
   const [statusOverride, setStatusOverride] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  // Prévia do criativo (abre o anúncio no formato real).
+  const [preview, setPreview] = useState<{ adId: string; name: string } | null>(null);
 
   const adsByCampaign = new Map<string, AdRow[]>();
   for (const a of ads) {
@@ -548,7 +560,7 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
         {/* Anúncios */}
         {isOpen && (
           <>
-            {visibleAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim={allAds && !isActiveStatus(a.status)} />)}
+            {visibleAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim={allAds && !isActiveStatus(a.status)} onPreview={setPreview} />)}
             {/* Inativos da campanha (só na visão principal) — expandir embutido */}
             {!allAds && inactiveAds.length > 0 && (
               <>
@@ -559,7 +571,7 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
                   {revealInactive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   {inactiveAds.length} pausado{inactiveAds.length > 1 ? "s" : ""}/arquivado{inactiveAds.length > 1 ? "s" : ""}
                 </div>
-                {revealInactive && inactiveAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim />)}
+                {revealInactive && inactiveAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim onPreview={setPreview} />)}
               </>
             )}
           </>
@@ -606,6 +618,55 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
             )}
           </>
         )}
+      </div>
+      {preview && <AdPreviewModal clientId={clientId} ad={preview} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+// ── Prévia do criativo: abre o anúncio no formato real (iframe oficial da Meta) ──
+const PREVIEW_FORMATS: { key: string; label: string }[] = [
+  { key: "MOBILE_FEED_STANDARD", label: "Feed" },
+  { key: "INSTAGRAM_STORY", label: "Story" },
+  { key: "INSTAGRAM_REELS", label: "Reels" },
+];
+
+function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adId: string; name: string }; onClose: () => void }) {
+  const [format, setFormat] = useState("MOBILE_FEED_STANDARD");
+  const { data, loading } = useCachedFetch<{ src: string | null; width: number | null; height: number | null; error?: string }>(
+    `/api/clients/${clientId}/meta/ad-preview?adId=${encodeURIComponent(ad.adId)}&format=${format}`,
+  );
+  const w = data?.width ?? 360;
+  const h = data?.height ?? 600;
+  return (
+    <div
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+    >
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, maxWidth: "92vw", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ad.name}</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {PREVIEW_FORMATS.map((f) => (
+              <button key={f.key} onClick={() => setFormat(f.key)}
+                style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", border: `1px solid ${format === f.key ? "var(--accent)" : "var(--border)"}`, background: format === f.key ? "var(--accent-soft)" : "var(--bg-elevated)", color: format === f.key ? "var(--accent)" : "var(--text-muted)" }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={18} /></button>
+        </div>
+        {/* Conteúdo */}
+        <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--bg-base)", minWidth: 360, minHeight: 420 }}>
+          {loading ? (
+            <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+          ) : data?.src ? (
+            <iframe src={data.src} width={w} height={h} style={{ border: 0, borderRadius: 8, background: "#fff", maxWidth: "100%" }} allow="autoplay; encrypted-media" title="Prévia do anúncio" />
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 320 }}>{data?.error ?? "Prévia indisponível neste formato. Tente outro."}</p>
+          )}
+        </div>
       </div>
     </div>
   );
