@@ -5,7 +5,7 @@ import { useCachedFetch } from "@/lib/use-cached-fetch";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Link2,
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText, Pause, Play,
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText, Pause, Play, Sparkles,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -372,7 +372,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
             </div>
 
             {/* ── Campanhas (expande anúncios) ── */}
-            <CampaignAccordion clientId={clientId} campaigns={ads.campaigns} ads={ads.ads} connectedNumber={ads.connectedNumber} />
+            <CampaignAccordion clientId={clientId} year={year} month={month} campaigns={ads.campaigns} ads={ads.ads} connectedNumber={ads.connectedNumber} />
 
             {ads.leadsSemIdentificacao > 0 && (
               <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "-8px 2px 0" }}>
@@ -410,7 +410,7 @@ function TokenBadge({ s }: { s: TokenStatus }) {
 const COLS = "20px 1.8fr 90px 110px 80px 70px 80px 70px 90px";
 
 // Linha de um anúncio (reusada na visão principal e no menu de pausados/arquivados).
-function AdRow_({ a, connectedNumber, dim, onPreview }: { a: AdRow; connectedNumber: string | null; dim?: boolean; onPreview?: (ad: { adId: string; name: string }) => void }) {
+function AdRow_({ a, connectedNumber, dim, onPreview, onIntel }: { a: AdRow; connectedNumber: string | null; dim?: boolean; onPreview?: (ad: { adId: string; name: string }) => void; onIntel?: (ad: { adId: string; name: string }) => void }) {
   const ast = statusColor(a.status);
   return (
     <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)", opacity: dim ? 0.65 : 1 }}>
@@ -436,10 +436,19 @@ function AdRow_({ a, connectedNumber, dim, onPreview }: { a: AdRow; connectedNum
             </span>
           </button>
         )}
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
           <AdMetaChips a={a} connectedNumber={connectedNumber} />
         </div>
+        {onIntel && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onIntel({ adId: a.adId, name: a.name }); }}
+            title="Inteligência do anúncio (o que os leads falam + recomendação)"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "3px 8px", borderRadius: 7, border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
+          >
+            <Sparkles size={11} /> IA
+          </button>
+        )}
       </div>
       <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
       <Cell v={fmtBRL(a.spend)} />
@@ -452,7 +461,7 @@ function AdRow_({ a, connectedNumber, dim, onPreview }: { a: AdRow; connectedNum
   );
 }
 
-function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clientId: string; campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
+function CampaignAccordion({ clientId, year, month, campaigns, ads, connectedNumber }: { clientId: string; year: number; month: number; campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [showInactiveAds, setShowInactiveAds] = useState<Record<string, boolean>>({});
   const [showInactiveCamps, setShowInactiveCamps] = useState(false);
@@ -461,6 +470,8 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
   const [busy, setBusy] = useState<string | null>(null);
   // Prévia do criativo (abre o anúncio no formato real).
   const [preview, setPreview] = useState<{ adId: string; name: string } | null>(null);
+  // Inteligência do anúncio (conversas reais + recomendação + ação).
+  const [intel, setIntel] = useState<{ adId: string; name: string } | null>(null);
 
   const adsByCampaign = new Map<string, AdRow[]>();
   for (const a of ads) {
@@ -560,7 +571,7 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
         {/* Anúncios */}
         {isOpen && (
           <>
-            {visibleAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim={allAds && !isActiveStatus(a.status)} onPreview={setPreview} />)}
+            {visibleAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim={allAds && !isActiveStatus(a.status)} onPreview={setPreview} onIntel={setIntel} />)}
             {/* Inativos da campanha (só na visão principal) — expandir embutido */}
             {!allAds && inactiveAds.length > 0 && (
               <>
@@ -571,7 +582,7 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
                   {revealInactive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   {inactiveAds.length} pausado{inactiveAds.length > 1 ? "s" : ""}/arquivado{inactiveAds.length > 1 ? "s" : ""}
                 </div>
-                {revealInactive && inactiveAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim onPreview={setPreview} />)}
+                {revealInactive && inactiveAds.map((a) => <AdRow_ key={a.adId} a={a} connectedNumber={connectedNumber} dim onPreview={setPreview} onIntel={setIntel} />)}
               </>
             )}
           </>
@@ -620,6 +631,7 @@ function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clie
         )}
       </div>
       {preview && <AdPreviewModal clientId={clientId} ad={preview} onClose={() => setPreview(null)} />}
+      {intel && <AdIntelModal clientId={clientId} year={year} month={month} ad={intel} onClose={() => setIntel(null)} />}
     </div>
   );
 }
@@ -704,6 +716,146 @@ function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adI
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Inteligência do anúncio: conversas reais → recomendação de criativo + ação ──
+interface IntelResp {
+  ad: { adId: string; name: string; campaignId: string | null };
+  results: { spend: number; leads: number; cpl: number | null };
+  action: { type: "escalar" | "pausar" | "ajustar" | "manter"; label: string; reason: string };
+  intel: {
+    leadCount: number; messageCount: number;
+    intents: { key: string; label: string; count: number; pct: number }[];
+    topOpeners: string[];
+    ai: { perguntas: string[]; objecoes: string[]; qualidade: string; recomendacao: string; source: "ai" | "fallback" } | null;
+  };
+}
+const ACTION_COLOR: Record<string, string> = { escalar: "#16A34A", pausar: "#DC2626", ajustar: "#D97706", manter: "#64748B" };
+
+function AdIntelModal({ clientId, year, month, ad, onClose }: { clientId: string; year: number; month: number; ad: { adId: string; name: string }; onClose: () => void }) {
+  const { data, loading } = useCachedFetch<IntelResp>(`/api/clients/${clientId}/meta/ads/intel?adId=${encodeURIComponent(ad.adId)}&year=${year}&month=${month}`);
+  const [acting, setActing] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  async function execAction() {
+    if (!data || data.action.type !== "pausar" || !data.ad.campaignId) return;
+    if (!confirm(`Pausar a campanha do anúncio "${ad.name}" na Meta?`)) return;
+    setActing(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/meta/campaign-status`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: data.ad.campaignId, status: "PAUSED" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error ?? "Erro ao pausar na Meta."); return; }
+      setDone("Campanha pausada na Meta.");
+    } finally { setActing(false); }
+  }
+
+  const ai = data?.intel.ai;
+  const maxIntent = Math.max(1, ...(data?.intel.intents.map((i) => i.count) ?? [1]));
+  const chip: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 20 };
+
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 18px", borderBottom: "1px solid var(--border)" }}>
+          <Sparkles size={15} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ad.name}</span>
+          {ai?.source === "ai" && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: 99 }}>IA</span>}
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={18} /></button>
+        </div>
+
+        <div style={{ overflow: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {loading ? (
+            <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Loader2 size={22} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+            </div>
+          ) : !data ? (
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Não foi possível carregar a inteligência deste anúncio.</p>
+          ) : (
+            <>
+              {/* Resultado real */}
+              <div style={{ display: "flex", gap: 18 }}>
+                <Mini label="Gasto" value={fmtBRL(data.results.spend)} />
+                <Mini label="Leads reais" value={String(data.results.leads)} pos />
+                <Mini label="CPL real" value={data.results.cpl != null ? fmtBRL(data.results.cpl) : "—"} />
+              </div>
+
+              {/* Ação recomendada (co-piloto) */}
+              <div style={{ borderRadius: 11, border: `1px solid ${ACTION_COLOR[data.action.type]}40`, background: `color-mix(in srgb, ${ACTION_COLOR[data.action.type]} 8%, transparent)`, padding: "11px 13px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: ACTION_COLOR[data.action.type] }}>Ação sugerida: {data.action.label}</span>
+                  {data.action.type === "pausar" && data.ad.campaignId && !done && (
+                    <button onClick={execAction} disabled={acting}
+                      style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, border: "none", background: "#DC2626", color: "#fff", fontSize: 12, fontWeight: 600, cursor: acting ? "default" : "pointer" }}>
+                      {acting ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Pause size={12} />} Pausar agora
+                    </button>
+                  )}
+                  {done && <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: "#16A34A" }}>✓ {done}</span>}
+                </div>
+                <p style={{ fontSize: 11.5, color: "var(--text-secondary)", margin: "4px 0 0", lineHeight: 1.45 }}>{data.action.reason}</p>
+              </div>
+
+              {data.intel.leadCount === 0 ? (
+                <p style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 0" }}>Ainda não há conversas de leads deste anúncio no período para analisar.</p>
+              ) : (
+                <>
+                  {/* Recomendação de criativo (IA) */}
+                  {ai?.recomendacao && (
+                    <div style={{ borderRadius: 11, border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", background: "color-mix(in srgb, var(--accent) 7%, transparent)", padding: "12px 14px" }}>
+                      <p style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 5px" }}>Recomendação de criativo</p>
+                      <p style={{ fontSize: 13, color: "var(--text-primary)", margin: 0, lineHeight: 1.5 }}>{ai.recomendacao}</p>
+                    </div>
+                  )}
+
+                  {/* O que os leads perguntam (determinístico) */}
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 10px" }}>O que os {data.intel.leadCount} lead(s) mais falam</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {data.intel.intents.map((i) => (
+                        <div key={i.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 11.5, color: "var(--text-secondary)", width: 150, flexShrink: 0 }}>{i.label}</span>
+                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${Math.round((i.count / maxIntent) * 100)}%`, background: "var(--accent)", borderRadius: 4 }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 64, textAlign: "right" }}>{i.count} · {i.pct}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Leitura da IA */}
+                  {ai && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                      {ai.qualidade && <p style={{ fontSize: 12.5, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5, fontStyle: "italic" }}>{ai.qualidade}</p>}
+                      {ai.objecoes.length > 0 && (
+                        <div>
+                          <p style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Objeções</p>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ai.objecoes.map((o, i) => <span key={i} style={chip}>{o}</span>)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Mini({ label, value, pos }: { label: string; value: string; pos?: boolean }) {
+  return (
+    <div>
+      <p style={{ fontSize: 17, fontWeight: 700, color: pos ? "#16A34A" : "var(--text-primary)", margin: 0, letterSpacing: "-0.02em" }}>{value}</p>
+      <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "2px 0 0" }}>{label}</p>
     </div>
   );
 }
