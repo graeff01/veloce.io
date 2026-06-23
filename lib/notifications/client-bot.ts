@@ -37,6 +37,17 @@ export async function connectClientBot(clientId: string, rawToken: string, usern
 
   const hook = await setClientWebhook(token, webhookSecret);
   if (!hook.ok) return { ok: false, error: `Bot salvo, mas o webhook falhou: ${hook.error}` };
+
+  // Menu de comandos no Telegram (autocomplete do "/"). Best-effort.
+  await tg(token, "setMyCommands", {
+    commands: [
+      { command: "status", description: "Leads aguardando agora" },
+      { command: "quentes", description: "Leads quentes na fila" },
+      { command: "resultados", description: "Placar de hoje" },
+      { command: "ajuda", description: "Ver comandos" },
+    ],
+  }).catch(() => {});
+
   return { ok: true };
 }
 
@@ -106,6 +117,15 @@ export async function consumeInvite(token: string, chatId: string, username: str
 
 export async function deactivateRecipientByChat(clientId: string, chatId: string): Promise<void> {
   await prisma.clientBotRecipient.updateMany({ where: { clientId, chatId }, data: { active: false } });
+}
+
+// Só destinatários ativos podem consultar dados (comandos /status etc.).
+export async function isActiveRecipient(clientId: string, chatId: string): Promise<boolean> {
+  const r = await prisma.clientBotRecipient.findUnique({
+    where: { clientId_chatId: { clientId, chatId } },
+    select: { active: true },
+  });
+  return !!r?.active;
 }
 
 // ── Quiet hours ──────────────────────────────────────────────────────────────

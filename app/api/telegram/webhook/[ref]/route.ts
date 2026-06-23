@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clientBotByWebhook, consumeInvite, deactivateRecipientByChat, sendMessage, welcomeText } from "@/lib/notifications/client-bot";
+import { clientBotByWebhook, consumeInvite, deactivateRecipientByChat, sendMessage, welcomeText, isActiveRecipient } from "@/lib/notifications/client-bot";
+import { statusNow, quentesAguardando, resultadosHoje, ajuda } from "@/lib/notifications/client-report";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ref
     await deactivateRecipientByChat(bot.clientId, chatId);
     await sendMessage(bot.token, chatId, "🔕 Alertas desativados. Peça um novo link para reativar.");
     return NextResponse.json({ ok: true });
+  }
+
+  // Comandos de consulta sob demanda — só para destinatários ativos do cliente.
+  const cmd = text.trim().split(/\s+/)[0].toLowerCase().replace(/@.*$/, "");
+  if (cmd.startsWith("/")) {
+    if (!(await isActiveRecipient(bot.clientId, chatId))) {
+      await sendMessage(bot.token, chatId, "Você ainda não está conectado. Use o link de convite da sua agência.");
+      return NextResponse.json({ ok: true });
+    }
+    let reply: string | null = null;
+    if (cmd === "/status" || cmd === "/agora") reply = await statusNow(bot.clientId);
+    else if (cmd === "/quentes") reply = await quentesAguardando(bot.clientId);
+    else if (cmd === "/resultados" || cmd === "/hoje") reply = await resultadosHoje(bot.clientId);
+    else reply = ajuda(bot.brandName); // /ajuda, /help e desconhecidos
+    await sendMessage(bot.token, chatId, reply);
   }
 
   return NextResponse.json({ ok: true });
