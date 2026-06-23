@@ -437,18 +437,20 @@ function AdRow_({ a, connectedNumber, dim, onPreview, onIntel }: { a: AdRow; con
           </button>
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
-          <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{a.name}</span>
+            {onIntel && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onIntel({ adId: a.adId, name: a.name }); }}
+                title="Inteligência do anúncio: o que os leads falam + recomendação de criativo"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, flexShrink: 0, padding: 0, borderRadius: 6, border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", cursor: "pointer" }}
+              >
+                <Sparkles size={11} />
+              </button>
+            )}
+          </div>
           <AdMetaChips a={a} connectedNumber={connectedNumber} />
         </div>
-        {onIntel && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onIntel({ adId: a.adId, name: a.name }); }}
-            title="Inteligência do anúncio (o que os leads falam + recomendação)"
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "3px 8px", borderRadius: 7, border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
-          >
-            <Sparkles size={11} /> IA
-          </button>
-        )}
       </div>
       <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
       <Cell v={fmtBRL(a.spend)} />
