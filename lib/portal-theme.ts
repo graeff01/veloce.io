@@ -29,3 +29,16 @@ export function buildTheme(accentInput: string | null, modeInput: string): Theme
     ? { bg: "#0c0e13", surface: "#15181f", border: "#262b36", text: "#eef1f6", muted: "#9aa3b2", accent, accentSoft, onAccent }
     : { bg: "#f6f7f9", surface: "#ffffff", border: "#e8ebf0", text: "#101319", muted: "#6b7480", accent, accentSoft, onAccent };
 }
+
+// CSS com variáveis do tema. Suporta "auto" (segue o device via prefers-color-scheme).
+// A página usa var(--p-bg), var(--p-text) etc.
+export function themeStyle(accent: string | null, mode: string): string {
+  const vars = (t: Theme) =>
+    `--p-bg:${t.bg};--p-surface:${t.surface};--p-border:${t.border};--p-text:${t.text};` +
+    `--p-muted:${t.muted};--p-accent:${t.accent};--p-accent-soft:${t.accentSoft};--p-on-accent:${t.onAccent};`;
+  const light = buildTheme(accent, "light");
+  const dark = buildTheme(accent, "dark");
+  if (mode === "dark") return `:root{${vars(dark)}}`;
+  if (mode === "auto") return `:root{${vars(light)}}@media(prefers-color-scheme:dark){:root{${vars(dark)}}}`;
+  return `:root{${vars(light)}}`;
+}

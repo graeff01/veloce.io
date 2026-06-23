@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { getOrCreatePortal, updatePortal, rotatePortalToken } from "@/lib/notifications/client-portal";
 
@@ -6,13 +7,16 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET — link do painel (cria token na 1ª vez) + tema atual.
+// GET — link do painel (cria token na 1ª vez) + tema atual + logo (p/ extrair cor).
 export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const p = await getOrCreatePortal(id);
-  return NextResponse.json(p);
+  const [p, client] = await Promise.all([
+    getOrCreatePortal(id),
+    prisma.client.findUnique({ where: { id }, select: { logoUrl: true } }),
+  ]);
+  return NextResponse.json({ ...p, logoUrl: client?.logoUrl ?? null });
 }
 
 // PUT — atualiza tema (cor/modo), ativa/desativa ou rotaciona o link.

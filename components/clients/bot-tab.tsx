@@ -60,7 +60,7 @@ export function BotTab({ clientId }: { clientId: string }) {
   const [brand, setBrand] = useState("");
   const [welcome, setWelcome] = useState("");
   const [brandSaved, setBrandSaved] = useState(false);
-  const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string } | null>(null);
+  const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string; logoUrl: string | null } | null>(null);
   const [portalCopied, setPortalCopied] = useState(false);
 
   async function load() {
@@ -82,6 +82,40 @@ export function BotTab({ clientId }: { clientId: string }) {
   async function savePortal(body: Record<string, unknown>) {
     const res = await fetch(`/api/clients/${clientId}/portal`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (res.ok) setPortal(await res.json());
+  }
+
+  // Extrai a cor "de marca" do logo (média dos pixels, ignorando transparente e quase branco/preto).
+  function colorFromLogo(url: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const s = 40, c = document.createElement("canvas"); c.width = s; c.height = s;
+          const ctx = c.getContext("2d"); if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, s, s);
+          const d = ctx.getImageData(0, 0, s, s).data;
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] < 128) continue;
+            const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+            if ((mx > 240 && mn > 240) || mx < 15) continue;
+            r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+          }
+          if (!n) return resolve(null);
+          const h = (x: number) => Math.round(x / n).toString(16).padStart(2, "0");
+          resolve(`#${h(r)}${h(g)}${h(b)}`);
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+  async function fromLogo() {
+    if (!portal?.logoUrl) return;
+    const hex = await colorFromLogo(portal.logoUrl);
+    if (!hex) { alert("Não consegui ler a cor do logo automaticamente. Escolha a cor manualmente."); return; }
+    setPortal({ ...portal, accentColor: hex }); void savePortal({ accentColor: hex });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load(); loadPortal(); }, [clientId]);
@@ -183,12 +217,14 @@ export function BotTab({ clientId }: { clientId: string }) {
                 <input type="color" value={portal.accentColor ?? "#1e66f5"} onChange={(e) => { setPortal({ ...portal, accentColor: e.target.value }); void savePortal({ accentColor: e.target.value }); }}
                   style={{ width: 36, height: 28, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer" }} />
               </label>
+              {portal.logoUrl && <Button variant="ghost" size="sm" onClick={fromLogo}>🎨 Gerar do logo</Button>}
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-secondary)" }}>
                 Modo
                 <select value={portal.mode} onChange={(e) => { setPortal({ ...portal, mode: e.target.value }); void savePortal({ mode: e.target.value }); }}
                   style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-primary)", padding: "5px 8px", fontSize: 12.5 }}>
                   <option value="light">Claro</option>
                   <option value="dark">Escuro</option>
+                  <option value="auto">Auto (segue o aparelho)</option>
                 </select>
               </label>
               <Button variant="ghost" size="sm" onClick={() => { if (confirm("Gerar um novo link? O link atual deixa de funcionar.")) void savePortal({ rotate: true }); }}>

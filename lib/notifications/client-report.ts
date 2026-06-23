@@ -97,37 +97,72 @@ export async function resultadosHoje(clientId: string): Promise<string> {
 // ── Read-model do DASHBOARD (client-safe) ────────────────────────────────────
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
+export type Period = "week" | "month";
+
 export interface ClientDashboard {
   generatedAt: string;
+  period: Period;
   periodLabel: string;
+  narrative: string[];
+  health: { score: number; label: string };
   atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
+  bestCampaign: { name: string; leads: number } | null;
 }
 
-export async function getClientDashboard(clientId: string): Promise<ClientDashboard> {
-  const p = nowParts(TZ);
-  const [y, m] = p.ymd.split("-").map(Number);
-  const mm = (yy: number, mo: number) => wallToInstant(`${yy}-${String(mo).padStart(2, "0")}-01`, "00:00", TZ);
-  const monthStart = mm(y, m);
+// Início do período (BRT) + período comparável anterior, para "semana" ou "mês".
+function periodRanges(period: Period): { start: Date; now: Date; prevStart: Date; prevEnd: Date; label: string } {
   const now = new Date();
-  const span = now.getTime() - monthStart.getTime();
-  const prevY = m === 1 ? y - 1 : y;
-  const prevM = m === 1 ? 12 : m - 1;
-  const prevStart = mm(prevY, prevM);
-  const prevEnd = new Date(prevStart.getTime() + span); // mesmo nº de dias do mês (comparável)
+  if (period === "week") {
+    const start = new Date(now.getTime() - 7 * 86_400_000);
+    return { start, now, prevStart: new Date(now.getTime() - 14 * 86_400_000), prevEnd: start, label: "Últimos 7 dias" };
+  }
+  const [y, m] = nowParts(TZ).ymd.split("-").map(Number);
+  const mm = (yy: number, mo: number) => wallToInstant(`${yy}-${String(mo).padStart(2, "0")}-01`, "00:00", TZ);
+  const start = mm(y, m);
+  const prevStart = mm(m === 1 ? y - 1 : y, m === 1 ? 12 : m - 1);
+  return { start, now, prevStart, prevEnd: new Date(prevStart.getTime() + (now.getTime() - start.getTime())), label: `${MONTHS[m - 1]} ${y}` };
+}
 
+// Health Score 0–100 (velocidade 35 + resposta 30 + conversão 20 + quentes atendidos 15).
+function healthScore(a: ClientDashboard["atendimento"], hot: number): { score: number; label: string } {
+  const vVel = a.tempoMedioMin == null ? 50 : Math.max(0, Math.min(100, 100 - (a.tempoMedioMin - 5) * (100 / 55)));
+  const vResp = a.taxaResposta;
+  const vConv = a.leads > 0 ? Math.min(100, (a.conversoes / a.leads) * 100 * 5) : 50;
+  const vHot = hot === 0 ? 100 : Math.max(0, 100 - hot * 15);
+  const score = Math.round(vVel * 0.35 + vResp * 0.30 + vConv * 0.20 + vHot * 0.15);
+  const label = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Atenção" : "Crítico";
+  return { score, label };
+}
+
+function narrative(a: ClientDashboard["atendimento"], hot: number, periodWord: string): string[] {
+  const out: string[] = [];
+  if (a.leads === 0) { out.push(`Nenhum lead novo ${periodWord} até agora.`); return out; }
+  if (a.deltaPct != null) {
+    const v = a.deltaPct;
+    out.push(v >= 10 ? `📈 Volume de leads ${v}% acima do período anterior — momento de aproveitar.`
+      : v <= -10 ? `📉 Volume de leads ${Math.abs(v)}% abaixo do período anterior — vale revisar a mídia.`
+      : `Volume de leads estável vs. o período anterior.`);
+  }
+  if (a.tempoMedioMin != null) {
+    out.push(a.tempoMedioMin <= 10 ? `⚡ Atendimento rápido: ${a.tempoMedioMin}min de média e ${a.taxaResposta}% respondidos.`
+      : `⏱️ Tempo médio de resposta em ${a.tempoMedioMin}min — abaixo de 10min converte bem mais.`);
+  }
+  if (hot > 0) out.push(`🔥 ${hot} lead${hot > 1 ? "s" : ""} quente${hot > 1 ? "s" : ""} aguardando agora — priorize hoje.`);
+  return out.slice(0, 3);
+}
+
+export async function getClientDashboard(clientId: string, period: Period = "month"): Promise<ClientDashboard> {
+  const { start, now, prevStart, prevEnd, label } = periodRanges(period);
   const connIds = await connIdsFor(clientId);
 
-  // Atendimento (este mês até agora) + leads do período comparável do mês passado.
-  const [convs, prevLeads, waiting, metaConn] = await Promise.all([
-    connIds.length ? prisma.waConversation.findMany({
-      where: { connectionId: { in: connIds }, firstInboundAt: { gte: monthStart, lt: now } },
-      select: { firstResponseSec: true, funnelStage: true },
-    }) : Promise.resolve([]),
+  const [convs, prevLeads, waiting, metaConn, wa] = await Promise.all([
+    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true } }) : Promise.resolve([]),
     connIds.length ? prisma.waConversation.count({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
     waitingWithTemp(connIds),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
+    prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
   ]);
 
   const leads = convs.length;
@@ -137,30 +172,71 @@ export async function getClientDashboard(clientId: string): Promise<ClientDashbo
   const tempoMedioMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
   const taxaResposta = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
   const deltaPct = prevLeads > 0 ? Math.round(((leads - prevLeads) / prevLeads) * 100) : null;
+  const atendimento = { leads, leadsPrev: prevLeads, deltaPct, respondidos, taxaResposta, tempoMedioMin, conversoes };
 
   const hot = waiting.filter((w) => w.temp === "hot").length;
   const warm = waiting.filter((w) => w.temp === "warm").length;
   const cold = waiting.filter((w) => w.temp === "cold").length;
 
-  // Mídia (se tem conexão Meta): gasto do mês + leads reais de anúncio + CPL.
+  // Mídia + melhor campanha (leads reais de anúncio agrupados por campanha).
   let midia: ClientDashboard["midia"] = null;
+  let bestCampaign: ClientDashboard["bestCampaign"] = null;
   if (metaConn) {
-    const wa = connIds.length ? await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }) : null;
-    const [spendAgg, adLeads] = await Promise.all([
-      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: monthStart } } }),
-      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: monthStart, lt: now } } }) : Promise.resolve(0),
+    const [spendAgg, adLeads, leadRows] = await Promise.all([
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: start } } }),
+      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: now } } }) : Promise.resolve(0),
+      wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: now }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
     ]);
     const spend = spendAgg._sum.spend ?? 0;
     midia = { spend, leads: adLeads, cpl: adLeads > 0 ? spend / adLeads : null };
+
+    const adIds = leadRows.map((r) => r.adId).filter((x): x is string => !!x);
+    if (adIds.length) {
+      const ads = await prisma.metaAd.findMany({ where: { connectionId: metaConn.id, adId: { in: adIds } }, select: { adId: true, campaignId: true } });
+      const adToCamp = new Map(ads.map((a) => [a.adId, a.campaignId]));
+      const byCamp = new Map<string, number>();
+      for (const r of leadRows) { const camp = r.adId ? adToCamp.get(r.adId) : null; if (camp) byCamp.set(camp, (byCamp.get(camp) ?? 0) + r._count._all); }
+      let topCamp: string | null = null, topN = 0;
+      for (const [camp, n] of byCamp) if (n > topN) { topN = n; topCamp = camp; }
+      if (topCamp) {
+        const c = await prisma.metaCampaign.findFirst({ where: { connectionId: metaConn.id, campaignId: topCamp }, select: { name: true } });
+        bestCampaign = { name: c?.name ?? "Campanha", leads: topN };
+      }
+    }
   }
 
   return {
     generatedAt: now.toISOString(),
-    periodLabel: `${MONTHS[m - 1]} ${y}`,
-    atendimento: { leads, leadsPrev: prevLeads, deltaPct, respondidos, taxaResposta, tempoMedioMin, conversoes },
+    period, periodLabel: label,
+    narrative: narrative(atendimento, hot, period === "week" ? "nos últimos 7 dias" : "no mês"),
+    health: healthScore(atendimento, hot),
+    atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
-    midia,
+    midia, bestCampaign,
   };
+}
+
+// Benchmark anônimo: percentil da TAXA DE RESPOSTA deste cliente vs. as demais contas.
+// Retorna "% das contas que este cliente supera" (null se não há base suficiente).
+export async function getBenchmark(clientId: string, period: Period = "month"): Promise<number | null> {
+  const { start, now } = periodRanges(period);
+  const [totals, responded, conns] = await Promise.all([
+    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: now } }, _count: { _all: true } }),
+    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: now }, firstResponseSec: { not: null } }, _count: { _all: true } }),
+    prisma.waConnection.findMany({ select: { id: true, clientId: true } }),
+  ]);
+  const toClient = new Map(conns.map((c) => [c.id, c.clientId]));
+  const tot = new Map<string, number>(), resp = new Map<string, number>();
+  for (const r of totals) { const cl = toClient.get(r.connectionId); if (cl) tot.set(cl, (tot.get(cl) ?? 0) + r._count._all); }
+  for (const r of responded) { const cl = toClient.get(r.connectionId); if (cl) resp.set(cl, (resp.get(cl) ?? 0) + r._count._all); }
+
+  const rates: { clientId: string; rate: number }[] = [];
+  for (const [cl, t] of tot) if (t >= 3) rates.push({ clientId: cl, rate: (resp.get(cl) ?? 0) / t }); // volume mínimo p/ ser justo
+  if (rates.length < 3) return null;
+  const mine = rates.find((r) => r.clientId === clientId);
+  if (!mine) return null;
+  const beats = rates.filter((r) => r.rate < mine.rate).length;
+  return Math.round((beats / (rates.length - 1)) * 100);
 }
 
 export function ajuda(brandName: string | null): string {
