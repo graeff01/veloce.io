@@ -16,10 +16,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const month = Number(url.searchParams.get("month")) || now.getMonth() + 1;
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
+  const prevStart = new Date(year, month - 2, 1);
+  const prevEnd = start;
 
   try {
-    const data = await computeMetaAdsView(id, start, end);
-    return NextResponse.json(data);
+    // Período atual + anterior (para a tendência ▲▼). O anterior é best-effort.
+    const [data, prev] = await Promise.all([
+      computeMetaAdsView(id, start, end),
+      computeMetaAdsView(id, prevStart, prevEnd).catch(() => null),
+    ]);
+    return NextResponse.json({ ...data, prevTotals: prev?.totals ?? null });
   } catch (e) {
     // Erro transitório (banco lento, deploy em curso) — não quebra a tela.
     console.error("[meta/ads] erro ao computar view:", e instanceof Error ? e.message : e);

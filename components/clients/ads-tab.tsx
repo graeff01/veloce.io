@@ -53,6 +53,7 @@ interface AdRow {
   startedAt: string | null; dailyBudget: number | null; learningStage: string | null;
   frequency: number | null; whatsappNumber: string | null; destinationType: string | null;
   qualityRanking: string | null; engagementRanking: string | null; conversionRanking: string | null;
+  thumbnailUrl: string | null;
 }
 interface CampaignRow {
   campaignId: string; name: string; status: string;
@@ -67,6 +68,7 @@ interface AdsView {
   ads: AdRow[];
   leadsSemIdentificacao: number;
   connectedNumber: string | null;
+  prevTotals: { spend: number; leads: number; cpl: number | null; ctr: number; clicks: number; impressions: number } | null;
 }
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -358,14 +360,14 @@ export function AdsTab({ clientId }: { clientId: string }) {
           </div>
         ) : t && (
           <>
-            {/* ── KPIs (só o que importa) ── */}
+            {/* ── KPIs (só o que importa) + tendência vs mês anterior ── */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-              <MetaKpi label="Investimento"  value={fmtBRL(t.spend)}                       icon={<DollarSign size={14} color="#DC2626" />}  bg="rgba(220,38,38,0.08)"  />
-              <MetaKpi label="Leads reais"   value={String(t.leads)}                       icon={<TrendingUp size={14} color="#16A34A" />}   bg="rgba(22,163,74,0.08)"  />
-              <MetaKpi label="CPL real"      value={t.cpl != null ? fmtBRL(t.cpl) : "—"}   icon={<TrendingDown size={14} color="#D97706" />} bg="rgba(217,119,6,0.08)" />
-              <MetaKpi label="CTR"           value={`${fmt(t.ctr)}%`}                      icon={<MousePointer size={14} color="#2563EB" />} bg="rgba(37,99,235,0.08)"  />
-              <MetaKpi label="Impressões"    value={fmtK(t.impressions)}                   icon={<Eye size={14} color="#0891B2" />}          bg="rgba(8,145,178,0.08)"  />
-              <MetaKpi label="Cliques"       value={fmtK(t.clicks)}                        icon={<MousePointer size={14} color="#059669" />} bg="rgba(5,150,105,0.08)"  />
+              <MetaKpi label="Investimento"  value={fmtBRL(t.spend)}                       icon={<DollarSign size={14} color="#DC2626" />}  bg="rgba(220,38,38,0.08)"  trend={{ pct: growth(t.spend, ads?.prevTotals?.spend) }} />
+              <MetaKpi label="Leads reais"   value={String(t.leads)}                       icon={<TrendingUp size={14} color="#16A34A" />}   bg="rgba(22,163,74,0.08)"  trend={{ pct: growth(t.leads, ads?.prevTotals?.leads), goodWhenUp: true }} />
+              <MetaKpi label="CPL real"      value={t.cpl != null ? fmtBRL(t.cpl) : "—"}   icon={<TrendingDown size={14} color="#D97706" />} bg="rgba(217,119,6,0.08)" trend={{ pct: growth(t.cpl, ads?.prevTotals?.cpl), goodWhenUp: false }} />
+              <MetaKpi label="CTR"           value={`${fmt(t.ctr)}%`}                      icon={<MousePointer size={14} color="#2563EB" />} bg="rgba(37,99,235,0.08)"  trend={{ pct: growth(t.ctr, ads?.prevTotals?.ctr), goodWhenUp: true }} />
+              <MetaKpi label="Impressões"    value={fmtK(t.impressions)}                   icon={<Eye size={14} color="#0891B2" />}          bg="rgba(8,145,178,0.08)"  trend={{ pct: growth(t.impressions, ads?.prevTotals?.impressions) }} />
+              <MetaKpi label="Cliques"       value={fmtK(t.clicks)}                        icon={<MousePointer size={14} color="#059669" />} bg="rgba(5,150,105,0.08)"  trend={{ pct: growth(t.clicks, ads?.prevTotals?.clicks), goodWhenUp: true }} />
             </div>
 
             {/* ── Campanhas (expande anúncios) ── */}
@@ -412,9 +414,22 @@ function AdRow_({ a, connectedNumber, dim }: { a: AdRow; connectedNumber: string
   return (
     <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "10px 16px", alignItems: "center", background: "var(--bg-elevated)", borderTop: "1px solid var(--border)", opacity: dim ? 0.65 : 1 }}>
       <span />
-      <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)" }}>
-        <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
-        <AdMetaChips a={a} connectedNumber={connectedNumber} />
+      <div style={{ minWidth: 0, paddingLeft: 8, borderLeft: "2px solid var(--border-strong)", display: "flex", gap: 9, alignItems: "flex-start" }}>
+        {a.thumbnailUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={a.thumbnailUrl}
+            alt=""
+            width={34}
+            height={34}
+            style={{ width: 34, height: 34, borderRadius: 6, objectFit: "cover", flexShrink: 0, border: "1px solid var(--border)", background: "var(--bg-elevated)" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        )}
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</p>
+          <AdMetaChips a={a} connectedNumber={connectedNumber} />
+        </div>
       </div>
       <span><span style={{ fontSize: 10, fontWeight: 600, color: ast.color, background: ast.bg, padding: "2px 7px", borderRadius: 20 }}>{ast.label}</span></span>
       <Cell v={fmtBRL(a.spend)} />
@@ -733,15 +748,38 @@ function SetupForm({ clientId, initialAccountId = "", onSaved, onCancel }: {
 
 // ── KPI Card ───────────────────────────────────────────────────────────────────
 
-function MetaKpi({ label, value, icon, bg }: { label: string; value: string; icon: React.ReactNode; bg: string }) {
+// Variação % vs período anterior (null quando não há base de comparação).
+function growth(cur: number | null | undefined, prev: number | null | undefined): number | null {
+  if (cur == null || prev == null || prev === 0) return null;
+  return ((cur - prev) / prev) * 100;
+}
+
+function MetaKpi({ label, value, icon, bg, trend }: {
+  label: string; value: string; icon: React.ReactNode; bg: string;
+  trend?: { pct: number | null; goodWhenUp?: boolean };
+}) {
+  const pct = trend?.pct ?? null;
+  const up = pct != null && pct > 0;
+  // Cor: cinza quando direção não é "boa/ruim" (ex.: gasto); senão verde/vermelho.
+  let color = "var(--text-muted)";
+  if (pct != null && trend?.goodWhenUp !== undefined) {
+    color = (up === trend.goodWhenUp) ? "#16A34A" : "#DC2626";
+  }
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{ width: 34, height: 34, borderRadius: 9, background: bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         {icon}
       </div>
-      <div>
-        <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.03em", lineHeight: 1, margin: 0 }}>{value}</p>
-        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{label}</p>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.03em", lineHeight: 1, margin: 0 }}>{value}</p>
+          {pct != null && Math.abs(pct) >= 1 && (
+            <span style={{ fontSize: 10.5, fontWeight: 700, color, whiteSpace: "nowrap" }}>
+              {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}%
+            </span>
+          )}
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{label}{pct != null && Math.abs(pct) >= 1 ? " · vs mês ant." : ""}</p>
       </div>
     </div>
   );

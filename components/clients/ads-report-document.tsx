@@ -1,5 +1,5 @@
 import React from "react";
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, StyleSheet, Image } from "@react-pdf/renderer";
 import { VELOCE_CONTACT } from "@/lib/brand";
 import "@/lib/pdf-fonts";
 
@@ -15,6 +15,7 @@ export interface AdsReportRow {
   cpc: number;
   leads: number;             // leads REAIS (WhatsApp)
   cpl: number | null;        // CPL real
+  thumb?: string | null;     // imagem do criativo (data URI base64) — só anúncio
 }
 
 export interface AdsReportData {
@@ -214,8 +215,11 @@ function CampaignGroup({ camp, ads }: { camp: AdsReportRow; ads: AdsReportRow[] 
         ? <Text style={s.adEmpty}>Sem anúncios individuais com dados neste período.</Text>
         : ads.map((a, i) => (
             <View key={i} style={[s.adRow, i === ads.length - 1 ? { borderBottomWidth: 0 } : {}]} wrap={false}>
-              <View style={s.gName}>
-                <Text style={s.adName}><Text style={{ color: FAINT }}>—  </Text>{a.name}</Text>
+              <View style={[s.gName, { flexDirection: "row", alignItems: "center", paddingLeft: 14 }]}>
+                {a.thumb
+                  ? <Image src={a.thumb} style={{ width: 16, height: 16, borderRadius: 2, marginRight: 5 }} />
+                  : <Text style={{ color: FAINT, fontSize: 9 }}>—  </Text>}
+                <Text style={[s.adName, { paddingLeft: 0 }]}>{a.name}</Text>
               </View>
               <Text style={[s.adM, s.gM]}>{brl(a.spend)}</Text>
               <Text style={[s.adM, s.gM]}>{pct(a.ctr)}</Text>

@@ -30,6 +30,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
 
+  // Pré-baixa os thumbnails dos criativos em base64 (data URI) — o react-pdf não
+  // depende de rede no render e uma imagem que falhe não derruba o PDF.
+  async function toDataUri(u: string): Promise<string | null> {
+    try {
+      const res = await fetch(u, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) return null;
+      const ct = res.headers.get("content-type") || "image/jpeg";
+      if (!ct.startsWith("image/")) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 1_500_000) return null; // não inflar o PDF
+      return `data:${ct};base64,${buf.toString("base64")}`;
+    } catch { return null; }
+  }
+  const thumbUrls = [...new Set(view.ads.map((a) => a.thumbnailUrl).filter((x): x is string => !!x))];
+  const thumbPairs = await Promise.all(thumbUrls.map(async (u) => [u, await toDataUri(u)] as const));
+  const thumbMap = new Map(thumbPairs);
+
   const data: AdsReportData = {
     clientName: client.name,
     accountName: conn?.accountName ?? conn?.adAccountId ?? null,
@@ -66,6 +83,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       cpc: a.cpc,
       leads: a.leads,
       cpl: a.cpl,
+      thumb: a.thumbnailUrl ? (thumbMap.get(a.thumbnailUrl) ?? null) : null,
     })),
     campaignsCount: view.campaigns.length,
     adsCount: view.ads.length,

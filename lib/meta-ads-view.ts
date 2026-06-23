@@ -34,6 +34,7 @@ export interface AdRow {
   frequency: number | null;       // frequência média no período (saturação)
   whatsappNumber: string | null;  // nº de destino CTWA (quando o criativo expõe)
   destinationType: string | null; // destino do clique (WHATSAPP, INSTAGRAM_PROFILE, ...)
+  thumbnailUrl: string | null;     // imagem do criativo (anúncio)
   qualityRanking: string | null;
   engagementRanking: string | null;
   conversionRanking: string | null;
@@ -98,7 +99,7 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
     prisma.metaAd.findMany({
       where: { connectionId: metaConn.id },
       select: {
-        adId: true, name: true, campaignId: true, adsetId: true, status: true, startedAt: true,
+        adId: true, name: true, campaignId: true, adsetId: true, creativeId: true, status: true, startedAt: true,
         whatsappNumber: true, qualityRanking: true, engagementRanking: true, conversionRanking: true,
       },
     }),
@@ -122,6 +123,13 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
   const adMeta = new Map(ads.map((a) => [a.adId, a]));
   const campMeta = new Map(campaigns.map((c) => [c.campaignId, c]));
   const adsetMeta = new Map(adsets.map((s) => [s.adsetId, s]));
+
+  // Thumbnail do criativo por anúncio (imagem do anúncio).
+  const creativeIds = [...new Set(ads.map((a) => a.creativeId).filter((x): x is string => !!x))];
+  const creatives = creativeIds.length
+    ? await prisma.metaCreative.findMany({ where: { connectionId: metaConn.id, creativeId: { in: creativeIds } }, select: { creativeId: true, thumbnailUrl: true } })
+    : [];
+  const thumbByCreative = new Map(creatives.map((c) => [c.creativeId, c.thumbnailUrl]));
   const campNorm = campaigns.map((c) => ({ campaignId: c.campaignId, key: norm(c.name) }));
   const adsByCampaign = new Map<string, string[]>();
   for (const a of ads) {
@@ -187,6 +195,7 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
       frequency: sp?.frequency ?? null,
       whatsappNumber: m?.whatsappNumber ?? null,
       destinationType: adset?.destinationType ?? null,
+      thumbnailUrl: m?.creativeId ? (thumbByCreative.get(m.creativeId) ?? null) : null,
       qualityRanking: m?.qualityRanking ?? null,
       engagementRanking: m?.engagementRanking ?? null,
       conversionRanking: m?.conversionRanking ?? null,
