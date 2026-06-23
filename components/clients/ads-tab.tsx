@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Zap, RefreshCw, Loader2, X, TrendingUp, TrendingDown,
   Eye, MousePointer, DollarSign, Link2,
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText,
+  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileText, Pause, Play,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -369,7 +369,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
             </div>
 
             {/* ── Campanhas (expande anúncios) ── */}
-            <CampaignAccordion campaigns={ads.campaigns} ads={ads.ads} connectedNumber={ads.connectedNumber} />
+            <CampaignAccordion clientId={clientId} campaigns={ads.campaigns} ads={ads.ads} connectedNumber={ads.connectedNumber} />
 
             {ads.leadsSemIdentificacao > 0 && (
               <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "-8px 2px 0" }}>
@@ -427,10 +427,13 @@ function AdRow_({ a, connectedNumber, dim }: { a: AdRow; connectedNumber: string
   );
 }
 
-function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
+function CampaignAccordion({ clientId, campaigns, ads, connectedNumber }: { clientId: string; campaigns: CampaignRow[]; ads: AdRow[]; connectedNumber: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [showInactiveAds, setShowInactiveAds] = useState<Record<string, boolean>>({});
   const [showInactiveCamps, setShowInactiveCamps] = useState(false);
+  // Override otimista do status após pausar/reativar (o próximo sync confirma).
+  const [statusOverride, setStatusOverride] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
 
   const adsByCampaign = new Map<string, AdRow[]>();
   for (const a of ads) {
@@ -439,22 +442,44 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
     adsByCampaign.set(a.campaignId, arr);
   }
 
-  // Campanha "ativa" = tem pelo menos 1 anúncio rodando. As demais (só pausados/
-  // arquivados) saem da visão principal e vão para o menu recolhido.
-  const hasActiveAd = (c: CampaignRow) => (adsByCampaign.get(c.campaignId) ?? []).some((a) => isActiveStatus(a.status));
-  const activeCampaigns = campaigns.filter(hasActiveAd);
-  const inactiveCampaigns = campaigns.filter((c) => !hasActiveAd(c));
+  // Status DERIVADO da entrega real (a Meta mantém a campanha "ACTIVE" mesmo com
+  // conjuntos pausados). Override otimista tem prioridade após o toggle.
+  function deriveStatus(c: CampaignRow): string {
+    const myAds = adsByCampaign.get(c.campaignId) ?? [];
+    if (myAds.some((a) => isActiveStatus(a.status))) return "ACTIVE";
+    if (myAds.length > 0 && myAds.every((a) => a.status === "ARCHIVED")) return "ARCHIVED";
+    return "PAUSED";
+  }
+  const effStatus = (c: CampaignRow) => statusOverride[c.campaignId] ?? deriveStatus(c);
+
+  async function toggleCampaign(c: CampaignRow, cur: string) {
+    const next = cur === "ACTIVE" ? "PAUSED" : "ACTIVE";
+    if (!confirm(`${next === "PAUSED" ? "Pausar" : "Reativar"} a campanha "${c.name}" na Meta?`)) return;
+    setBusy(c.campaignId);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/meta/campaign-status`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: c.campaignId, status: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(data.error ?? "Erro ao atualizar a campanha na Meta."); return; }
+      setStatusOverride((o) => ({ ...o, [c.campaignId]: next }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Campanha "ativa" = entrega real ativa (respeitando override). As demais vão
+  // para o menu recolhido.
+  const activeCampaigns = campaigns.filter((c) => effStatus(c) === "ACTIVE");
+  const inactiveCampaigns = campaigns.filter((c) => effStatus(c) !== "ACTIVE");
 
   // Renderiza UMA campanha. allAds=true mostra todos os anúncios (usado no menu de
   // pausados); senão mostra só os ativos + um expandir para os inativos da campanha.
   function renderCampaign(c: CampaignRow, allAds: boolean) {
     const myAds = adsByCampaign.get(c.campaignId) ?? [];
-    // A Meta mantém a campanha "ACTIVE" mesmo com conjuntos pausados — então o
-    // selo é DERIVADO da entrega real: ativo só se há anúncio efetivamente ativo.
-    const derivedStatus = myAds.some((a) => isActiveStatus(a.status))
-      ? "ACTIVE"
-      : myAds.length > 0 && myAds.every((a) => a.status === "ARCHIVED") ? "ARCHIVED" : "PAUSED";
-    const st = statusColor(derivedStatus);
+    const eff = effStatus(c);
+    const st = statusColor(eff);
     const activeAds = myAds.filter((a) => isActiveStatus(a.status));
     const inactiveAds = myAds.filter((a) => !isActiveStatus(a.status));
     const visibleAds = allAds ? myAds : activeAds;
@@ -484,7 +509,19 @@ function CampaignAccordion({ campaigns, ads, connectedNumber }: { campaigns: Cam
               ].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <span><span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span></span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: st.color, background: st.bg, padding: "2px 7px", borderRadius: 20 }}>{st.label}</span>
+            {(eff === "ACTIVE" || eff === "PAUSED") && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleCampaign(c, eff); }}
+                disabled={busy === c.campaignId}
+                title={eff === "ACTIVE" ? "Pausar campanha na Meta" : "Reativar campanha na Meta"}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-muted)", cursor: busy === c.campaignId ? "default" : "pointer", flexShrink: 0, padding: 0 }}
+              >
+                {busy === c.campaignId ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : eff === "ACTIVE" ? <Pause size={12} /> : <Play size={12} />}
+              </button>
+            )}
+          </span>
           <Cell v={fmtBRL(c.spend)} bold />
           <Cell v={fmtK(c.impressions)} />
           <Cell v={fmtK(c.clicks)} />
