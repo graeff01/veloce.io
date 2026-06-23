@@ -645,16 +645,26 @@ function AdPreviewModal({ clientId, ad, onClose }: { clientId: string; ad: { adI
     return () => window.removeEventListener("resize", upd);
   }, []);
 
-  // Tamanho nativo do iframe da Meta → escala pra caber no orçamento da tela.
-  const natW = data?.width ?? 360;
-  const natH = data?.height ?? 640;
-  const maxW = Math.min(vp.w * 0.92, 460);
-  const maxH = vp.h * 0.74;
+  // Dimensões corretas por formato (a Meta às vezes devolve altura curta no
+  // retrato → cortava). Story/Reels em 9:16; Feed mais alto.
+  const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
+    MOBILE_FEED_STANDARD: { w: 360, h: 700 },
+    INSTAGRAM_STORY: { w: 360, h: 660 },
+    INSTAGRAM_REELS: { w: 360, h: 720 },
+  };
+  const fb = FORMAT_DIMS[format] ?? { w: 360, h: 700 };
+  // Nunca menor que o padrão do formato — a Meta às vezes devolve altura curta
+  // que cortava o anúncio (com scrolling=no). max() garante o anúncio inteiro.
+  const natW = Math.max(data?.width || 0, fb.w);
+  const natH = Math.max(data?.height || 0, fb.h);
+  // Escala só pra caber na tela — orçamento generoso (modal grande).
+  const maxW = Math.min(vp.w * 0.94, 560);
+  const maxH = vp.h * 0.86;
   const scale = Math.min(maxW / natW, maxH / natH, 1);
   const boxW = Math.round(natW * scale);
   const boxH = Math.round(natH * scale);
   // Largura do modal acomoda o cabeçalho (título + abas) mesmo se a prévia for estreita.
-  const modalW = Math.max(boxW + 24, 380);
+  const modalW = Math.max(boxW + 24, 420);
 
   return (
     <div
