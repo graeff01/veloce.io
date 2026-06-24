@@ -44,6 +44,7 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 
   const [
     activeClients,
@@ -101,6 +102,44 @@ export async function GET() {
     select: { id: true, name: true, status: true, activePlanId: true, logoUrl: true },
   });
 
+  // ── Sinais de RESULTADO (anúncios) e ATENDIMENTO (WhatsApp), batched por conexão ──
+  // Saúde do cliente passa a ser 360°: entrega (tarefas) + resultado + atendimento.
+  const [metaConns, waConns] = await Promise.all([
+    prisma.metaConnection.findMany({ select: { id: true, clientId: true } }),
+    prisma.waConnection.findMany({ select: { id: true, clientId: true } }),
+  ]);
+  const metaByClient = new Map(metaConns.map((m) => [m.clientId, m.id]));
+  const waByClient = new Map(waConns.map((w) => [w.clientId, w.id]));
+  const metaIds = metaConns.map((m) => m.id);
+  const waIds = waConns.map((w) => w.id);
+
+  // Reprovado só conta em campanha ATIVA (evita ruído de reprovados antigos/arquivados).
+  const activeCampIds = metaIds.length
+    ? (await prisma.metaCampaign.findMany({ where: { connectionId: { in: metaIds }, status: "ACTIVE" }, select: { campaignId: true } })).map((c) => c.campaignId)
+    : [];
+
+  const [badAds, spend7Rows, leads7Rows, unansweredRows] = await Promise.all([
+    metaIds.length && activeCampIds.length ? prisma.metaAd.groupBy({ by: ["connectionId"], where: { connectionId: { in: metaIds }, status: { in: ["DISAPPROVED", "WITH_ISSUES"] }, campaignId: { in: activeCampIds } }, _count: { _all: true } }) : Promise.resolve([] as { connectionId: string; _count: { _all: number } }[]),
+    metaIds.length ? prisma.metaAdInsight.groupBy({ by: ["connectionId"], where: { connectionId: { in: metaIds }, date: { gte: sevenDaysAgo } }, _sum: { spend: true } }) : Promise.resolve([] as { connectionId: string; _sum: { spend: number | null } }[]),
+    waIds.length ? prisma.waLead.groupBy({ by: ["connectionId"], where: { connectionId: { in: waIds }, enteredAt: { gte: sevenDaysAgo } }, _count: { _all: true } }) : Promise.resolve([] as { connectionId: string; _count: { _all: number } }[]),
+    waIds.length ? prisma.waConversation.groupBy({ by: ["connectionId"], where: { connectionId: { in: waIds }, outboundCount: 0, lastMessageAt: { gte: twoDaysAgo } }, _count: { _all: true } }) : Promise.resolve([] as { connectionId: string; _count: { _all: number } }[]),
+  ]);
+  const badByConn = new Map(badAds.map((r) => [r.connectionId, r._count._all]));
+  const spend7ByConn = new Map(spend7Rows.map((r) => [r.connectionId, r._sum.spend ?? 0]));
+  const leads7ByConn = new Map(leads7Rows.map((r) => [r.connectionId, r._count._all]));
+  const unansByConn = new Map(unansweredRows.map((r) => [r.connectionId, r._count._all]));
+  function adWaSignals(clientId: string) {
+    const metaId = metaByClient.get(clientId);
+    const waId = waByClient.get(clientId);
+    const spend7 = metaId ? spend7ByConn.get(metaId) ?? 0 : 0;
+    const leads7 = waId ? leads7ByConn.get(waId) ?? 0 : 0;
+    return {
+      adReprovado: metaId ? (badByConn.get(metaId) ?? 0) > 0 : false,
+      sangria: spend7 >= 100 && leads7 === 0, // gastou >= R$100 em 7d sem nenhum lead real
+      semResposta: waId ? unansByConn.get(waId) ?? 0 : 0, // contatos/leads sem resposta da loja (48h)
+    };
+  }
+
   const clientStats = await Promise.all(
     clients.map(async (client) => {
       const [monthTasks, doneTasks, overdue, lastLog, receitaCliente] = await Promise.all([
@@ -143,6 +182,7 @@ export async function GET() {
           daysSinceActivity,
           inactive: daysSinceActivity >= 7,
           receitaMes: receitaCliente._sum.value ?? 0,
+          ...adWaSignals(client.id),
         },
       };
     })
@@ -260,6 +300,16 @@ export async function GET() {
     });
   }
 
+  // Resultado (anúncios) + atendimento (WhatsApp) — o que realmente perde cliente.
+  for (const c of clientStats) {
+    if (c.stats.adReprovado)
+      alerts.push({ type: "ad", severity: "high", message: `${c.name}: anúncio reprovado na Meta`, href: `/clients/${c.id}?tab=anuncios` });
+    if (c.stats.sangria)
+      alerts.push({ type: "ad", severity: "high", message: `${c.name}: gastando em anúncio sem gerar lead (7d)`, href: `/clients/${c.id}?tab=anuncios` });
+    if (c.stats.semResposta > 0)
+      alerts.push({ type: "sla", severity: c.stats.semResposta >= 3 ? "high" : "warn", message: `${c.name}: ${c.stats.semResposta} sem resposta no WhatsApp`, href: `/clients/${c.id}?tab=leads` });
+  }
+
   const sevRank = { high: 0, warn: 1, info: 2 };
   alerts.sort((a, b) => sevRank[a.severity] - sevRank[b.severity]);
 
@@ -284,7 +334,7 @@ export async function GET() {
       lucroPrev,
     },
     commitments,
-    alerts: alerts.slice(0, 6),
+    alerts: alerts.slice(0, 8),
     clientStats,
     overdueDetails,
     suggestions,

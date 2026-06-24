@@ -22,7 +22,7 @@ interface DashboardData {
   alerts?: Array<{ type: string; severity: "high" | "warn" | "info"; message: string; href?: string }>;
   clientStats: Array<{
     id: string; name: string; logoUrl?: string | null; status: string;
-    stats: { monthTasks: number; doneTasks: number; overdue: number; completionRate: number; daysSinceActivity: number; inactive: boolean; receitaMes: number };
+    stats: { monthTasks: number; doneTasks: number; overdue: number; completionRate: number; daysSinceActivity: number; inactive: boolean; receitaMes: number; sangria?: boolean; adReprovado?: boolean; semResposta?: number };
   }>;
   overdueDetails: Array<{ id: string; title: string; dueDate: string; client: { id: string; name: string }; assignee: { name: string } | null }>;
   suggestions: Array<{ type: string; message: string; clientId?: string; clientName?: string }>;
@@ -55,7 +55,7 @@ export function DashboardContent({ userName }: { userName: string }) {
 
   const s = data.summary;
   const clients = data.clientStats;
-  const attn = clients.filter((c) => c.stats.overdue > 0 || c.stats.inactive).length;
+  const attn = clients.filter((c) => { const f = clientFlags(c.stats); return f.hard || f.soft; }).length;
   const ok = clients.length - attn;
   const pending = Math.max(0, s.allMonthTasks - s.completedThisMonth);
   const commitCount = (data.commitments?.meetings.length ?? 0) + (data.commitments?.tasks.length ?? 0);
@@ -125,10 +125,16 @@ function Kpi({ value, label, tone, divider }: { value: string; label: string; to
 }
 
 /* ─── Saúde dos Clientes ───────────────────────────────── */
+// Saúde 360°: entrega (tarefas) + resultado (anúncio) + atendimento (WhatsApp).
+function clientFlags(s: DashboardData["clientStats"][0]["stats"]) {
+  const semResp = s.semResposta ?? 0;
+  const hard = s.overdue > 2 || !!s.sangria || !!s.adReprovado || semResp >= 3;
+  const soft = s.overdue > 0 || s.inactive || semResp > 0;
+  return { hard, soft };
+}
 function riskRank(c: DashboardData["clientStats"][0]) {
-  if (c.stats.overdue > 2) return 0;
-  if (c.stats.overdue > 0 || c.stats.inactive) return 1;
-  return 2;
+  const f = clientFlags(c.stats);
+  return f.hard ? 0 : f.soft ? 1 : 2;
 }
 
 function ClientHealth({ clients, ok, attn }: { clients: DashboardData["clientStats"]; ok: number; attn: number }) {
@@ -161,7 +167,8 @@ function ClientHealth({ clients, ok, attn }: { clients: DashboardData["clientSta
 
 function ClientRow({ client, last }: { client: DashboardData["clientStats"][0]; last: boolean }) {
   const { stats } = client;
-  const health = stats.overdue > 2 ? "var(--red)" : stats.overdue > 0 || stats.inactive ? "var(--amber)" : "var(--green)";
+  const f = clientFlags(stats);
+  const health = f.hard ? "var(--red)" : f.soft ? "var(--amber)" : "var(--green)";
   return (
     <Link href={`/clients/${client.id}`} style={{ textDecoration: "none", display: "block" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: last ? "none" : "1px solid var(--border)", transition: "background 120ms" }}
@@ -184,12 +191,19 @@ function ClientRow({ client, last }: { client: DashboardData["clientStats"][0]; 
             <div style={{ width: `${stats.completionRate}%`, height: "100%", background: health, borderRadius: 3, transition: "width 450ms ease-out" }} />
           </div>
         </div>
-        <div style={{ width: 90, textAlign: "right", flexShrink: 0 }}>
-          {stats.overdue > 0
-            ? <span style={{ ...num, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "var(--red)", background: "var(--red-soft)", padding: "3px 9px", borderRadius: 20 }}><AlertTriangle size={9} />{stats.overdue} atraso{stats.overdue > 1 ? "s" : ""}</span>
-            : stats.inactive
-              ? <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--amber)", background: "var(--amber-soft)", padding: "3px 9px", borderRadius: 20 }}>Inativo</span>
-              : <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--green)", background: "var(--green-soft)", padding: "3px 9px", borderRadius: 20 }}>Saudável</span>}
+        <div style={{ width: 104, textAlign: "right", flexShrink: 0 }}>
+          {(() => {
+            const semResp = stats.semResposta ?? 0;
+            const b = stats.adReprovado ? { t: "anúncio ⚠", c: "red" as const }
+              : stats.sangria ? { t: "sangria", c: "red" as const }
+              : semResp >= 1 ? { t: `${semResp} s/ resp`, c: (semResp >= 3 ? "red" : "amber") as "red" | "amber" }
+              : stats.overdue > 0 ? { t: `${stats.overdue} atraso${stats.overdue > 1 ? "s" : ""}`, c: "red" as const }
+              : stats.inactive ? { t: "Inativo", c: "amber" as const }
+              : { t: "Saudável", c: "green" as const };
+            const col = b.c === "red" ? "var(--red)" : b.c === "amber" ? "var(--amber)" : "var(--green)";
+            const bg = b.c === "red" ? "var(--red-soft)" : b.c === "amber" ? "var(--amber-soft)" : "var(--green-soft)";
+            return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: col, background: bg, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap" }}>{b.c === "red" && <AlertTriangle size={9} />}{b.t}</span>;
+          })()}
         </div>
       </div>
     </Link>
