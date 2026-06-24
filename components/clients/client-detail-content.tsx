@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Megaphone, Bot, BarChart3, Filter, Send,
+  Columns3, User, Mic, Megaphone, Bot, BarChart3, Send,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -15,7 +15,6 @@ import { Modal } from "@/components/ui/modal";
 import { ClientForm } from "@/components/clients/client-form";
 import { ClientHealthCard } from "@/components/clients/client-health-card";
 import { FixedDemandsSection } from "@/components/clients/fixed-demands-section";
-import { FunnelTab } from "@/components/clients/funnel-tab";
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
@@ -136,7 +135,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "funil" | "ia" | "bot";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "ia" | "bot";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -161,7 +160,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "funil", "ia", "bot"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "ia", "bot"];
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
 
@@ -191,7 +190,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
     { key: "anuncios",  label: "Anúncios",  icon: <BarChart3 size={13} /> },
-    { key: "funil",     label: "Funil",     icon: <Filter size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
@@ -301,10 +299,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         <div style={{ padding: "24px 28px" }}>
           <AdsTab clientId={clientId} />
         </div>
-      )}
-
-      {tab === "funil" && (
-        <FunnelTab clientId={clientId} />
       )}
 
       {tab === "ia" && (
