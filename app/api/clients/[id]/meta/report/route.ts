@@ -47,6 +47,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const thumbPairs = await Promise.all(thumbUrls.map(async (u) => [u, await toDataUri(u)] as const));
   const thumbMap = new Map(thumbPairs);
 
+  // Seleção (modal): ?ads=id1,id2 mostra só esses. Sem seleção → só os anúncios
+  // que GERARAM LEAD. O TOTAL de gasto segue sendo o real do período (transparência).
+  const adsParam = url.searchParams.get("ads");
+  const selected = adsParam ? new Set(adsParam.split(",").map((s) => s.trim()).filter(Boolean)) : null;
+  const shownAds = view.ads.filter((a) => (selected ? selected.has(a.adId) : a.leads > 0));
+  const shownCampIds = new Set(shownAds.map((a) => a.campaignId));
+  const shownCampaigns = view.campaigns.filter((c) => shownCampIds.has(c.campaignId));
+
   const data: AdsReportData = {
     clientName: client.name,
     accountName: conn?.accountName ?? conn?.adAccountId ?? null,
@@ -61,7 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       leads: view.totals.leads,
       cpl: view.totals.cpl,
     },
-    campaigns: view.campaigns.map((c) => ({
+    campaigns: shownCampaigns.map((c) => ({
       name: c.name,
       status: c.status,
       spend: c.spend,
@@ -72,7 +80,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       leads: c.leads,
       cpl: c.cpl,
     })),
-    ads: view.ads.map((a) => ({
+    ads: shownAds.map((a) => ({
       name: a.name,
       sub: a.campaignName,
       status: a.status,
@@ -85,8 +93,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       cpl: a.cpl,
       thumb: a.thumbnailUrl ? (thumbMap.get(a.thumbnailUrl) ?? null) : null,
     })),
-    campaignsCount: view.campaigns.length,
-    adsCount: view.ads.length,
+    campaignsCount: shownCampaigns.length,
+    adsCount: shownAds.length,
   };
 
   const buffer = await renderToBuffer(buildAdsReport(data));

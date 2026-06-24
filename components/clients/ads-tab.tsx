@@ -148,6 +148,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
   const [year, setYear]         = useState(now.getFullYear());
   const [month, setMonth]       = useState(now.getMonth() + 1);
   const [ads, setAds]           = useState<AdsView | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -336,14 +337,13 @@ export function AdsTab({ clientId }: { clientId: string }) {
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={selectStyle}>
             {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
           </select>
-          <a
-            href={`/api/clients/${clientId}/meta/report?year=${year}&month=${month}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}
+          <button
+            onClick={() => setShowReport(true)}
+            disabled={!ads?.hasData}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: ads?.hasData ? "pointer" : "default", opacity: ads?.hasData ? 1 : 0.5 }}
           >
             <FileText size={14} /> Exportar relatório (PDF)
-          </a>
+          </button>
         </div>
 
         {!ads ? (
@@ -383,11 +383,64 @@ export function AdsTab({ clientId }: { clientId: string }) {
         )}
 
       </div>
+      {showReport && ads?.hasData && (
+        <AdReportModal clientId={clientId} year={year} month={month} ads={ads.ads} totalSpend={ads.totals.spend} onClose={() => setShowReport(false)} />
+      )}
     </div>
   );
 }
 
 const selectStyle: React.CSSProperties = { height: 34, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, outline: "none", cursor: "pointer" };
+const miniBtn: React.CSSProperties = { padding: "3px 9px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600, cursor: "pointer" };
+
+// Modal: escolhe quais anúncios DETALHAR no relatório (default = só os que geraram
+// lead). O total de investimento entra sempre (transparência).
+function AdReportModal({ clientId, year, month, ads, totalSpend, onClose }: { clientId: string; year: number; month: number; ads: AdRow[]; totalSpend: number; onClose: () => void }) {
+  const [sel, setSel] = useState<Set<string>>(() => new Set(ads.filter((a) => a.leads > 0).map((a) => a.adId)));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const sorted = [...ads].sort((a, b) => b.leads - a.leads || b.spend - a.spend);
+  const selSpend = ads.filter((a) => sel.has(a.adId)).reduce((s, a) => s + a.spend, 0);
+  function generate() {
+    const ids = [...sel];
+    window.open(`/api/clients/${clientId}/meta/report?year=${year}&month=${month}${ids.length ? `&ads=${ids.join(",")}` : ""}`, "_blank", "noopener");
+    onClose();
+  }
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ width: 560, maxWidth: "94vw", maxHeight: "88vh", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
+          <FileText size={15} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)", flex: 1 }}>Anúncios no relatório</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex" }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: "var(--text-muted)", flex: 1, minWidth: 200 }}>O investimento total ({fmtBRL(totalSpend)}) entra sempre. Escolha quais anúncios detalhar:</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setSel(new Set(ads.filter((a) => a.leads > 0).map((a) => a.adId)))} style={miniBtn}>Só com lead</button>
+            <button onClick={() => setSel(new Set(ads.map((a) => a.adId)))} style={miniBtn}>Todos</button>
+            <button onClick={() => setSel(new Set())} style={miniBtn}>Nenhum</button>
+          </div>
+        </div>
+        <div style={{ overflow: "auto", padding: "4px 0" }}>
+          {sorted.map((a) => (
+            <label key={a.adId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 18px", cursor: "pointer", borderBottom: "1px solid var(--border)" }}>
+              <input type="checkbox" checked={sel.has(a.adId)} onChange={() => toggle(a.adId)} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+              <span style={{ fontSize: 11, color: a.leads > 0 ? "#16A34A" : "var(--text-muted)", fontWeight: 700, width: 64, textAlign: "right" }}>{a.leads} lead{a.leads === 1 ? "" : "s"}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", width: 72, textAlign: "right" }}>{fmtBRL(a.spend)}</span>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderTop: "1px solid var(--border)" }}>
+          <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{sel.size} anúncio(s) · {fmtBRL(selSpend)} detalhado</span>
+          <button onClick={generate} disabled={sel.size === 0} style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: sel.size ? "pointer" : "default", opacity: sel.size ? 1 : 0.5 }}>
+            <FileText size={14} /> Gerar PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Saúde do token: verde = System User válido (não expira); amarelo = válido mas
 // expira (token de usuário); vermelho = inválido/revogado.

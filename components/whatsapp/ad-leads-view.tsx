@@ -159,29 +159,61 @@ export function AdLeadsView({ clientId, year, month }: { clientId: string; year:
     return s;
   }, [leads]);
 
-  // Agrupa os leads por anúncio. Sem anúncio identificado → bucket próprio.
+  // Agrupa os leads por ANÚNCIO REAL (adId) e funde por VEÍCULO. Antes agrupava
+  // por texto (adName/adModel/adTitle) → o mesmo anúncio duplicava quando o modelo
+  // vinha vazio (caía no título), por typo ("Renegad") ou por lead sem adId.
   const adGroups = useMemo<AdBucket[]>(() => {
-    const map = new Map<string, AdBucket>();
+    // marca ignorada na chave (o veículo é a 2ª palavra em "Jeep Renegade").
+    const STRIP = new Set(["jeep", "volkswagen", "vw", "fiat", "chevrolet", "gm", "ford", "toyota", "honda", "nissan", "renault", "hyundai", "peugeot", "citroen", "caoa", "chery", "novo", "nova", "o", "a"]);
+    const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const vehKey = (s: string | null | undefined) => {
+      if (!s) return "";
+      const w = norm(s).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+      let i = 0; while (i < w.length && STRIP.has(w[i])) i++;
+      return w[i] ?? "";
+    };
+
+    // Passo 1: grupos primários por adId (anúncio real) ou rótulo (sem adId).
+    const prelim = new Map<string, AdLead[]>();
     for (const l of leads) {
-      const adLabel = l.adName ?? l.adModel ?? l.adTitle ?? null;
-      const key = adLabel ?? "__none__";
-      let g = map.get(key);
-      if (!g) {
-        g = { key, adLabel: adLabel ?? "Sem anúncio identificado", campaign: l.campaignName ?? null, leads: [], incomplete: 0, negociacao: 0, convertido: 0, lastEnteredAt: null };
-        map.set(key, g);
-      }
-      g.leads.push(l);
-      if (incompleteIds.has(l.id)) g.incomplete++;
-      if (l.funnelStage === "negociacao") g.negociacao++;
-      if (l.funnelStage === "convertido") g.convertido++;
-      if (!g.campaign && l.campaignName) g.campaign = l.campaignName;
-      if (!g.lastEnteredAt || l.enteredAt > g.lastEnteredAt) g.lastEnteredAt = l.enteredAt;
+      const pk = l.adId ? `ad:${l.adId}` : (l.adModel || l.adTitle ? `lbl:${norm(l.adModel || l.adTitle || "")}` : "__none__");
+      const arr = prelim.get(pk) ?? [];
+      if (!arr.length) prelim.set(pk, arr);
+      arr.push(l);
     }
-    return [...map.values()].sort((a, b) => {
-      if (a.key === "__none__") return 1;
-      if (b.key === "__none__") return -1;
-      return b.leads.length - a.leads.length;
-    });
+
+    // Passo 2: funde os primários por VEÍCULO (modelo dominante do grupo).
+    const buckets = new Map<string, AdBucket & { labels: Map<string, number> }>();
+    for (const [pk, arr] of prelim) {
+      let vk: string;
+      if (pk === "__none__") vk = "__none__";
+      else {
+        const modelCount = new Map<string, number>();
+        for (const l of arr) if (l.adModel) modelCount.set(l.adModel, (modelCount.get(l.adModel) ?? 0) + 1);
+        const domModel = [...modelCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+        vk = vehKey(domModel || arr.find((l) => l.adTitle)?.adTitle || arr.find((l) => l.adName)?.adName) || `pk:${pk}`;
+      }
+      let g = buckets.get(vk);
+      if (!g) { g = { key: vk, adLabel: "", campaign: null, leads: [], incomplete: 0, negociacao: 0, convertido: 0, lastEnteredAt: null, labels: new Map() }; buckets.set(vk, g); }
+      for (const l of arr) {
+        g.leads.push(l);
+        if (incompleteIds.has(l.id)) g.incomplete++;
+        if (l.funnelStage === "negociacao") g.negociacao++;
+        if (l.funnelStage === "convertido") g.convertido++;
+        if (!g.campaign && l.campaignName) g.campaign = l.campaignName;
+        if (!g.lastEnteredAt || l.enteredAt > g.lastEnteredAt) g.lastEnteredAt = l.enteredAt;
+        const lbl = l.adName ?? l.adModel ?? l.adTitle;
+        if (lbl) g.labels.set(lbl, (g.labels.get(lbl) ?? 0) + 1);
+      }
+    }
+
+    return [...buckets.values()]
+      .map((g) => ({
+        key: g.key,
+        adLabel: g.key === "__none__" ? "Sem anúncio identificado" : ([...g.labels.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Anúncio"),
+        campaign: g.campaign, leads: g.leads, incomplete: g.incomplete, negociacao: g.negociacao, convertido: g.convertido, lastEnteredAt: g.lastEnteredAt,
+      }))
+      .sort((a, b) => (a.key === "__none__" ? 1 : b.key === "__none__" ? -1 : b.leads.length - a.leads.length));
   }, [leads, incompleteIds]);
 
   const importedCount = useMemo(() => leads.filter((l) => l.imported).length, [leads]);
