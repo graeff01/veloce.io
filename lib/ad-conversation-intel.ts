@@ -36,13 +36,17 @@ export interface AdConversationIntel {
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-export async function analyzeAdConversations(
+export interface AdSignals { leadCount: number; messageCount: number; intents: IntentCount[]; topOpeners: string[] }
+
+// Sinais DETERMINÍSTICOS das conversas do anúncio (sem IA) — reutilizado pela
+// análise e pelo gerador de anúncio.
+export async function gatherAdSignals(
   clientId: string,
   opts: { adId?: string | null; adModel?: string | null },
   start: Date,
   end: Date,
-): Promise<AdConversationIntel> {
-  const empty: AdConversationIntel = { leadCount: 0, messageCount: 0, intents: [], topOpeners: [], ai: null };
+): Promise<AdSignals> {
+  const empty: AdSignals = { leadCount: 0, messageCount: 0, intents: [], topOpeners: [] };
   const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
   if (!wa) return empty;
 
@@ -87,7 +91,18 @@ export async function analyzeAdConversations(
 
   const topOpeners = [...opener.values()].map((s) => s.replace(/\s+/g, " ").slice(0, 160)).slice(0, 25);
 
-  return { leadCount, messageCount: msgs.length, intents, topOpeners, ai: await buildAiReading(intents, topOpeners, leadCount) };
+  return { leadCount, messageCount: msgs.length, intents, topOpeners };
+}
+
+// Inteligência completa: sinais determinísticos + leitura/recomendação da IA.
+export async function analyzeAdConversations(
+  clientId: string,
+  opts: { adId?: string | null; adModel?: string | null },
+  start: Date,
+  end: Date,
+): Promise<AdConversationIntel> {
+  const sig = await gatherAdSignals(clientId, opts, start, end);
+  return { ...sig, ai: sig.leadCount > 0 ? await buildAiReading(sig.intents, sig.topOpeners, sig.leadCount) : null };
 }
 
 // Leitura/recomendação da IA — estritamente a partir dos temas + aberturas reais.

@@ -736,10 +736,36 @@ interface IntelResp {
 }
 const ACTION_COLOR: Record<string, string> = { escalar: "#16A34A", pausar: "#DC2626", ajustar: "#D97706", manter: "#64748B" };
 
+interface GeneratedAd { modelo: string | null; anguloOferta: string; headlines: string[]; textoPrincipal: string; cta: string; roteiro: { cena: string; fala: string; imagem: string }[]; dica: string }
+interface GenResp { basedOn: { leadCount: number; topThemes: { label: string; pct: number }[] }; generated: GeneratedAd | null; error?: string }
+
+function CopyBtn({ text }: { text: string }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(text).then(() => { setOk(true); setTimeout(() => setOk(false), 1400); }).catch(() => {}); }}
+      title="Copiar"
+      style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-surface)", color: ok ? "#16A34A" : "var(--text-muted)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+    >
+      {ok ? "✓ copiado" : "copiar"}
+    </button>
+  );
+}
+
 function AdIntelModal({ clientId, year, month, ad, onClose }: { clientId: string; year: number; month: number; ad: { adId: string; name: string }; onClose: () => void }) {
   const { data, loading } = useCachedFetch<IntelResp>(`/api/clients/${clientId}/meta/ads/intel?adId=${encodeURIComponent(ad.adId)}&year=${year}&month=${month}`);
   const [acting, setActing] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Geração do próximo anúncio (sob demanda — controla custo de IA).
+  const [gen, setGen] = useState<GenResp | null>(null);
+  const [genLoading, setGenLoading] = useState(false);
+  async function generate() {
+    setGenLoading(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/meta/ads/generate?adId=${encodeURIComponent(ad.adId)}&year=${year}&month=${month}`);
+      setGen(await res.json().catch(() => null));
+    } finally { setGenLoading(false); }
+  }
 
   async function execAction() {
     if (!data || data.action.type !== "pausar" || !data.ad.campaignId) return;
@@ -845,10 +871,82 @@ function AdIntelModal({ clientId, year, month, ad, onClose }: { clientId: string
                   )}
                 </>
               )}
+
+              {/* Gerar o próximo anúncio — a IA entrega pronto pra equipe produzir */}
+              <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 14, marginTop: 2 }}>
+                {!gen ? (
+                  <button onClick={generate} disabled={genLoading}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: genLoading ? "default" : "pointer", boxShadow: "0 4px 12px rgba(124,58,237,0.22)" }}>
+                    {genLoading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
+                    {genLoading ? "Gerando o próximo anúncio..." : "Gerar próximo anúncio (copy + roteiro)"}
+                  </button>
+                ) : gen.error || !gen.generated ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{gen.error ?? "Não foi possível gerar."}</span>
+                    <button onClick={() => { setGen(null); generate(); }} style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>tentar de novo</button>
+                  </div>
+                ) : (
+                  <GeneratedAdView g={gen.generated} onRegen={() => { setGen(null); generate(); }} />
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function GeneratedAdView({ g, onRegen }: { g: GeneratedAd; onRegen: () => void }) {
+  const sec: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Sparkles size={13} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)" }}>Próximo anúncio{g.modelo ? ` · ${g.modelo}` : ""}</span>
+        <button onClick={onRegen} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>gerar outro</button>
+      </div>
+      {g.anguloOferta && <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.45 }}><b style={{ color: "var(--text-primary)" }}>Ângulo de oferta:</b> {g.anguloOferta}</div>}
+
+      <div>
+        <p style={sec}>Headlines</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {g.headlines.map((h, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{h}</span>
+              <CopyBtn text={h} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {g.textoPrincipal && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <p style={{ ...sec, margin: 0 }}>Texto principal</p><CopyBtn text={g.textoPrincipal} />
+          </div>
+          <p style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5, whiteSpace: "pre-wrap", margin: 0 }}>{g.textoPrincipal}</p>
+        </div>
+      )}
+
+      {g.cta && <div style={{ fontSize: 12.5, color: "var(--text-secondary)" }}><b style={{ color: "var(--text-primary)" }}>CTA:</b> {g.cta}</div>}
+
+      {g.roteiro.length > 0 && (
+        <div>
+          <p style={sec}>Roteiro do vídeo / reels</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {g.roteiro.map((r, i) => (
+              <div key={i} style={{ borderLeft: "2px solid color-mix(in srgb, var(--accent) 50%, transparent)", paddingLeft: 10 }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{r.cena}</p>
+                {r.fala && <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0", lineHeight: 1.4 }}>🗣️ {r.fala}</p>}
+                {r.imagem && <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0", lineHeight: 1.4 }}>🎬 {r.imagem}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {g.dica && <p style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", margin: 0, lineHeight: 1.45 }}>💡 {g.dica}</p>}
     </div>
   );
 }
