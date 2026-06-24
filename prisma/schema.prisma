@@ -114,26 +114,6 @@ model Client {
   catalogItems      CatalogItem[]
   knowledgeChunks   KnowledgeChunk[]
   winningCampaigns  WinningCampaign[]
-  competitors       Competitor[]
-}
-
-// Concorrente monitorado por cliente (qualquer nicho). Não puxamos métricas (a
-// Meta não expõe desempenho de terceiros) — guardamos o concorrente + atalho para
-// a Ad Library pública e as anotações de ângulos/ofertas vencedores observados.
-model Competitor {
-  id        String   @id @default(cuid())
-  clientId  String
-  name      String
-  pageId    String?  // ID da página no Facebook → deep-link exato na Ad Library
-  region    String   @default("BR")
-  tier      String?  // qualidade do player: serio | medio | amador (só modele dos sérios)
-  notes     String?  // ângulos/ofertas que vimos funcionando (swipe file)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
 }
 
 model Meeting {
