@@ -21,6 +21,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const niche = client.niche.trim();
   const city = client.city?.trim() || "";
 
+  // Ancora a sugestão no que o cliente REALMENTE anuncia (nomes de campanhas) —
+  // deixa players/termos colados no negócio de verdade, não no genérico do nicho.
+  const meta = await prisma.metaConnection.findUnique({ where: { clientId: id }, select: { id: true } });
+  const camps = meta
+    ? await prisma.metaCampaign.findMany({ where: { connectionId: meta.id }, select: { name: true }, take: 40 })
+    : [];
+  const oferta = [...new Set(camps.map((c) => c.name.replace(/^C\d+[-_ ]?/i, "").replace(/[-_]/g, " ").trim()).filter((s) => s.length > 1))].slice(0, 12);
+
   // Fallback determinístico (sem IA): termos básicos do nicho + cidade.
   const fallbackTermos = [niche, city ? `${niche} ${city}` : "", `${niche} promoção`].filter(Boolean);
   if (!process.env.GROQ_API_KEY) {
@@ -28,8 +36,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const system =
-    "Você ajuda uma agência a pesquisar concorrentes na Biblioteca de Anúncios da Meta. Dado o NICHO, a CIDADE e a marca do negócio, devolva SOMENTE um JSON: { \"players\": [nomes de empresas/concorrentes que provavelmente anunciam nesse nicho e região — sugestões plausíveis para investigar], \"termos\": [palavras-chave que esses anúncios costumam usar, para buscar na biblioteca] }. Até 8 de cada. Se não souber nomes específicos da região, deixe players vazio e capriche nos termos. Português do Brasil, sem inventar dados como se fossem certeza.";
-  const user = `Negócio: ${client.name}${client.brand ? ` (${client.brand})` : ""}.\nNicho: ${niche}.\nCidade/região: ${city || "não informada"}.`;
+    "Você ajuda uma agência a pesquisar concorrentes na Biblioteca de Anúncios da Meta. Dado o NICHO, a CIDADE, a marca e o QUE O NEGÓCIO ANUNCIA, devolva SOMENTE um JSON: { \"players\": [nomes de empresas/concorrentes que provavelmente anunciam nesse nicho e região — sugestões plausíveis para investigar], \"termos\": [palavras-chave reais que esses anúncios usam, para buscar na biblioteca] }. Até 8 de cada. Baseie os termos no que o negócio realmente anuncia. Se não souber nomes específicos da região, deixe players vazio e capriche nos termos. Português do Brasil, sem inventar dado como se fosse certeza.";
+  const user = [
+    `Negócio: ${client.name}${client.brand ? ` (${client.brand})` : ""}.`,
+    `Nicho: ${niche}.`,
+    `Cidade/região: ${city || "não informada"}.`,
+    oferta.length ? `O negócio anuncia (campanhas reais): ${oferta.join(", ")}.` : "",
+  ].filter(Boolean).join("\n");
 
   try {
     const raw = await groqChat(system, user, 360);

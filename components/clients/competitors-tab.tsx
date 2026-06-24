@@ -12,6 +12,17 @@ interface Competitor {
 }
 interface Suggestions { players: string[]; termos: string[]; source?: string; error?: string }
 
+// Extrai o page_id de um link colado (Ad Library com view_all_page_id, ou o id
+// puro). Permite mira EXATA na página do concorrente em vez de busca por nome.
+function extractPageId(input: string): string | null {
+  const s = (input ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/view_all_page_id=(\d{5,})/) || s.match(/\/(\d{8,})(?:[/?]|$)/);
+  if (m) return m[1];
+  if (/^\d{5,}$/.test(s)) return s;
+  return null;
+}
+
 // Anúncios "no ar há +30 dias" = vencedores (ninguém queima verba em anúncio ruim).
 function winnersDateMax(): string {
   const d = new Date(Date.now() - 30 * 86400_000);
@@ -53,12 +64,12 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
   }, [clientId]);
   useEffect(() => { load(); }, [load]);
 
-  async function add(name_: string, pageId_?: string) {
+  async function add(name_: string, pageInput?: string) {
     if (!name_.trim()) return;
     setSaving(true);
     const res = await fetch(`/api/clients/${clientId}/competitors`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name_.trim(), pageId: pageId_?.trim() || undefined }),
+      body: JSON.stringify({ name: name_.trim(), pageId: extractPageId(pageInput ?? "") || undefined }),
     });
     setSaving(false);
     if (res.ok) { setName(""); setPageId(""); load(); }
@@ -150,7 +161,7 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
       {/* Adicionar manual */}
       <form onSubmit={(e) => { e.preventDefault(); add(name, pageId); }} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Adicionar concorrente (nome)" style={{ ...inp, flex: 1, minWidth: 200 }} />
-        <input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="ID da página (opcional)" style={{ ...inp, width: 180 }} />
+        <input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="Cole o link da Ad Library dele (mira exata)" style={{ ...inp, flex: 1, minWidth: 200 }} />
         <button type="submit" disabled={saving || !name.trim()} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 16px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving || !name.trim() ? "default" : "pointer", opacity: saving || !name.trim() ? 0.6 : 1 }}>
           {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={14} />} Adicionar
         </button>
@@ -168,6 +179,9 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--bg-elevated)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 20 }}>{c.region}</span>
+                {c.pageId
+                  ? <span title="Atalho cai na página exata do concorrente" style={{ fontSize: 9.5, fontWeight: 700, color: "#16A34A", background: "rgba(22,163,74,0.1)", padding: "1px 6px", borderRadius: 20 }}>página exata</span>
+                  : <span title="Busca por nome — pode trazer páginas parecidas. Cole o link da Ad Library dele para mira exata." style={{ fontSize: 9.5, fontWeight: 700, color: "#D97706", background: "rgba(217,119,6,0.1)", padding: "1px 6px", borderRadius: 20 }}>por nome</span>}
                 <button onClick={() => remove(c.id)} title="Remover" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, display: "flex" }}><Trash2 size={14} /></button>
               </div>
               <a href={competitorUrl(c, onlyWinners)} target="_blank" rel="noopener noreferrer"
