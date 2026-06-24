@@ -126,6 +126,7 @@ model Competitor {
   name      String
   pageId    String?  // ID da página no Facebook → deep-link exato na Ad Library
   region    String   @default("BR")
+  tier      String?  // qualidade do player: serio | medio | amador (só modele dos sérios)
   notes     String?  // ângulos/ofertas que vimos funcionando (swipe file)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

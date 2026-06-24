@@ -8,9 +8,16 @@ interface Competitor {
   name: string;
   pageId: string | null;
   region: string;
+  tier: string | null;
   notes: string | null;
 }
 interface Suggestions { players: string[]; termos: string[]; source?: string; error?: string }
+interface Synthesis { padrao: string; modelar: string[]; evitar: string; brecha: string }
+const TIERS = [
+  { key: "serio", label: "Sério", color: "#16A34A" },
+  { key: "medio", label: "Médio", color: "#D97706" },
+  { key: "amador", label: "Amador", color: "#DC2626" },
+];
 
 // Extrai o page_id de um link colado (Ad Library com view_all_page_id, ou o id
 // puro). Permite mira EXATA na página do concorrente em vez de busca por nome.
@@ -55,6 +62,20 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
   const [onlyWinners, setOnlyWinners] = useState(true);
   const [suggesting, setSuggesting] = useState(false);
   const [sugg, setSugg] = useState<Suggestions | null>(null);
+  const [synth, setSynth] = useState<{ synthesis?: Synthesis; error?: string } | null>(null);
+  const [synthLoading, setSynthLoading] = useState(false);
+
+  async function setTier(id: string, tier: string) {
+    setList((l) => l.map((c) => (c.id === id ? { ...c, tier } : c)));
+    await fetch(`/api/clients/${clientId}/competitors/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier }) }).catch(() => {});
+  }
+  async function runSynthesis() {
+    setSynthLoading(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/competitors/synthesis`);
+      setSynth(await res.json().catch(() => null));
+    } finally { setSynthLoading(false); }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,9 +122,17 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
       {/* Guia honesto */}
       <div style={{ display: "flex", gap: 10, padding: "13px 15px", borderRadius: 12, background: "color-mix(in srgb, var(--accent) 7%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)" }}>
         <Info size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
-          A Meta não expõe métrica de ninguém — mas a Biblioteca de Anúncios é pública. Dica de ouro: anúncio <b>no ar há muito tempo é vencedor</b> (senão já teriam pausado). Veja os criativos dos players, identifique o <b>ângulo/oferta</b> que mais roda e <b>modele</b> (não copie). Use o filtro de vencedores abaixo pra ir direto neles.
-        </p>
+        <div>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+            Sem métrica do concorrente (a Meta não expõe), o jeito profissional de saber o que <b>realmente vence</b> — pra não copiar player ruim — usa 4 sinais:
+          </p>
+          <ul style={{ fontSize: 11.5, color: "var(--text-secondary)", margin: "7px 0 0", paddingLeft: 16, lineHeight: 1.55 }}>
+            <li><b>Longevidade</b> — no ar há muito tempo (semanas/meses).</li>
+            <li><b>Escala</b> — muitas variações ativas do mesmo conceito (escalar = vencedor).</li>
+            <li><b>Player sério</b> — anuncia em volume e com consistência (não amador com 1-2 anúncios soltos). Classifique abaixo.</li>
+            <li><b>Convergência</b> — vários SÉRIOS fazendo o mesmo = consenso de mercado. <b>É esse padrão que você modela</b> (roubo honesto), não o anúncio de um amador.</li>
+          </ul>
+        </div>
       </div>
 
       {/* Filtro de vencedores */}
@@ -111,6 +140,38 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
         <input type="checkbox" checked={onlyWinners} onChange={(e) => setOnlyWinners(e.target.checked)} />
         <Trophy size={14} style={{ color: "#D97706" }} /> Só vencedores (no ar há +30 dias)
       </label>
+
+      {/* Síntese do nicho (IA) — o padrão dos SÉRIOS, o que modelar */}
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)" }}>Síntese do nicho</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>o padrão dos sérios → o que modelar</span>
+          <button onClick={runSynthesis} disabled={synthLoading} style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 13px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: synthLoading ? "default" : "pointer" }}>
+            {synthLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />} Sintetizar
+          </button>
+        </div>
+        {synth?.error && <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{synth.error}</p>}
+        {synth?.synthesis && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            <div style={{ borderRadius: 10, border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)", background: "color-mix(in srgb, var(--accent) 7%, transparent)", padding: "10px 12px" }}>
+              <p style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Padrão dos sérios (consenso)</p>
+              <p style={{ fontSize: 12.5, color: "var(--text-primary)", margin: 0, lineHeight: 1.5 }}>{synth.synthesis.padrao}</p>
+            </div>
+            {synth.synthesis.modelar.length > 0 && (
+              <div>
+                <p style={{ fontSize: 10.5, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Modele (roubo honesto)</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {synth.synthesis.modelar.map((m, i) => (
+                    <span key={i} style={{ display: "flex", gap: 7, fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.45 }}><span style={{ color: "#16A34A", fontWeight: 700 }}>✓</span> {m}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {synth.synthesis.evitar && <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}><b style={{ color: "#DC2626" }}>Evite:</b> {synth.synthesis.evitar}</p>}
+            {synth.synthesis.brecha && <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}><b style={{ color: "var(--accent)" }}>Sua brecha:</b> {synth.synthesis.brecha}</p>}
+          </div>
+        )}
+      </div>
 
       {/* Descobrir no nicho (IA) */}
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -188,7 +249,18 @@ export function CompetitorsTab({ clientId }: { clientId: string }) {
                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, height: 36, borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
                 <ExternalLink size={13} /> Ver anúncios na Ad Library
               </a>
-              <textarea defaultValue={c.notes ?? ""} onBlur={(e) => saveNotes(c.id, e.target.value)} rows={3} placeholder="Anote o ângulo/oferta que vimos funcionando…"
+              <div style={{ display: "flex", gap: 5 }}>
+                {TIERS.map((t) => {
+                  const active = c.tier === t.key;
+                  return (
+                    <button key={t.key} onClick={() => setTier(c.id, active ? "" : t.key)}
+                      style={{ flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 10.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${active ? t.color : "var(--border)"}`, background: active ? `color-mix(in srgb, ${t.color} 14%, transparent)` : "var(--bg-elevated)", color: active ? t.color : "var(--text-muted)" }}>
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <textarea defaultValue={c.notes ?? ""} onBlur={(e) => saveNotes(c.id, e.target.value)} rows={3} placeholder="Anote: formato (estático/vídeo), gancho, oferta…"
                 style={{ resize: "vertical", padding: "8px 10px", background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, lineHeight: 1.5, color: "var(--text-primary)", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           ))}
