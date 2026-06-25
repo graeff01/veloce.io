@@ -170,7 +170,7 @@ export function BotTab({ clientId }: { clientId: string }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-base)" }}>
       <TabHeader icon={<Send size={16} />} tint="rgba(36,129,204,0.12)" iconColor="#2481CC" title="BOT do Telegram" subtitle="Alertas em tempo real dos leads deste cliente" />
-      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
         Bot do Telegram exclusivo deste cliente. Crie um bot no <b>@BotFather</b>, cole o token aqui e conecte os
         responsáveis — eles recebem em tempo real os alertas dos leads <b>só deste cliente</b>.
