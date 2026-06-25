@@ -117,7 +117,7 @@ export interface ClientDashboard {
   atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
-  bestCampaign: { name: string; leads: number; image: string | null } | null;
+  bestCampaign: { name: string; leads: number; image: string | null; creativeId: string | null } | null;
   series: { day: string; leads: number }[];
 }
 
@@ -229,7 +229,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
           const cr = await prisma.metaCreative.findUnique({ where: { connectionId_creativeId: { connectionId: metaConn.id, creativeId } }, select: { thumbnailUrl: true } });
           image = cr?.thumbnailUrl ?? null;
         }
-        bestCampaign = { name: c?.name ?? "Campanha", leads: topN, image };
+        bestCampaign = { name: c?.name ?? "Campanha", leads: topN, image, creativeId: creativeId ?? null };
       }
     }
   }

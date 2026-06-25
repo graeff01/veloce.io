@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, type Period } from "@/lib/notifications/client-report";
+import { getCreativeMedia, type CreativeMedia } from "@/lib/notifications/creative-media";
 import { buildTheme, themeStyle } from "@/lib/portal-theme";
 
 export const runtime = "nodejs";
@@ -26,9 +27,11 @@ const fmtDay = (d: string) => { const [, m, day] = d.split("-"); return `${day}/
 
 // Melhor campanha como um post do Instagram (mockup do feed) — preenche o card e
 // mostra o criativo vencedor "como ele aparece" pro lead.
-function CampaignShowcase({ campaign, brandName, logoUrl, accent, onAccent }: {
-  campaign: { name: string; leads: number; image: string | null }; brandName: string; logoUrl: string | null; accent: string; onAccent: string;
+function CampaignShowcase({ campaign, media, brandName, logoUrl, accent, onAccent }: {
+  campaign: { name: string; leads: number; image: string | null }; media: CreativeMedia | null; brandName: string; logoUrl: string | null; accent: string; onAccent: string;
 }) {
+  const poster = media?.image || campaign.image || null; // imagem em alta quando houver
+  const video = media?.video || null;
   return (
     <div className="pgrow" style={{ ...card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -47,12 +50,17 @@ function CampaignShowcase({ campaign, brandName, logoUrl, accent, onAccent }: {
           </div>
           <span style={{ color: "var(--p-muted)", fontSize: 16, letterSpacing: 1 }}>···</span>
         </div>
-        {/* criativo: fundo borrado preenche o espaço, imagem nítida por cima */}
-        {campaign.image ? (
+        {/* criativo: fundo borrado preenche o espaço; vídeo (com play) ou imagem em alta por cima */}
+        {video ? (
+          <div style={{ position: "relative", flex: 1, minHeight: 160, background: "#0a0a0a", overflow: "hidden" }}>
+            {poster && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${poster}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(22px)", transform: "scale(1.25)", opacity: 0.5 }} />}
+            <video src={video} poster={poster ?? undefined} controls playsInline preload="metadata" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", background: "transparent" }} />
+          </div>
+        ) : poster ? (
           <div style={{ position: "relative", flex: 1, minHeight: 150, background: "#0a0a0a", overflow: "hidden" }}>
-            <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${campaign.image}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(22px)", transform: "scale(1.25)", opacity: 0.55 }} />
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${poster}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(22px)", transform: "scale(1.25)", opacity: 0.55 }} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={campaign.image} alt="criativo da campanha" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+            <img src={poster} alt="criativo da campanha" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
         ) : (
           <div style={{ flex: 1, minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--p-accent-soft)", color: "var(--p-muted)", fontSize: 13 }}>Sem prévia do criativo</div>
@@ -135,6 +143,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
     getClientDashboard(portal.clientId, period),
     getBenchmark(portal.clientId, period).catch(() => null),
   ]);
+
+  // Mídia em alta do criativo vencedor (imagem grande + vídeo com play). Buscada
+  // fresca a cada render — a URL do CDN expira, mas a página é dinâmica.
+  const creativeMedia: CreativeMedia | null = data.bestCampaign?.creativeId
+    ? await getCreativeMedia(portal.clientId, data.bestCampaign.creativeId)
+    : null;
 
   const accent = buildTheme(portal.accentColor, "light").accent;
   const brandName = (bot?.brandName || "").trim() || client?.name || "Painel";
@@ -240,7 +254,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
             </div>
             {data.bestCampaign && (
-              <CampaignShowcase campaign={data.bestCampaign} brandName={brandName} logoUrl={client?.logoUrl ?? null} accent={accent} onAccent={buildTheme(portal.accentColor, "light").onAccent} />
+              <CampaignShowcase campaign={data.bestCampaign} media={creativeMedia} brandName={brandName} logoUrl={client?.logoUrl ?? null} accent={accent} onAccent={buildTheme(portal.accentColor, "light").onAccent} />
             )}
           </div>
         )}
