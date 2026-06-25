@@ -67,34 +67,37 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   return (
     <main style={{ minHeight: "100vh", background: "var(--p-bg)", color: "var(--p-text)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
-        .pwrap{max-width:560px;margin:0 auto;padding:20px 16px 48px}
-        .ptoggle{display:flex;gap:4px;margin-top:16px;background:var(--p-surface);border:1px solid var(--p-border);border-radius:11px;padding:4px}
-        .pkpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+        .ptopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
+        .ptopbar-in{max-width:1120px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+        .pbrand{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
+        .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:188px}
+        .pwrap{max-width:1120px;margin:0 auto;padding:18px 16px 56px}
+        .pkpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
         .ptiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-        /* Tablet/desktop: o painel se espalha em vez de virar uma tira fina */
-        @media(min-width:720px){
-          .pwrap{max-width:960px;padding:28px 24px 60px}
-          .ptoggle{max-width:340px}
+        /* Tablet/desktop: chrome de largura cheia (cara de sistema) + conteúdo espalhado */
+        @media(min-width:760px){
+          .ptopbar-in,.pwrap{padding-left:24px;padding-right:24px}
           .pkpis{grid-template-columns:repeat(4,1fr)}
           .ptiles{grid-template-columns:1fr 1fr}
         }`}</style>
-      <div className="pwrap">
 
-        {/* Header com a marca do cliente */}
-        <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {client?.logoUrl
-            ? <img src={client.logoUrl} alt={brandName} width={44} height={44} style={{ borderRadius: 12, objectFit: "cover", border: "1px solid var(--p-border)" }} />
-            : <div style={{ width: 44, height: 44, borderRadius: 12, background: accent, color: buildTheme(portal.accentColor, "light").onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20 }}>{brandName[0]?.toUpperCase()}</div>}
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>{brandName}</div>
-            <div style={{ fontSize: 12.5, color: "var(--p-muted)" }}>Painel de performance · {data.periodLabel}</div>
+      {/* Topbar full-width — dá cara de produto e tira o "tudo centralizado" */}
+      <div className="ptopbar">
+        <div className="ptopbar-in">
+          <div className="pbrand">
+            {client?.logoUrl
+              ? <img src={client.logoUrl} alt={brandName} width={40} height={40} style={{ borderRadius: 11, objectFit: "cover", border: "1px solid var(--p-border)" }} />
+              : <div style={{ width: 40, height: 40, borderRadius: 11, background: accent, color: buildTheme(portal.accentColor, "light").onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>{brandName[0]?.toUpperCase()}</div>}
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>{brandName}</div>
+              <div style={{ fontSize: 12, color: "var(--p-muted)" }}>Painel de performance · {data.periodLabel}</div>
+            </div>
           </div>
-        </header>
-
-        {/* Toggle de período */}
-        <div className="ptoggle">
-          {tab("month", "Mês")}{tab("week", "7 dias")}
+          <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
         </div>
+      </div>
+
+      <div className="pwrap">
 
         {/* Narrativa (o "e daí") — largura cheia */}
         {data.narrative.length > 0 && (
@@ -107,9 +110,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
 
         {/* Hero KPIs — 2 col no celular, 4 col no PC */}
         <section className="pkpis">
-          <Kpi label="Leads" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
+          <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
           <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} sub={data.midia ? `${int(data.midia.leads)} leads de anúncio` : "sem mídia conectada"} />
-          <Kpi label="Conversões" value={int(a.conversoes)} sub="negócios sinalizados" />
+          <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
           <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
         </section>
 
@@ -160,10 +163,10 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           {/* Mídia */}
           {data.midia && (
             <div style={card}>
-              <div style={{ ...capLabel, marginBottom: 12 }}>📣 Mídia no período</div>
+              <div style={{ ...capLabel, marginBottom: 12 }}>📣 Resultado dos anúncios</div>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div><div style={{ fontSize: 20, fontWeight: 800 }}>{brl(data.midia.spend)}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>investido</div></div>
-                <div><div style={{ fontSize: 20, fontWeight: 800 }}>{int(data.midia.leads)}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>leads</div></div>
+                <div><div style={{ fontSize: 20, fontWeight: 800 }}>{int(data.midia.leads)}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>leads de anúncio</div></div>
                 <div><div style={{ fontSize: 20, fontWeight: 800 }}>{data.midia.cpl != null ? brl(data.midia.cpl) : "—"}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>por lead</div></div>
               </div>
             </div>
