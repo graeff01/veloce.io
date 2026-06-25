@@ -23,6 +23,32 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: React.
   );
 }
 
+const fmtDay = (d: string) => { const [, m, day] = d.split("-"); return `${day}/${m}`; };
+
+// Mini-gráfico de barras (tendência de conversas por dia). Sem eixos, sem poluição.
+function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
+  const maxV = Math.max(1, ...series.map((s) => s.leads));
+  const total = series.reduce((s, x) => s + x.leads, 0);
+  return (
+    <div style={{ ...card, marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={capLabel}>📈 Conversas por dia</span>
+        <span style={{ fontSize: 11.5, color: "var(--p-muted)" }}>{total} no período · pico {maxV}/dia</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72 }}>
+        {series.map((s, i) => {
+          const h = Math.max(3, Math.round((s.leads / maxV) * 100));
+          return <div key={i} title={`${fmtDay(s.day)}: ${s.leads} conversa(s)`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "var(--p-accent)" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 3 }} />;
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 10.5, color: "var(--p-muted)" }}>
+        <span>{fmtDay(series[0].day)}</span>
+        <span>{fmtDay(series[series.length - 1].day)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default async function PortalPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ p?: string }> }) {
   const { token } = await params;
   const { p } = await searchParams;
@@ -66,8 +92,17 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   };
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--p-bg)", color: "var(--p-text)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <main className="pmain">
       <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
+        /* Fundo com profundidade: brilho sutil na cor do cliente + textura de pontos
+           discreta (preenche as bordas vazias no PC sem poluir). Estático de propósito. */
+        .pmain{min-height:100vh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
+          background-color:var(--p-bg);
+          background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
+          background-size:100% 560px, 24px 24px;
+          background-repeat:no-repeat, repeat;
+          background-position:center top, center top;
+          background-attachment:fixed, fixed;}
         .ptopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
         .ptopbar-in{max-width:1120px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
         .pbrand{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
@@ -141,6 +176,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
           <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
         </section>
+        {data.series.length > 1 && <Sparkline series={data.series} />}
         <div className="ptiles">
           {/* Saúde do atendimento */}
           <div style={{ ...card, display: "flex", alignItems: "center", gap: 16 }}>

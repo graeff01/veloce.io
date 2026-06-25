@@ -118,6 +118,7 @@ export interface ClientDashboard {
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
   bestCampaign: { name: string; leads: number } | null;
+  series: { day: string; leads: number }[];
 }
 
 // Início do período (BRT) + período comparável anterior, para "semana" ou "mês".
@@ -168,7 +169,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   const excluded = await excludedTokens(clientId);
 
   const [convsRaw, prevLeads, waiting, metaConn, wa] = await Promise.all([
-    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
+    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true, firstInboundAt: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     connIds.length ? prisma.waConversation.count({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
     waitingWithTemp(connIds, excluded),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
@@ -184,6 +185,13 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   const taxaResposta = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
   const deltaPct = prevLeads > 0 ? Math.round(((leads - prevLeads) / prevLeads) * 100) : null;
   const atendimento = { leads, leadsPrev: prevLeads, deltaPct, respondidos, taxaResposta, tempoMedioMin, conversoes };
+
+  // Série diária de conversas (mini-gráfico de tendência no painel).
+  const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TZ }); // YYYY-MM-DD em BRT
+  const dayCounts = new Map<string, number>();
+  for (const c of convs) { if (c.firstInboundAt) { const k = dayKey(c.firstInboundAt); dayCounts.set(k, (dayCounts.get(k) ?? 0) + 1); } }
+  const series: { day: string; leads: number }[] = [];
+  for (let t = start.getTime(); t <= now.getTime(); t += 86_400_000) { const k = dayKey(new Date(t)); series.push({ day: k, leads: dayCounts.get(k) ?? 0 }); }
 
   const hot = waiting.filter((w) => w.temp === "hot").length;
   const warm = waiting.filter((w) => w.temp === "warm").length;
@@ -223,7 +231,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     health: healthScore(atendimento, hot),
     atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
-    midia, bestCampaign,
+    midia, bestCampaign, series,
   };
 }
 
