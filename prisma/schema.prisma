@@ -114,6 +114,8 @@ model Client {
   catalogItems      CatalogItem[]
   knowledgeChunks   KnowledgeChunk[]
   winningCampaigns  WinningCampaign[]
+  competitors       Competitor[]
+  winningCreatives  WinningCreative[]
 }
 
 model Meeting {
@@ -338,6 +340,44 @@ model ContentVersion {
   post ContentPost @relation(fields: [postId], references: [id])
 
   @@index([postId])
+}
+
+// ── Inteligência Competitiva (interna, por cliente) ───────────────────────────
+// Players do nicho + swipe de criativos vencedores. Sem métrica do Meta (não
+// existe p/ comercial BR): o sinal de "vencedor" é a longevidade (no ar há X dias).
+model Competitor {
+  id           String   @id @default(cuid())
+  clientId     String
+  name         String
+  tier         String?  // serio | medio | amador
+  adLibraryUrl String?  // deep-link da Biblioteca de Anúncios
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client  Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  winners WinningCreative[]
+
+  @@index([clientId])
+}
+
+model WinningCreative {
+  id           String    @id @default(cuid())
+  clientId     String
+  competitorId String?
+  adLibraryUrl String
+  format       String    // imagem | carrossel | video | reels
+  angle        String    // preco | entrada | urgencia | prova_social | autoridade | novidade | comparacao | garantia
+  offer        String?
+  note         String?
+  liveSince    DateTime? // "no ar desde" → longevidade
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  competitor Competitor? @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([competitorId])
 }
 
 model Brain {
