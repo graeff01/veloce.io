@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, ExternalLink, Sparkles, Radar, Target, ImagePlus, X } from "lucide-react";
+import { Loader2, Plus, Trash2, ExternalLink, Sparkles, Radar, Target, ImagePlus, X, Link2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { TabHeader } from "@/components/clients/tab-header";
 
 interface Player { id: string; name: string; tier: string | null; adLibraryUrl: string | null; pageId: string | null; _count?: { winners: number } }
 interface Winner { id: string; adLibraryUrl: string | null; adId: string | null; thumbnailUrl: string | null; adName: string | null; format: string; angle: string; offer: string | null; note: string | null; liveSince: string | null; competitor: { id: string; name: string; tier: string | null } | null }
-interface Synthesis { padrao: string; modelar: string[]; evitar: string; brecha: string }
 interface AdRow { adId: string; name: string; campaignName: string; leads: number; thumbnailUrl: string | null; startedAt: string | null }
 
 const FORMATS = [["imagem", "Imagem"], ["carrossel", "Carrossel"], ["video", "Vídeo"], ["reels", "Reels"]] as const;
@@ -47,11 +46,7 @@ export function CompetitiveIntelTab({ clientId }: { clientId: string }) {
         subtitle="Uso interno · players do nicho, criativos vencedores e a leitura do mercado pela IA"
       />
       <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* topo em 2 colunas no wide; embaixo os vencedores em largura cheia */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
-          <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
-          <SynthesisSection clientId={clientId} ready={(winners?.length ?? 0) >= 3} />
-        </div>
+        <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
         <WinnersSection clientId={clientId} players={players ?? []} winners={winners} onChange={loadWinners} />
       </div>
     </div>
@@ -71,6 +66,7 @@ function PlayerAvatar({ player, size = 34 }: { player: Player; size?: number }) 
 function PlayersSection({ clientId, players, onChange }: { clientId: string; players: Player[] | null; onChange: () => void }) {
   const [name, setName] = useState("");
   const [tier, setTier] = useState("");
+  const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [suggest, setSuggest] = useState<{ players: string[]; termos: string[]; error?: string } | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -78,8 +74,14 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
   async function add(n: string) {
     const nm = n.trim(); if (!nm) return;
     setBusy(true);
-    await fetch(`/api/clients/${clientId}/competitors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, tier: tier || undefined }) });
-    setBusy(false); setName(""); setTier(""); onChange();
+    await fetch(`/api/clients/${clientId}/competitors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, tier: tier || undefined, adLibraryUrl: link.trim() || undefined }) });
+    setBusy(false); setName(""); setTier(""); setLink(""); onChange();
+  }
+  async function setPlayerLink(id: string) {
+    const url = window.prompt("Cole o link da página ou da Ad Library do concorrente (pega o logo):");
+    if (url == null) return;
+    await fetch(`/api/clients/${clientId}/competitors/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adLibraryUrl: url.trim() }) });
+    onChange();
   }
   async function setPlayerTier(id: string, t: string) {
     await fetch(`/api/clients/${clientId}/competitors/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier: t }) });
@@ -133,6 +135,7 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
                   <button key={k} onClick={() => setPlayerTier(p.id, k)} style={{ padding: "4px 9px", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, background: p.tier === k ? `${tierColor(k)}1f` : "transparent", color: p.tier === k ? tierColor(k) : "var(--text-muted)" }}>{lbl}</button>
                 ))}
               </div>
+              <button onClick={() => setPlayerLink(p.id)} style={{ ...ghost, padding: 7, color: p.pageId ? "var(--accent)" : "var(--text-secondary)" }} title="Definir link da página (carrega o logo)"><Link2 size={13} /></button>
               <a href={p.adLibraryUrl || adLibSearch(p.name)} target="_blank" rel="noopener noreferrer" style={{ ...ghost, padding: 7 }} title="Abrir na Ad Library"><ExternalLink size={13} /></a>
               <button onClick={() => del(p.id)} style={{ ...ghost, padding: 7, color: "var(--red)" }}><Trash2 size={13} /></button>
             </div>
@@ -141,6 +144,7 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <input style={{ ...field, flex: 1, minWidth: 140 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do concorrente" onKeyDown={(e) => { if (e.key === "Enter") add(name); }} />
+        <input style={{ ...field, flex: 1, minWidth: 160 }} value={link} onChange={(e) => setLink(e.target.value)} placeholder="Link da página (logo, opcional)" />
         <select style={field} value={tier} onChange={(e) => setTier(e.target.value)}>
           <option value="">Tier…</option>
           {TIERS.map(([k, lbl]) => <option key={k} value={k}>{lbl}</option>)}
@@ -310,56 +314,5 @@ function AdPickerModal({ clientId, onPick, onClose }: { clientId: string; onPick
           </div>
         )}
     </Modal>
-  );
-}
-
-// ── 3. Leitura do nicho (IA) ──────────────────────────────────────────────────
-function SynthesisSection({ clientId, ready }: { clientId: string; ready: boolean }) {
-  const [data, setData] = useState<Synthesis | null>(null);
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function run() {
-    setBusy(true); setErr("");
-    const d = await fetch(`/api/clients/${clientId}/competitors/synthesis`).then((r) => r.json()).catch(() => null);
-    setBusy(false);
-    if (d?.synthesis) setData(d.synthesis); else setErr(d?.error ?? "Falha ao sintetizar.");
-  }
-
-  return (
-    <section style={{ ...card, padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <span style={secTitle}><Sparkles size={15} style={{ color: "var(--accent)" }} /> Leitura do nicho (IA)</span>
-        <button onClick={run} disabled={busy || !ready} style={{ ...primary, opacity: busy || !ready ? 0.6 : 1 }}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Sintetizar</button>
-      </div>
-      {!ready && <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>Salve pelo menos 3 vencedores (com formato e ângulo) pra IA achar o padrão.</p>}
-      {err && <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>{err}</p>}
-      {data && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-          <div style={{ padding: 12, borderRadius: 10, background: "var(--bg-base)", border: "1px solid var(--border)" }}>
-            <div style={cap}>Padrão dos vencedores</div>
-            <div style={{ fontSize: 13.5, color: "var(--text-primary)", lineHeight: 1.5, marginTop: 4 }}>{data.padrao}</div>
-          </div>
-          {data.modelar.length > 0 && (
-            <div style={{ padding: 12, borderRadius: 10, background: "#16A34A0d", border: "1px solid #16A34A33" }}>
-              <div style={{ ...cap, color: "#16A34A" }}>✅ O que modelar</div>
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{data.modelar.map((m, i) => <li key={i}>{m}</li>)}</ul>
-            </div>
-          )}
-          {data.evitar && (
-            <div style={{ padding: 12, borderRadius: 10, background: "#d6453d0d", border: "1px solid #d6453d33" }}>
-              <div style={{ ...cap, color: "#d6453d" }}>⛔ O que evitar</div>
-              <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, marginTop: 4 }}>{data.evitar}</div>
-            </div>
-          )}
-          {data.brecha && (
-            <div style={{ padding: 12, borderRadius: 10, background: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}>
-              <div style={{ ...cap, color: "var(--accent)" }}>💡 A brecha (ninguém explora)</div>
-              <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, marginTop: 4 }}>{data.brecha}</div>
-            </div>
-          )}
-        </div>
-      )}
-    </section>
   );
 }
