@@ -164,6 +164,10 @@ function WinnersSection({ clientId, players, winners, onChange }: { clientId: st
   function pickAd(ad: AdRow) {
     setForm((f) => ({ ...f, adId: ad.adId, thumbnailUrl: ad.thumbnailUrl ?? "", adName: ad.name, adLibraryUrl: "", liveSince: ad.startedAt ? ad.startedAt.slice(0, 10) : f.liveSince }));
     setPicker(false); setOpen(true);
+    // o sistema já sabe o formato pelo criativo → preenche automático
+    fetch(`/api/clients/${clientId}/meta/ad-format?adId=${encodeURIComponent(ad.adId)}`)
+      .then((r) => r.json()).then((d) => { if (d?.format) setForm((f) => (f.adId === ad.adId ? { ...f, format: d.format } : f)); })
+      .catch(() => {});
   }
   async function save() {
     if (!form.adId && !form.adLibraryUrl.trim()) { setErr("Escolha um anúncio ou cole o link da Ad Library."); return; }

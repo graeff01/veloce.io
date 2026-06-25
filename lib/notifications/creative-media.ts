@@ -6,6 +6,7 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 export interface CreativeMedia {
   video: string | null; // URL do vídeo (Meta CDN, assinada — NÃO contém o token da conta)
   image: string | null; // melhor imagem / poster em alta
+  format: string | null; // video | carrossel | imagem (detectado do criativo)
 }
 
 // Busca, no servidor, a mídia em alta qualidade do criativo (imagem grande +
@@ -31,6 +32,11 @@ export async function getCreativeMedia(clientId: string, creativeId: string): Pr
       c.asset_feed_spec?.videos?.[0]?.video_id ||
       null;
 
+    // detecta o formato pelo criativo
+    const childCount = c.object_story_spec?.link_data?.child_attachments?.length ?? 0;
+    const afsImages = c.asset_feed_spec?.images?.length ?? 0;
+    const format: string = videoId ? "video" : (childCount > 1 || afsImages > 1) ? "carrossel" : "imagem";
+
     let video: string | null = null;
     if (videoId) {
       const vr = await fetch(`${GRAPH}/${videoId}?fields=source,picture&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(7000) });
@@ -41,7 +47,7 @@ export async function getCreativeMedia(clientId: string, creativeId: string): Pr
       }
     }
 
-    return { video, image };
+    return { video, image, format };
   } catch {
     return null;
   }
