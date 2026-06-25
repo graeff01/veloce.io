@@ -24,6 +24,22 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: React.
 
 const fmtDay = (d: string) => { const [, m, day] = d.split("-"); return `${day}/${m}`; };
 
+// Medidor circular animado (donut SVG) — o arco "enche" ao carregar. R fixo em 32
+// (circunferência ≈ 202, casada com o @keyframes gaugeIn).
+function Gauge({ score, color }: { score: number; color: string }) {
+  const R = 32, C = 2 * Math.PI * R;
+  const off = C * (1 - Math.max(0, Math.min(100, score)) / 100);
+  return (
+    <svg width="86" height="86" viewBox="0 0 84 84" style={{ flexShrink: 0, animation: "gaugeFade .5s ease-out both" }}>
+      <circle cx="42" cy="42" r={R} fill="none" stroke="var(--p-accent-soft)" strokeWidth="8" />
+      <circle cx="42" cy="42" r={R} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+        strokeDasharray={C} strokeDashoffset={off} transform="rotate(-90 42 42)"
+        style={{ animation: "gaugeIn 1.2s cubic-bezier(.22,1,.36,1) both" }} />
+      <text x="42" y="43" textAnchor="middle" dominantBaseline="central" style={{ fontSize: 23, fontWeight: 800, fill: "var(--p-text)" }}>{score}</text>
+    </svg>
+  );
+}
+
 // Mini-gráfico de barras (tendência de conversas por dia). Sem eixos, sem poluição.
 function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
   const maxV = Math.max(1, ...series.map((s) => s.leads));
@@ -130,7 +146,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           .pcol-atd{grid-area:atd;min-height:0}
           .pgrow{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center}
           .pspark{flex:1;min-height:0}
-        }`}</style>
+        }
+        @keyframes gaugeIn{from{stroke-dashoffset:202px}}
+        @keyframes gaugeFade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}`}</style>
 
       {/* Topbar full-width */}
       <div className="ptopbar">
@@ -195,16 +213,10 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
             <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
           </div>
-          {data.series.length > 1 && <Sparkline series={data.series} />}
           <div className="ptiles">
-            {/* Saúde do atendimento */}
+            {/* Saúde do atendimento — gauge animado, a estrela do bloco */}
             <div style={{ ...card, display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ width: 72, height: 72, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                background: `conic-gradient(${healthColor} ${data.health.score * 3.6}deg, var(--p-accent-soft) 0)` }}>
-                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--p-surface)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 21, fontWeight: 800, color: "var(--p-text)" }}>{data.health.score}</span>
-                </div>
-              </div>
+              <Gauge score={data.health.score} color={healthColor} />
               <div>
                 <div style={capLabel}>Saúde do atendimento</div>
                 <div style={{ fontSize: 19, fontWeight: 800, color: healthColor, marginTop: 4 }}>{data.health.label}</div>
@@ -229,6 +241,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               )}
             </div>
           </div>
+          {data.series.length > 1 && <Sparkline series={data.series} />}
         </div>
 
       </div>
