@@ -46,10 +46,66 @@ export function CompetitiveIntelTab({ clientId }: { clientId: string }) {
         subtitle="Uso interno · players do nicho, criativos vencedores e a leitura do mercado pela IA"
       />
       <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <BridgeSection clientId={clientId} winnersCount={winners?.length ?? 0} />
         <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
         <WinnersSection clientId={clientId} players={players ?? []} winners={winners} onChange={loadWinners} />
       </div>
     </div>
+  );
+}
+
+// ── A Ponte: leads × vencedores ───────────────────────────────────────────────
+interface BridgeRec { angle: string; count: number; kind: "modelar" | "gap"; winners: number; maxDays: number | null }
+interface BridgeData { totalLeadMsgs: number; hasMessages: boolean; recommendations: BridgeRec[] }
+
+function RecRow({ r, headline }: { r: BridgeRec; headline?: boolean }) {
+  const ok = r.kind === "modelar";
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: headline ? "12px 13px" : "10px 11px", borderRadius: 10, background: ok ? "#16A34A0d" : "#D977060d", border: `1px solid ${ok ? "#16A34A33" : "#D9770633"}` }}>
+      <span style={{ fontSize: headline ? 17 : 15, lineHeight: 1 }}>{ok ? "✅" : "⚠️"}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: headline ? 14.5 : 13, fontWeight: 700, color: "var(--text-primary)" }}>
+          {angLabel(r.angle)} <span style={{ fontWeight: 500, color: "var(--text-muted)" }}>· {r.count} menções nos leads</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.45 }}>
+          {ok
+            ? `Você tem ${r.winners} vencedor(es) desse ângulo${r.maxDays ? ` (mais longevo: ${r.maxDays} dias no ar)` : ""}. Modele esse criativo no próximo.`
+            : `Você não tem vencedor desse ângulo no swipe. Procure um na Ad Library e teste — a demanda já existe.`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BridgeSection({ clientId, winnersCount }: { clientId: string; winnersCount: number }) {
+  const [data, setData] = useState<BridgeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/clients/${clientId}/competitors/bridge`).then((r) => r.json()).then((d) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+  }, [clientId, winnersCount]);
+
+  const recs = data?.recommendations ?? [];
+  return (
+    <section style={{ ...card, padding: 16, borderLeft: "3px solid var(--accent)" }}>
+      <span style={secTitle}>🔗 Ponte: leads × vencedores</span>
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>O que seus leads mais puxam no WhatsApp (últimos 90 dias) cruzado com os ângulos que vencem — o próximo criativo a testar. Só você tem esse cruzamento.</p>
+      {loading ? <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-muted)", marginTop: 12 }} />
+        : !data?.hasMessages ? <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 12 }}>Sem conversas de leads suficientes ainda pra cruzar.</p>
+        : recs.length === 0 ? <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 12 }}>Ainda não identifiquei temas claros nas conversas dos leads.</p>
+        : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+            <div style={{ ...cap, color: "var(--accent)" }}>🎯 Próximo criativo a testar</div>
+            <RecRow r={recs[0]} headline />
+            {recs.length > 1 && (
+              <>
+                <div style={{ ...cap, marginTop: 4 }}>Outros sinais dos leads</div>
+                {recs.slice(1).map((r) => <RecRow key={r.angle} r={r} />)}
+              </>
+            )}
+          </div>
+        )}
+    </section>
   );
 }
 
