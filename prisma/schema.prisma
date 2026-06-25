@@ -351,6 +351,7 @@ model Competitor {
   name         String
   tier         String?  // serio | medio | amador
   adLibraryUrl String?  // deep-link da Biblioteca de Anúncios
+  pageId       String?  // id da página no FB → logo público + deep-link exato
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -364,7 +365,10 @@ model WinningCreative {
   id           String    @id @default(cuid())
   clientId     String
   competitorId String?
-  adLibraryUrl String
+  adLibraryUrl String?   // link da Ad Library (concorrente) — opcional se vier de anúncio próprio
+  adId         String?   // anúncio do próprio cliente (Meta) escolhido no modal
+  thumbnailUrl String?   // imagem do criativo (cache p/ o card)
+  adName       String?   // nome do anúncio escolhido
   format       String    // imagem | carrossel | video | reels
   angle        String    // preco | entrada | urgencia | prova_social | autoridade | novidade | comparacao | garantia
   offer        String?

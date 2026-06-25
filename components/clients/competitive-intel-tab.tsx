@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, ExternalLink, Sparkles, Radar, Target } from "lucide-react";
+import { Loader2, Plus, Trash2, ExternalLink, Sparkles, Radar, Target, ImagePlus, X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 
-interface Player { id: string; name: string; tier: string | null; adLibraryUrl: string | null; _count?: { winners: number } }
-interface Winner { id: string; adLibraryUrl: string; format: string; angle: string; offer: string | null; note: string | null; liveSince: string | null; competitor: { id: string; name: string; tier: string | null } | null }
+interface Player { id: string; name: string; tier: string | null; adLibraryUrl: string | null; pageId: string | null; _count?: { winners: number } }
+interface Winner { id: string; adLibraryUrl: string | null; adId: string | null; thumbnailUrl: string | null; adName: string | null; format: string; angle: string; offer: string | null; note: string | null; liveSince: string | null; competitor: { id: string; name: string; tier: string | null } | null }
 interface Synthesis { padrao: string; modelar: string[]; evitar: string; brecha: string }
+interface AdRow { adId: string; name: string; campaignName: string; leads: number; thumbnailUrl: string | null; startedAt: string | null }
 
 const FORMATS = [["imagem", "Imagem"], ["carrossel", "Carrossel"], ["video", "Vídeo"], ["reels", "Reels"]] as const;
 const ANGLES = [
@@ -17,6 +19,7 @@ const fmtLabel = (k: string) => FORMATS.find((f) => f[0] === k)?.[1] ?? k;
 const angLabel = (k: string) => ANGLES.find((a) => a[0] === k)?.[1] ?? k;
 const tierColor = (t: string | null) => (t === "serio" ? "#16A34A" : t === "amador" ? "#d6453d" : t === "medio" ? "#D97706" : "var(--text-muted)");
 const adLibSearch = (q: string) => `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BR&q=${encodeURIComponent(q)}&search_type=keyword_unordered`;
+const fbLogo = (pageId: string) => `https://graph.facebook.com/${pageId}/picture?type=square`;
 
 const card: React.CSSProperties = { background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12 };
 const field: React.CSSProperties = { height: 36, borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-base)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13, boxSizing: "border-box" };
@@ -25,10 +28,7 @@ const ghost: React.CSSProperties = { display: "inline-flex", alignItems: "center
 const primary: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const cap: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.4 };
 
-function daysSince(iso: string | null): number | null {
-  if (!iso) return null;
-  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000));
-}
+const daysSince = (iso: string | null): number | null => (iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000)) : null);
 
 export function CompetitiveIntelTab({ clientId }: { clientId: string }) {
   const [players, setPlayers] = useState<Player[] | null>(null);
@@ -39,19 +39,31 @@ export function CompetitiveIntelTab({ clientId }: { clientId: string }) {
   useEffect(() => { loadPlayers(); loadWinners(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 1000 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <h2 style={{ ...secTitle, fontSize: 17 }}><Radar size={16} style={{ color: "var(--accent)" }} /> Inteligência Competitiva</h2>
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-          Uso interno da Veloce. Mapeia os players do nicho, guarda os criativos vencedores (com tags + longevidade) e a IA lê o padrão do mercado — pra estruturar o tráfego, não acumular link.
+          Uso interno da Veloce. Mapeia os players do nicho, guarda os criativos vencedores (tags + longevidade) e a IA lê o padrão do mercado — pra estruturar o tráfego, não acumular link.
         </p>
       </div>
 
-      <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
+      {/* topo em 2 colunas no wide; embaixo os vencedores em largura cheia */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
+        <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
+        <SynthesisSection clientId={clientId} ready={(winners?.length ?? 0) >= 3} />
+      </div>
       <WinnersSection clientId={clientId} players={players ?? []} winners={winners} onChange={loadWinners} />
-      <SynthesisSection clientId={clientId} ready={(winners?.length ?? 0) >= 3} />
     </div>
   );
+}
+
+function PlayerAvatar({ player, size = 34 }: { player: Player; size?: number }) {
+  const [err, setErr] = useState(false);
+  if (player.pageId && !err) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={fbLogo(player.pageId)} alt="" width={size} height={size} onError={() => setErr(true)} style={{ width: size, height: size, borderRadius: 9, objectFit: "cover", border: "1px solid var(--border)", flexShrink: 0 }} />;
+  }
+  return <div style={{ width: size, height: size, borderRadius: 9, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: size * 0.42, flexShrink: 0 }}>{player.name[0]?.toUpperCase()}</div>;
 }
 
 // ── 1. Players ────────────────────────────────────────────────────────────────
@@ -62,10 +74,10 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
   const [suggest, setSuggest] = useState<{ players: string[]; termos: string[]; error?: string } | null>(null);
   const [suggesting, setSuggesting] = useState(false);
 
-  async function add(n: string, t?: string) {
+  async function add(n: string) {
     const nm = n.trim(); if (!nm) return;
     setBusy(true);
-    await fetch(`/api/clients/${clientId}/competitors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, tier: t || tier || undefined }) });
+    await fetch(`/api/clients/${clientId}/competitors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, tier: tier || undefined }) });
     setBusy(false); setName(""); setTier(""); onChange();
   }
   async function setPlayerTier(id: string, t: string) {
@@ -84,32 +96,24 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
     <section style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <span style={secTitle}><Target size={15} /> Players do nicho</span>
-        <button onClick={runSuggest} disabled={suggesting} style={ghost}>{suggesting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} IA sugerir players</button>
+        <button onClick={runSuggest} disabled={suggesting} style={ghost}>{suggesting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} IA sugerir</button>
       </div>
 
       {suggest && (
         <div style={{ marginTop: 12, padding: 12, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-base)" }}>
           {suggest.error && <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{suggest.error}</p>}
-          {suggest.players.length > 0 && (
-            <>
-              <div style={cap}>Players sugeridos (investigue)</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                {suggest.players.map((p) => (
-                  <button key={p} onClick={() => add(p)} style={{ ...ghost, padding: "5px 10px" }} title="Adicionar"><Plus size={12} /> {p}</button>
-                ))}
-              </div>
-            </>
-          )}
-          {suggest.termos.length > 0 && (
-            <>
-              <div style={{ ...cap, marginTop: 10 }}>Termos pra buscar na Ad Library</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                {suggest.termos.map((t) => (
-                  <a key={t} href={adLibSearch(t)} target="_blank" rel="noopener noreferrer" style={{ ...ghost, padding: "5px 10px", textDecoration: "none" }}><ExternalLink size={11} /> {t}</a>
-                ))}
-              </div>
-            </>
-          )}
+          {suggest.players.length > 0 && (<>
+            <div style={cap}>Players sugeridos (investigue)</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              {suggest.players.map((p) => <button key={p} onClick={() => add(p)} style={{ ...ghost, padding: "5px 10px" }}><Plus size={12} /> {p}</button>)}
+            </div>
+          </>)}
+          {suggest.termos.length > 0 && (<>
+            <div style={{ ...cap, marginTop: 10 }}>Termos pra buscar na Ad Library</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              {suggest.termos.map((t) => <a key={t} href={adLibSearch(t)} target="_blank" rel="noopener noreferrer" style={{ ...ghost, padding: "5px 10px", textDecoration: "none" }}><ExternalLink size={11} /> {t}</a>)}
+            </div>
+          </>)}
         </div>
       )}
 
@@ -117,9 +121,12 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
         {players === null ? <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-muted)" }} />
           : players.length === 0 ? <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum player ainda. Use a IA ou adicione abaixo.</p>
           : players.map((p) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-elevated)", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", flex: 1, minWidth: 120 }}>{p.name}</span>
-              {p._count != null && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p._count.winners} vencedor(es)</span>}
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-elevated)", flexWrap: "wrap" }}>
+              <PlayerAvatar player={p} />
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{p.name}</div>
+                {p._count != null && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p._count.winners} vencedor(es)</div>}
+              </div>
               <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
                 {TIERS.map(([k, lbl]) => (
                   <button key={k} onClick={() => setPlayerTier(p.id, k)} style={{ padding: "4px 9px", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, background: p.tier === k ? `${tierColor(k)}1f` : "transparent", color: p.tier === k ? tierColor(k) : "var(--text-muted)" }}>{lbl}</button>
@@ -132,7 +139,7 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
       </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <input style={{ ...field, flex: 1, minWidth: 160 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do concorrente" onKeyDown={(e) => { if (e.key === "Enter") add(name); }} />
+        <input style={{ ...field, flex: 1, minWidth: 140 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do concorrente" onKeyDown={(e) => { if (e.key === "Enter") add(name); }} />
         <select style={field} value={tier} onChange={(e) => setTier(e.target.value)}>
           <option value="">Tier…</option>
           {TIERS.map(([k, lbl]) => <option key={k} value={k}>{lbl}</option>)}
@@ -144,36 +151,53 @@ function PlayersSection({ clientId, players, onChange }: { clientId: string; pla
 }
 
 // ── 2. Vencedores (swipe) ─────────────────────────────────────────────────────
+const emptyForm = { adLibraryUrl: "", adId: "", thumbnailUrl: "", adName: "", format: "video", angle: "preco", offer: "", liveSince: "", competitorId: "", note: "" };
+
 function WinnersSection({ clientId, players, winners, onChange }: { clientId: string; players: Player[]; winners: Winner[] | null; onChange: () => void }) {
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<{ format?: string; angle?: string }>({});
-  const [form, setForm] = useState({ adLibraryUrl: "", format: "video", angle: "preco", offer: "", liveSince: "", competitorId: "", note: "" });
+  const [picker, setPicker] = useState(false);
+  const [filter, setFilter] = useState<{ angle?: string }>({});
+  const [form, setForm] = useState({ ...emptyForm });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  function pickAd(ad: AdRow) {
+    setForm((f) => ({ ...f, adId: ad.adId, thumbnailUrl: ad.thumbnailUrl ?? "", adName: ad.name, adLibraryUrl: "", liveSince: ad.startedAt ? ad.startedAt.slice(0, 10) : f.liveSince }));
+    setPicker(false); setOpen(true);
+  }
   async function save() {
-    if (!form.adLibraryUrl.trim()) { setErr("Cole o link da Ad Library."); return; }
+    if (!form.adId && !form.adLibraryUrl.trim()) { setErr("Escolha um anúncio ou cole o link da Ad Library."); return; }
     setBusy(true); setErr("");
     const r = await fetch(`/api/clients/${clientId}/winners`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     setBusy(false);
     if (!r.ok) { const d = await r.json().catch(() => ({})); setErr(d.error ?? "Erro ao salvar"); return; }
-    setForm({ adLibraryUrl: "", format: "video", angle: "preco", offer: "", liveSince: "", competitorId: "", note: "" });
-    setOpen(false); onChange();
+    setForm({ ...emptyForm }); setOpen(false); onChange();
   }
   async function del(id: string) { await fetch(`/api/clients/${clientId}/winners/${id}`, { method: "DELETE" }); onChange(); }
 
-  const list = (winners ?? []).filter((w) => (!filter.format || w.format === filter.format) && (!filter.angle || w.angle === filter.angle));
+  const list = (winners ?? []).filter((w) => !filter.angle || w.angle === filter.angle);
 
   return (
     <section style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <span style={secTitle}>🏆 Vencedores do nicho <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>(swipe)</span></span>
-        <button onClick={() => setOpen((v) => !v)} style={primary}><Plus size={14} /> Salvar vencedor</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setPicker(true)} style={ghost}><ImagePlus size={14} /> Escolher dos meus anúncios</button>
+          <button onClick={() => { setForm({ ...emptyForm }); setOpen((v) => !v); }} style={primary}><Plus size={14} /> Link de concorrente</button>
+        </div>
       </div>
 
       {open && (
         <div style={{ marginTop: 12, padding: 12, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-base)", display: "flex", flexDirection: "column", gap: 8 }}>
-          <input style={field} value={form.adLibraryUrl} onChange={(e) => setForm({ ...form, adLibraryUrl: e.target.value })} placeholder="Link do anúncio na Ad Library" />
+          {form.adId ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {form.thumbnailUrl && /* eslint-disable-next-line @next/next/no-img-element */ <img src={form.thumbnailUrl} alt="" width={44} height={44} style={{ borderRadius: 8, objectFit: "cover" }} />}
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>{form.adName || "Anúncio selecionado"}</span>
+              <button onClick={() => setForm((f) => ({ ...f, adId: "", thumbnailUrl: "", adName: "" }))} style={{ ...ghost, padding: 6 }}><X size={13} /></button>
+            </div>
+          ) : (
+            <input style={field} value={form.adLibraryUrl} onChange={(e) => setForm({ ...form, adLibraryUrl: e.target.value })} placeholder="Link do anúncio na Ad Library (concorrente)" />
+          )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select style={{ ...field, flex: 1, minWidth: 110 }} value={form.format} onChange={(e) => setForm({ ...form, format: e.target.value })}>{FORMATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             <select style={{ ...field, flex: 1, minWidth: 140 }} value={form.angle} onChange={(e) => setForm({ ...form, angle: e.target.value })}>{ANGLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -192,41 +216,95 @@ function WinnersSection({ clientId, players, winners, onChange }: { clientId: st
         </div>
       )}
 
-      {/* filtros */}
       {(winners?.length ?? 0) > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
           {ANGLES.filter(([k]) => (winners ?? []).some((w) => w.angle === k)).map(([k, l]) => (
-            <button key={k} onClick={() => setFilter((f) => ({ ...f, angle: f.angle === k ? undefined : k }))} style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: `1px solid ${filter.angle === k ? "var(--accent)" : "var(--border)"}`, background: filter.angle === k ? "var(--accent-soft)" : "var(--bg-surface)", color: filter.angle === k ? "var(--accent)" : "var(--text-secondary)" }}>{l}</button>
+            <button key={k} onClick={() => setFilter((f) => ({ angle: f.angle === k ? undefined : k }))} style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: `1px solid ${filter.angle === k ? "var(--accent)" : "var(--border)"}`, background: filter.angle === k ? "var(--accent-soft)" : "var(--bg-surface)", color: filter.angle === k ? "var(--accent)" : "var(--text-secondary)" }}>{l}</button>
           ))}
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, marginTop: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginTop: 12 }}>
         {winners === null ? <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-muted)" }} />
           : list.length === 0 ? <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum vencedor salvo {winners.length > 0 ? "nesse filtro" : "ainda"}.</p>
           : list.map((w) => {
             const d = daysSince(w.liveSince);
             return (
-              <div key={w.id} style={{ ...card, background: "var(--bg-elevated)", padding: 11, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#2563EB", background: "#2563EB1a", padding: "1px 7px", borderRadius: 20 }}>{fmtLabel(w.format)}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#7C3AED", background: "#7C3AED1a", padding: "1px 7px", borderRadius: 20 }}>{angLabel(w.angle)}</span>
-                </div>
-                {w.offer && <div style={{ fontSize: 12.5, color: "var(--text-primary)", fontWeight: 600 }}>{w.offer}</div>}
-                {w.note && <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.35 }}>{w.note}</div>}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
-                  {d != null && <span style={{ fontSize: 10.5, fontWeight: 700, color: d >= 30 ? "#16A34A" : "var(--text-muted)", background: d >= 30 ? "#16A34A1a" : "transparent", padding: "1px 7px", borderRadius: 20 }}>🔥 {d} dias no ar</span>}
-                  {w.competitor && <span style={{ fontSize: 10.5, color: tierColor(w.competitor.tier) }}>{w.competitor.name}</span>}
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <a href={w.adLibraryUrl} target="_blank" rel="noopener noreferrer" style={{ ...ghost, padding: "5px 9px", flex: 1, justifyContent: "center", textDecoration: "none" }}><ExternalLink size={12} /> Ver</a>
-                  <button onClick={() => del(w.id)} style={{ ...ghost, padding: "5px 9px", color: "var(--red)" }}><Trash2 size={12} /></button>
+              <div key={w.id} style={{ ...card, background: "var(--bg-elevated)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                {w.thumbnailUrl && (
+                  <div style={{ position: "relative", height: 130, background: "#0a0a0a" }}>
+                    <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${w.thumbnailUrl}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(16px)", transform: "scale(1.2)", opacity: 0.5 }} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={w.thumbnailUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+                  </div>
+                )}
+                <div style={{ padding: 11, display: "flex", flexDirection: "column", gap: 7, flex: 1 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#2563EB", background: "#2563EB1a", padding: "1px 7px", borderRadius: 20 }}>{fmtLabel(w.format)}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#7C3AED", background: "#7C3AED1a", padding: "1px 7px", borderRadius: 20 }}>{angLabel(w.angle)}</span>
+                  </div>
+                  {(w.offer || w.adName) && <div style={{ fontSize: 12.5, color: "var(--text-primary)", fontWeight: 600 }}>{w.offer || w.adName}</div>}
+                  {w.note && <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.35 }}>{w.note}</div>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
+                    {d != null && <span style={{ fontSize: 10.5, fontWeight: 700, color: d >= 30 ? "#16A34A" : "var(--text-muted)", background: d >= 30 ? "#16A34A1a" : "transparent", padding: "1px 7px", borderRadius: 20 }}>🔥 {d} dias no ar</span>}
+                    {w.competitor && <span style={{ fontSize: 10.5, color: tierColor(w.competitor.tier) }}>{w.competitor.name}</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {w.adLibraryUrl && <a href={w.adLibraryUrl} target="_blank" rel="noopener noreferrer" style={{ ...ghost, padding: "5px 9px", flex: 1, justifyContent: "center", textDecoration: "none" }}><ExternalLink size={12} /> Ver</a>}
+                    <button onClick={() => del(w.id)} style={{ ...ghost, padding: "5px 9px", color: "var(--red)", marginLeft: w.adLibraryUrl ? 0 : "auto" }}><Trash2 size={12} /></button>
+                  </div>
                 </div>
               </div>
             );
           })}
       </div>
+
+      {picker && <AdPickerModal clientId={clientId} onPick={pickAd} onClose={() => setPicker(false)} />}
     </section>
+  );
+}
+
+function AdPickerModal({ clientId, onPick, onClose }: { clientId: string; onPick: (ad: AdRow) => void; onClose: () => void }) {
+  const [ads, setAds] = useState<AdRow[] | null>(null);
+  useEffect(() => {
+    const now = new Date();
+    fetch(`/api/clients/${clientId}/meta/ads?year=${now.getFullYear()}&month=${now.getMonth() + 1}`)
+      .then((r) => r.json()).then((d) => setAds(Array.isArray(d?.ads) ? [...d.ads].sort((a: AdRow, b: AdRow) => b.leads - a.leads) : []))
+      .catch(() => setAds([]));
+  }, [clientId]);
+
+  return (
+    <Modal open onClose={onClose} title="Escolher anúncio (mês atual)" size="lg">
+      {ads === null ? <div style={{ padding: 24, textAlign: "center" }}><Loader2 size={18} className="animate-spin" style={{ color: "var(--text-muted)" }} /></div>
+        : ads.length === 0 ? <p style={{ fontSize: 13, color: "var(--text-muted)", padding: 12 }}>Nenhum anúncio com dados neste mês.</p>
+        : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 10 }}>
+            {ads.map((ad) => {
+              const d = daysSince(ad.startedAt);
+              return (
+                <button key={ad.adId} onClick={() => onPick(ad)} style={{ ...card, background: "var(--bg-elevated)", padding: 0, overflow: "hidden", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column" }}>
+                  <div style={{ height: 110, background: "#0a0a0a", position: "relative" }}>
+                    {ad.thumbnailUrl
+                      ? <>
+                          <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${ad.thumbnailUrl}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(14px)", transform: "scale(1.2)", opacity: 0.5 }} />
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={ad.thumbnailUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+                        </>
+                      : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>sem imagem</div>}
+                  </div>
+                  <div style={{ padding: 9 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ad.name}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 10.5, color: "var(--text-muted)" }}>
+                      <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>{ad.leads} leads</span>
+                      {d != null && <span>{d} dias</span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+    </Modal>
   );
 }
 

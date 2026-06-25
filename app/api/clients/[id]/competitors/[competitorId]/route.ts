@@ -12,10 +12,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { error } = await requireAuth("clients:update");
   if (error) return error;
   const body = await req.json().catch(() => ({}));
-  const data: { name?: string; tier?: string | null; adLibraryUrl?: string | null } = {};
+  const data: { name?: string; tier?: string | null; adLibraryUrl?: string | null; pageId?: string | null } = {};
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body.tier === "string" || body.tier === null) data.tier = TIERS.includes(body.tier) ? body.tier : null;
   if (typeof body.adLibraryUrl === "string") data.adLibraryUrl = body.adLibraryUrl.trim() || null;
+  if (typeof body.pageId === "string") data.pageId = body.pageId.trim() || null;
 
   const res = await prisma.competitor.updateMany({ where: { id: competitorId, clientId: id }, data });
   if (res.count === 0) return NextResponse.json({ error: "Concorrente não encontrado." }, { status: 404 });
