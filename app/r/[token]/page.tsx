@@ -24,6 +24,53 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: React.
 
 const fmtDay = (d: string) => { const [, m, day] = d.split("-"); return `${day}/${m}`; };
 
+// Melhor campanha como um post do Instagram (mockup do feed) — preenche o card e
+// mostra o criativo vencedor "como ele aparece" pro lead.
+function CampaignShowcase({ campaign, brandName, logoUrl, accent, onAccent }: {
+  campaign: { name: string; leads: number; image: string | null }; brandName: string; logoUrl: string | null; accent: string; onAccent: string;
+}) {
+  return (
+    <div className="pgrow" style={{ ...card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={capLabel}>🏆 Melhor campanha</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--p-muted)" }}>{int(campaign.leads)} leads de anúncio</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", borderTop: "1px solid var(--p-border)" }}>
+        {/* cabeçalho do post */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
+          {logoUrl
+            ? <img src={logoUrl} alt="" width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover" }} />
+            : <div style={{ width: 28, height: 28, borderRadius: "50%", background: accent, color: onAccent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{brandName[0]?.toUpperCase()}</div>}
+          <div style={{ flex: 1, lineHeight: 1.15 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--p-text)" }}>{brandName}</div>
+            <div style={{ fontSize: 10.5, color: "var(--p-muted)" }}>Patrocinado</div>
+          </div>
+          <span style={{ color: "var(--p-muted)", fontSize: 16, letterSpacing: 1 }}>···</span>
+        </div>
+        {/* criativo: fundo borrado preenche o espaço, imagem nítida por cima */}
+        {campaign.image ? (
+          <div style={{ position: "relative", flex: 1, minHeight: 150, background: "#0a0a0a", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${campaign.image}")`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(22px)", transform: "scale(1.25)", opacity: 0.55 }} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={campaign.image} alt="criativo da campanha" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+          </div>
+        ) : (
+          <div style={{ flex: 1, minHeight: 150, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--p-accent-soft)", color: "var(--p-muted)", fontSize: 13 }}>Sem prévia do criativo</div>
+        )}
+        {/* ações + legenda */}
+        <div style={{ padding: "9px 12px 12px" }}>
+          <div style={{ display: "flex", gap: 14, marginBottom: 7, color: "var(--p-text)", opacity: 0.85, fontSize: 15 }}>
+            <span aria-hidden>♡</span><span aria-hidden>💬</span><span aria-hidden>➤</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--p-text)", lineHeight: 1.35 }}>
+            <b>{brandName}</b> <span style={{ color: "var(--p-muted)" }}>{campaign.name}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Medidor circular animado (donut SVG) — o arco "enche" ao carregar. R fixo em 32
 // (circunferência ≈ 202, casada com o @keyframes gaugeIn).
 function Gauge({ score, color }: { score: number; color: string }) {
@@ -193,11 +240,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
             </div>
             {data.bestCampaign && (
-              <div className="pgrow" style={card}>
-                <div style={{ ...capLabel, marginBottom: 8 }}>🏆 Melhor campanha</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--p-text)" }}>{data.bestCampaign.name}</div>
-                <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCampaign.leads)} leads de anúncio no período</div>
-              </div>
+              <CampaignShowcase campaign={data.bestCampaign} brandName={brandName} logoUrl={client?.logoUrl ?? null} accent={accent} onAccent={buildTheme(portal.accentColor, "light").onAccent} />
             )}
           </div>
         )}

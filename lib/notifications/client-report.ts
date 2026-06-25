@@ -117,7 +117,7 @@ export interface ClientDashboard {
   atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
-  bestCampaign: { name: string; leads: number } | null;
+  bestCampaign: { name: string; leads: number; image: string | null } | null;
   series: { day: string; leads: number }[];
 }
 
@@ -211,15 +211,25 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
 
     const adIds = leadRows.map((r) => r.adId).filter((x): x is string => !!x);
     if (adIds.length) {
-      const ads = await prisma.metaAd.findMany({ where: { connectionId: metaConn.id, adId: { in: adIds } }, select: { adId: true, campaignId: true } });
+      const ads = await prisma.metaAd.findMany({ where: { connectionId: metaConn.id, adId: { in: adIds } }, select: { adId: true, campaignId: true, creativeId: true } });
       const adToCamp = new Map(ads.map((a) => [a.adId, a.campaignId]));
+      const adToCreative = new Map(ads.map((a) => [a.adId, a.creativeId]));
       const byCamp = new Map<string, number>();
       for (const r of leadRows) { const camp = r.adId ? adToCamp.get(r.adId) : null; if (camp) byCamp.set(camp, (byCamp.get(camp) ?? 0) + r._count._all); }
       let topCamp: string | null = null, topN = 0;
       for (const [camp, n] of byCamp) if (n > topN) { topN = n; topCamp = camp; }
       if (topCamp) {
         const c = await prisma.metaCampaign.findFirst({ where: { connectionId: metaConn.id, campaignId: topCamp }, select: { name: true } });
-        bestCampaign = { name: c?.name ?? "Campanha", leads: topN };
+        // imagem do melhor anúncio (mais leads) da campanha vencedora — pro mockup do feed.
+        let bestAd: string | null = null, bestAdN = 0;
+        for (const r of leadRows) { if (r.adId && adToCamp.get(r.adId) === topCamp && r._count._all > bestAdN) { bestAdN = r._count._all; bestAd = r.adId; } }
+        const creativeId = bestAd ? adToCreative.get(bestAd) : null;
+        let image: string | null = null;
+        if (creativeId) {
+          const cr = await prisma.metaCreative.findUnique({ where: { connectionId_creativeId: { connectionId: metaConn.id, creativeId } }, select: { thumbnailUrl: true } });
+          image = cr?.thumbnailUrl ?? null;
+        }
+        bestCampaign = { name: c?.name ?? "Campanha", leads: topN, image };
       }
     }
   }
