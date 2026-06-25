@@ -188,11 +188,16 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         .psec{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
         .pkpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
         .ptiles{display:grid;grid-template-columns:1fr;gap:12px}
+        /* celular = versão enxuta; os extras (gráfico + criativo/vídeo) só do tablet/PC pra cima */
+        .pcOnly{display:none}
+        .mobileOnly{display:block}
         @media(min-width:760px){
           .ptopbar-in,.pwrap{padding-left:22px;padding-right:22px}
           .pupdated{display:block}
           .pkpis{grid-template-columns:repeat(3,1fr)}
           .ptiles{grid-template-columns:1fr 1fr}
+          .pcOnly{display:contents}
+          .mobileOnly{display:none}
         }
         /* PC: dashboard de tela cheia, SEM rolagem, usando a largura. Anúncios |
            Atendimento lado a lado — conta a história do valor de relance. */
@@ -254,7 +259,18 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
             </div>
             {data.bestCampaign && (
-              <CampaignShowcase campaign={data.bestCampaign} media={creativeMedia} brandName={brandName} logoUrl={client?.logoUrl ?? null} accent={accent} onAccent={buildTheme(portal.accentColor, "light").onAccent} />
+              <>
+                {/* PC: post do feed com criativo/vídeo */}
+                <div className="pcOnly">
+                  <CampaignShowcase campaign={data.bestCampaign} media={creativeMedia} brandName={brandName} logoUrl={client?.logoUrl ?? null} accent={accent} onAccent={buildTheme(portal.accentColor, "light").onAccent} />
+                </div>
+                {/* Celular: linha simples (como antes) */}
+                <div className="mobileOnly" style={card}>
+                  <div style={capLabel}>🏆 Melhor campanha</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--p-text)", marginTop: 6 }}>{data.bestCampaign.name}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCampaign.leads)} leads de anúncio no período</div>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -298,7 +314,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               )}
             </div>
           </div>
-          {data.series.length > 1 && <Sparkline series={data.series} />}
+          {data.series.length > 1 && <div className="pcOnly"><Sparkline series={data.series} /></div>}
         </div>
 
       </div>
