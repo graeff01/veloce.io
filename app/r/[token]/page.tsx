@@ -11,6 +11,7 @@ const int = (v: number) => v.toLocaleString("pt-BR");
 
 const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, padding: 18 };
 const capLabel: React.CSSProperties = { fontSize: 12, color: "var(--p-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 };
+const sectionHead: React.CSSProperties = { display: "flex", alignItems: "baseline", gap: 8, margin: "24px 2px 0", flexWrap: "wrap" };
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub?: React.ReactNode }) {
   return (
@@ -77,7 +78,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         /* Tablet/desktop: chrome de largura cheia (cara de sistema) + conteúdo espalhado */
         @media(min-width:760px){
           .ptopbar-in,.pwrap{padding-left:24px;padding-right:24px}
-          .pkpis{grid-template-columns:repeat(4,1fr)}
+          .pkpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
           .ptiles{grid-template-columns:1fr 1fr}
         }`}</style>
 
@@ -108,18 +109,40 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           </div>
         )}
 
-        {/* Hero KPIs — 2 col no celular, 4 col no PC */}
+        {/* ───── BLOCO 1 · ANÚNCIOS (o que a Veloce entrega) ───── */}
+        {data.midia && (
+          <>
+            <div style={sectionHead}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>📣 Anúncios</span>
+              <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· investimento e leads gerados</span>
+            </div>
+            <section className="pkpis">
+              <Kpi label="Investido" value={brl(data.midia.spend)} sub="em mídia no período" />
+              <Kpi label="Leads de anúncio" value={int(data.midia.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
+              <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
+            </section>
+            {data.bestCampaign && (
+              <div style={{ ...card, marginTop: 12 }}>
+                <div style={{ ...capLabel, marginBottom: 8 }}>🏆 Melhor campanha</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--p-text)" }}>{data.bestCampaign.name}</div>
+                <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCampaign.leads)} leads de anúncio no período</div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ───── BLOCO 2 · ATENDIMENTO (como os leads foram tratados) ───── */}
+        <div style={sectionHead}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>💬 Atendimento</span>
+          <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· velocidade de resposta e conversão</span>
+        </div>
         <section className="pkpis">
           <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
-          <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} sub={data.midia ? `${int(data.midia.leads)} leads de anúncio` : "sem mídia conectada"} />
-          <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
           <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
+          <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
         </section>
-
-        {/* Cards — empilham no celular, 2 col no PC */}
         <div className="ptiles">
-
-          {/* Health Score */}
+          {/* Saúde do atendimento */}
           <div style={{ ...card, display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ width: 76, height: 76, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
               background: `conic-gradient(${healthColor} ${data.health.score * 3.6}deg, var(--p-accent-soft) 0)` }}>
@@ -134,7 +157,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             </div>
           </div>
 
-          {/* Termômetro */}
+          {/* Aguardando agora */}
           <div style={card}>
             <div style={{ ...capLabel, marginBottom: 12 }}>🌡️ Aguardando atendimento agora</div>
             {term.total === 0 ? (
@@ -150,31 +173,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               </div>
             )}
           </div>
-
-          {/* Melhor campanha */}
-          {data.bestCampaign && (
-            <div style={card}>
-              <div style={{ ...capLabel, marginBottom: 8 }}>🏆 Melhor campanha</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--p-text)" }}>{data.bestCampaign.name}</div>
-              <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCampaign.leads)} leads no período</div>
-            </div>
-          )}
-
-          {/* Mídia */}
-          {data.midia && (
-            <div style={card}>
-              <div style={{ ...capLabel, marginBottom: 12 }}>📣 Resultado dos anúncios</div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <div><div style={{ fontSize: 20, fontWeight: 800 }}>{brl(data.midia.spend)}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>investido</div></div>
-                <div><div style={{ fontSize: 20, fontWeight: 800 }}>{int(data.midia.leads)}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>leads de anúncio</div></div>
-                <div><div style={{ fontSize: 20, fontWeight: 800 }}>{data.midia.cpl != null ? brl(data.midia.cpl) : "—"}</div><div style={{ fontSize: 11.5, color: "var(--p-muted)" }}>por lead</div></div>
-              </div>
-            </div>
-          )}
-
         </div>
 
-        <footer style={{ marginTop: 24, textAlign: "center", fontSize: 11.5, color: "var(--p-muted)" }}>Atualizado em {atualizado}</footer>
+        <footer style={{ marginTop: 28, textAlign: "center", fontSize: 11.5, color: "var(--p-muted)" }}>Atualizado em {atualizado}</footer>
       </div>
     </main>
   );
