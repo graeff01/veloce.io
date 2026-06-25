@@ -11,7 +11,6 @@ const int = (v: number) => v.toLocaleString("pt-BR");
 
 const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, padding: 18 };
 const capLabel: React.CSSProperties = { fontSize: 12, color: "var(--p-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 };
-const sectionHead: React.CSSProperties = { display: "flex", alignItems: "baseline", gap: 8, margin: "24px 2px 0", flexWrap: "wrap" };
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub?: React.ReactNode }) {
   return (
@@ -30,12 +29,12 @@ function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
   const maxV = Math.max(1, ...series.map((s) => s.leads));
   const total = series.reduce((s, x) => s + x.leads, 0);
   return (
-    <div style={{ ...card, marginTop: 12 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+    <div className="pspark" style={{ ...card, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
         <span style={capLabel}>📈 Conversas por dia</span>
         <span style={{ fontSize: 11.5, color: "var(--p-muted)" }}>{total} no período · pico {maxV}/dia</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, flex: 1, minHeight: 56 }}>
         {series.map((s, i) => {
           const h = Math.max(3, Math.round((s.leads / maxV) * 100));
           return <div key={i} title={`${fmtDay(s.day)}: ${s.leads} conversa(s)`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "var(--p-accent)" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 3 }} />;
@@ -95,29 +94,45 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
     <main className="pmain">
       <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         /* Fundo com profundidade: brilho sutil na cor do cliente + textura de pontos
-           discreta (preenche as bordas vazias no PC sem poluir). Estático de propósito. */
-        .pmain{min-height:100vh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
+           discreta (preenche as bordas no PC sem poluir). Estático de propósito. */
+        .pmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
-          background-size:100% 560px, 24px 24px;
-          background-repeat:no-repeat, repeat;
-          background-position:center top, center top;
-          background-attachment:fixed, fixed;}
+          background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;
+          background-position:center top, center top;background-attachment:fixed, fixed;}
         .ptopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
-        .ptopbar-in{max-width:1120px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+        .ptopbar-in{max-width:1120px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
         .pbrand{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
-        .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:188px}
-        .pwrap{max-width:1120px;margin:0 auto;padding:18px 16px 56px}
-        .pkpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-        .ptiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-        /* Tablet/desktop: chrome de largura cheia (cara de sistema) + conteúdo espalhado */
+        .ptopmeta{display:flex;align-items:center;gap:14px}
+        .pupdated{display:none;font-size:11.5px;color:var(--p-muted)}
+        .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:178px}
+        .pwrap{max-width:1120px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+        .pcol{display:flex;flex-direction:column;gap:12px}
+        .psec{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+        .pkpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+        .ptiles{display:grid;grid-template-columns:1fr;gap:12px}
         @media(min-width:760px){
-          .ptopbar-in,.pwrap{padding-left:24px;padding-right:24px}
-          .pkpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+          .ptopbar-in,.pwrap{padding-left:22px;padding-right:22px}
+          .pupdated{display:block}
+          .pkpis{grid-template-columns:repeat(3,1fr)}
           .ptiles{grid-template-columns:1fr 1fr}
+        }
+        /* PC: dashboard de tela cheia, SEM rolagem, usando a largura. Anúncios |
+           Atendimento lado a lado — conta a história do valor de relance. */
+        @media(min-width:1100px) and (min-height:620px){
+          .pmain{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+          .ptopbar-in,.pwrap{max-width:none}
+          .pwrap{flex:1;min-height:0;padding:14px 22px;display:grid;
+            grid-template-columns:5fr 7fr;grid-template-rows:auto minmax(0,1fr);
+            grid-template-areas:"narr narr" "ads atd";gap:14px}
+          .pnarr{grid-area:narr}
+          .pcol-ads{grid-area:ads;min-height:0}
+          .pcol-atd{grid-area:atd;min-height:0}
+          .pgrow{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center}
+          .pspark{flex:1;min-height:0}
         }`}</style>
 
-      {/* Topbar full-width — dá cara de produto e tira o "tudo centralizado" */}
+      {/* Topbar full-width */}
       <div className="ptopbar">
         <div className="ptopbar-in">
           <div className="pbrand">
@@ -129,89 +144,93 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <div style={{ fontSize: 12, color: "var(--p-muted)" }}>Painel de performance · {data.periodLabel}</div>
             </div>
           </div>
-          <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
+          <div className="ptopmeta">
+            <span className="pupdated">Atualizado {atualizado}</span>
+            <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
+          </div>
         </div>
       </div>
 
       <div className="pwrap">
 
-        {/* Narrativa (o "e daí") — largura cheia */}
+        {/* Narrativa (o "e daí") */}
         {data.narrative.length > 0 && (
-          <div style={{ ...card, marginTop: 12, borderLeft: "3px solid var(--p-accent)" }}>
+          <div className="pnarr" style={{ ...card, borderLeft: "3px solid var(--p-accent)" }}>
             {data.narrative.map((line, i) => (
-              <div key={i} style={{ fontSize: 14, color: "var(--p-text)", lineHeight: 1.5, marginTop: i ? 6 : 0 }}>{line}</div>
+              <div key={i} style={{ fontSize: 13.5, color: "var(--p-text)", lineHeight: 1.5, marginTop: i ? 5 : 0 }}>{line}</div>
             ))}
           </div>
         )}
 
         {/* ───── BLOCO 1 · ANÚNCIOS (o que a Veloce entrega) ───── */}
         {data.midia && (
-          <>
-            <div style={sectionHead}>
+          <div className="pcol pcol-ads">
+            <div className="psec">
               <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>📣 Anúncios</span>
               <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· investimento e leads gerados</span>
             </div>
-            <section className="pkpis">
+            <div className="pkpis">
               <Kpi label="Investido" value={brl(data.midia.spend)} sub="em mídia no período" />
               <Kpi label="Leads de anúncio" value={int(data.midia.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
               <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
-            </section>
+            </div>
             {data.bestCampaign && (
-              <div style={{ ...card, marginTop: 12 }}>
+              <div className="pgrow" style={card}>
                 <div style={{ ...capLabel, marginBottom: 8 }}>🏆 Melhor campanha</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "var(--p-text)" }}>{data.bestCampaign.name}</div>
                 <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCampaign.leads)} leads de anúncio no período</div>
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* ───── BLOCO 2 · ATENDIMENTO (como os leads foram tratados) ───── */}
-        <div style={sectionHead}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>💬 Atendimento</span>
-          <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· velocidade de resposta e conversão</span>
-        </div>
-        <section className="pkpis">
-          <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
-          <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
-          <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
-        </section>
-        {data.series.length > 1 && <Sparkline series={data.series} />}
-        <div className="ptiles">
-          {/* Saúde do atendimento */}
-          <div style={{ ...card, display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ width: 76, height: 76, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-              background: `conic-gradient(${healthColor} ${data.health.score * 3.6}deg, var(--p-accent-soft) 0)` }}>
-              <div style={{ width: 60, height: 60, borderRadius: "50%", background: "var(--p-surface)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: "var(--p-text)" }}>{data.health.score}</span>
+        <div className="pcol pcol-atd">
+          <div className="psec">
+            <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>💬 Atendimento</span>
+            <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· velocidade de resposta e conversão</span>
+          </div>
+          <div className="pkpis">
+            <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
+            <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
+            <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
+          </div>
+          {data.series.length > 1 && <Sparkline series={data.series} />}
+          <div className="ptiles">
+            {/* Saúde do atendimento */}
+            <div style={{ ...card, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ width: 72, height: 72, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                background: `conic-gradient(${healthColor} ${data.health.score * 3.6}deg, var(--p-accent-soft) 0)` }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--p-surface)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 21, fontWeight: 800, color: "var(--p-text)" }}>{data.health.score}</span>
+                </div>
+              </div>
+              <div>
+                <div style={capLabel}>Saúde do atendimento</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: healthColor, marginTop: 4 }}>{data.health.label}</div>
+                {benchmark != null && <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 4 }}>Melhor que {benchmark}% das contas</div>}
               </div>
             </div>
-            <div>
-              <div style={capLabel}>Saúde do atendimento</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: healthColor, marginTop: 4 }}>{data.health.label}</div>
-              {benchmark != null && <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 4 }}>Melhor que {benchmark}% das contas</div>}
-            </div>
-          </div>
 
-          {/* Aguardando agora */}
-          <div style={card}>
-            <div style={{ ...capLabel, marginBottom: 12 }}>🌡️ Aguardando atendimento agora</div>
-            {term.total === 0 ? (
-              <div style={{ fontSize: 14, color: "var(--p-muted)" }}>Nenhum lead aguardando. 👌</div>
-            ) : (
-              <div style={{ display: "flex", gap: 10 }}>
-                {[{ k: "🔥 Quentes", v: term.hot }, { k: "🟠 Mornos", v: term.warm }, { k: "🧊 Frios", v: term.cold }].map((x) => (
-                  <div key={x.k} style={{ flex: 1, textAlign: "center", padding: "12px 6px", background: "var(--p-accent-soft)", borderRadius: 12 }}>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: "var(--p-text)" }}>{x.v}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 2 }}>{x.k}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Aguardando agora */}
+            <div style={card}>
+              <div style={{ ...capLabel, marginBottom: 12 }}>🌡️ Aguardando atendimento agora</div>
+              {term.total === 0 ? (
+                <div style={{ fontSize: 14, color: "var(--p-muted)" }}>Nenhum lead aguardando. 👌</div>
+              ) : (
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[{ k: "🔥 Quentes", v: term.hot }, { k: "🟠 Mornos", v: term.warm }, { k: "🧊 Frios", v: term.cold }].map((x) => (
+                    <div key={x.k} style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: "var(--p-accent-soft)", borderRadius: 12 }}>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: "var(--p-text)" }}>{x.v}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 2 }}>{x.k}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <footer style={{ marginTop: 28, textAlign: "center", fontSize: 11.5, color: "var(--p-muted)" }}>Atualizado em {atualizado}</footer>
       </div>
     </main>
   );
