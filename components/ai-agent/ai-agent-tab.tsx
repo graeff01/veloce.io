@@ -7,6 +7,7 @@ import {
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
   History, Target, FileText, ScrollText, LineChart, Sparkles,
 } from "lucide-react";
+import { TabHeader } from "@/components/clients/tab-header";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -1238,15 +1239,10 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
   ];
 
   return (
-    <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-base)" }}>
+      <TabHeader icon={<Sparkles size={16} />} title="Agente de IA" subtitle="Configura, valida e opera a IA de atendimento deste cliente" />
+      <div style={{ padding: "24px 28px", display: "flex", gap: 20, alignItems: "flex-start" }}>
       <aside style={{ width: 216, flexShrink: 0, position: "sticky", top: 16, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: 10, display: "flex", flexDirection: "column" }}>
-        {/* Header do painel */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 8px 12px", borderBottom: "1px solid var(--border)", marginBottom: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Sparkles size={15} color="var(--accent)" />
-          </div>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>Agente de IA</span>
-        </div>
         {nav.map((grp, gi) => (
           <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 2, ...(grp.group ? { marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--border)" } : {}) }}>
             {grp.group && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.7, padding: "0 11px 6px" }}>{grp.group}</div>}
@@ -1272,6 +1268,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {section === "atividade" && <ActivitySection clientId={clientId} />}
         {section === "custos" && <CostSection clientId={clientId} />}
         {section === "logs" && <LogsSection clientId={clientId} />}
+      </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, ExternalLink, Sparkles, Radar, Target, ImagePlus, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { TabHeader } from "@/components/clients/tab-header";
 
 interface Player { id: string; name: string; tier: string | null; adLibraryUrl: string | null; pageId: string | null; _count?: { winners: number } }
 interface Winner { id: string; adLibraryUrl: string | null; adId: string | null; thumbnailUrl: string | null; adName: string | null; format: string; angle: string; offer: string | null; note: string | null; liveSince: string | null; competitor: { id: string; name: string; tier: string | null } | null }
@@ -39,20 +40,20 @@ export function CompetitiveIntelTab({ clientId }: { clientId: string }) {
   useEffect(() => { loadPlayers(); loadWinners(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 style={{ ...secTitle, fontSize: 17 }}><Radar size={16} style={{ color: "var(--accent)" }} /> Inteligência Competitiva</h2>
-        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-          Uso interno da Veloce. Mapeia os players do nicho, guarda os criativos vencedores (tags + longevidade) e a IA lê o padrão do mercado — pra estruturar o tráfego, não acumular link.
-        </p>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-base)" }}>
+      <TabHeader
+        icon={<Radar size={16} />}
+        title="Inteligência Competitiva"
+        subtitle="Uso interno · players do nicho, criativos vencedores e a leitura do mercado pela IA"
+      />
+      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* topo em 2 colunas no wide; embaixo os vencedores em largura cheia */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
+          <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
+          <SynthesisSection clientId={clientId} ready={(winners?.length ?? 0) >= 3} />
+        </div>
+        <WinnersSection clientId={clientId} players={players ?? []} winners={winners} onChange={loadWinners} />
       </div>
-
-      {/* topo em 2 colunas no wide; embaixo os vencedores em largura cheia */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16, alignItems: "start" }}>
-        <PlayersSection clientId={clientId} players={players} onChange={loadPlayers} />
-        <SynthesisSection clientId={clientId} ready={(winners?.length ?? 0) >= 3} />
-      </div>
-      <WinnersSection clientId={clientId} players={players ?? []} winners={winners} onChange={loadWinners} />
     </div>
   );
 }
