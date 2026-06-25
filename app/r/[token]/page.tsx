@@ -187,10 +187,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         .pcol{display:flex;flex-direction:column;gap:12px}
         .psec{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
         .pkpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+        .pkpis2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
         .ptiles{display:grid;grid-template-columns:1fr;gap:12px}
         /* celular = versão enxuta; os extras (gráfico + criativo/vídeo) só do tablet/PC pra cima */
         .pcOnly{display:none}
         .mobileOnly{display:block}
+        .kpiWide{grid-column:1/-1}  /* CPL ocupa a linha inteira no celular */
         @media(min-width:760px){
           .ptopbar-in,.pwrap{padding-left:22px;padding-right:22px}
           .pupdated{display:block}
@@ -198,6 +200,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           .ptiles{grid-template-columns:1fr 1fr}
           .pcOnly{display:contents}
           .mobileOnly{display:none}
+          .kpiWide{grid-column:auto}
         }
         /* PC: dashboard de tela cheia, SEM rolagem, usando a largura. Anúncios |
            Atendimento lado a lado — conta a história do valor de relance. */
@@ -256,7 +259,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <div className="pkpis">
               <Kpi label="Investido" value={brl(data.midia.spend)} sub="em mídia no período" />
               <Kpi label="Leads de anúncio" value={int(data.midia.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
-              <Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" />
+              <div className="kpiWide"><Kpi label="Custo por lead" value={data.midia.cpl != null ? brl(data.midia.cpl) : "—"} sub="quanto custou cada lead" /></div>
             </div>
             {data.bestCampaign && (
               <>
@@ -281,10 +284,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>💬 Atendimento</span>
             <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· velocidade de resposta e conversão</span>
           </div>
-          <div className="pkpis">
+          <div className="pkpis2">
             <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
             <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
-            <Kpi label="Conversões" value={int(a.conversoes)} sub="sinalizados no chat" />
           </div>
           <div className="ptiles">
             {/* Saúde do atendimento — gauge animado, a estrela do bloco */}
