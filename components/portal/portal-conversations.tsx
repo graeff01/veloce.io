@@ -88,8 +88,8 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
       </header>
 
       {/* Viewer contido — sobre o fundo do painel (a luz verde aparece em volta) */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", justifyContent: "center", padding: 16 }}>
-      <div style={{ width: "100%", maxWidth: 1180, height: "100%", display: "flex", minHeight: 0, borderRadius: 16, overflow: "hidden", border: "1px solid var(--p-border)", boxShadow: "0 12px 44px rgba(0,0,0,.16)" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", padding: "14px 22px 22px" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", minHeight: 0, borderRadius: 16, overflow: "hidden", border: "1px solid var(--p-border)", boxShadow: "0 12px 44px rgba(0,0,0,.16)" }}>
       {/* ── Lista (sidebar) ── */}
       <aside style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
         {/* busca */}
