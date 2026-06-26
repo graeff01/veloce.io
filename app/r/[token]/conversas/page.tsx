@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { themeStyle } from "@/lib/portal-theme";
+import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalConversations } from "@/components/portal/portal-conversations";
 
 export const runtime = "nodejs";
@@ -23,6 +25,16 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
   }
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+
+  // Login do painel: conversas exigem sessão se o cliente está protegido.
+  if (await isProtected(portal.clientId) && !(await getPortalSessionEmail(portal.clientId))) {
+    return (
+      <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>
+        <PortalGate token={token} brandName={client?.name || "Painel"} />
+      </main>
+    );
+  }
 
   return (
     <main className="cmain">

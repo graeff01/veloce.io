@@ -1487,6 +1487,45 @@ model ClientPortal {
   updatedAt   DateTime @updatedAt
 }
 
+// ── Login do painel do cliente (OTP por e-mail) ───────────────────────────────
+// E-mails autorizados por cliente. Se um cliente tem >=1, o painel exige login.
+model PortalAccess {
+  id        String   @id @default(cuid())
+  clientId  String
+  email     String
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, email])
+  @@index([clientId])
+}
+
+// Código OTP temporário (guardado como hash), enviado por e-mail.
+model PortalOtp {
+  id        String   @id @default(cuid())
+  clientId  String
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, email])
+}
+
+// Sessão do painel (cookie). Longa e deslizante; revogável (deletar a linha).
+model PortalSession {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  clientId     String
+  email        String
+  expiresAt    DateTime
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([email])
+}
+
 // Token de convite (escopo cliente + papel), uso único, expira.
 model ClientBotLinkToken {
   token     String   @id

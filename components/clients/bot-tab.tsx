@@ -5,6 +5,7 @@ import { Send, Copy, Check, Trash2, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TabHeader } from "@/components/clients/tab-header";
+import { PortalAccessCard } from "@/components/clients/portal-access-card";
 
 interface Recipient { id: string; username: string | null; role: string; createdAt: string }
 interface BotState {
@@ -239,6 +240,8 @@ export function BotTab({ clientId }: { clientId: string }) {
           </div>
         )}
       </Card>
+
+      <PortalAccessCard clientId={clientId} />
 
       {/* Marca branca */}
       {state.connected && (

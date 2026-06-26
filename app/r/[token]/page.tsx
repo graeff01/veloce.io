@@ -3,6 +3,8 @@ import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, type Period } from "@/lib/notifications/client-report";
 import { getCreativeMedia, type CreativeMedia } from "@/lib/notifications/creative-media";
 import { buildTheme, themeStyle } from "@/lib/portal-theme";
+import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { PortalGate } from "@/components/portal/portal-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +135,17 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <h1 style={{ fontSize: 18, marginTop: 12 }}>Link indisponível</h1>
           <p style={{ color: "#6b7480", marginTop: 6, fontSize: 14 }}>Este painel foi desativado ou o link expirou. Peça um novo à sua agência.</p>
         </div>
+      </main>
+    );
+  }
+
+  // Login do painel: se o cliente tem e-mails autorizados, exige sessão (OTP).
+  if (await isProtected(portal.clientId) && !(await getPortalSessionEmail(portal.clientId))) {
+    const c = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+    return (
+      <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>
+        <PortalGate token={token} brandName={c?.name || "Painel"} />
       </main>
     );
   }
