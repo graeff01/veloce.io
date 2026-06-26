@@ -88,8 +88,8 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
       </header>
 
       {/* Viewer contido — sobre o fundo do painel (a luz verde aparece em volta) */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", padding: "14px 22px 22px" }}>
-      <div style={{ width: "100%", height: "100%", display: "flex", minHeight: 0, borderRadius: 16, overflow: "hidden", border: "1px solid var(--p-border)", boxShadow: "0 12px 44px rgba(0,0,0,.16)" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", justifyContent: "center", padding: "14px 22px 22px" }}>
+      <div style={{ width: "100%", maxWidth: 1400, height: "100%", display: "flex", minHeight: 0, borderRadius: 16, overflow: "hidden", border: "1px solid var(--p-border)", boxShadow: "0 12px 44px rgba(0,0,0,.16)" }}>
       {/* ── Lista (sidebar) ── */}
       <aside style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
         {/* busca */}
@@ -132,7 +132,7 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
         {/* marca d'água: logo do cliente (PNG em /public/logopng) */}
         <div style={{ position: "absolute", inset: 0, backgroundImage: `url("/logopng/bv.png")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(38%, 300px)", opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />
         {/* granulado (feTurbulence) — mesmo grão do tema claro */}
-        <div style={{ position: "absolute", inset: 0, opacity: 0.06, pointerEvents: "none", zIndex: 0, mixBlendMode: "multiply",
+        <div style={{ position: "absolute", inset: 0, opacity: 0.04, pointerEvents: "none", zIndex: 0, mixBlendMode: "multiply",
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")` }} />
         <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         {!sel ? (

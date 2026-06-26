@@ -169,7 +169,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const accent = buildTheme(portal.accentColor, "light").accent;
   const brandName = (bot?.brandName || "").trim() || client?.name || "Painel";
   const a = data.atendimento;
-  const term = data.termometro;
   const semResposta = Math.max(0, a.leads - a.respondidos); // leads que ficaram sem resposta
   const atualizado = new Date(data.generatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const deltaTxt = a.deltaPct == null ? null : `${a.deltaPct >= 0 ? "▲" : "▼"} ${Math.abs(a.deltaPct)}% vs. período anterior`;
@@ -261,16 +260,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
 
       <div className="pwrap">
 
-        {/* Acesso às conversas (WhatsApp) — no lugar da narrativa */}
-        <a href={`/r/${token}/conversas`} className="pnarr" style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 14, background: "#25D366", color: "#fff", textDecoration: "none", boxShadow: "0 6px 18px rgba(37,211,102,.32)" }}>
-          <svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" style={{ flexShrink: 0 }}><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.157 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.737-.979zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>Acompanhar as conversas no WhatsApp</div>
-            <div style={{ fontSize: 12.5, opacity: 0.92, marginTop: 1 }}>Veja em tempo real as mensagens dos seus leads</div>
-          </div>
-          <span style={{ fontSize: 22, fontWeight: 700, animation: "waNudge 1.4s ease-in-out infinite" }}>→</span>
-        </a>
-
         {/* ───── BLOCO 1 · ANÚNCIOS (o que a Veloce entrega) ───── */}
         {data.midia && (
           <div className="pcol pcol-ads">
@@ -331,22 +320,15 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               </div>
             </div>
 
-            {/* Aguardando agora */}
-            <div style={card}>
-              <div style={{ ...capLabel, marginBottom: 12 }}>🌡️ Aguardando atendimento agora</div>
-              {term.total === 0 ? (
-                <div style={{ fontSize: 14, color: "var(--p-muted)" }}>Nenhum lead aguardando. 👌</div>
-              ) : (
-                <div style={{ display: "flex", gap: 10 }}>
-                  {[{ k: "🔥 Quentes", v: term.hot }, { k: "🟠 Mornos", v: term.warm }, { k: "🧊 Frios", v: term.cold }].map((x) => (
-                    <div key={x.k} style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: "var(--p-accent-soft)", borderRadius: 12 }}>
-                      <div style={{ fontSize: 24, fontWeight: 800, color: "var(--p-text)" }}>{x.v}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 2 }}>{x.k}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Botão do WhatsApp — no lugar do "Aguardando atendimento agora" */}
+            <a href={`/r/${token}/conversas`} style={{ ...card, display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, border: "none", background: "#25D366", textDecoration: "none", boxShadow: "0 6px 18px rgba(37,211,102,.30)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" style={{ flexShrink: 0 }}><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.157 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.737-.979zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                <span style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>Conversas no WhatsApp</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: "#fff", opacity: 0.92, lineHeight: 1.4 }}>Veja as mensagens dos seus leads em tempo real.</div>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 6 }}>Abrir conversas <span style={{ animation: "waNudge 1.4s ease-in-out infinite" }}>→</span></span>
+            </a>
           </div>
           {data.series.length > 1 && <div className="pcOnly"><Sparkline series={data.series} /></div>}
         </div>

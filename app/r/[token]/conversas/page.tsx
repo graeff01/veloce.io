@@ -45,7 +45,7 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
           background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;
           ${portal.mode === "dark"
             ? "--wa-chat:#0b141a;--wa-in:#202c33;--wa-text:#e9edef;--wa-muted:#8696a0;--wa-divider:#182229"
-            : "--wa-chat:#efeae2;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#e1dacf"}}
+            : "--wa-chat:#ece5dd;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#d6cdbf"}}
         ${portal.mode === "auto" ? "@media(prefers-color-scheme:dark){.cmain{--wa-chat:#0b141a;--wa-in:#202c33;--wa-text:#e9edef;--wa-muted:#8696a0;--wa-divider:#182229}}" : ""}
         /* só PC — no celular mostra recado */
         .cmobile{display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}
