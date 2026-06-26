@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Veloce.io — Operações",
+  title: "veloce.io",
   description: "Plataforma interna de gestão operacional",
   manifest: "/manifest.json",
   icons: {
