@@ -87,8 +87,9 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
         <a href={`/r/${token}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}><ArrowLeft size={15} /> Voltar ao painel</a>
       </header>
 
-      {/* Viewer: lista | chat */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+      {/* Viewer contido — sobre o fundo do painel (a luz verde aparece em volta) */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", justifyContent: "center", padding: 16 }}>
+      <div style={{ width: "100%", maxWidth: 1180, height: "100%", display: "flex", minHeight: 0, borderRadius: 16, overflow: "hidden", border: "1px solid var(--p-border)", boxShadow: "0 12px 44px rgba(0,0,0,.16)" }}>
       {/* ── Lista (sidebar) ── */}
       <aside style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
         {/* busca */}
@@ -186,6 +187,7 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
         )}
         </div>
       </main>
+      </div>
       </div>
     </div>
   );

@@ -113,9 +113,12 @@ function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
           return <div key={i} title={`${fmtDay(s.day)}: ${s.leads} conversa(s)`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "var(--p-accent)" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 3 }} />;
         })}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 10.5, color: "var(--p-muted)" }}>
-        <span>{fmtDay(series[0].day)}</span>
-        <span>{fmtDay(series[series.length - 1].day)}</span>
+      <div style={{ display: "flex", gap: 3, marginTop: 6 }}>
+        {series.map((s, i) => {
+          const step = Math.max(1, Math.ceil(series.length / 7));
+          const show = i % step === 0 || i === series.length - 1;
+          return <span key={i} style={{ flex: 1, minWidth: 2, textAlign: "center", fontSize: 9.5, color: "var(--p-muted)", whiteSpace: "nowrap" }}>{show ? s.day.slice(8, 10) : ""}</span>;
+        })}
       </div>
     </div>
   );
@@ -167,6 +170,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const brandName = (bot?.brandName || "").trim() || client?.name || "Painel";
   const a = data.atendimento;
   const term = data.termometro;
+  const semResposta = Math.max(0, a.leads - a.respondidos); // leads que ficaram sem resposta
   const atualizado = new Date(data.generatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const deltaTxt = a.deltaPct == null ? null : `${a.deltaPct >= 0 ? "▲" : "▼"} ${Math.abs(a.deltaPct)}% vs. período anterior`;
   const deltaColor = a.deltaPct == null ? "var(--p-muted)" : a.deltaPct >= 0 ? "#1aa35a" : "#d6453d";
@@ -195,7 +199,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         .pbrand{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
         .ptopmeta{display:flex;align-items:center;gap:12px}
         .pupdated{display:none;font-size:11.5px;color:var(--p-muted)}
-        .pconv{display:none;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--p-border);border-radius:9px;background:var(--p-surface);color:var(--p-text);font-size:12.5px;font-weight:600;text-decoration:none}
         .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:178px}
         .pwrap{max-width:1120px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}
         .pcol{display:flex;flex-direction:column;gap:12px}
@@ -210,7 +213,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         @media(min-width:760px){
           .ptopbar-in,.pwrap{padding-left:22px;padding-right:22px}
           .pupdated{display:block}
-          .pconv{display:inline-flex}
           .pkpis{grid-template-columns:repeat(3,1fr)}
           .ptiles{grid-template-columns:1fr 1fr}
           .pcOnly{display:contents}
@@ -232,7 +234,11 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           .pspark{flex:1;min-height:0}
         }
         @keyframes gaugeIn{from{stroke-dashoffset:202px}}
-        @keyframes gaugeFade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}`}</style>
+        @keyframes gaugeFade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+        @keyframes alertPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+        @keyframes alertGlow{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 13px rgba(239,68,68,0)}}
+        @keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.2}}
+        @keyframes waNudge{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}`}</style>
 
       {/* Topbar full-width */}
       <div className="ptopbar">
@@ -247,7 +253,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             </div>
           </div>
           <div className="ptopmeta">
-            <a href={`/r/${token}/conversas`} className="pconv" title="Ver as conversas dos leads">💬 Conversas</a>
             <span className="pupdated">Atualizado {atualizado}</span>
             <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
           </div>
@@ -256,14 +261,15 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
 
       <div className="pwrap">
 
-        {/* Narrativa (o "e daí") */}
-        {data.narrative.length > 0 && (
-          <div className="pnarr" style={{ ...card, borderLeft: "3px solid var(--p-accent)" }}>
-            {data.narrative.map((line, i) => (
-              <div key={i} style={{ fontSize: 13.5, color: "var(--p-text)", lineHeight: 1.5, marginTop: i ? 5 : 0 }}>{line}</div>
-            ))}
+        {/* Acesso às conversas (WhatsApp) — no lugar da narrativa */}
+        <a href={`/r/${token}/conversas`} className="pnarr" style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 14, background: "#25D366", color: "#fff", textDecoration: "none", boxShadow: "0 6px 18px rgba(37,211,102,.32)" }}>
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" style={{ flexShrink: 0 }}><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.157 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.737-.979zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Acompanhar as conversas no WhatsApp</div>
+            <div style={{ fontSize: 12.5, opacity: 0.92, marginTop: 1 }}>Veja em tempo real as mensagens dos seus leads</div>
           </div>
-        )}
+          <span style={{ fontSize: 22, fontWeight: 700, animation: "waNudge 1.4s ease-in-out infinite" }}>→</span>
+        </a>
 
         {/* ───── BLOCO 1 · ANÚNCIOS (o que a Veloce entrega) ───── */}
         {data.midia && (
@@ -301,7 +307,17 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>· velocidade de resposta e conversão</span>
           </div>
           <div className="pkpis2">
-            <Kpi label="Conversas no WhatsApp" value={int(a.leads)} sub={deltaTxt && <span style={{ color: deltaColor, fontWeight: 600 }}>{deltaTxt}</span>} />
+            {/* Alerta animado: leads sem resposta */}
+            <div style={{ ...card, position: "relative", display: "flex", flexDirection: "column", justifyContent: "center", border: "none",
+              background: semResposta > 0 ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#16a34a,#15803d)",
+              animation: semResposta > 0 ? "alertGlow 1.8s ease-in-out infinite" : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#fff", animation: semResposta > 0 ? "dotBlink 1s ease-in-out infinite" : "none" }} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.95 }}>{semResposta > 0 ? "Leads sem resposta" : "Tudo respondido"}</span>
+              </div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, marginTop: 6, transformOrigin: "left", animation: semResposta > 0 ? "alertPulse 1.5s ease-in-out infinite" : "none" }}>{semResposta > 0 ? int(semResposta) : "👌"}</div>
+              <div style={{ fontSize: 12, color: "#fff", opacity: 0.92, marginTop: 5 }}>{semResposta > 0 ? "esperando você responder no WhatsApp" : "nenhum lead aguardando resposta"}</div>
+            </div>
             <Kpi label="Tempo de resposta" value={a.tempoMedioMin != null ? `${a.tempoMedioMin} min` : "—"} sub={`${a.taxaResposta}% respondidos`} />
           </div>
           <div className="ptiles">
