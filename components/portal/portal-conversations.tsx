@@ -127,7 +127,9 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
       </aside>
 
       {/* ── Chat ── */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--wa-chat)" }}>
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "color-mix(in srgb, var(--p-accent) 8%, var(--p-bg))" }}>
+        {logoUrl && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${logoUrl}")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(38%, 300px)", opacity: 0.05, pointerEvents: "none" }} />}
+        <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         {!sel ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--wa-muted)" }}>
             <div style={{ width: 72, height: 72, borderRadius: "50%", background: "color-mix(in srgb, var(--p-accent) 14%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}><Eye size={30} style={{ color: "var(--p-accent)" }} /></div>
@@ -148,7 +150,7 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
             </div>
 
             {/* mensagens */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px 8%", backgroundImage: "radial-gradient(var(--wa-divider) 0.7px, transparent 0.7px)", backgroundSize: "22px 22px" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>
               {grouped.map((g, gi) => (
                 <div key={gi}>
                   <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
@@ -178,6 +180,7 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
             </div>
           </>
         )}
+        </div>
       </main>
       </div>
     </div>
