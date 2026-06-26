@@ -43,7 +43,7 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
           background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
           background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;
-          --wa-chat:#ece5dd;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#d6cdbf}
+          --wa-chat:#efeae2;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#e1dacf}
         /* só PC — no celular mostra recado */
         .cmobile{display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}
         .cdesk{display:none}
