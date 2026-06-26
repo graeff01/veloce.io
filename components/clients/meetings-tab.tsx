@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Zap,
 } from "lucide-react";
+import { MeetingPrep } from "@/components/clients/meeting-prep";
 
 interface Meeting {
   id: string;
@@ -302,6 +303,8 @@ export function MeetingsTab({ clientId }: { clientId: string }) {
   return (
     <div style={{ padding: "28px 40px", maxWidth: 860 }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <MeetingPrep clientId={clientId} />
 
       {/* Transcription error */}
       {transcribeErr && (
