@@ -180,8 +180,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         .ptopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
         .ptopbar-in{max-width:1120px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
         .pbrand{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}
-        .ptopmeta{display:flex;align-items:center;gap:14px}
+        .ptopmeta{display:flex;align-items:center;gap:12px}
         .pupdated{display:none;font-size:11.5px;color:var(--p-muted)}
+        .pconv{display:none;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--p-border);border-radius:9px;background:var(--p-surface);color:var(--p-text);font-size:12.5px;font-weight:600;text-decoration:none}
         .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:178px}
         .pwrap{max-width:1120px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}
         .pcol{display:flex;flex-direction:column;gap:12px}
@@ -196,6 +197,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         @media(min-width:760px){
           .ptopbar-in,.pwrap{padding-left:22px;padding-right:22px}
           .pupdated{display:block}
+          .pconv{display:inline-flex}
           .pkpis{grid-template-columns:repeat(3,1fr)}
           .ptiles{grid-template-columns:1fr 1fr}
           .pcOnly{display:contents}
@@ -232,6 +234,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             </div>
           </div>
           <div className="ptopmeta">
+            <a href={`/r/${token}/conversas`} className="pconv" title="Ver as conversas dos leads">💬 Conversas</a>
             <span className="pupdated">Atualizado {atualizado}</span>
             <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
           </div>
