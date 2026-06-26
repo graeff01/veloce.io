@@ -42,3 +42,26 @@ export function themeStyle(accent: string | null, mode: string): string {
   if (mode === "auto") return `:root{${vars(light)}}@media(prefers-color-scheme:dark){:root{${vars(dark)}}}`;
   return `:root{${vars(light)}}`;
 }
+
+// CSS chaveável claro/escuro pelo cliente: aplica via atributo data-pt no <html>.
+// Default em :root (funciona sem JS, no modo da agência). Inclui as vars --wa-* do
+// WhatsApp pra o chat seguir o toggle também.
+export function themeSwitchCss(accent: string | null, defaultMode: string): string {
+  const vars = (t: Theme) =>
+    `--p-bg:${t.bg};--p-surface:${t.surface};--p-border:${t.border};--p-text:${t.text};` +
+    `--p-muted:${t.muted};--p-accent:${t.accent};--p-accent-soft:${t.accentSoft};--p-on-accent:${t.onAccent};`;
+  const waLight = "--wa-chat:#efeae2;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#e1dacf;";
+  const waDark = "--wa-chat:#0b141a;--wa-in:#202c33;--wa-text:#e9edef;--wa-muted:#8696a0;--wa-divider:#182229;";
+  const light = buildTheme(accent, "light");
+  const dark = buildTheme(accent, "dark");
+  const def = defaultMode === "dark" ? `${vars(dark)}${waDark}` : `${vars(light)}${waLight}`;
+  return `:root{${def}}` +
+    `html[data-pt="light"]{${vars(light)}${waLight}}` +
+    `html[data-pt="dark"]{${vars(dark)}${waDark}}`;
+}
+
+// Script inline (anti-flash): define data-pt no <html> a partir do localStorage,
+// caindo no modo da agência (auto = segue o aparelho).
+export function themeInitScript(token: string, defaultMode: string): string {
+  return `(function(){try{var k='pt-${token}';var m=localStorage.getItem(k)||'${defaultMode}';if(m==='auto'){m=(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-pt',m);}catch(e){}})();`;
+}

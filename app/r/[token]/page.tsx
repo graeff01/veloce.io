@@ -3,9 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, type Period } from "@/lib/notifications/client-report";
 import { getCreativeMedia, type CreativeMedia } from "@/lib/notifications/creative-media";
-import { buildTheme, themeStyle } from "@/lib/portal-theme";
+import { buildTheme, themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
+import { PortalShell } from "@/components/portal/portal-shell";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -186,7 +187,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
 
   return (
     <main className="pmain">
-      <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
+      <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
+      <PortalShell token={token} brandName={brandName} logoUrl={client?.logoUrl ?? null} active="painel" />
+      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         /* Fundo com profundidade: brilho sutil na cor do cliente + textura de pontos
            discreta (preenche as bordas no PC sem poluir). Estático de propósito. */
         .pmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
