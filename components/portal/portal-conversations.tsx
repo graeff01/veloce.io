@@ -127,8 +127,12 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
       </aside>
 
       {/* ── Chat ── */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "color-mix(in srgb, var(--p-accent) 8%, var(--p-bg))" }}>
-        {logoUrl && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${logoUrl}")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(38%, 300px)", opacity: 0.05, pointerEvents: "none" }} />}
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "var(--wa-chat)" }}>
+        {/* marca d'água: logo do cliente (PNG em /public/logopng) */}
+        <div style={{ position: "absolute", inset: 0, backgroundImage: `url("/logopng/bv.png")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(38%, 300px)", opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />
+        {/* granulado (feTurbulence) — mesmo grão do tema claro */}
+        <div style={{ position: "absolute", inset: 0, opacity: 0.06, pointerEvents: "none", zIndex: 0, mixBlendMode: "multiply",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")` }} />
         <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         {!sel ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--wa-muted)" }}>
