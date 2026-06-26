@@ -24,7 +24,7 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
     );
   }
 
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 
   // Login do painel: conversas exigem sessão se o cliente está protegido.
   if (await isProtected(portal.clientId) && !(await getPortalSessionEmail(portal.clientId))) {
@@ -58,7 +58,7 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
         </div>
       </div>
 
-      <PortalConversations token={token} brandName={(client?.name || "Conversas")} />
+      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} />
     </main>
   );
 }

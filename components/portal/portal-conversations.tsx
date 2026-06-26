@@ -39,7 +39,7 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
 }
 
-export function PortalConversations({ token, brandName }: { token: string; brandName: string }) {
+export function PortalConversations({ token, brandName, logoUrl }: { token: string; brandName: string; logoUrl: string | null }) {
   const [list, setList] = useState<Row[] | null>(null);
   const [tab, setTab] = useState<"all" | "ads">("all");
   const [q, setQ] = useState("");
@@ -72,13 +72,25 @@ export function PortalConversations({ token, brandName }: { token: string; brand
   );
 
   return (
-    <div className="cdesk" style={{ height: "100dvh", width: "100%" }}>
+    <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
+      {/* Topbar full-width — mantém a identidade do painel */}
+      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
+        {logoUrl
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={logoUrl} alt="" width={38} height={38} style={{ borderRadius: 10, objectFit: "cover", border: "1px solid var(--p-border)" }} />
+          : <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--p-accent)", color: "var(--p-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>{brandName[0]?.toUpperCase()}</div>}
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "var(--p-text)" }}>{brandName}</div>
+          <div style={{ fontSize: 12, color: "var(--wa-muted)" }}>Conversas dos leads</div>
+        </div>
+        <span style={{ flex: 1 }} />
+        <a href={`/r/${token}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}><ArrowLeft size={15} /> Voltar ao painel</a>
+      </header>
+
+      {/* Viewer: lista | chat */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       {/* ── Lista (sidebar) ── */}
       <aside style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--p-border)" }}>
-          <a href={`/r/${token}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "var(--p-accent)", textDecoration: "none" }}><ArrowLeft size={15} /> Painel</a>
-          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)", flex: 1, textAlign: "right" }}>{brandName}</span>
-        </div>
         {/* busca */}
         <div style={{ padding: "8px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 12px", borderRadius: 10, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
@@ -167,6 +179,7 @@ export function PortalConversations({ token, brandName }: { token: string; brand
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }
