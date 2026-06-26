@@ -39,7 +39,11 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
   return (
     <main className="cmain">
       <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
-        .cmain{min-height:100dvh;background:var(--p-bg);color:var(--p-text);font-family:system-ui,-apple-system,sans-serif}
+        .cmain{min-height:100dvh;background:var(--p-bg);color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
+          ${portal.mode === "dark"
+            ? "--wa-chat:#0b141a;--wa-in:#202c33;--wa-text:#e9edef;--wa-muted:#8696a0;--wa-divider:#182229"
+            : "--wa-chat:#efeae2;--wa-in:#ffffff;--wa-text:#111b21;--wa-muted:#667781;--wa-divider:#e1dacf"}}
+        ${portal.mode === "auto" ? "@media(prefers-color-scheme:dark){.cmain{--wa-chat:#0b141a;--wa-in:#202c33;--wa-text:#e9edef;--wa-muted:#8696a0;--wa-divider:#182229}}" : ""}
         /* só PC — no celular mostra recado */
         .cmobile{display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}
         .cdesk{display:none}
