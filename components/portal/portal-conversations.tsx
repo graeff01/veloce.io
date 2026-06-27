@@ -75,14 +75,7 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
       {/* Topbar full-width — mantém a identidade do painel */}
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
-        {logoUrl
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={logoUrl} alt="" width={38} height={38} style={{ borderRadius: 10, objectFit: "cover", border: "1px solid var(--p-border)" }} />
-          : <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--p-accent)", color: "var(--p-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>{brandName[0]?.toUpperCase()}</div>}
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "var(--p-text)" }}>{brandName}</div>
-          <div style={{ fontSize: 12, color: "var(--wa-muted)" }}>Conversas dos leads</div>
-        </div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>Conversas dos leads</div>
         <span style={{ flex: 1 }} />
         <a href={`/r/${token}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}><ArrowLeft size={15} /> Voltar ao painel</a>
       </header>
