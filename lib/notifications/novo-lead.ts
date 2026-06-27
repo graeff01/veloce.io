@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
-import { getOrCreatePortal } from "@/lib/notifications/client-portal";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded, botMsg } from "@/lib/notifications/client-bot";
 import { esc } from "@/lib/notifications/digest";
 
 // Alerta "🚨 Novo lead" — vai para o BOT DO CLIENTE, só no 1º contato do lead.
@@ -47,16 +46,14 @@ export async function notifyNovoLead(opts: {
   const burst = await prisma.waConversation.count({ where: { connectionId: conv.connectionId, firstInboundAt: { gte: new Date(Date.now() - BURST_WINDOW_MS) } } });
   if (burst > BURST_MAX) return;
 
-  const [lead, profile, portal] = await Promise.all([
+  const [lead, profile] = await Promise.all([
     prisma.waLead.findUnique({ where: { contactId }, select: { adModel: true, adTitle: true, sourceType: true } }),
     prisma.leadProfile.findUnique({ where: { contactId }, select: { productInterest: true, budget: true, wantsFinancing: true, visitIntent: true } }),
-    getOrCreatePortal(clientId),
   ]);
 
   const nome = (contactName || "").trim() || "Lead";
   const fone = formatPhone(waId);
   const primeira = (text || "").replace(/\s+/g, " ").trim().slice(0, 280) || "(mídia / sem texto)";
-  const linha2 = [esc(nome), fone].filter(Boolean).join(" · ");
 
   // Linha de perfil (só o que já se sabe).
   const perfil: string[] = [];
@@ -66,14 +63,13 @@ export async function notifyNovoLead(opts: {
   if (profile?.wantsFinancing) perfil.push("pergunta financiamento");
 
   const wa = waMe(waId);
-  const tg =
-    `🚨 <b>Novo lead</b>\n` +
-    `👤 ${linha2}\n` +
-    `📍 Origem: ${esc(origem(lead))}\n` +
-    (perfil.length ? `📋 ${perfil.join(" · ")}\n` : "") +
-    `💬 “${esc(primeira)}”\n\n` +
-    (wa ? `<a href="${wa}">💬 Responder no WhatsApp →</a>\n` : "") +
-    `<a href="${portal.link}">📊 Painel</a>`;
+  // Padrão: cabeçalho → contexto → 1 CTA (Responder no WhatsApp).
+  const tg = botMsg("🚨 <b>Novo lead</b>", [
+    `👤 ${[esc(nome), fone].filter(Boolean).join(" · ")}`,
+    `📍 ${esc(origem(lead))}`,
+    perfil.length ? `📋 ${perfil.join(" · ")}` : null,
+    `💬 “${esc(primeira)}”`,
+  ], wa ? { label: "💬 Responder no WhatsApp →", url: wa } : null);
 
   await sendClientAlert(clientId, "novoLead", tg, { urgent: true }).catch(() => {});
 }

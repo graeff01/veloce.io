@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded, botMsg, type BotCta } from "@/lib/notifications/client-bot";
 import { getOrCreatePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, waitingWithTemp } from "@/lib/notifications/client-report";
 import { gateOnce } from "@/lib/notifications/dispatch";
@@ -51,13 +51,14 @@ async function runClientSla(clientId: string, day: string, excl: string[]): Prom
     if (!(await gateOnce(`cb-sla:${day}:${w.contactId}:${tier}`))) continue;
     const nome = (w.contact.name || "").trim() || "Lead";
     const wa = waMe(w.contact.waId);
-    const link = wa ? `\n\n<a href="${wa}">💬 Responder no WhatsApp →</a>` : "";
+    const cta: BotCta | null = wa ? { label: "💬 Responder no WhatsApp →", url: wa } : null;
     const hot = isHot(w);
     // Enquadramento de PERDA (aversão à perda) + speed-to-lead.
-    let tg: string;
-    if (hot) tg = `🔥 <b>Lead QUENTE sem resposta há ${mins} min</b>\n👤 ${esc(nome)}\n⚠️ Você está prestes a perder esse lead — responda agora.${link}`;
-    else if (tier === 30) tg = `🔴 <b>Lead sem resposta há ${mins} min</b>\n👤 ${esc(nome)}\n⚠️ Esfriando — quanto mais demora, menor a chance.${link}`;
-    else tg = `⏱️ <b>Lead aguardando há ${mins} min</b>\n👤 ${esc(nome)}${link}`;
+    const tg = hot
+      ? botMsg(`🔥 <b>Lead QUENTE parado há ${mins} min</b>`, [`👤 ${esc(nome)}`, `⚠️ Você está prestes a perder — responda agora.`], cta)
+      : tier === 30
+        ? botMsg(`🔴 <b>Lead sem resposta há ${mins} min</b>`, [`👤 ${esc(nome)}`, `⚠️ Esfriando — quanto mais demora, menor a chance.`], cta)
+        : botMsg(`⏱️ <b>Lead aguardando há ${mins} min</b>`, [`👤 ${esc(nome)}`], cta);
     await sendClientAlert(clientId, "slaAlerts", tg, { urgent: hot || tier === 30 });
   }
 }
@@ -76,12 +77,11 @@ async function runBriefingManha(clientId: string, excl: string[]): Promise<void>
   const ontem = ontemRaw.filter((c) => !nameExcluded(c.contact.name, excl)).length;
   const hot = w.filter((x) => x.temp === "hot").length;
 
-  const tg =
-    `☀️ <b>Bom dia!</b>\n` +
-    `• 💬 ${ontem} lead${ontem !== 1 ? "s" : ""} ontem\n` +
-    `• ⏳ ${w.length} aguardando agora${hot > 0 ? ` (🔥 ${hot} quente${hot > 1 ? "s" : ""})` : ""}` +
-    (hot > 0 ? `\n\n🔥 Comece pelos quentes — eles esfriam rápido.` : "") +
-    `\n\n<a href="${await portalLink(clientId)}">📊 Painel</a>`;
+  const tg = botMsg("☀️ <b>Bom dia!</b>", [
+    `• 💬 ${ontem} lead${ontem !== 1 ? "s" : ""} ontem`,
+    `• ⏳ ${w.length} aguardando agora${hot > 0 ? ` (🔥 ${hot} quente${hot > 1 ? "s" : ""})` : ""}`,
+    hot > 0 ? `🔥 Comece pelos quentes — eles esfriam rápido.` : null,
+  ], { label: "📊 Painel", url: await portalLink(clientId) });
   await sendClientAlert(clientId, "resumoDiario", tg);
 }
 
@@ -100,9 +100,11 @@ async function runEsfriando(clientId: string, excl: string[]): Promise<void> {
 
   const dias = (d: Date | null) => (d ? Math.floor((Date.now() - d.getTime()) / 86_400_000) : 0);
   const lines = cold.slice(0, 6).map((c) => `• ${esc((c.contact.name || "").trim() || "Lead")} — ${dias(c.lastMessageAt)}d sem retorno`);
-  const tg =
-    `🧊 <b>Leads esfriando</b>\n${cold.length} lead${cold.length > 1 ? "s" : ""} qualificado${cold.length > 1 ? "s" : ""} sem retorno — vale reativar:\n` +
-    lines.join("\n") + `\n\n<a href="${await portalLink(clientId)}">📊 Ver no painel</a>`;
+  const tg = botMsg(
+    "🧊 <b>Leads esfriando</b>",
+    [`${cold.length} lead${cold.length > 1 ? "s" : ""} qualificado${cold.length > 1 ? "s" : ""} sem retorno — vale reativar:`, ...lines],
+    { label: "📊 Ver no painel", url: await portalLink(clientId) },
+  );
   await sendClientAlert(clientId, "leadEsfriando", tg);
 }
 
@@ -137,15 +139,17 @@ async function runResumo(clientId: string, excl: string[]): Promise<void> {
     else if (w.funnelStage === "qualificado" || (p?.score ?? 0) >= 40 || p?.temperature === "warm") warm++;
     else cold++;
   }
-  const termometro = waiting.length > 0 ? `\n🌡️ Aguardando agora: 🔥 ${hot} · 🟠 ${warm} · 🧊 ${cold}` : "";
-
+  const cta: BotCta = { label: "📊 Painel completo", url: await portalLink(clientId) };
   const tg = leads === 0 && waiting.length === 0
-    ? `🌙 <b>Resumo do dia</b>\nDia tranquilo — nenhum lead novo hoje. 🌿`
-    : `🌙 <b>Resumo do dia</b>\n• 💬 ${leads} lead${leads !== 1 ? "s" : ""}\n• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>` +
-      (semResposta > 0 ? `\n• ⏳ ${semResposta} sem resposta` : "") +
-      `\n• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}` +
-      (avgMin != null ? `\n• ⏱️ Tempo médio de resposta: ${avgMin} min` : "") + termometro +
-      `\n\n<a href="${await portalLink(clientId)}">📊 Painel completo</a>`;
+    ? botMsg("🌙 <b>Resumo do dia</b>", ["Dia tranquilo — nenhum lead novo hoje. 🌿"], cta)
+    : botMsg("🌙 <b>Resumo do dia</b>", [
+        `• 💬 ${leads} lead${leads !== 1 ? "s" : ""}`,
+        `• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>`,
+        semResposta > 0 ? `• ⏳ ${semResposta} sem resposta` : null,
+        `• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}`,
+        avgMin != null ? `• ⏱️ Tempo médio de resposta: ${avgMin} min` : null,
+        waiting.length > 0 ? `🌡️ Aguardando agora: 🔥 ${hot} · 🟠 ${warm} · 🧊 ${cold}` : null,
+      ], cta);
   await sendClientAlert(clientId, "resumoDiario", tg);
 }
 
@@ -154,13 +158,12 @@ async function runResumoSemana(clientId: string): Promise<void> {
   const d = await getClientDashboard(clientId, "week");
   const a = d.atendimento;
   if (a.leads === 0) return;
-  const tg =
-    `📅 <b>Resumo da semana</b>\n` +
-    `• 💬 ${a.leads} leads${a.deltaPct != null ? ` <i>(${a.deltaPct >= 0 ? "+" : ""}${a.deltaPct}% vs. semana anterior)</i>` : ""}\n` +
-    `• ✅ ${a.respondidos} respondidos <i>(${a.taxaResposta}%)</i>\n` +
-    `• 🎯 ${a.conversoes} conversões` +
-    (a.tempoMedioMin != null ? `\n• ⏱️ Tempo médio: ${a.tempoMedioMin} min` : "") +
-    `\n\n<a href="${await portalLink(clientId)}">📊 Painel completo</a>`;
+  const tg = botMsg("📅 <b>Resumo da semana</b>", [
+    `• 💬 ${a.leads} leads${a.deltaPct != null ? ` <i>(${a.deltaPct >= 0 ? "+" : ""}${a.deltaPct}% vs. semana anterior)</i>` : ""}`,
+    `• ✅ ${a.respondidos} respondidos <i>(${a.taxaResposta}%)</i>`,
+    `• 🎯 ${a.conversoes} conversões`,
+    a.tempoMedioMin != null ? `• ⏱️ Tempo médio: ${a.tempoMedioMin} min` : null,
+  ], { label: "📊 Painel completo", url: await portalLink(clientId) });
   await sendClientAlert(clientId, "resumoDiario", tg);
 }
 
@@ -172,7 +175,7 @@ async function runBurstDigest(clientId: string): Promise<void> {
   if (n <= BURST_MAX) return;
   const bucket = Math.floor(Date.now() / BURST_WINDOW_MS);
   if (!(await gateOnce(`cb-burst:${bucket}:${clientId}`))) return;
-  const tg = `📥 <b>Pico de leads</b>\n${n} novos leads nos últimos minutos.\n\n<a href="${await portalLink(clientId)}">📊 Ver no painel</a>`;
+  const tg = botMsg("📥 <b>Pico de leads</b>", [`${n} novos leads nos últimos minutos.`], { label: "📊 Ver no painel", url: await portalLink(clientId) });
   await sendClientAlert(clientId, "novoLead", tg, { urgent: true });
 }
 

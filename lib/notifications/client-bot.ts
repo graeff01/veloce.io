@@ -77,11 +77,28 @@ export async function clientBotByWebhook(webhookSecret: string): Promise<{ clien
   }
 }
 
-// Mensagem de boas-vindas (custom do cliente ou padrão, com a marca se houver).
+// ── Padrão visual das mensagens (style guide) ────────────────────────────────
+// Toda mensagem segue: CABEÇALHO (emoji-categoria + título em negrito) →
+// CONTEXTO (linhas curtas) → 1 CTA principal. Escaneável em 3 segundos.
+export interface BotCta { label: string; url: string }
+export function botMsg(head: string, lines: (string | null | undefined)[], cta?: BotCta | null): string {
+  const body = lines.filter(Boolean).join("\n");
+  const action = cta ? `\n\n<a href="${cta.url}">${cta.label}</a>` : "";
+  return `${head}${body ? `\n${body}` : ""}${action}`;
+}
+
+// Mensagem de boas-vindas (custom do cliente ou mini-tour padrão, com a marca).
 export function welcomeText(welcomeMessage: string | null, brandName: string | null): string {
   if (welcomeMessage?.trim()) return welcomeMessage.trim();
   const marca = brandName?.trim() ? ` da <b>${brandName.trim()}</b>` : "";
-  return `✅ Conectado ao assistente${marca}! Você vai receber aqui os novos leads e o andamento do atendimento.`;
+  return (
+    `✅ <b>Conectado ao assistente${marca}!</b>\n` +
+    `Você vai receber aqui:\n` +
+    `• 🚨 Novos leads na hora\n` +
+    `• 🔥 Leads quentes e quem está esperando\n` +
+    `• 🌙 Resumo do dia e da semana\n\n` +
+    `Quando quiser, é só pedir: /status · /quentes · /painel`
+  );
 }
 
 // Marca branca: nome do bot no Telegram (best-effort; o Telegram limita trocas/dia).

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded, botMsg } from "@/lib/notifications/client-bot";
 import { gateOnce } from "@/lib/notifications/dispatch";
 import { esc } from "@/lib/notifications/digest";
 import { detectStageFromMessage } from "@/lib/wa-funnel";
@@ -50,11 +50,10 @@ export async function notifyLeadQuente(opts: { clientId: string; contactId: stri
   const temp = profile?.temperature && TEMP_LABEL[profile.temperature] ? ` · 🌡️ ${TEMP_LABEL[profile.temperature]}` : "";
 
   const wa = waMe(waId);
-  const tg =
-    `🔥 <b>Lead altamente qualificado</b>\n` +
-    `👤 ${esc(nome)}${score}${temp}\n` +
-    motivos.map((m) => `• ${esc(m)}`).join("\n") +
-    (wa ? `\n\n<a href="${wa}">💬 Responder no WhatsApp →</a>` : "");
+  const tg = botMsg("🔥 <b>Lead altamente qualificado</b>", [
+    `👤 ${esc(nome)}${score}${temp}`,
+    ...motivos.map((m) => `• ${esc(m)}`),
+  ], wa ? { label: "💬 Responder no WhatsApp →", url: wa } : null);
 
   await sendClientAlert(clientId, "leadQuente", tg, { urgent: true }).catch(() => {});
 }
