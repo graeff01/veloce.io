@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Sun, Moon, LayoutDashboard, MessageCircle } from "lucide-react";
 
-// Réplica enxuta do sistema pro cliente: sidebar white-label (logo do cliente +
-// Painel/Conversas + toggle de tema). Só PC (>=1024px); no celular fica escondida
-// e o conteúdo segue como antes.
+// Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
+// interno (clara/branca), nas cores do cliente, só com Painel/Conversas + toggle de
+// tema. Só PC (>=1024px); no celular fica escondida e o conteúdo segue como antes.
+// A sidebar fica sempre clara (igual ao sistema); o toggle alterna o CONTEÚDO.
+const C = { white: "#ffffff", bg: "#f6f7f9", border: "#e8ebf0", text: "#101319", secondary: "#5b6470", muted: "#8b93a1", elevated: "#f1f3f6" };
+
 export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
@@ -20,8 +23,14 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
   const item = (key: "painel" | "conversas", href: string, label: string, icon: React.ReactNode) => {
     const on = active === key;
     return (
-      <Link href={href} prefetch style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, textDecoration: "none", fontSize: 13.5, fontWeight: on ? 700 : 500, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--p-muted)" }}>
-        {icon}{label}
+      <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, marginBottom: 2, fontSize: 13, fontWeight: on ? 600 : 400, cursor: "pointer", transition: "background .18s, transform .18s, color .18s", background: on ? "linear-gradient(90deg, var(--p-accent-soft), transparent)" : "transparent", color: on ? "var(--p-accent)" : C.secondary }}
+          onMouseEnter={(e) => { if (!on) { e.currentTarget.style.background = C.elevated; e.currentTarget.style.transform = "translateX(2px)"; } }}
+          onMouseLeave={(e) => { if (!on) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.transform = "translateX(0)"; } }}
+        >
+          {icon}{label}
+        </div>
       </Link>
     );
   };
@@ -30,27 +39,27 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
     <>
       <style>{`.pside{display:none}
         @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain{margin-left:236px} }`}</style>
-      <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 20, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 14 }}>
+      <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: C.white, borderRight: `1px solid ${C.border}`, padding: 12 }}>
         {/* marca do cliente */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 6px 14px", borderBottom: "1px solid var(--p-border)" }}>
-          {logoUrl
-            // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={logoUrl} alt="" width={34} height={34} style={{ borderRadius: 9, objectFit: "cover", border: "1px solid var(--p-border)" }} />
-            : <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--p-accent)", color: "var(--p-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16 }}>{brandName[0]?.toUpperCase()}</div>}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{brandName}</div>
-            <div style={{ fontSize: 10.5, color: "var(--p-muted)" }}>Painel do cliente</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, height: 56, padding: "0 6px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: C.bg, border: `1px solid ${C.border}`, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {logoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={logoUrl} alt="" width={32} height={32} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              : <span style={{ fontWeight: 800, fontSize: 15, color: "var(--p-accent)" }}>{brandName[0]?.toUpperCase()}</span>}
           </div>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{brandName}</span>
         </div>
 
         {/* navegação */}
-        <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12, flex: 1 }}>
-          {item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={16} />)}
-          {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={16} />)}
+        <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px" }}>Menu</div>
+          {item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
+          {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
         </nav>
 
         {/* tema */}
-        <button onClick={toggle} title="Alternar tema" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+        <button onClick={toggle} title="Alternar tema" style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.secondary, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />} {theme === "dark" ? "Tema claro" : "Tema escuro"}
         </button>
       </aside>
