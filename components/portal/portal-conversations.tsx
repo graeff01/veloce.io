@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, ArrowLeft, Eye } from "lucide-react";
+import { Search, Eye } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; funnelStage: string | null }
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
@@ -76,8 +76,6 @@ export function PortalConversations({ token, brandName, logoUrl }: { token: stri
       {/* Topbar full-width — mantém a identidade do painel */}
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>Conversas dos leads</div>
-        <span style={{ flex: 1 }} />
-        <a href={`/r/${token}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}><ArrowLeft size={15} /> Voltar ao painel</a>
       </header>
 
       {/* Viewer preenche toda a área interna (ao lado da sidebar do shell) */}

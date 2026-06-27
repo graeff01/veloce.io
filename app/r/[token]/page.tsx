@@ -314,6 +314,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               </div>
             </div>
 
+            {/* Volume de leads no período (a métrica de conversas que tinha saído) */}
+            <div style={{ ...card, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={capLabel}>Leads no período</div>
+              <div style={{ fontSize: 34, fontWeight: 900, color: "var(--p-accent)", lineHeight: 1, marginTop: 6 }}>{int(a.leads)}</div>
+              <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 6 }}>conversas no WhatsApp · {int(a.respondidos)} respondidas</div>
+            </div>
           </div>
           {data.series.length > 1 && <div className="pcOnly"><Sparkline series={data.series} /></div>}
         </div>
