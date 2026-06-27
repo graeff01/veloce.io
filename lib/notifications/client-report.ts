@@ -24,7 +24,7 @@ function tempOf(funnelStage: string | null, score: number | null, temperature: s
 
 // Leads aguardando agora, com temperatura de cada um (funil grátis + score IA).
 // Filtra nomes excluídos (ex.: família do dono).
-async function waitingWithTemp(connIds: string[], excluded: string[] = []) {
+export async function waitingWithTemp(connIds: string[], excluded: string[] = []) {
   const waiting = await prisma.waConversation.findMany({
     where: { connectionId: { in: connIds }, status: "waiting", funnelStage: { notIn: ["convertido", "perdido"] } },
     select: { contactId: true, funnelStage: true, lastInboundAt: true, contact: { select: { name: true, waId: true } } },

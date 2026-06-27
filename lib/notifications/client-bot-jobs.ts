@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendClientAlert, waMe, excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { getOrCreatePortal } from "@/lib/notifications/client-portal";
-import { getClientDashboard } from "@/lib/notifications/client-report";
+import { getClientDashboard, waitingWithTemp } from "@/lib/notifications/client-report";
 import { gateOnce } from "@/lib/notifications/dispatch";
 import { esc } from "@/lib/notifications/digest";
 import { captureException } from "@/lib/observability";
@@ -32,8 +32,17 @@ async function runClientSla(clientId: string, day: string, excl: string[]): Prom
 
   const waiting = await prisma.waConversation.findMany({
     where: { connectionId: { in: connIds }, status: "waiting", firstResponseSec: null, firstInboundAt: { gte: new Date(now - 6 * 3600_000), lt: new Date(now - 15 * 60_000) } },
-    select: { contactId: true, firstInboundAt: true, contact: { select: { name: true, waId: true } } },
+    select: { contactId: true, firstInboundAt: true, funnelStage: true, contact: { select: { name: true, waId: true } } },
   });
+  if (waiting.length === 0) return;
+
+  // Temperatura dos que estão esperando — o quente parado é a MAIOR perda.
+  const profs = await prisma.leadProfile.findMany({ where: { contactId: { in: waiting.map((w) => w.contactId) } }, select: { contactId: true, score: true, temperature: true } });
+  const pmap = new Map(profs.map((p) => [p.contactId, p]));
+  const isHot = (w: { contactId: string; funnelStage: string | null }) => {
+    const p = pmap.get(w.contactId);
+    return w.funnelStage === "negociacao" || (p?.score ?? 0) >= 70 || p?.temperature === "hot";
+  };
 
   for (const w of waiting) {
     if (nameExcluded(w.contact.name, excl)) continue;
@@ -41,14 +50,39 @@ async function runClientSla(clientId: string, day: string, excl: string[]): Prom
     const tier = mins >= 30 ? 30 : 15;
     if (!(await gateOnce(`cb-sla:${day}:${w.contactId}:${tier}`))) continue;
     const nome = (w.contact.name || "").trim() || "Lead";
-    const urgent = tier === 30;
     const wa = waMe(w.contact.waId);
     const link = wa ? `\n\n<a href="${wa}">💬 Responder no WhatsApp →</a>` : "";
-    const tg = urgent
-      ? `🔴 <b>Lead SEM RESPOSTA há ${mins} min</b>\n👤 ${esc(nome)}\n⚠️ Risco de esfriar — responda agora.${link}`
-      : `⚠️ <b>Lead aguardando há ${mins} min</b>\n👤 ${esc(nome)}${link}`;
-    await sendClientAlert(clientId, "slaAlerts", tg, { urgent });
+    const hot = isHot(w);
+    // Enquadramento de PERDA (aversão à perda) + speed-to-lead.
+    let tg: string;
+    if (hot) tg = `🔥 <b>Lead QUENTE sem resposta há ${mins} min</b>\n👤 ${esc(nome)}\n⚠️ Você está prestes a perder esse lead — responda agora.${link}`;
+    else if (tier === 30) tg = `🔴 <b>Lead sem resposta há ${mins} min</b>\n👤 ${esc(nome)}\n⚠️ Esfriando — quanto mais demora, menor a chance.${link}`;
+    else tg = `⏱️ <b>Lead aguardando há ${mins} min</b>\n👤 ${esc(nome)}${link}`;
+    await sendClientAlert(clientId, "slaAlerts", tg, { urgent: hot || tier === 30 });
   }
+}
+
+// ── Briefing da manhã (ritmo fixo, conciso) ──────────────────────────────────
+async function runBriefingManha(clientId: string, excl: string[]): Promise<void> {
+  const connIds = await connIdsFor(clientId);
+  if (connIds.length === 0) return;
+  const startToday = wallToInstant(nowParts(TZ).ymd, "00:00", TZ);
+  const startOntem = new Date(startToday.getTime() - 24 * 3600_000);
+
+  const [ontemRaw, w] = await Promise.all([
+    prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: startOntem, lt: startToday } }, select: { contact: { select: { name: true } } } }),
+    waitingWithTemp(connIds, excl),
+  ]);
+  const ontem = ontemRaw.filter((c) => !nameExcluded(c.contact.name, excl)).length;
+  const hot = w.filter((x) => x.temp === "hot").length;
+
+  const tg =
+    `☀️ <b>Bom dia!</b>\n` +
+    `• 💬 ${ontem} lead${ontem !== 1 ? "s" : ""} ontem\n` +
+    `• ⏳ ${w.length} aguardando agora${hot > 0 ? ` (🔥 ${hot} quente${hot > 1 ? "s" : ""})` : ""}` +
+    (hot > 0 ? `\n\n🔥 Comece pelos quentes — eles esfriam rápido.` : "") +
+    `\n\n<a href="${await portalLink(clientId)}">📊 Painel</a>`;
+  await sendClientAlert(clientId, "resumoDiario", tg);
 }
 
 // ── Lead esfriando (1x/dia, agrupado) ────────────────────────────────────────
@@ -160,7 +194,9 @@ export async function runClientBotJobs(): Promise<void> {
       if (business && bot.slaAlerts) await runClientSla(bot.clientId, day, excl);
       if (bot.leadEsfriando && h === 9 && (await gateOnce(`cb-esfria:${day}:${bot.clientId}`))) await runEsfriando(bot.clientId, excl);
       if (bot.resumoDiario && h === 18 && (await gateOnce(`cb-resumo:${day}:${bot.clientId}`))) await runResumo(bot.clientId, excl);
-      if (bot.resumoDiario && isMonday && h === 9 && (await gateOnce(`cb-week:${day}:${bot.clientId}`))) await runResumoSemana(bot.clientId);
+      // Ritmo da manhã (9h): segunda = placar da semana; demais dias = briefing curto.
+      if (bot.resumoDiario && h === 9 && isMonday && (await gateOnce(`cb-week:${day}:${bot.clientId}`))) await runResumoSemana(bot.clientId);
+      if (bot.resumoDiario && h === 9 && !isMonday && (await gateOnce(`cb-brief:${day}:${bot.clientId}`))) await runBriefingManha(bot.clientId, excl);
     } catch (e) {
       captureException(e, { where: "client-bot-jobs", clientId: bot.clientId });
     }
