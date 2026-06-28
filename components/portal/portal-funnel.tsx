@@ -24,7 +24,6 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
   }
 
   const c = data.comparativo;
-  const flexOf = (reached: number) => `${reached} 1 80px`;
 
   return (
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 22px 56px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -49,15 +48,11 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <div style={{ display: "flex", height: 26, borderRadius: 13, overflow: "hidden", minWidth: 520, boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)" }}>
-            {data.stages.map((s) => (
-              <div key={s.key} title={`${s.label}: ${s.reached}`} style={{ flex: flexOf(s.reached), background: s.color, borderRight: "1px solid rgba(255,255,255,.35)" }} />
-            ))}
-          </div>
+          <div style={{ height: 26, borderRadius: 13, minWidth: 520, background: "linear-gradient(90deg,#2563EB,#06B6D4,#EAB308,#F97316,#DC2626)", boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)" }} />
 
           <div style={{ display: "flex", marginTop: 10, minWidth: 520 }}>
             {data.stages.map((s) => (
-              <div key={s.key} style={{ flex: flexOf(s.reached), textAlign: "center", padding: "0 4px" }}>
+              <div key={s.key} style={{ flex: 1, textAlign: "center", padding: "0 4px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: s.isBottleneck ? "#DC2626" : "var(--p-text)" }}>{s.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1.2 }}>{s.reached}</div>
                 <div style={{ fontSize: 11, color: "var(--p-muted)" }}>
