@@ -2,9 +2,14 @@
  * Cliente de DEMONSTRAÇÃO (imobiliária) com dados mockados em todas as abas.
  * Idempotente: re-rodar limpa e recria. Uso: npm run db:seed:demo
  */
+import "dotenv/config";
 import { PrismaClient, TaskStatus, TaskPriority } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter } as never);
 const SLUG = "demo-imobiliaria-vista";
 const PORTAL_TOKEN = "demo-imobiliaria";
 
@@ -208,4 +213,6 @@ async function main() {
   console.log("✅ Demo populado. Portal: /r/" + PORTAL_TOKEN);
 }
 
-main().then(() => prisma.$disconnect()).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
+main()
+  .then(async () => { await prisma.$disconnect(); await pool.end(); })
+  .catch(async (e) => { console.error(e); await prisma.$disconnect(); await pool.end(); process.exit(1); });
