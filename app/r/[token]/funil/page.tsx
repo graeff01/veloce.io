@@ -47,9 +47,7 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
-          background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
-        .fdot{transition:transform .14s ease}
-        .fdot:hover{transform:scale(1.35);z-index:10;position:relative}`}</style>
+          background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}`}</style>
       <PortalFunnel token={token} data={funnel} />
     </main>
   );
