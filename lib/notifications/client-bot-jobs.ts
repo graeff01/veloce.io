@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { sendClientAlert, waMe, excludedTokens, nameExcluded, botMsg, type BotCta } from "@/lib/notifications/client-bot";
+import { sendClientAlert, waMe, excludedTokens, nameExcluded, botMsg, checkClientBotHealth, type BotCta } from "@/lib/notifications/client-bot";
+import { recipientsFor, claimDispatch } from "@/lib/notifications/dispatch";
 import { getOrCreatePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, waitingWithTemp } from "@/lib/notifications/client-report";
 import { gateOnce } from "@/lib/notifications/dispatch";
@@ -177,6 +178,39 @@ async function runBurstDigest(clientId: string): Promise<void> {
   if (!(await gateOnce(`cb-burst:${bucket}:${clientId}`))) return;
   const tg = botMsg("📥 <b>Pico de leads</b>", [`${n} novos leads nos últimos minutos.`], { label: "📊 Ver no painel", url: await portalLink(clientId) });
   await sendClientAlert(clientId, "novoLead", tg, { urgent: true });
+}
+
+// ── Auditoria de saúde dos bots de cliente (avisa o TIME INTERNO) ────────────
+// 1x/dia: se o bot de algum cliente está quebrado (token/webhook/sem destinatário)
+// ou mudo (sem entregar há +48h apesar de ter destinatário), alerta a agência.
+export async function runClientBotHealthAudit(): Promise<void> {
+  const internal = await recipientsFor("criticalAlerts");
+  if (internal.length === 0) return; // ninguém interno pra avisar
+  const bots = await prisma.clientBot.findMany({ where: { active: true }, select: { clientId: true } });
+  const day = nowParts(TZ).ymd;
+  const staleCut = Date.now() - 48 * 3600_000;
+
+  for (const b of bots) {
+    const h = await checkClientBotHealth(b.clientId);
+    if (!h) continue;
+    const issues = [...h.issues];
+    // Mudo: tem destinatário mas não entrega nada há +48h (scheduler/entrega quebrada).
+    if (h.recipients > 0 && h.tokenOk && (!h.lastAlertAt || h.lastAlertAt.getTime() < staleCut)) {
+      issues.push("sem entregar há +48h");
+    }
+    if (issues.length === 0) continue;
+
+    const client = await prisma.client.findUnique({ where: { id: b.clientId }, select: { name: true } });
+    const name = client?.name ?? b.clientId;
+    const title = `⚠️ Bot do cliente com problema — ${name}`;
+    const body = `${name}: ${issues.join(", ")}.`;
+    const tg = `⚠️ <b>Bot do cliente: ${esc(name)}</b>\n${issues.map((i) => `• ${i}`).join("\n")}`;
+    for (const r of internal) {
+      await claimDispatch(`clientbot-health:${day}:${b.clientId}:${r.userId}`, r.userId, "clientbot_health",
+        { title, body, url: `/clients/${b.clientId}?tab=bot` }, tg,
+        { pushEnabled: r.pushEnabled, telegramEnabled: r.telegramEnabled });
+    }
+  }
 }
 
 // ── Orquestrador (chamado pelo scheduler a cada ciclo) ───────────────────────

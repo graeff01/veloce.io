@@ -30,6 +30,7 @@ export async function GET(_req: Request, { params }: Params) {
       : { novoLead: true, slaAlerts: true, leadQuente: true, leadEsfriando: true, resumoDiario: true },
     quietStart: bot?.quietStart ?? null,
     quietEnd: bot?.quietEnd ?? null,
+    lastAlertAt: bot?.lastAlertAt ?? null,
     recipients,
   });
 }

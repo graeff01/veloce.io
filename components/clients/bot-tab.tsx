@@ -17,7 +17,17 @@ interface BotState {
   alerts: { novoLead: boolean; slaAlerts: boolean; leadQuente: boolean; leadEsfriando: boolean; resumoDiario: boolean };
   quietStart: string | null;
   quietEnd: string | null;
+  lastAlertAt: string | null;
   recipients: Recipient[];
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "nenhum ainda";
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  if (min < 1440) return `há ${Math.floor(min / 60)}h`;
+  return `há ${Math.floor(min / 1440)}d`;
 }
 
 const ALERTS: { key: keyof BotState["alerts"]; label: string; desc: string }[] = [
@@ -225,14 +235,19 @@ export function BotTab({ clientId }: { clientId: string }) {
       {(!state.connected || section === "conexao") && (
       <Card title="🔌 Conexão">
         {state.connected ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-              <span style={{ fontSize: 13, color: "var(--text-primary)" }}>Conectado a <b>@{state.username}</b></span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
+                <span style={{ fontSize: 13, color: "var(--text-primary)" }}>Conectado a <b>@{state.username}</b></span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="secondary" size="sm" onClick={test}><Send size={12} /> Testar</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setToken(""); setState({ ...state, connected: false }); }}><RefreshCw size={12} /> Trocar token</Button>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button variant="secondary" size="sm" onClick={test}><Send size={12} /> Testar</Button>
-              <Button variant="ghost" size="sm" onClick={() => { setToken(""); setState({ ...state, connected: false }); }}><RefreshCw size={12} /> Trocar token</Button>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {state.recipients.length} destinatário{state.recipients.length !== 1 ? "s" : ""} · último alerta {timeAgo(state.lastAlertAt)}
             </div>
           </div>
         ) : (

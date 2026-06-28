@@ -12,7 +12,7 @@ import { runCostAlerts } from "@/lib/ai-agent/cost-alerts";
 import { syncAllCatalogs } from "@/lib/ai-agent/catalog-sync";
 import { runAdsHealth } from "@/lib/notifications/ads-health";
 import { runSlaFirstResponse } from "@/lib/notifications/sla-first-response";
-import { runClientBotJobs } from "@/lib/notifications/client-bot-jobs";
+import { runClientBotJobs, runClientBotHealthAudit } from "@/lib/notifications/client-bot-jobs";
 import { lastTickAt, recordTick } from "@/lib/notifications/heartbeat";
 
 // Núcleo de decisão "o que enviar agora", compartilhado pelo agendador interno
@@ -87,6 +87,9 @@ export async function runDueJobs(): Promise<void> {
   // Bot do CLIENTE: SLA escalonado + lead esfriando + resumo do dia (cada um se
   // auto-agenda por hora/dia; respeita flags e quiet hours de cada cliente).
   await safe("client-bot", runClientBotJobs);
+
+  // Saúde dos bots de cliente: 1x/dia de manhã, avisa o time se algum quebrou.
+  if (morning && (await gateOnce(`gate:clientbot-health:${day}`))) await safe("clientbot-health", runClientBotHealthAudit);
 
   // Auto-limpeza das mensagens do Telegram com +24h.
   await safe("sweep", () => sweepExpiredTelegramMessages());

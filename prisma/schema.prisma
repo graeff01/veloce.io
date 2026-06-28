@@ -1456,6 +1456,7 @@ model ClientBot {
   // Nomes/sobrenomes a IGNORAR (não viram lead/alerta) — ex.: família do dono.
   // Separados por vírgula/linha; match por "contém" (case-insensitive).
   excludedNames String?
+  lastAlertAt   DateTime? // último alerta entregue (saúde / liveness por cliente)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

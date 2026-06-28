@@ -209,7 +209,36 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
     const ok = await sendMessage(token, r.chatId, text).catch(() => false);
     if (ok) sent++;
   }));
+  if (sent > 0) await prisma.clientBot.update({ where: { clientId }, data: { lastAlertAt: new Date() } }).catch(() => {});
   return sent;
+}
+
+// Saúde do bot de um cliente: token válido, webhook configurado, há destinatários.
+// Usado pela auditoria diária (avisa o time) e pela aba BOT.
+export interface ClientBotHealth { tokenOk: boolean; webhookOk: boolean; recipients: number; lastAlertAt: Date | null; issues: string[] }
+export async function checkClientBotHealth(clientId: string): Promise<ClientBotHealth | null> {
+  const bot = await prisma.clientBot.findUnique({ where: { clientId } });
+  if (!bot || !bot.active) return null;
+  const recipients = await prisma.clientBotRecipient.count({ where: { clientId, active: true } });
+
+  let tokenOk = false, webhookOk = false;
+  try {
+    const token = decryptSecret(bot.token);
+    const me = await tg(token, "getMe", {});
+    tokenOk = !!me?.ok;
+    if (tokenOk) {
+      const wh = await tg(token, "getWebhookInfo", {});
+      const url = (wh?.result as { url?: string } | undefined)?.url;
+      webhookOk = !!url && url.includes(bot.webhookSecret);
+    }
+  } catch { tokenOk = false; }
+
+  const issues: string[] = [];
+  if (!tokenOk) issues.push("token inválido — reconecte o bot");
+  else if (!webhookOk) issues.push("webhook não configurado");
+  if (recipients === 0) issues.push("sem destinatários conectados");
+
+  return { tokenOk, webhookOk, recipients, lastAlertAt: bot.lastAlertAt, issues };
 }
 
 // Envio direto (usado no fluxo de vínculo e no teste).
