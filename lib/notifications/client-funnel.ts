@@ -70,7 +70,7 @@ export async function getClientFunnel(clientId: string): Promise<FunnelData | nu
       avgStaleDays: stale.length ? Math.round(stale.reduce((s, x) => s + x, 0) / stale.length) : null,
       leads: current
         .sort((a, b) => (b.lastMessageAt?.getTime() ?? 0) - (a.lastMessageAt?.getTime() ?? 0))
-        .slice(0, 50)
+        .slice(0, 200)
         .map((c) => ({
           contactId: c.contactId,
           name: (c.contact.name || "").trim() || "Lead",

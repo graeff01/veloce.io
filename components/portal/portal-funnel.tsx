@@ -94,7 +94,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
               </button>
 
               {isOpen && (
-                <div style={{ background: "var(--p-bg)" }}>
+                <div style={{ background: "var(--p-bg)", maxHeight: 320, overflowY: "auto" }}>
                   {s.leads.length === 0 ? (
                     <div style={{ padding: "14px 18px", fontSize: 13, color: "var(--p-muted)" }}>Nenhum lead parado nesta etapa.</div>
                   ) : (
