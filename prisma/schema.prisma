@@ -110,6 +110,7 @@ model Client {
   meetings          Meeting[]
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
+  googleConnection  GoogleConnection?
   waConnection      WaConnection?
   visits            Visit[]
   aiAgentConfig     AiAgentConfig?
@@ -711,6 +712,63 @@ model MetaInsight {
 
   // adsetId incluído para não colapsar adsets diferentes da mesma campanha
   @@unique([connectionId, campaignId, adsetId, dateStart, dateStop])
+}
+
+// ── Google Ads ───────────────────────────────────────────────────────────────
+// Motor espelhando o padrão Meta. O schema + sync (GAQL) ficam prontos; as
+// credenciais (developer token + OAuth) plugam depois via env. Mesma disciplina
+// de ID oficial (atribuição imune a renome).
+model GoogleConnection {
+  id              String    @id @default(cuid())
+  clientId        String    @unique
+  customerId      String    // ID da conta Google Ads (só dígitos, sem hífen)
+  loginCustomerId String?   // conta MCC (manager), quando aplicável
+  refreshToken    String?   // OAuth2 — preenchido quando a conexão for concluída
+  accountName     String?
+  currency        String?
+  lastSyncAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client    Client           @relation(fields: [clientId], references: [id])
+  campaigns GoogleCampaign[]
+  insights  GoogleInsight[]
+}
+
+model GoogleCampaign {
+  id           String   @id @default(cuid())
+  connectionId String
+  campaignId   String   // id oficial do Google
+  name         String
+  status       String
+  spend        Float    @default(0)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, campaignId])
+  @@index([connectionId])
+}
+
+model GoogleInsight {
+  id           String   @id @default(cuid())
+  connectionId String
+  date         DateTime // dia (UTC, 00:00)
+  spend        Float    @default(0)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, date])
+  @@index([connectionId])
 }
 
 // ── WhatsApp Cloud API (oficial) ─────────────────────────────────────────────

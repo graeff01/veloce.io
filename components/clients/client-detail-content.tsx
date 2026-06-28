@@ -21,7 +21,9 @@ import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
 import { CompetitiveIntelTab } from "@/components/clients/competitive-intel-tab";
 import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
+import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
 import { BotTab } from "@/components/clients/bot-tab";
+import { FacebookGlyph, GoogleGlyph } from "@/components/clients/brand-glyphs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -137,7 +139,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "inteligencia" | "ia" | "bot";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "inteligencia" | "ia" | "bot";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -162,7 +164,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "inteligencia", "ia", "bot"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "inteligencia", "ia", "bot"];
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
 
@@ -189,11 +191,13 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
   // Operação e Perfil são sempre fixas; o resto depende dos módulos do cliente.
   const CORE_TABS: Tab[] = ["operacao", "perfil"];
-  const allTabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  // brand: cor da marca aplicada ao título + sublinhado (Meta = azul Facebook, Google = azul Google).
+  const allTabs: { key: Tab; label: string; icon: React.ReactNode; brand?: string }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
-    { key: "anuncios",  label: "Anúncios",  icon: <BarChart3 size={13} /> },
+    { key: "anuncios",  label: "Anúncios",  icon: <FacebookGlyph size={14} />, brand: "#1877F2" },
+    { key: "google",    label: "Google",    icon: <GoogleGlyph size={14} />,   brand: "#4285F4" },
     { key: "inteligencia", label: "Inteligência", icon: <Radar size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
@@ -267,8 +271,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
         {/* Tab bar */}
         <div style={{ display: "flex", gap: 2 }}>
-          {tabs.map(({ key, label, icon }) => {
+          {tabs.map(({ key, label, icon, brand }) => {
             const active = activeTab === key;
+            // Abas de marca (Meta/Google) usam a cor da marca no título e no sublinhado.
+            const labelColor = brand ?? (active ? "var(--text-primary)" : "var(--text-muted)");
+            const underline = active ? `2px solid ${brand ?? "var(--accent)"}` : "2px solid transparent";
             return (
               <button
                 key={key}
@@ -279,10 +286,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
                   padding: "8px 16px", border: "none", background: "none",
                   cursor: "pointer", fontSize: 13,
                   fontWeight: active ? 600 : 500,
-                  color: active ? "var(--text-primary)" : "var(--text-muted)",
-                  borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+                  color: labelColor,
+                  opacity: brand && !active ? 0.78 : 1,
+                  borderBottom: underline,
                   marginBottom: -1,
-                  transition: "color 120ms, border-color 120ms",
+                  transition: "color 120ms, border-color 120ms, opacity 120ms",
                 }}
               >
                 {icon} {label}
@@ -309,6 +317,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         <div style={{ padding: "24px 28px" }}>
           <AdsTab clientId={clientId} />
         </div>
+      )}
+
+      {activeTab === "google" && (
+        <GoogleAdsTab clientId={clientId} />
       )}
 
       {activeTab === "inteligencia" && (

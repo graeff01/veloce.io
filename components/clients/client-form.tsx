@@ -7,12 +7,14 @@ import { Loader2, Check } from "lucide-react";
 const MODULES: { key: string; label: string; desc: string }[] = [
   { key: "reunioes",     label: "Reuniões",     desc: "Atas e alinhamentos" },
   { key: "leads",        label: "WhatsApp",     desc: "Conversas e leads" },
-  { key: "anuncios",     label: "Anúncios",     desc: "Meta Ads" },
+  { key: "anuncios",     label: "Anúncios (Meta)", desc: "Facebook / Instagram" },
+  { key: "google",       label: "Google Ads",   desc: "Campanhas no Google" },
   { key: "inteligencia", label: "Inteligência", desc: "Concorrência" },
   { key: "ia",           label: "IA",           desc: "Agente de atendimento" },
   { key: "bot",          label: "BOT",          desc: "Portal e alertas" },
 ];
-const ALL_MODULE_KEYS = MODULES.map((m) => m.key);
+// Google entra desligado por padrão (só quando o cliente roda Google).
+const DEFAULT_MODULE_KEYS = ["reunioes", "leads", "anuncios", "inteligencia", "ia", "bot"];
 
 /* ─── Types ─────────────────────────────────────────────── */
 
@@ -66,7 +68,7 @@ export function ClientForm({ initial, onSuccess, onCancel, clientId }: ClientFor
   const [operationType,  setOperationType]  = useState(initial?.operationType ?? "");
   const [status]                            = useState<"ACTIVE" | "INACTIVE" | "PAUSED">("ACTIVE");
   // Novo cliente já vem com tudo ligado; edição respeita o que está salvo.
-  const [modules, setModules] = useState<string[]>(initial?.modules ?? ALL_MODULE_KEYS);
+  const [modules, setModules] = useState<string[]>(initial?.modules ?? DEFAULT_MODULE_KEYS);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
