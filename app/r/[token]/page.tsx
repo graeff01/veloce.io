@@ -6,6 +6,7 @@ import { buildTheme, themeStyle, themeSwitchCss, themeInitScript } from "@/lib/p
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { PortalShare } from "@/components/portal/portal-share";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -239,7 +240,10 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         @keyframes gaugeFade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
         @keyframes alertPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
         @keyframes alertGlow{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 13px rgba(239,68,68,0)}}
-        @keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.2}}`}</style>
+        @keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.2}}
+        /* Impressão / salvar como PDF: solta a altura fixa do PC e esconde a topbar. */
+        @media print{.pmain{height:auto!important;overflow:visible!important;background:#fff!important}
+          .ptopbar{display:none!important}.pcOnly{display:contents!important}}`}</style>
 
       {/* Topbar full-width */}
       <div className="ptopbar">
@@ -247,6 +251,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <div style={{ flex: 1 }} />
           <div className="ptopmeta">
             <span className="pupdated">Atualizado {atualizado}</span>
+            <PortalShare />
             <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
           </div>
         </div>
