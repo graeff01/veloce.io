@@ -80,12 +80,36 @@ export async function syncGoogleAds(clientId: string, since: string, until: stri
     ORDER BY metrics.cost_micros DESC
     LIMIT 200`;
 
-  const [campaigns, searchTerms, keywords] = await Promise.all([run(campaignsQ), run(searchTermsQ), run(keywordsQ)]);
+  // 4) Histórico de mudanças (auditoria) — últimos 14 dias, quem alterou o quê
+  const changesQ = `
+    SELECT change_event.change_date_time, change_event.user_email,
+           change_event.change_resource_type, change_event.resource_change_operation,
+           change_event.changed_fields, change_event.resource_name
+    FROM change_event
+    WHERE change_event.change_date_time DURING LAST_14_DAYS
+    ORDER BY change_event.change_date_time DESC
+    LIMIT 200`;
 
-  // TODO(credenciais): mapear os 3 streams → upsert em GoogleCampaign / GoogleSearchTerm /
-  // GoogleKeyword. metrics.cost_micros / 1e6 = custo; impression share vem como fração 0–1.
-  // O shape exato do searchStream é validado quando a conta estiver acessível.
+  // 5) Diagnóstico — anúncios reprovados pela política
+  const disapprovedQ = `
+    SELECT ad_group_ad.ad.id, ad_group_ad.policy_summary.approval_status, campaign.name
+    FROM ad_group_ad
+    WHERE ad_group_ad.policy_summary.approval_status = 'DISAPPROVED'`;
+
+  // 6) Diagnóstico — rastreamento de conversão (há ação de conversão ativa?)
+  const conversionQ = `
+    SELECT conversion_action.name, conversion_action.status, conversion_action.type
+    FROM conversion_action`;
+
+  const [campaigns, searchTerms, keywords, changes, disapproved, conversions] = await Promise.all([
+    run(campaignsQ), run(searchTermsQ), run(keywordsQ), run(changesQ), run(disapprovedQ), run(conversionQ),
+  ]);
+
+  // TODO(credenciais): mapear os streams → upsert nas tabelas. Para auditoria:
+  // changes → GoogleChangeEvent; disapproved/conversions + lostBudget (impression share)
+  // → GoogleDiagnostic. metrics.cost_micros / 1e6 = custo; impression share = fração 0–1.
+  // Shapes validados quando a conta estiver acessível.
 
   await prisma.googleConnection.update({ where: { clientId }, data: { lastSyncAt: new Date() } });
-  return { campaigns, searchTerms, keywords };
+  return { campaigns, searchTerms, keywords, changes, disapproved, conversions };
 }

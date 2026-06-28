@@ -21,6 +21,8 @@ interface GoogleState {
   searchTerms?: { term: string; spend: number; clicks: number; conversions: number }[];
   keywords?: { keyword: string; matchType: string; qualityScore: number | null; spend: number; clicks: number; conversions: number }[];
   series?: { date: string; spend: number; conversions: number }[];
+  changeEvents?: { changedAt: string; userEmail: string | null; resourceType: string | null; operation: string | null; summary: string | null }[];
+  diagnostics?: { kind: string; severity: string; title: string; detail: string | null }[];
 }
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -61,6 +63,21 @@ const DEMO: GoogleState = {
     const vals = [2, 3, 1, 4, 3, 5, 2, 3, 4, 2, 1, 3, 5, 4, 3, 2, 4, 6, 3, 2, 1, 3, 4, 5, 2, 3, 4, 2, 3, 5];
     const base = new Date();
     return vals.map((v, i) => { const d = new Date(base); d.setDate(base.getDate() - (vals.length - 1 - i)); return { date: d.toISOString().slice(0, 10), spend: 0, conversions: v }; });
+  })(),
+  diagnostics: [
+    { kind: "conversion_tracking", severity: "ok", title: "Rastreamento de conversão ativo", detail: "1 ação de conversão (Lead) registrando." },
+    { kind: "budget_limited", severity: "warn", title: "2 campanhas limitadas por orçamento", detail: "Seminovos e Compass perdem impressões por verba." },
+    { kind: "disapproved_ad", severity: "error", title: "1 anúncio reprovado", detail: "Campanha PMax · Estoque — política de imagem." },
+    { kind: "recommendation", severity: "info", title: "3 recomendações do Google", detail: "Palavras-chave e lances sugeridos." },
+  ],
+  changeEvents: (() => {
+    const h = (n: number) => new Date(Date.now() - n * 3600_000).toISOString();
+    return [
+      { changedAt: h(5), userEmail: "veloce@agencia.com", resourceType: "CAMPAIGN_BUDGET", operation: "UPDATE", summary: "Orçamento da campanha Seminovos: R$50 → R$60/dia" },
+      { changedAt: h(26), userEmail: "veloce@agencia.com", resourceType: "AD_GROUP_CRITERION", operation: "REMOVE", summary: 'Palavra-chave pausada: "revisão de carro"' },
+      { changedAt: h(50), userEmail: "veloce@agencia.com", resourceType: "AD_GROUP_AD", operation: "CREATE", summary: "Novo anúncio responsivo na campanha Compass" },
+      { changedAt: h(74), userEmail: "veloce@agencia.com", resourceType: "CAMPAIGN", operation: "UPDATE", summary: "Estratégia de lance → Maximizar conversões" },
+    ];
   })(),
 };
 
@@ -227,6 +244,24 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
         )}
       </Panel>
 
+      {/* Diagnóstico da conta — auditoria de saúde */}
+      <Panel title="🩺 Diagnóstico da conta">
+        {(view.diagnostics?.length ?? 0) === 0 ? (
+          <Empty>O diagnóstico aparece após o primeiro sync.</Empty>
+        ) : (
+          view.diagnostics!.map((d, i) => <Diag key={i} d={d} />)
+        )}
+      </Panel>
+
+      {/* Histórico de mudanças — quem alterou o quê e quando */}
+      <Panel title="🕘 Histórico de mudanças · auditoria">
+        {(view.changeEvents?.length ?? 0) === 0 ? (
+          <Empty>O histórico aparece após o primeiro sync.</Empty>
+        ) : (
+          view.changeEvents!.slice(0, 20).map((c, i) => <Change key={i} c={c} />)
+        )}
+      </Panel>
+
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
         {(view.campaigns?.length ?? 0) === 0 ? (
@@ -332,4 +367,35 @@ function Row({ a, b, c, highlight }: { a: string; b: string; c: string; highligh
 
 function Legend({ c, t }: { c: string; t: string }) {
   return <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />{t}</span>;
+}
+
+function Diag({ d }: { d: { kind: string; severity: string; title: string; detail: string | null } }) {
+  const sev: Record<string, { c: string; i: string }> = {
+    ok: { c: "#16A34A", i: "✓" }, info: { c: GBLUE, i: "i" }, warn: { c: "#D97706", i: "!" }, error: { c: "#DC2626", i: "✕" },
+  };
+  const s = sev[d.severity] ?? sev.info;
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "11px 16px", borderBottom: "1px solid var(--border)" }}>
+      <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, background: s.c, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, marginTop: 1 }}>{s.i}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{d.title}</div>
+        {d.detail && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{d.detail}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Change({ c }: { c: { changedAt: string; userEmail: string | null; resourceType: string | null; operation: string | null; summary: string | null } }) {
+  const op: Record<string, string> = { CREATE: "#16A34A", UPDATE: "#D97706", REMOVE: "#DC2626" };
+  const dot = c.operation ? op[c.operation] : undefined;
+  const when = new Date(c.changedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "11px 16px", borderBottom: "1px solid var(--border)" }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 6, background: dot ?? "var(--text-muted)" }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{c.summary ?? `Alteração em ${c.resourceType ?? "recurso"}`}</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{c.userEmail ?? "—"} · {when}</div>
+      </div>
+    </div>
+  );
 }

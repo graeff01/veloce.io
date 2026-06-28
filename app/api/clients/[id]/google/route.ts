@@ -23,6 +23,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       searchTerms: { orderBy: { spend: "desc" }, take: 50 },
       keywords: { orderBy: { spend: "desc" }, take: 50 },
       insights: { orderBy: { date: "asc" } },
+      changeEvents: { orderBy: { changedAt: "desc" }, take: 30 },
+      diagnostics: { orderBy: { createdAt: "desc" } },
     },
   });
 
@@ -61,6 +63,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     searchTerms: conn.searchTerms.map((s) => ({ term: s.term, spend: s.spend, clicks: s.clicks, conversions: s.conversions })),
     keywords: conn.keywords.map((k) => ({ keyword: k.keyword, matchType: k.matchType, qualityScore: k.qualityScore, spend: k.spend, clicks: k.clicks, conversions: k.conversions })),
     series: conn.insights.map((i) => ({ date: i.date.toISOString().slice(0, 10), spend: i.spend, conversions: i.conversions })),
+    changeEvents: conn.changeEvents.map((c) => ({ changedAt: c.changedAt, userEmail: c.userEmail, resourceType: c.resourceType, operation: c.operation, summary: c.summary })),
+    diagnostics: conn.diagnostics.map((d) => ({ kind: d.kind, severity: d.severity, title: d.title, detail: d.detail })),
   });
 }
 

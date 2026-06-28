@@ -730,11 +730,47 @@ model GoogleConnection {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  client      Client             @relation(fields: [clientId], references: [id])
-  campaigns   GoogleCampaign[]
-  insights    GoogleInsight[]
-  searchTerms GoogleSearchTerm[]
-  keywords    GoogleKeyword[]
+  client       Client              @relation(fields: [clientId], references: [id])
+  campaigns    GoogleCampaign[]
+  insights     GoogleInsight[]
+  searchTerms  GoogleSearchTerm[]
+  keywords     GoogleKeyword[]
+  changeEvents GoogleChangeEvent[]
+  diagnostics  GoogleDiagnostic[]
+}
+
+// Histórico de mudanças da conta (change_event) — quem alterou o quê e quando.
+// É o coração da "auditoria total".
+model GoogleChangeEvent {
+  id           String   @id @default(cuid())
+  connectionId String
+  resourceName String   // dedup (resource_name do change_event)
+  changedAt    DateTime
+  userEmail    String?  // quem fez a alteração
+  resourceType String?  // CAMPAIGN | AD_GROUP | AD_GROUP_CRITERION | CAMPAIGN_BUDGET ...
+  operation    String?  // CREATE | UPDATE | REMOVE
+  summary      String?  // campos alterados, legível
+  createdAt    DateTime @default(now())
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, resourceName])
+  @@index([connectionId, changedAt])
+}
+
+// Diagnóstico de saúde da conta (reprovações, limite de orçamento, rastreamento).
+model GoogleDiagnostic {
+  id           String   @id @default(cuid())
+  connectionId String
+  kind         String   // disapproved_ad | budget_limited | conversion_tracking | recommendation
+  severity     String   // ok | info | warn | error
+  title        String
+  detail       String?
+  createdAt    DateTime @default(now())
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId])
 }
 
 model GoogleCampaign {

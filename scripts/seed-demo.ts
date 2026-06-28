@@ -161,6 +161,23 @@ async function main() {
     const conv = 1 + Math.round(Math.random() * 4);
     await prisma.googleInsight.create({ data: { connectionId: gConn.id, date: dAgo(daysSoFar - 1 - d), spend: 120 + Math.round(Math.random() * 60), impressions: 4000 + Math.round(Math.random() * 1500), clicks: 110 + Math.round(Math.random() * 40), conversions: conv } });
   }
+  // Auditoria: histórico de mudanças + diagnóstico
+  const hAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
+  for (const ev of [
+    { rn: "gce_1", h: 5, who: "veloce@agencia.com", rt: "CAMPAIGN_BUDGET", op: "UPDATE", s: "Orçamento da campanha Apartamentos: R$60 → R$80/dia" },
+    { rn: "gce_2", h: 28, who: "veloce@agencia.com", rt: "AD_GROUP_CRITERION", op: "REMOVE", s: 'Palavra-chave pausada: "imobiliária perto de mim"' },
+    { rn: "gce_3", h: 52, who: "veloce@agencia.com", rt: "AD_GROUP_AD", op: "CREATE", s: "Novo anúncio responsivo · Lançamento Jardins" },
+    { rn: "gce_4", h: 80, who: "veloce@agencia.com", rt: "CAMPAIGN", op: "UPDATE", s: "Estratégia de lance → Maximizar conversões" },
+  ]) {
+    await prisma.googleChangeEvent.create({ data: { connectionId: gConn.id, resourceName: ev.rn, changedAt: hAgo(ev.h), userEmail: ev.who, resourceType: ev.rt, operation: ev.op, summary: ev.s } });
+  }
+  for (const dg of [
+    { kind: "conversion_tracking", severity: "ok", title: "Rastreamento de conversão ativo", detail: "Ação de conversão 'Lead WhatsApp' registrando." },
+    { kind: "budget_limited", severity: "warn", title: "1 campanha limitada por orçamento", detail: "Pesquisa · Apartamentos perde impressões por verba." },
+    { kind: "recommendation", severity: "info", title: "3 recomendações do Google", detail: "Palavras-chave e lances sugeridos." },
+  ]) {
+    await prisma.googleDiagnostic.create({ data: { connectionId: gConn.id, kind: dg.kind, severity: dg.severity, title: dg.title, detail: dg.detail } });
+  }
 
   // ── 8. WhatsApp (conversas + leads) ──
   const wa = await prisma.waConnection.create({ data: { clientId, wabaId: "demo_waba_vista", phoneNumberId: "demo_phone_vista", displayPhone: "+55 11 90000-0000", accessToken: "demo", name: "Imobiliária Vista" } });
