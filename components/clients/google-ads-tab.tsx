@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Link2, Unplug, AlertCircle, Eye, X } from "lucide-react";
+import { Loader2, RefreshCw, Link2, Unplug, AlertCircle, Eye, X, TrendingUp, TrendingDown } from "lucide-react";
 import { GoogleGlyph } from "@/components/clients/brand-glyphs";
+import { computeWaste, accountHealth } from "@/lib/google-ads/audit";
 
 const GBLUE = "#4285F4";
 
@@ -16,6 +17,7 @@ interface GoogleState {
   currency?: string | null;
   lastSyncAt?: string | null;
   totals?: { spend: number; impressions: number; clicks: number; conversions: number };
+  deltas?: { spend: number | null; conversions: number | null; clicks: number | null; impressions: number | null } | null;
   impressionShare?: { share: number | null; lostBudget: number | null; lostRank: number | null } | null;
   campaigns?: { campaignId: string; name: string; status: string; spend: number; impressions: number; clicks: number; conversions: number; impressionShare?: number | null; lostBudget?: number | null; lostRank?: number | null }[];
   searchTerms?: { term: string; spend: number; clicks: number; conversions: number }[];
@@ -35,6 +37,7 @@ const DEMO: GoogleState = {
   customerId: "123-456-7890", accountName: "Conta de exemplo",
   lastSyncAt: new Date().toISOString(),
   totals: { spend: 4820.5, impressions: 184300, clicks: 5120, conversions: 96 },
+  deltas: { spend: 9, conversions: 23, clicks: 15, impressions: 8 },
   impressionShare: { share: 0.62, lostBudget: 0.28, lostRank: 0.1 },
   campaigns: [
     { campaignId: "1", name: "Pesquisa · Seminovos", status: "ENABLED", spend: 2110.3, impressions: 88200, clicks: 2630, conversions: 51, impressionShare: 0.58, lostBudget: 0.32, lostRank: 0.1 },
@@ -169,6 +172,10 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
   // ── Conectado (ou demonstração) ──
   const view = demo ? DEMO : state!;
   const t = view.totals ?? { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
+  const waste = computeWaste(view.searchTerms ?? []);
+  const wasteRatio = t.spend > 0 ? waste.amount / t.spend : 0;
+  const health = accountHealth({ impressionShare: view.impressionShare?.share ?? null, wasteRatio, diagnostics: view.diagnostics ?? [] });
+  const hasData = (view.campaigns?.length ?? 0) > 0;
   return (
     <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
       {demo && (
@@ -205,6 +212,9 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       {err && <div style={{ fontSize: 12.5, color: "var(--red)", background: "var(--red-soft)", padding: "8px 12px", borderRadius: 8 }}>{err}</div>}
 
+      {/* Nota de saúde da conta — auditoria de relance (sempre visível) */}
+      {hasData && <HealthCard {...health} />}
+
       {/* Sub-navegação — uma seção por vez, pra não poluir */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)" }}>
         {([["overview", "Visão geral"], ["buscas", "Buscas"], ["auditoria", "Auditoria"]] as const).map(([k, label]) => {
@@ -217,11 +227,22 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       {section === "overview" && (<>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-          <Kpi label="Investimento" value={brl(t.spend)} />
-          <Kpi label="Conversões" value={num(t.conversions)} />
-          <Kpi label="Impressões" value={num(t.impressions)} />
-          <Kpi label="Cliques" value={num(t.clicks)} />
+          <Kpi label="Investimento" value={brl(t.spend)} delta={view.deltas?.spend} />
+          <Kpi label="Conversões" value={num(t.conversions)} delta={view.deltas?.conversions} goodWhenUp />
+          <Kpi label="Impressões" value={num(t.impressions)} delta={view.deltas?.impressions} goodWhenUp />
+          <Kpi label="Cliques" value={num(t.clicks)} delta={view.deltas?.clicks} goodWhenUp />
         </div>
+
+        {waste.count > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", border: "1px solid rgba(220,38,38,.3)", background: "var(--red-soft)", borderRadius: 12, padding: "13px 16px" }}>
+            <span style={{ fontSize: 22 }}>💸</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>Desperdício: {brl(waste.amount)} sem conversão</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{waste.count} busca(s) gastaram e não geraram nada · {Math.round(wasteRatio * 100)}% do investimento</div>
+            </div>
+            <button onClick={() => setSection("buscas")} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 9, border: "1px solid rgba(220,38,38,.4)", background: "transparent", color: "var(--red)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Ver buscas →</button>
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
           <ImpressionShare is={view.impressionShare} />
           <TrendSpark series={view.series ?? []} />
@@ -287,11 +308,60 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({ label, value, delta, goodWhenUp }: { label: string; value: string; delta?: number | null; goodWhenUp?: boolean }) {
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", padding: 14 }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", boxShadow: "var(--shadow-card)", padding: 14 }}>
       <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)" }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginTop: 6 }}>{value}</div>
+      {delta != null && <DeltaBadge pct={delta} goodWhenUp={goodWhenUp} />}
+    </div>
+  );
+}
+
+function DeltaBadge({ pct, goodWhenUp }: { pct: number; goodWhenUp?: boolean }) {
+  const up = pct >= 0;
+  const neutral = goodWhenUp === undefined;
+  const color = neutral ? "var(--text-muted)" : up === goodWhenUp ? "#16A34A" : "#DC2626";
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11.5, fontWeight: 600, color, marginTop: 5 }}>
+      <Icon size={12} /> {up ? "+" : ""}{pct}% <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>vs. anterior</span>
+    </span>
+  );
+}
+
+function HealthCard({ score, label, color, factors }: { score: number; label: string; color: string; factors: { label: string; delta: number }[] }) {
+  const C = 2 * Math.PI * 28;
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", boxShadow: "var(--shadow-card)", padding: 16, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+        <div style={{ position: "relative", width: 64, height: 64 }}>
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="28" fill="none" stroke="var(--bg-elevated)" strokeWidth="7" />
+            <circle cx="32" cy="32" r="28" fill="none" stroke={color} strokeWidth="7" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - score / 100)} transform="rotate(-90 32 32)" />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{score}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)" }}>Saúde da conta</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color }}>{label}</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 220, borderLeft: "1px solid var(--border)", paddingLeft: 18 }}>
+        {factors.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#16A34A", fontWeight: 600 }}>✓ Nenhum problema detectado — conta saudável.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", marginBottom: 1 }}>Por que essa nota</div>
+            {factors.map((f, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                <span style={{ color: "var(--text-secondary)" }}>{f.label}</span>
+                <span style={{ color: "#DC2626", fontWeight: 700, flexShrink: 0 }}>{f.delta}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

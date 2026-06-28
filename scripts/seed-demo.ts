@@ -157,9 +157,12 @@ async function main() {
   ]) {
     await prisma.googleKeyword.create({ data: { connectionId: gConn.id, keyword: k.keyword, matchType: k.matchType, qualityScore: k.qualityScore, spend: k.spend, clicks: k.clicks, conversions: k.conversions } });
   }
-  for (let d = 0; d < daysSoFar; d++) {
-    const conv = 1 + Math.round(Math.random() * 4);
-    await prisma.googleInsight.create({ data: { connectionId: gConn.id, date: dAgo(daysSoFar - 1 - d), spend: 120 + Math.round(Math.random() * 60), impressions: 4000 + Math.round(Math.random() * 1500), clicks: 110 + Math.round(Math.random() * 40), conversions: conv } });
+  // 60 dias de histórico (metade recente com mais conversões → delta real positivo)
+  const GDAYS = 60;
+  for (let d = 0; d < GDAYS; d++) {
+    const recent = d >= GDAYS / 2;
+    const conv = (recent ? 2 : 1) + Math.round(Math.random() * (recent ? 4 : 3));
+    await prisma.googleInsight.create({ data: { connectionId: gConn.id, date: dAgo(GDAYS - 1 - d), spend: 120 + Math.round(Math.random() * 60), impressions: (recent ? 4500 : 4000) + Math.round(Math.random() * 1500), clicks: (recent ? 120 : 105) + Math.round(Math.random() * 40), conversions: conv } });
   }
   // Auditoria: histórico de mudanças + diagnóstico
   const hAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);

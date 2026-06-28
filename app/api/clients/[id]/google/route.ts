@@ -44,6 +44,23 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     ? { share: wAvg((c) => c.impressionShare), lostBudget: wAvg((c) => c.lostBudget), lostRank: wAvg((c) => c.lostRank) }
     : null;
 
+  // Deltas vs período anterior: metade recente vs metade anterior do histórico diário.
+  const ins = conn.insights; // asc por data
+  let deltas: { spend: number | null; conversions: number | null; clicks: number | null; impressions: number | null } | null = null;
+  if (ins.length >= 4) {
+    const half = Math.floor(ins.length / 2);
+    const prev = ins.slice(0, half);
+    const recent = ins.slice(ins.length - half);
+    const sum = (a: typeof ins, k: "spend" | "conversions" | "clicks" | "impressions") => a.reduce((s, x) => s + (x[k] as number), 0);
+    const pc = (r: number, p: number) => (p > 0 ? Math.round(((r - p) / p) * 100) : null);
+    deltas = {
+      spend: pc(sum(recent, "spend"), sum(prev, "spend")),
+      conversions: pc(sum(recent, "conversions"), sum(prev, "conversions")),
+      clicks: pc(sum(recent, "clicks"), sum(prev, "clicks")),
+      impressions: pc(sum(recent, "impressions"), sum(prev, "impressions")),
+    };
+  }
+
   return NextResponse.json({
     connected: true,
     configured: isGoogleAdsConfigured(),
@@ -55,6 +72,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     lastSyncAt: conn.lastSyncAt,
     totals: t,
     impressionShare,
+    deltas,
     campaigns: conn.campaigns.map((c) => ({
       campaignId: c.campaignId, name: c.name, status: c.status,
       spend: c.spend, impressions: c.impressions, clicks: c.clicks, conversions: c.conversions,
