@@ -730,9 +730,11 @@ model GoogleConnection {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  client    Client           @relation(fields: [clientId], references: [id])
-  campaigns GoogleCampaign[]
-  insights  GoogleInsight[]
+  client      Client             @relation(fields: [clientId], references: [id])
+  campaigns   GoogleCampaign[]
+  insights    GoogleInsight[]
+  searchTerms GoogleSearchTerm[]
+  keywords    GoogleKeyword[]
 }
 
 model GoogleCampaign {
@@ -745,12 +747,54 @@ model GoogleCampaign {
   impressions  Int      @default(0)
   clicks       Int      @default(0)
   conversions  Float    @default(0)
+  // Parcela de impressões (frações 0–1): pega da demanda, perde por orçamento, perde por ranking.
+  impressionShare Float?
+  lostBudget      Float?
+  lostRank        Float?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, campaignId])
+  @@index([connectionId])
+}
+
+// Termos de busca reais — o que a pessoa digitou (superpoder do Google).
+model GoogleSearchTerm {
+  id           String   @id @default(cuid())
+  connectionId String
+  term         String
+  spend        Float    @default(0)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, term])
+  @@index([connectionId])
+}
+
+// Palavras-chave com performance + índice de qualidade.
+model GoogleKeyword {
+  id           String   @id @default(cuid())
+  connectionId String
+  keyword      String
+  matchType    String   @default("")
+  qualityScore Int?
+  spend        Float    @default(0)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  conversions  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection GoogleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, keyword, matchType])
   @@index([connectionId])
 }
 

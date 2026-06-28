@@ -16,11 +16,16 @@ interface GoogleState {
   currency?: string | null;
   lastSyncAt?: string | null;
   totals?: { spend: number; impressions: number; clicks: number; conversions: number };
+  impressionShare?: { share: number | null; lostBudget: number | null; lostRank: number | null } | null;
   campaigns?: { campaignId: string; name: string; status: string; spend: number; impressions: number; clicks: number; conversions: number }[];
+  searchTerms?: { term: string; spend: number; clicks: number; conversions: number }[];
+  keywords?: { keyword: string; matchType: string; qualityScore: number | null; spend: number; clicks: number; conversions: number }[];
+  series?: { date: string; spend: number; conversions: number }[];
 }
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const num = (v: number) => v.toLocaleString("pt-BR");
+const pct = (v: number | null | undefined) => (v == null ? "—" : `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`);
 
 export function GoogleAdsTab({ clientId }: { clientId: string }) {
   const [state, setState] = useState<GoogleState | null>(null);
@@ -135,6 +140,39 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
         <Kpi label="Cliques" value={num(t.clicks)} />
       </div>
 
+      {/* Parcela de impressões + tendência diária, lado a lado */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <ImpressionShare is={state.impressionShare} />
+        <TrendSpark series={state.series ?? []} />
+      </div>
+
+      {/* Termos de busca reais — o superpoder do Google */}
+      <Panel title="🔎 Termos de busca · o que as pessoas digitaram">
+        {(state.searchTerms?.length ?? 0) === 0 ? (
+          <Empty>Os termos aparecem após o primeiro sync.</Empty>
+        ) : (
+          state.searchTerms!.slice(0, 20).map((s) => (
+            <Row key={s.term} a={s.term} b={`${num(s.conversions)} conv.`} c={brl(s.spend)} highlight={s.conversions === 0 && s.spend > 0} />
+          ))
+        )}
+      </Panel>
+
+      {/* Palavras-chave + índice de qualidade */}
+      <Panel title="🗝️ Palavras-chave">
+        {(state.keywords?.length ?? 0) === 0 ? (
+          <Empty>As palavras-chave aparecem após o primeiro sync.</Empty>
+        ) : (
+          state.keywords!.slice(0, 20).map((k) => (
+            <Row
+              key={`${k.keyword}-${k.matchType}`}
+              a={k.keyword}
+              b={k.qualityScore != null ? `QS ${k.qualityScore}` : `${num(k.conversions)} conv.`}
+              c={brl(k.spend)}
+            />
+          ))
+        )}
+      </Panel>
+
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
         {(state.campaigns?.length ?? 0) === 0 ? (
@@ -170,4 +208,74 @@ function Inp({ label, value, onChange, placeholder }: { label: string; value: st
         style={{ height: 38, borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 12px", fontSize: 13, outline: "none" }} />
     </label>
   );
+}
+
+const cap: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)" };
+
+function ImpressionShare({ is }: { is?: { share: number | null; lostBudget: number | null; lostRank: number | null } | null }) {
+  const share = is?.share ?? null, lostB = is?.lostBudget ?? 0, lostR = is?.lostRank ?? 0;
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", padding: 16 }}>
+      <div style={cap}>Parcela de impressões</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)", marginTop: 4 }}>{pct(share)}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>da demanda que você captura</div>
+      <div style={{ display: "flex", height: 8, borderRadius: 5, overflow: "hidden", background: "var(--bg-elevated)" }}>
+        <span style={{ width: `${(share ?? 0) * 100}%`, background: GBLUE }} />
+        <span style={{ width: `${lostB * 100}%`, background: "#F59E0B" }} />
+        <span style={{ width: `${lostR * 100}%`, background: "#EF4444" }} />
+      </div>
+      <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11.5, color: "var(--text-muted)", flexWrap: "wrap" }}>
+        <Legend c={GBLUE} t={`Captura ${pct(share)}`} />
+        <Legend c="#F59E0B" t={`Perde ${pct(is?.lostBudget)} · orçamento`} />
+        <Legend c="#EF4444" t={`Perde ${pct(is?.lostRank)} · ranking`} />
+      </div>
+    </div>
+  );
+}
+
+function TrendSpark({ series }: { series: { date: string; spend: number; conversions: number }[] }) {
+  const max = Math.max(1, ...series.map((s) => s.conversions));
+  const total = series.reduce((s, x) => s + x.conversions, 0);
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", padding: 16, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span style={cap}>Conversões por dia</span>
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{num(total)} no período</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, flex: 1, minHeight: 48, marginTop: 10 }}>
+        {series.length === 0
+          ? <span style={{ fontSize: 12, color: "var(--text-muted)", margin: "auto" }}>Sem dados ainda</span>
+          : series.map((s, i) => (
+            <div key={i} title={`${s.date}: ${num(s.conversions)} conv.`} style={{ flex: 1, minWidth: 2, height: `${Math.max(4, (s.conversions / max) * 100)}%`, background: s.conversions ? GBLUE : "var(--border)", borderRadius: 3 }} />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>{children}</div>;
+}
+
+function Row({ a, b, c, highlight }: { a: string; b: string; c: string; highlight?: boolean }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border)", background: highlight ? "var(--red-soft)" : undefined }}>
+      <span style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a}</span>
+      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{b}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: highlight ? "var(--red)" : "var(--text-primary)" }}>{c}</span>
+    </div>
+  );
+}
+
+function Legend({ c, t }: { c: string; t: string }) {
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />{t}</span>;
 }

@@ -18,7 +18,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const conn = await prisma.googleConnection.findUnique({
     where: { clientId: id },
-    include: { campaigns: { orderBy: { spend: "desc" } } },
+    include: {
+      campaigns: { orderBy: { spend: "desc" } },
+      searchTerms: { orderBy: { spend: "desc" }, take: 50 },
+      keywords: { orderBy: { spend: "desc" }, take: 50 },
+      insights: { orderBy: { date: "asc" } },
+    },
   });
 
   if (!conn) return NextResponse.json({ connected: false, configured: isGoogleAdsConfigured() });
@@ -27,6 +32,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     (a, c) => ({ spend: a.spend + c.spend, impressions: a.impressions + c.impressions, clicks: a.clicks + c.clicks, conversions: a.conversions + c.conversions }),
     { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
   );
+
+  // Parcela de impressões agregada: média ponderada por impressões das campanhas que têm o dado.
+  const withIs = conn.campaigns.filter((c) => c.impressionShare != null && c.impressions > 0);
+  const wImp = withIs.reduce((s, c) => s + c.impressions, 0);
+  const wAvg = (sel: (c: typeof withIs[number]) => number | null | undefined) =>
+    wImp > 0 ? withIs.reduce((s, c) => s + (sel(c) ?? 0) * c.impressions, 0) / wImp : null;
+  const impressionShare = withIs.length
+    ? { share: wAvg((c) => c.impressionShare), lostBudget: wAvg((c) => c.lostBudget), lostRank: wAvg((c) => c.lostRank) }
+    : null;
 
   return NextResponse.json({
     connected: true,
@@ -38,10 +52,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     currency: conn.currency,
     lastSyncAt: conn.lastSyncAt,
     totals: t,
+    impressionShare,
     campaigns: conn.campaigns.map((c) => ({
       campaignId: c.campaignId, name: c.name, status: c.status,
       spend: c.spend, impressions: c.impressions, clicks: c.clicks, conversions: c.conversions,
+      impressionShare: c.impressionShare, lostBudget: c.lostBudget, lostRank: c.lostRank,
     })),
+    searchTerms: conn.searchTerms.map((s) => ({ term: s.term, spend: s.spend, clicks: s.clicks, conversions: s.conversions })),
+    keywords: conn.keywords.map((k) => ({ keyword: k.keyword, matchType: k.matchType, qualityScore: k.qualityScore, spend: k.spend, clicks: k.clicks, conversions: k.conversions })),
+    series: conn.insights.map((i) => ({ date: i.date.toISOString().slice(0, 10), spend: i.spend, conversions: i.conversions })),
   });
 }
 
