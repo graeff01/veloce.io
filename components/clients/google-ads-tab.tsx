@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Link2, Unplug, AlertCircle, Eye, X, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, RefreshCw, Link2, Unplug, AlertCircle, Eye, X, TrendingUp, TrendingDown, FileText } from "lucide-react";
 import { GoogleGlyph } from "@/components/clients/brand-glyphs";
 import { computeWaste, accountHealth } from "@/lib/google-ads/audit";
 
@@ -194,6 +194,9 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
         </div>
         {!demo && (
           <>
+            <a href={`/api/clients/${clientId}/google/report`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
+              <FileText size={13} /> Relatório (PDF)
+            </a>
             <button onClick={sync} disabled={syncing} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 9, border: "none", background: GBLUE, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               {syncing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Sincronizar agora
             </button>
