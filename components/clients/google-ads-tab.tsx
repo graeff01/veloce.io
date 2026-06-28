@@ -92,6 +92,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
   const [accountName, setAccountName] = useState("");
   const [saving, setSaving] = useState(false);
   const [demo, setDemo] = useState(false);
+  const [section, setSection] = useState<"overview" | "buscas" | "auditoria">("overview");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/google`);
@@ -204,82 +205,84 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       {err && <div style={{ fontSize: 12.5, color: "var(--red)", background: "var(--red-soft)", padding: "8px 12px", borderRadius: 8 }}>{err}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-        <Kpi label="Investimento" value={brl(t.spend)} />
-        <Kpi label="Conversões" value={num(t.conversions)} />
-        <Kpi label="Impressões" value={num(t.impressions)} />
-        <Kpi label="Cliques" value={num(t.clicks)} />
+      {/* Sub-navegação — uma seção por vez, pra não poluir */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)" }}>
+        {([["overview", "Visão geral"], ["buscas", "Buscas"], ["auditoria", "Auditoria"]] as const).map(([k, label]) => {
+          const on = section === k;
+          return (
+            <button key={k} onClick={() => setSection(k)} style={{ padding: "8px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: on ? 600 : 500, color: on ? GBLUE : "var(--text-muted)", borderBottom: on ? `2px solid ${GBLUE}` : "2px solid transparent", marginBottom: -1 }}>{label}</button>
+          );
+        })}
       </div>
 
-      {/* Parcela de impressões + tendência diária, lado a lado */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <ImpressionShare is={view.impressionShare} />
-        <TrendSpark series={view.series ?? []} />
-      </div>
+      {section === "overview" && (<>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+          <Kpi label="Investimento" value={brl(t.spend)} />
+          <Kpi label="Conversões" value={num(t.conversions)} />
+          <Kpi label="Impressões" value={num(t.impressions)} />
+          <Kpi label="Cliques" value={num(t.clicks)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
+          <ImpressionShare is={view.impressionShare} />
+          <TrendSpark series={view.series ?? []} />
+        </div>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
+          {(view.campaigns?.length ?? 0) === 0 ? (
+            <Empty>Nenhuma campanha sincronizada ainda.</Empty>
+          ) : (
+            view.campaigns!.map((c) => (
+              <div key={c.campaignId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 16px", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{num(c.conversions)} conv.</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{brl(c.spend)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </>)}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
-      {/* Termos de busca reais — o superpoder do Google */}
-      <Panel title="🔎 Termos de busca · o que as pessoas digitaram">
-        {(view.searchTerms?.length ?? 0) === 0 ? (
-          <Empty>Os termos aparecem após o primeiro sync.</Empty>
-        ) : (
-          view.searchTerms!.slice(0, 20).map((s) => (
-            <Row key={s.term} a={s.term} b={`${num(s.conversions)} conv.`} c={brl(s.spend)} highlight={s.conversions === 0 && s.spend > 0} />
-          ))
-        )}
-      </Panel>
+      {section === "buscas" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+          <Panel title="🔎 Termos de busca · o que as pessoas digitaram">
+            {(view.searchTerms?.length ?? 0) === 0 ? (
+              <Empty>Os termos aparecem após o primeiro sync.</Empty>
+            ) : (
+              view.searchTerms!.slice(0, 20).map((s) => (
+                <Row key={s.term} a={s.term} b={`${num(s.conversions)} conv.`} c={brl(s.spend)} highlight={s.conversions === 0 && s.spend > 0} />
+              ))
+            )}
+          </Panel>
+          <Panel title="🗝️ Palavras-chave">
+            {(view.keywords?.length ?? 0) === 0 ? (
+              <Empty>As palavras-chave aparecem após o primeiro sync.</Empty>
+            ) : (
+              view.keywords!.slice(0, 20).map((k) => (
+                <Row key={`${k.keyword}-${k.matchType}`} a={k.keyword} b={k.qualityScore != null ? `QS ${k.qualityScore}` : `${num(k.conversions)} conv.`} c={brl(k.spend)} />
+              ))
+            )}
+          </Panel>
+        </div>
+      )}
 
-      {/* Palavras-chave + índice de qualidade */}
-      <Panel title="🗝️ Palavras-chave">
-        {(view.keywords?.length ?? 0) === 0 ? (
-          <Empty>As palavras-chave aparecem após o primeiro sync.</Empty>
-        ) : (
-          view.keywords!.slice(0, 20).map((k) => (
-            <Row
-              key={`${k.keyword}-${k.matchType}`}
-              a={k.keyword}
-              b={k.qualityScore != null ? `QS ${k.qualityScore}` : `${num(k.conversions)} conv.`}
-              c={brl(k.spend)}
-            />
-          ))
-        )}
-      </Panel>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
-      {/* Diagnóstico da conta — auditoria de saúde */}
-      <Panel title="🩺 Diagnóstico da conta">
-        {(view.diagnostics?.length ?? 0) === 0 ? (
-          <Empty>O diagnóstico aparece após o primeiro sync.</Empty>
-        ) : (
-          view.diagnostics!.map((d, i) => <Diag key={i} d={d} />)
-        )}
-      </Panel>
-
-      {/* Histórico de mudanças — quem alterou o quê e quando */}
-      <Panel title="🕘 Histórico de mudanças · auditoria">
-        {(view.changeEvents?.length ?? 0) === 0 ? (
-          <Empty>O histórico aparece após o primeiro sync.</Empty>
-        ) : (
-          view.changeEvents!.slice(0, 20).map((c, i) => <Change key={i} c={c} />)
-        )}
-      </Panel>
-      </div>
-
-      <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
-        {(view.campaigns?.length ?? 0) === 0 ? (
-          <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Nenhuma campanha sincronizada ainda.</div>
-        ) : (
-          view.campaigns!.map((c) => (
-            <div key={c.campaignId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 16px", borderBottom: "1px solid var(--border)" }}>
-              <span style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{num(c.conversions)} conv.</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{brl(c.spend)}</span>
-            </div>
-          ))
-        )}
-      </div>
+      {section === "auditoria" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+          <Panel title="🩺 Diagnóstico da conta">
+            {(view.diagnostics?.length ?? 0) === 0 ? (
+              <Empty>O diagnóstico aparece após o primeiro sync.</Empty>
+            ) : (
+              view.diagnostics!.map((d, i) => <Diag key={i} d={d} />)
+            )}
+          </Panel>
+          <Panel title="🕘 Histórico de mudanças · auditoria">
+            {(view.changeEvents?.length ?? 0) === 0 ? (
+              <Empty>O histórico aparece após o primeiro sync.</Empty>
+            ) : (
+              view.changeEvents!.slice(0, 20).map((c, i) => <Change key={i} c={c} />)
+            )}
+          </Panel>
+        </div>
+      )}
     </div>
   );
 }
