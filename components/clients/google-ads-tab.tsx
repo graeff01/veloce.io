@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Link2, Unplug, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, Link2, Unplug, AlertCircle, Eye, X } from "lucide-react";
 import { GoogleGlyph } from "@/components/clients/brand-glyphs";
 
 const GBLUE = "#4285F4";
@@ -17,7 +17,7 @@ interface GoogleState {
   lastSyncAt?: string | null;
   totals?: { spend: number; impressions: number; clicks: number; conversions: number };
   impressionShare?: { share: number | null; lostBudget: number | null; lostRank: number | null } | null;
-  campaigns?: { campaignId: string; name: string; status: string; spend: number; impressions: number; clicks: number; conversions: number }[];
+  campaigns?: { campaignId: string; name: string; status: string; spend: number; impressions: number; clicks: number; conversions: number; impressionShare?: number | null; lostBudget?: number | null; lostRank?: number | null }[];
   searchTerms?: { term: string; spend: number; clicks: number; conversions: number }[];
   keywords?: { keyword: string; matchType: string; qualityScore: number | null; spend: number; clicks: number; conversions: number }[];
   series?: { date: string; spend: number; conversions: number }[];
@@ -26,6 +26,43 @@ interface GoogleState {
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const num = (v: number) => v.toLocaleString("pt-BR");
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`);
+
+// Dados de exemplo (revenda de veículos) — só pra pré-visualizar o layout populado.
+const DEMO: GoogleState = {
+  connected: true, configured: true, oauthDone: true,
+  customerId: "123-456-7890", accountName: "Conta de exemplo",
+  lastSyncAt: new Date().toISOString(),
+  totals: { spend: 4820.5, impressions: 184300, clicks: 5120, conversions: 96 },
+  impressionShare: { share: 0.62, lostBudget: 0.28, lostRank: 0.1 },
+  campaigns: [
+    { campaignId: "1", name: "Pesquisa · Seminovos", status: "ENABLED", spend: 2110.3, impressions: 88200, clicks: 2630, conversions: 51, impressionShare: 0.58, lostBudget: 0.32, lostRank: 0.1 },
+    { campaignId: "2", name: "Pesquisa · Compass", status: "ENABLED", spend: 1340, impressions: 52100, clicks: 1490, conversions: 28, impressionShare: 0.66, lostBudget: 0.22, lostRank: 0.12 },
+    { campaignId: "3", name: "PMax · Estoque", status: "ENABLED", spend: 980.2, impressions: 38900, clicks: 870, conversions: 14, impressionShare: 0.7, lostBudget: 0.2, lostRank: 0.1 },
+    { campaignId: "4", name: "Pesquisa · Financiamento", status: "PAUSED", spend: 390, impressions: 5100, clicks: 130, conversions: 3, impressionShare: 0.4, lostBudget: 0.5, lostRank: 0.1 },
+  ],
+  searchTerms: [
+    { term: "compass 2024 preço", spend: 320.4, clicks: 210, conversions: 9 },
+    { term: "seminovos perto de mim", spend: 280.1, clicks: 180, conversions: 8 },
+    { term: "tiguan usado", spend: 240, clicks: 150, conversions: 6 },
+    { term: "carro automático financiamento", spend: 210.5, clicks: 140, conversions: 4 },
+    { term: "onix 2022", spend: 160.2, clicks: 110, conversions: 3 },
+    { term: "revisão de carro", spend: 130, clicks: 90, conversions: 0 },
+    { term: "concessionária boqueirão", spend: 95.4, clicks: 70, conversions: 2 },
+    { term: "vender meu carro", spend: 88, clicks: 60, conversions: 0 },
+  ],
+  keywords: [
+    { keyword: "seminovos", matchType: "BROAD", qualityScore: 8, spend: 510, clicks: 320, conversions: 14 },
+    { keyword: "comprar compass", matchType: "PHRASE", qualityScore: 9, spend: 420.3, clicks: 250, conversions: 12 },
+    { keyword: "tiguan", matchType: "EXACT", qualityScore: 7, spend: 360, clicks: 210, conversions: 8 },
+    { keyword: "carros usados", matchType: "BROAD", qualityScore: 6, spend: 300.1, clicks: 190, conversions: 5 },
+    { keyword: "financiamento de carro", matchType: "PHRASE", qualityScore: 5, spend: 180, clicks: 120, conversions: 2 },
+  ],
+  series: (() => {
+    const vals = [2, 3, 1, 4, 3, 5, 2, 3, 4, 2, 1, 3, 5, 4, 3, 2, 4, 6, 3, 2, 1, 3, 4, 5, 2, 3, 4, 2, 3, 5];
+    const base = new Date();
+    return vals.map((v, i) => { const d = new Date(base); d.setDate(base.getDate() - (vals.length - 1 - i)); return { date: d.toISOString().slice(0, 10), spend: 0, conversions: v }; });
+  })(),
+};
 
 export function GoogleAdsTab({ clientId }: { clientId: string }) {
   const [state, setState] = useState<GoogleState | null>(null);
@@ -37,6 +74,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
   const [loginCustomerId, setLoginCustomerId] = useState("");
   const [accountName, setAccountName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [demo, setDemo] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/google`);
@@ -75,7 +113,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
   if (loading) return <div style={{ padding: 32 }}><div style={{ height: 80, borderRadius: 12, background: "var(--bg-surface)", animation: "pulse 1.5s infinite" }} /></div>;
 
   // ── Não conectado: tela de conexão ──
-  if (!state?.connected) {
+  if (!demo && !state?.connected) {
     return (
       <div style={{ padding: "24px 28px" }}>
         <div style={{ maxWidth: 520, border: "1px solid var(--border)", borderRadius: 14, background: "var(--bg-surface)", padding: 28 }}>
@@ -95,9 +133,14 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
             <Inp label="ID da conta Google Ads *" value={customerId} onChange={setCustomerId} placeholder="123-456-7890" />
             <Inp label="ID da conta MCC (se houver)" value={loginCustomerId} onChange={setLoginCustomerId} placeholder="opcional" />
             <Inp label="Nome da conta" value={accountName} onChange={setAccountName} placeholder="Ex: Boqueirão Veículos" />
-            <button onClick={connect} disabled={saving || !customerId.trim()} style={{ marginTop: 4, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 18px", borderRadius: 9, border: "none", background: GBLUE, color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving || !customerId.trim() ? "not-allowed" : "pointer", opacity: saving || !customerId.trim() ? 0.6 : 1 }}>
-              {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Link2 size={14} />} Conectar conta Google
-            </button>
+            <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+              <button onClick={connect} disabled={saving || !customerId.trim()} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 18px", borderRadius: 9, border: "none", background: GBLUE, color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving || !customerId.trim() ? "not-allowed" : "pointer", opacity: saving || !customerId.trim() ? 0.6 : 1 }}>
+                {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Link2 size={14} />} Conectar conta Google
+              </button>
+              <button onClick={() => setDemo(true)} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <Eye size={14} /> Ver demonstração
+              </button>
+            </div>
             {err && <span style={{ fontSize: 12, color: "var(--red)" }}>{err}</span>}
           </div>
         </div>
@@ -105,27 +148,38 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
     );
   }
 
-  // ── Conectado ──
-  const t = state.totals ?? { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
+  // ── Conectado (ou demonstração) ──
+  const view = demo ? DEMO : state!;
+  const t = view.totals ?? { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
   return (
     <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+      {demo && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(66,133,244,.10)", border: "1px solid rgba(66,133,244,.35)", color: GBLUE, padding: "10px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 600 }}>
+          <Eye size={15} /> Demonstração · dados de exemplo (não é uma conta real). É assim que a aba fica depois de conectar e sincronizar.
+          <button onClick={() => setDemo(false)} style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", color: GBLUE, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}><X size={14} /> Sair</button>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <GoogleGlyph size={20} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{state.accountName || "Conta Google"}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{view.accountName || "Conta Google"}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            ID {state.customerId}{state.lastSyncAt ? ` · sincronizado ${new Date(state.lastSyncAt).toLocaleDateString("pt-BR")}` : " · ainda não sincronizado"}
+            ID {view.customerId}{view.lastSyncAt ? ` · sincronizado ${new Date(view.lastSyncAt).toLocaleDateString("pt-BR")}` : " · ainda não sincronizado"}
           </div>
         </div>
-        <button onClick={sync} disabled={syncing} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 9, border: "none", background: GBLUE, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-          {syncing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Sincronizar agora
-        </button>
-        <button onClick={disconnect} title="Desconectar" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-muted)", fontSize: 12.5, cursor: "pointer" }}>
-          <Unplug size={13} /> Desconectar
-        </button>
+        {!demo && (
+          <>
+            <button onClick={sync} disabled={syncing} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 9, border: "none", background: GBLUE, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              {syncing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Sincronizar agora
+            </button>
+            <button onClick={disconnect} title="Desconectar" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-muted)", fontSize: 12.5, cursor: "pointer" }}>
+              <Unplug size={13} /> Desconectar
+            </button>
+          </>
+        )}
       </div>
 
-      {(!state.configured || !state.oauthDone) && (
+      {(!view.configured || !view.oauthDone) && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", background: "var(--amber-soft)", color: "var(--amber)", padding: "10px 12px", borderRadius: 9, fontSize: 12.5 }}>
           <AlertCircle size={15} /> Aguardando credenciais (developer token / OAuth). Os números aparecem após o primeiro sync, quando as chaves estiverem ativas.
         </div>
@@ -142,16 +196,16 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       {/* Parcela de impressões + tendência diária, lado a lado */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <ImpressionShare is={state.impressionShare} />
-        <TrendSpark series={state.series ?? []} />
+        <ImpressionShare is={view.impressionShare} />
+        <TrendSpark series={view.series ?? []} />
       </div>
 
       {/* Termos de busca reais — o superpoder do Google */}
       <Panel title="🔎 Termos de busca · o que as pessoas digitaram">
-        {(state.searchTerms?.length ?? 0) === 0 ? (
+        {(view.searchTerms?.length ?? 0) === 0 ? (
           <Empty>Os termos aparecem após o primeiro sync.</Empty>
         ) : (
-          state.searchTerms!.slice(0, 20).map((s) => (
+          view.searchTerms!.slice(0, 20).map((s) => (
             <Row key={s.term} a={s.term} b={`${num(s.conversions)} conv.`} c={brl(s.spend)} highlight={s.conversions === 0 && s.spend > 0} />
           ))
         )}
@@ -159,10 +213,10 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       {/* Palavras-chave + índice de qualidade */}
       <Panel title="🗝️ Palavras-chave">
-        {(state.keywords?.length ?? 0) === 0 ? (
+        {(view.keywords?.length ?? 0) === 0 ? (
           <Empty>As palavras-chave aparecem após o primeiro sync.</Empty>
         ) : (
-          state.keywords!.slice(0, 20).map((k) => (
+          view.keywords!.slice(0, 20).map((k) => (
             <Row
               key={`${k.keyword}-${k.matchType}`}
               a={k.keyword}
@@ -175,10 +229,10 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
 
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
-        {(state.campaigns?.length ?? 0) === 0 ? (
+        {(view.campaigns?.length ?? 0) === 0 ? (
           <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Nenhuma campanha sincronizada ainda.</div>
         ) : (
-          state.campaigns!.map((c) => (
+          view.campaigns!.map((c) => (
             <div key={c.campaignId} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 16px", borderBottom: "1px solid var(--border)" }}>
               <span style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{num(c.conversions)} conv.</span>
