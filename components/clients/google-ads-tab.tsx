@@ -226,7 +226,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
           <ImpressionShare is={view.impressionShare} />
           <TrendSpark series={view.series ?? []} />
         </div>
-        <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--bg-surface)", boxShadow: "var(--shadow-card)" }}>
           <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
           {(view.campaigns?.length ?? 0) === 0 ? (
             <Empty>Nenhuma campanha sincronizada ainda.</Empty>
@@ -351,7 +351,7 @@ function TrendSpark({ series }: { series: { date: string; spend: number; convers
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--bg-surface)", boxShadow: "var(--shadow-card)" }}>
       <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>{title}</div>
       {children}
     </div>
