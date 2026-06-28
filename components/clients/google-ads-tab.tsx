@@ -217,6 +217,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
         <TrendSpark series={view.series ?? []} />
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
       {/* Termos de busca reais — o superpoder do Google */}
       <Panel title="🔎 Termos de busca · o que as pessoas digitaram">
         {(view.searchTerms?.length ?? 0) === 0 ? (
@@ -243,7 +244,9 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
           ))
         )}
       </Panel>
+      </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
       {/* Diagnóstico da conta — auditoria de saúde */}
       <Panel title="🩺 Diagnóstico da conta">
         {(view.diagnostics?.length ?? 0) === 0 ? (
@@ -261,6 +264,7 @@ export function GoogleAdsTab({ clientId }: { clientId: string }) {
           view.changeEvents!.slice(0, 20).map((c, i) => <Change key={i} c={c} />)
         )}
       </Panel>
+      </div>
 
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-muted)", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>Campanhas</div>
