@@ -51,6 +51,47 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
+type Section = "conexao" | "aparencia" | "alertas" | "destinatarios" | "painel";
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: "conexao", label: "Conexão" },
+  { key: "aparencia", label: "Aparência" },
+  { key: "alertas", label: "Alertas" },
+  { key: "destinatarios", label: "Destinatários" },
+  { key: "painel", label: "Painel" },
+];
+
+function SubNav({ active, onChange }: { active: Section; onChange: (s: Section) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
+      {SECTIONS.map((s) => {
+        const on = active === s.key;
+        return (
+          <button key={s.key} type="button" onClick={() => onChange(s.key)} style={{
+            padding: "6px 14px", borderRadius: 8, border: "1px solid " + (on ? "transparent" : "var(--border)"),
+            background: on ? "var(--accent)" : "transparent", color: on ? "#fff" : "var(--text-muted)",
+            fontSize: 12.5, fontWeight: on ? 600 : 500, cursor: "pointer",
+          }}>{s.label}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Preview de uma mensagem do bot ("ver como o cliente vê") — bolha estilo Telegram.
+function AlertPreview() {
+  return (
+    <div style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600 }}>Prévia — como chega no Telegram do cliente</div>
+      <div style={{ maxWidth: 320, background: "#fff", color: "#101319", borderRadius: "12px 12px 12px 4px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
+        <div>🔥 <b>Lead QUENTE parado há 18 min</b></div>
+        <div>👤 João Silva</div>
+        <div>⚠️ Você está prestes a perder — responda agora.</div>
+        <div style={{ marginTop: 8, color: "#2481CC", fontWeight: 600 }}>💬 Responder no WhatsApp →</div>
+      </div>
+    </div>
+  );
+}
+
 export function BotTab({ clientId }: { clientId: string }) {
   const [state, setState] = useState<BotState | null>(null);
   const [token, setToken] = useState("");
@@ -64,6 +105,7 @@ export function BotTab({ clientId }: { clientId: string }) {
   const [welcome, setWelcome] = useState("");
   const [brandSaved, setBrandSaved] = useState(false);
   const [excluded, setExcluded] = useState("");
+  const [section, setSection] = useState<Section>("conexao");
   const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string; logoUrl: string | null } | null>(null);
   const [portalCopied, setPortalCopied] = useState(false);
 
@@ -177,7 +219,10 @@ export function BotTab({ clientId }: { clientId: string }) {
         responsáveis — eles recebem em tempo real os alertas dos leads <b>só deste cliente</b>.
       </p>
 
+      {state.connected && <SubNav active={section} onChange={setSection} />}
+
       {/* Conexão */}
+      {(!state.connected || section === "conexao") && (
       <Card title="🔌 Conexão">
         {state.connected ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -200,8 +245,10 @@ export function BotTab({ clientId }: { clientId: string }) {
         )}
         {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>{testMsg}</p>}
       </Card>
+      )}
 
       {/* Painel do cliente (dashboard sem login) */}
+      {state.connected && section === "painel" && (
       <Card title="📊 Painel do cliente">
         {!portal ? (
           <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Carregando…</p>
@@ -240,11 +287,12 @@ export function BotTab({ clientId }: { clientId: string }) {
           </div>
         )}
       </Card>
+      )}
 
-      <PortalAccessCard clientId={clientId} />
+      {state.connected && section === "painel" && <PortalAccessCard clientId={clientId} />}
 
       {/* Marca branca */}
-      {state.connected && (
+      {state.connected && section === "aparencia" && (
         <Card title="🎨 Marca branca">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <Input label="Nome da marca" placeholder="Ex.: Imobiliária Boqueirão" value={brand} onChange={(e) => setBrand(e.target.value)} />
@@ -270,7 +318,7 @@ export function BotTab({ clientId }: { clientId: string }) {
       )}
 
       {/* Ignorar contatos */}
-      {state.connected && (
+      {state.connected && section === "alertas" && (
         <Card title="🙈 Ignorar contatos">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
@@ -289,7 +337,7 @@ export function BotTab({ clientId }: { clientId: string }) {
       )}
 
       {/* Destinatários */}
-      {state.connected && (
+      {state.connected && section === "destinatarios" && (
         <Card title="👥 Destinatários">
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <Button variant="secondary" size="sm" onClick={genInvite}>Gerar link de convite</Button>
@@ -323,7 +371,7 @@ export function BotTab({ clientId }: { clientId: string }) {
       )}
 
       {/* Alertas */}
-      {state.connected && (
+      {state.connected && section === "alertas" && (
         <Card title="🔔 Alertas">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {ALERTS.map((a) => (
@@ -349,6 +397,8 @@ export function BotTab({ clientId }: { clientId: string }) {
           </div>
         </Card>
       )}
+
+      {state.connected && section === "alertas" && <AlertPreview />}
       </div>
     </div>
   );
