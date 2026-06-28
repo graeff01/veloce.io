@@ -73,9 +73,21 @@ export function ClientsContent() {
           </p>
         </div>
         {isAdmin && (
-          <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
-            <Plus size={13} /> Novo cliente
-          </Button>
+          <button
+            onClick={() => setShowNewModal(true)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              padding: "9px 16px", borderRadius: 9, border: "none",
+              background: "var(--accent)", color: "#fff",
+              fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              boxShadow: "var(--shadow-surface-subtle)", lineHeight: 1,
+              transition: "filter .15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(0.95)")}
+            onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+          >
+            <Plus size={15} strokeWidth={2.5} /> Novo cliente
+          </button>
         )}
       </div>
 

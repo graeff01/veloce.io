@@ -39,6 +39,7 @@ interface ClientDetail {
   instagram?: string;
   city?: string;
   status: "ACTIVE" | "INACTIVE" | "PAUSED";
+  modules?: string[];
   activePlanId?: string;
   operationType?: string;
   operationalScope?: unknown;
@@ -186,7 +187,9 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     CRITICAL:  { label: "Crítico",    color: "var(--red)",   bg: "var(--red-soft)"   },
   }[client.stats.health];
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  // Operação e Perfil são sempre fixas; o resto depende dos módulos do cliente.
+  const CORE_TABS: Tab[] = ["operacao", "perfil"];
+  const allTabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
     { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
@@ -196,6 +199,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
+  const tabs = client.modules
+    ? allTabs.filter((t) => CORE_TABS.includes(t.key) || client.modules!.includes(t.key))
+    : allTabs;
+  // Se a aba ativa não está visível (módulo desligado / deep-link), cai na Operação.
+  const activeTab: Tab = tabs.some((t) => t.key === tab) ? tab : "operacao";
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
@@ -260,7 +268,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
         {/* Tab bar */}
         <div style={{ display: "flex", gap: 2 }}>
           {tabs.map(({ key, label, icon }) => {
-            const active = tab === key;
+            const active = activeTab === key;
             return (
               <button
                 key={key}
@@ -285,37 +293,37 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Tab content ──────────────────────────────────── */}
-      {tab === "operacao" && (
+      {activeTab === "operacao" && (
         <KanbanBoard clientId={clientId} clientName={client.name} />
       )}
 
-      {tab === "reunioes" && (
+      {activeTab === "reunioes" && (
         <MeetingsTab clientId={clientId} />
       )}
 
-      {tab === "leads" && (
+      {activeTab === "leads" && (
         <WhatsAppTab clientId={clientId} />
       )}
 
-      {tab === "anuncios" && (
+      {activeTab === "anuncios" && (
         <div style={{ padding: "24px 28px" }}>
           <AdsTab clientId={clientId} />
         </div>
       )}
 
-      {tab === "inteligencia" && (
+      {activeTab === "inteligencia" && (
         <CompetitiveIntelTab clientId={clientId} />
       )}
 
-      {tab === "ia" && (
+      {activeTab === "ia" && (
         <AiAgentTab clientId={clientId} />
       )}
 
-      {tab === "bot" && (
+      {activeTab === "bot" && (
         <BotTab clientId={clientId} />
       )}
 
-      {tab === "perfil" && (
+      {activeTab === "perfil" && (
         <PerfilTab
           client={client}
           clientId={clientId}
@@ -361,6 +369,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
             restrictions:        client.restrictions,
             preferences:         client.preferences,
             clientBehavior:      client.clientBehavior,
+            modules:             client.modules,
             deliverables:        currentPlan?.plan.items.map((item) => ({
               type:              item.type,
               quantity:          item.quantity,

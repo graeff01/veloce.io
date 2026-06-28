@@ -75,6 +75,9 @@ model Client {
   instagram    String?
   city         String?
   status       ClientStatus @default(ACTIVE)
+  // Módulos que o cliente roda — controla quais abas aparecem (Operação e Perfil
+  // são sempre fixas e não entram aqui). Default = todos os selecionáveis ligados.
+  modules      String[]     @default(["reunioes", "leads", "anuncios", "inteligencia", "ia", "bot"])
   activePlanId String?
   operationType String?
   operationalScope Json?

@@ -31,6 +31,7 @@ const createClientSchema = z.object({
   restrictions: z.string().optional(),
   preferences: z.string().optional(),
   clientBehavior: z.string().optional(),
+  modules: z.array(z.string()).optional(),
 });
 
 export async function GET() {
@@ -150,6 +151,7 @@ export async function POST(req: Request) {
       restrictions: parsed.data.restrictions || null,
       preferences: parsed.data.preferences || null,
       clientBehavior: parsed.data.clientBehavior || null,
+      ...(parsed.data.modules && { modules: parsed.data.modules }),
     },
   });
 

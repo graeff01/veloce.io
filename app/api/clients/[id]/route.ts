@@ -39,6 +39,7 @@ const updateSchema = z.object({
   restrictions: z.string().optional(),
   preferences: z.string().optional(),
   clientBehavior: z.string().optional(),
+  modules: z.array(z.string()).optional(),
 });
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -158,6 +159,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.restrictions !== undefined && { restrictions: parsed.data.restrictions || null }),
       ...(parsed.data.preferences !== undefined && { preferences: parsed.data.preferences || null }),
       ...(parsed.data.clientBehavior !== undefined && { clientBehavior: parsed.data.clientBehavior || null }),
+      ...(parsed.data.modules !== undefined && { modules: parsed.data.modules }),
     },
   });
 
