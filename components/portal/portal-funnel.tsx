@@ -48,7 +48,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
         </div>
 
         <div style={{ overflowX: "auto" }}>
-          <div style={{ height: 26, borderRadius: 13, minWidth: 520, background: "linear-gradient(90deg,#2563EB,#06B6D4,#EAB308,#F97316,#DC2626)", boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)" }} />
+          <div className="heatbar" style={{ height: 26, borderRadius: 13, minWidth: 520, backgroundImage: "linear-gradient(90deg,#2563EB,#06B6D4,#EAB308,#F97316,#DC2626,#F97316,#EAB308,#06B6D4,#2563EB)", backgroundSize: "200% 100%", boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)", animation: "heatFlow 10s linear infinite" }} />
 
           <div style={{ display: "flex", marginTop: 10, minWidth: 520 }}>
             {data.stages.map((s) => (
