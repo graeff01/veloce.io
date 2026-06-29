@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { canonicalAdName } from "@/lib/wa-leads";
+import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
 // Janela de "encerramento por inatividade" e limiares de alerta (interno; nunca
 // afeta o WhatsApp da loja). Centralizado para fácil ajuste futuro.
@@ -63,14 +64,17 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   const waitingCut = new Date(now - WA_THRESHOLDS.waitingAlertHours * 3_600_000);
   const abandonedCut = new Date(now - WA_THRESHOLDS.abandonedHours * 3_600_000);
 
-  const [convs, adLeads, waitingNow, alertRows, inboundMsgs] = await Promise.all([
+  const connRow = await prisma.waConnection.findUnique({ where: { id: connectionId }, select: { clientId: true } });
+  const excl = connRow ? await excludedTokens(connRow.clientId) : [];
+
+  const [convsRaw, adLeadsRaw, waitingNow, alertRows, inboundMsgs] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId, firstInboundAt: { gte: start, lt: end } },
       select: { contactId: true, firstInboundAt: true, firstResponseSec: true, outboundCount: true, funnelStage: true, lastMessageAt: true, contact: { select: { name: true, waId: true, reportValid: true } } },
     }),
     prisma.waLead.findMany({
       where: { connectionId, enteredAt: { gte: start, lt: end } },
-      select: { contactId: true, adTitle: true, adModel: true, enteredAt: true },
+      select: { contactId: true, name: true, adTitle: true, adModel: true, enteredAt: true },
     }),
     prisma.waConversation.count({ where: { connectionId, status: "waiting" } }),
     prisma.waConversation.findMany({
@@ -84,6 +88,10 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
       select: { contactId: true, timestamp: true },
     }),
   ]);
+
+  // Exclui donos/diretoria/família — não são leads (coerência com Painel/Diagnóstico).
+  const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excl));
+  const adLeads = adLeadsRaw.filter((l) => !nameExcluded(l.name, excl));
 
   const buckets = { upTo5min: 0, upTo30min: 0, upTo1h: 0, over1h: 0, unanswered: 0 };
   const funnel = { recebido: 0, respondido: 0, qualificado: 0, negociacao: 0, perdido: 0, convertido: 0 };

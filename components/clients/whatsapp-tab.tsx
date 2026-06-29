@@ -149,14 +149,6 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
               {[0, 1, 2].map((d) => { const y = now.getFullYear() - d; return <option key={y} value={y}>{y}</option>; })}
             </select>
           </div>
-          <a
-            href={`/api/clients/${clientId}/executive-report?year=${year}&month=${month}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}
-          >
-            <FileText size={14} /> Relatório Executivo (PDF)
-          </a>
         </div>
 
         {view === "painel" && (
