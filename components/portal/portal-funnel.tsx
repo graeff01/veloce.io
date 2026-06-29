@@ -101,8 +101,11 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
                     s.leads.map((l) => (
                       <Link key={l.contactId} href={`/r/${token}/conversas`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 18px", borderTop: "1px solid var(--p-border)", textDecoration: "none", color: "var(--p-text)" }}>
                         <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: s.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{l.name[0]?.toUpperCase()}</span>
-                        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
-                        {l.ageDays != null && <span style={{ fontSize: 12, color: l.ageDays >= 3 ? "#DC2626" : "var(--p-muted)", fontWeight: 600 }}>{l.ageDays === 0 ? "hoje" : `há ${l.ageDays}d`}</span>}
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
+                          {l.evidence && <span style={{ display: "block", fontSize: 11.5, color: "var(--p-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.evidence}>“{l.evidence}”</span>}
+                        </span>
+                        {l.ageDays != null && <span style={{ fontSize: 12, color: l.ageDays >= 3 ? "#DC2626" : "var(--p-muted)", fontWeight: 600, flexShrink: 0 }}>{l.ageDays === 0 ? "hoje" : `há ${l.ageDays}d`}</span>}
                         <MessageCircle size={15} style={{ color: "var(--p-muted)", flexShrink: 0 }} />
                       </Link>
                     ))

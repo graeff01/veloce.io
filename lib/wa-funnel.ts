@@ -1,146 +1,157 @@
 import { prisma } from "@/lib/prisma";
 import { logWaEvent } from "@/lib/wa-events";
+import { groqChat, extractJson } from "@/lib/groq";
 
-// ── Auto-classificação do funil (determinística, sem custo de IA) ────────────
-// Roda no webhook a cada mensagem. Lê sinais de texto (lead OU loja) e AVANÇA o
-// lead pelo funil. Princípios anti-erro:
-//   • forward-only: só avança de etapa (nunca rebaixa por mensagem genérica);
-//   • convertido/perdido exigem frase forte (alta precisão → não infla métrica);
+// ── Auto-classificação do funil (determinística + reforço semântico opcional) ──
+// Roda no webhook a cada mensagem. Princípios anti-erro:
+//   • PISO determinístico: todo lead tem etapa real (Recebido/Respondido por fato).
+//   • forward-only: só avança (nunca rebaixa por mensagem genérica);
+//   • convertido/perdido exigem frase forte (alta precisão);
 //   • trava manual: se o operador editou a etapa, o auto não toca;
-//   • convertido é terminal (topo); perdido é reativável se o lead voltar.
+//   • cobre TODOS os leads (anúncio E orgânico);
+//   • evidência: guarda a frase que justificou a etapa (auditável);
+//   • Groq (free tier) só entra no AMBÍGUO (léxico não achou) — sem custo no volume.
 
 export type FunnelStage = "recebido" | "respondido" | "qualificado" | "negociacao" | "convertido" | "perdido";
 
 const RANK: Record<string, number> = { recebido: 0, respondido: 1, qualificado: 2, negociacao: 3, convertido: 4 };
 
-// Rank da etapa ATUAL. null/perdido contam como base (0) → um lead perdido que
-// volta com interesse pode ser reativado para qualificado/negociação.
 function currentRank(stage: string | null | undefined): number {
   if (!stage || stage === "perdido") return 0;
   return RANK[stage] ?? 0;
 }
 
+// Piso a partir de fatos da conversa: respondeu? → Respondido; senão Recebido.
+// Funde com o sinal: a etapa final é a MAIOR entre sinal e piso.
+function mergeFloor(signalStage: string | null, hasOutbound: boolean): string | null {
+  if (signalStage === "perdido") return "perdido";
+  const floor = hasOutbound ? "respondido" : "recebido";
+  const sigRank = signalStage ? RANK[signalStage] ?? -1 : -1;
+  return sigRank >= RANK[floor] ? signalStage : floor;
+}
+
 type SignalStage = "qualificado" | "negociacao" | "convertido" | "perdido";
-type Who = "lead" | "store" | "any"; // quem precisa ter dito a frase
+type Who = "lead" | "store" | "any";
 interface Signal { stage: SignalStage; re: RegExp; who: Who }
 
-// Sinais base. CONVERTIDO é ciente de quem falou — a loja NUNCA converte por
-// "fechado/combinado" (isso é marcar visita), só com confirmação de venda real.
 const SIGNALS_BASE: Signal[] = [
-  // Perdido: o LEAD declara que saiu / já comprou. (A loja não "perde" por texto.)
-  { stage: "perdido", who: "lead", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
-  // Convertido — só o LEAD declara compra (intenção/ação explícita). "fechar/fechamos"
-  // SÓ junto de negócio/compra; nunca "fechado/tá fechado" isolado (= combinado).
-  { stage: "convertido", who: "lead", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|fech(ei|amos|ar) (o |a )?(neg[óo]cio|negocio|compra)|neg[óo]cio fechado)/i },
-  // Convertido — LOJA só com confirmação INEQUÍVOCA de venda.
-  { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar))/i },
-  // Negociação — SÓ conversa de DINHEIRO/negócio do LEAD: pagamento (financiamento/
-  // parcela/entrada-de-pagamento/à vista), troca DO CARRO, ou barganha (desconto/
-  // melhor preço). NÃO inclui "condições" (= estado do carro), "entrada" solta
-  // (= horário/porta) nem "troca" solta (= troca de óleo). Visita é qualificado.
-  // Negociação — SÓ quando o LEAD está CLARAMENTE negociando o negócio: oferta de
-  // troca, pechincha de preço, ou COMPROMISSO de pagamento (financiar/parcelar em X,
-  // dar X de entrada). Pergunta sobre financiamento/entrada é interesse (qualificado),
-  // não negociação. "à vista"/orçamento solto NÃO avança (não garante fechamento).
-  { stage: "negociacao", who: "lead", re: /(aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|\bna troca\b|aceita meu (carro|ve[íi]culo)|tenho .{0,20}(pra|para) (dar na )?troca|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor)|quero financiar|vou financiar|quero parcelar|vou parcelar|parcelar em \d|financiar em \d|(r\$ ?)?\d[\d.,]* ?(mil )?de entrada|de entrada de (r\$|\d)|dar (de |o )?entrada|quero fechar|vamos fechar|pode fechar)/i },
-  // Qualificado — interesse do LEAD: preço, specs, ESTADO/condição, fotos, OU
-  // pergunta sobre condições de pagamento (tem financiamento? qual a entrada?),
-  // OU pedido de visita. NÃO inclui template de anúncio.
-  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo)|condi[çc][ãa]o do (carro|ve[íi]culo)|em (bom|boas) (estado|condi[çc][õo]es)|estado do (carro|ve[íi]culo)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa)|\b[ée] de leil[ãa]o|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|tem em estoque|aceita (pix|cart[ãa]o|d[ée]bito)|tem financiamento|trabalha(m)? com financiamento|aceita financiamento|tem como (parcelar|financiar)|qual (a |o )?entrada|tem entrada|em quantas (vezes|parcelas)|quantas parcelas|agendar (uma )?visita|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o)|posso (ir|passar|visitar)|test[ -]?drive)/i },
+  // Perdido — o LEAD declara saída/compra em outro.
+  { stage: "perdido", who: "lead", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|fechei com outr|encontrei outr|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
+  // Convertido — LEAD declara compra (ação explícita).
+  { stage: "convertido", who: "lead", re: /(vou comprar|vou levar\b|\bcomprei\b|quero fechar|pode (reservar|separar)|fiz (o )?(pix|pagamento)|fechei|fech(ei|amos|ar) (o |a )?(neg[óo]cio|compra)|neg[óo]cio fechado|vou ficar com)/i },
+  // Convertido — LOJA só com confirmação inequívoca.
+  { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada)|pode (emitir|faturar)|reserva confirmada|visita confirmada)/i },
+  // Negociação — LEAD negociando o negócio (preço/condição/compromisso de pagamento).
+  { stage: "negociacao", who: "lead", re: /(aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|\bna troca\b|aceita meu (carro|ve[íi]culo|im[óo]vel)|tenho .{0,20}(pra|para) (dar na )?troca|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor)|quero financiar|vou financiar|quero parcelar|vou parcelar|parcelar em \d|financiar em \d|(r\$ ?)?\d[\d.,]* ?(mil )?de entrada|de entrada de (r\$|\d)|dar (de |o )?entrada|dar (o )?sinal|fazer (uma )?proposta|podemos? fechar|vamos fechar|pode fechar)/i },
+  // Qualificado — interesse concreto do LEAD: preço, specs, estado, fotos, condição
+  // de pagamento, visita/agendamento, disponibilidade, localização.
+  { stage: "qualificado", who: "lead", re: /(qual (o |a |seu )?(valor|pre[çc]o|ano|km|quilometragem|cor|bairro|metragem)|quanto (custa|fica|sai|\bé\b)|qual (é )?o (valor|pre[çc]o)|condi[çc][õo]es? do (carro|ve[íi]culo|im[óo]vel)|estado do (carro|ve[íi]culo|im[óo]vel)|tem (algum )?(problema|sinistro|batid|d[ée]bito|multa)|tem garantia|tem (foto|v[íi]deo)|(manda|mandar|envia|enviar|me manda|pode mandar) .{0,14}(foto|v[íi]deo)|(ainda |voc[êe]s )?tem(em)? (em estoque|dispon[íi]vel|esse|essa|a[íi])|ainda (tem|est[áa] dispon[íi]vel)|aceita (pix|cart[ãa]o|d[ée]bito|financiamento)|tem financiamento|trabalha(m)? com financiamento|tem como (parcelar|financiar)|qual (a |o )?entrada|tem entrada|em quantas (vezes|parcelas)|quantas parcelas|quantos quartos|\bvaga\b|\bsu[íi]te|condom[íi]nio|\bfgts\b|agendar (uma )?(visita|hor[áa]rio)|marcar (uma )?(visita|hor[áa]rio)|quero (visitar|agendar|ver o|ver a|saber mais)|posso (ir|passar|visitar)|test[ -]?drive|onde (fica|[ée]|voc[êe]s)|qual (o )?endere[çc]o|gostei|mais (informa[çc][õo]es|detalhes))/i },
 ];
 
-// Reforços por vertical (opcionais — a base já cobre bem). Também só do LEAD.
-const SIGNALS_BY_VERTICAL: Record<string, Signal[]> = {
-  imobiliario: [
-    { stage: "negociacao", who: "lead", re: /(dar (o )?sinal|pagar (o )?sinal|fa[çz]er (uma )?proposta|fechar (a )?proposta|quero financiar)/i },
-    { stage: "qualificado", who: "lead", re: /(quantos quartos|metragem|qual o bairro|condom[íi]nio|\bvaga\b|\bsu[íi]te|\bfgts\b|documenta[çc][ãa]o|aceita financiamento|tem financiamento|quero (agendar|visitar)|posso visitar|visitar (o |a )?(im[óo]vel|apto|apartamento|casa))/i },
-  ],
-};
-
-// "Força" para escolher a etapa mais relevante quando uma mensagem casa vários
-// sinais. Perdido e convertido ganham de tudo (sinais explícitos de saída/fechamento).
 function score(stage: SignalStage): number {
   if (stage === "perdido") return 100;
   if (stage === "convertido") return 90;
   return RANK[stage];
 }
 
-// Detecta a etapa sinalizada por UMA mensagem, considerando quem falou
-// (direction "in" = lead, "out" = loja). null = nenhum sinal.
 export function detectStageFromMessage(text: string | null | undefined, vertical?: string | null, direction?: "in" | "out"): SignalStage | null {
   if (!text) return null;
   const t = text.normalize("NFC");
   const who: Who = direction === "out" ? "store" : "lead";
-  const signals = [...SIGNALS_BASE, ...(vertical && SIGNALS_BY_VERTICAL[vertical] ? SIGNALS_BY_VERTICAL[vertical] : [])];
   let best: SignalStage | null = null;
   let bestScore = -Infinity;
-  for (const s of signals) {
+  for (const s of SIGNALS_BASE) {
     if (s.who !== "any" && s.who !== who) continue;
     if (s.re.test(t) && score(s.stage) > bestScore) { bestScore = score(s.stage); best = s.stage; }
   }
   return best;
 }
 
-// Reproduz o classificador sobre o histórico (em ordem, com a direção de cada
-// mensagem) e devolve a etapa final. Mesma lógica forward-only do tempo real.
-export function stageFromHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null): string | null {
+// Reforço semântico (Groq free tier) — SÓ pro ambíguo (léxico não achou). Best-effort:
+// sem chave / erro / baixa confiança → null (cai no determinístico). Sem custo no volume.
+async function semanticStage(text: string | null | undefined): Promise<SignalStage | null> {
+  if (!process.env.GROQ_API_KEY || !text || text.trim().length < 3) return null;
+  try {
+    const sys =
+      "Você classifica a INTENÇÃO de UMA mensagem de um lead no WhatsApp para um funil de vendas. " +
+      "Etapas válidas: qualificado (mostrou interesse concreto: preço, specs, disponibilidade, visita, condição de pagamento), " +
+      "negociacao (negocia preço/condição ou compromisso de pagamento/proposta), " +
+      "convertido (confirma compra/fechamento/pagamento), perdido (declara desistência/sem interesse), nenhum. " +
+      "Só classifique com EVIDÊNCIA explícita na frase. Na dúvida, 'nenhum'.";
+    const user = `Mensagem do lead: "${text.slice(0, 400)}"\nResponda só JSON: {"stage":"qualificado|negociacao|convertido|perdido|nenhum","confidence":0..1}`;
+    const raw = await groqChat(sys, user, 120);
+    const j = extractJson<{ stage: string; confidence: number }>(raw);
+    if (!j || (j.confidence ?? 0) < 0.7) return null;
+    const allowed: SignalStage[] = ["qualificado", "negociacao", "convertido", "perdido"];
+    return (allowed as string[]).includes(j.stage) ? (j.stage as SignalStage) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Replay do histórico → etapa final (com piso determinístico). isAd controla o
+// "opener" (1ª msg do lead de anúncio = template, não qualifica).
+export function stageFromHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null, isAd = false): string | null {
   let cur: string | null = null;
   let firstInboundSeen = false;
+  let hasOutbound = false;
   for (const m of msgs) {
-    const isOpener = m.direction !== "out" && !firstInboundSeen; // 1ª msg do lead = template do anúncio
+    if (m.direction === "out") hasOutbound = true;
+    const isOpener = m.direction !== "out" && !firstInboundSeen;
     if (m.direction !== "out") firstInboundSeen = true;
     const cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
     if (!cand) continue;
-    // O opener do anúncio (template automático) NUNCA qualifica/negocia. Só conta
-    // engajamento real (mensagem seguinte do lead). Compra/perda ainda valem.
-    if (isOpener && (cand === "qualificado" || cand === "negociacao")) continue;
-    if (cur === "convertido") break; // terminal de topo
+    if (isAd && isOpener && (cand === "qualificado" || cand === "negociacao")) continue;
+    if (cur === "convertido") break;
     if (cand === "perdido") cur = "perdido";
     else if (RANK[cand] > currentRank(cur)) cur = cand;
   }
-  return cur;
+  return mergeFloor(cur, hasOutbound);
 }
 
-// Explica a classificação: replay do histórico marcando, por mensagem, a etapa
-// que ela DISPAROU (null = não contribuiu). final = etapa resultante. Mesma lógica
-// do stageFromHistory → o que aparece no funil é exatamente o que se destaca aqui.
-export function explainHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null): { final: string | null; perMsg: (string | null)[] } {
+// Frase que justificou a etapa (última mensagem que disparou o sinal final).
+function findEvidence(msgs: { text: string | null; direction: string }[], stage: string | null, vertical?: string | null): string | null {
+  if (!stage || stage === "recebido" || stage === "respondido") return null;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    const cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
+    if (cand === stage && m.text) return m.text.slice(0, 160);
+  }
+  return null;
+}
+
+export function explainHistory(msgs: { text: string | null; direction: string }[], vertical?: string | null, isAd = false): { final: string | null; perMsg: (string | null)[] } {
   let cur: string | null = null;
   let firstInboundSeen = false;
+  let hasOutbound = false;
   const perMsg: (string | null)[] = [];
   for (const m of msgs) {
+    if (m.direction === "out") hasOutbound = true;
     const isOpener = m.direction !== "out" && !firstInboundSeen;
     if (m.direction !== "out") firstInboundSeen = true;
     let cand = detectStageFromMessage(m.text, vertical, m.direction === "out" ? "out" : "in");
-    if (cand && isOpener && (cand === "qualificado" || cand === "negociacao")) cand = null;
+    if (cand && isAd && isOpener && (cand === "qualificado" || cand === "negociacao")) cand = null;
     let contributed: string | null = null;
     if (cand) {
-      if (cur === "convertido") {
-        // terminal — nada muda
-      } else if (cand === "perdido") {
-        if (cur !== "perdido") contributed = "perdido";
-        cur = "perdido";
-      } else if (RANK[cand] > currentRank(cur)) {
-        cur = cand;
-        contributed = cand;
-      }
+      if (cur === "convertido") { /* terminal */ }
+      else if (cand === "perdido") { if (cur !== "perdido") contributed = "perdido"; cur = "perdido"; }
+      else if (RANK[cand] > currentRank(cur)) { cur = cand; contributed = cand; }
     }
     perMsg.push(contributed);
   }
-  return { final: cur, perMsg };
+  return { final: mergeFloor(cur, hasOutbound), perMsg };
 }
 
-// Backfill: classifica conversas JÁ existentes pelo histórico. Ignora as travadas
-// manualmente (funnelManual). Idempotente — pode rodar quantas vezes quiser.
+// Backfill: reclassifica TODAS as conversas (anúncio E orgânico) pelo histórico.
+// Idempotente. Ignora as travadas manualmente.
 export async function backfillFunnelForConnection(connectionId: string, vertical?: string | null): Promise<{ scanned: number; updated: number }> {
-  // Só leads de anúncio (Meta) entram no funil.
   const adIds = new Set(
     (await prisma.waLead.findMany({ where: { connectionId }, select: { contactId: true } })).map((l) => l.contactId),
   );
-  const convs = (await prisma.waConversation.findMany({
+  const convs = await prisma.waConversation.findMany({
     where: { connectionId, funnelManual: false },
     select: { contactId: true, funnelStage: true },
-  })).filter((c) => adIds.has(c.contactId));
+  });
   if (convs.length === 0) return { scanned: 0, updated: 0 };
 
   const msgs = await prisma.waMessage.findMany({
@@ -150,7 +161,6 @@ export async function backfillFunnelForConnection(connectionId: string, vertical
   });
   const byContact = new Map<string, { text: string | null; direction: string }[]>();
   for (const m of msgs) {
-    if (!m.text) continue;
     const arr = byContact.get(m.contactId) ?? [];
     arr.push({ text: m.text, direction: m.direction });
     byContact.set(m.contactId, arr);
@@ -160,12 +170,13 @@ export async function backfillFunnelForConnection(connectionId: string, vertical
   for (const c of convs) {
     const hist = byContact.get(c.contactId);
     if (!hist || hist.length === 0) continue;
-    // Re-sincroniza: recomputa do histórico e grava o resultado, inclusive
-    // CORRIGINDO para baixo ou limpando (null) — só em conversas não-travadas.
-    // Assim "Recalcular histórico" conserta falsos-positivos antigos.
-    const stage = stageFromHistory(hist, vertical);
+    const isAd = adIds.has(c.contactId);
+    const stage = stageFromHistory(hist, vertical, isAd);
     if (stage !== c.funnelStage) {
-      await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { funnelStage: stage } });
+      await prisma.waConversation.update({
+        where: { contactId: c.contactId },
+        data: { funnelStage: stage, funnelEvidence: findEvidence(hist, stage, vertical) },
+      });
       updated++;
     }
   }
@@ -180,36 +191,47 @@ export async function applyFunnelFromMessage(opts: {
   try {
     const conv = await prisma.waConversation.findUnique({
       where: { contactId },
-      select: { funnelStage: true, funnelManual: true },
+      select: { funnelStage: true, funnelManual: true, outboundCount: true },
     });
     if (!conv || conv.funnelManual) return;            // operador é dono → não toca
     if (conv.funnelStage === "convertido") return;     // terminal de topo
 
-    // O funil trabalha SÓ com leads de anúncio (Meta). Orgânico não entra.
-    const isAd = await prisma.waLead.findUnique({ where: { contactId }, select: { contactId: true } });
-    if (!isAd) return;
-
+    const isAd = !!(await prisma.waLead.findUnique({ where: { contactId }, select: { contactId: true } }));
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { vertical: true } });
-    const candidate = detectStageFromMessage(text, cfg?.vertical, direction);
-    if (!candidate) return;
 
-    // O opener do anúncio (1ª mensagem do lead) é template automático e NÃO
-    // qualifica/negocia. Só conta a partir da 2ª mensagem do lead (engajamento real).
-    if (direction === "in" && (candidate === "qualificado" || candidate === "negociacao")) {
-      const inboundCount = await prisma.waMessage.count({ where: { contactId, direction: "in" } });
-      if (inboundCount <= 1) return;
+    // 1) Piso determinístico: garante Respondido quando a loja respondeu.
+    const hasOutbound = direction === "out" || (conv.outboundCount ?? 0) > 0;
+    const floor = hasOutbound ? "respondido" : "recebido";
+    if (RANK[floor] > currentRank(conv.funnelStage)) {
+      await prisma.waConversation.update({ where: { contactId }, data: { funnelStage: floor } });
+      conv.funnelStage = floor;
     }
+
+    // 2) Sinal de avanço — léxico primeiro.
+    let candidate = detectStageFromMessage(text, cfg?.vertical, direction);
+
+    // Opener do anúncio (1ª msg do lead) = template → não qualifica. Só pra lead de anúncio.
+    if (isAd && direction === "in" && (candidate === "qualificado" || candidate === "negociacao")) {
+      const inboundCount = await prisma.waMessage.count({ where: { contactId, direction: "in" } });
+      if (inboundCount <= 1) candidate = null;
+    }
+
+    // 3) Ambíguo (léxico não achou) numa mensagem do lead → reforço semântico (Groq free).
+    if (!candidate && direction === "in" && text && text.trim().length >= 3) {
+      candidate = await semanticStage(text);
+    }
+    if (!candidate) return;
 
     const cur = conv.funnelStage;
     let next: string | null = null;
-    if (candidate === "perdido") {
-      next = "perdido"; // saída explícita do lead (cur não é convertido — já barrado acima)
-    } else if (RANK[candidate] > currentRank(cur)) {
-      next = candidate; // forward-only
-    }
+    if (candidate === "perdido") next = "perdido";
+    else if (RANK[candidate] > currentRank(cur)) next = candidate;
 
     if (next && next !== cur) {
-      await prisma.waConversation.update({ where: { contactId }, data: { funnelStage: next } });
+      await prisma.waConversation.update({
+        where: { contactId },
+        data: { funnelStage: next, funnelEvidence: direction === "in" && text ? text.slice(0, 160) : undefined },
+      });
       await logWaEvent(connectionId, "funnel.auto", contactId, { from: cur, to: next });
     }
   } catch {

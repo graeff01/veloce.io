@@ -213,8 +213,9 @@ async function main() {
       await prisma.waMessage.create({ data: { connectionId: wa.id, contactId: contact.id, waMessageId: `demo_msg_${mi++}`, direction: dir, type: "text", text, timestamp: ts } });
       if (dir === "in") { inCount++; lastIn = ts; } else { outCount++; lastOut = ts; }
     }
+    const evid = ["qualificado", "negociacao", "convertido", "perdido"].includes(l.stage) ? l.msgs.find(([d]) => d === "in")?.[1]?.slice(0, 160) ?? null : null;
     await prisma.waConversation.create({ data: {
-      connectionId: wa.id, contactId: contact.id, status: l.status, funnelStage: l.stage,
+      connectionId: wa.id, contactId: contact.id, status: l.status, funnelStage: l.stage, funnelEvidence: evid,
       firstInboundAt: firstInbound, firstResponseSec: l.respMin != null ? l.respMin * 60 : null,
       firstResponseAt: l.respMin != null ? new Date(firstInbound.getTime() + l.respMin * 60000) : null,
       lastInboundAt: lastIn, lastOutboundAt: lastOut, lastMessageAt: lastOut ?? lastIn,

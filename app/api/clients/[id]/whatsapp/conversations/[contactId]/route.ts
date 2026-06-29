@@ -46,7 +46,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   ]);
 
   // Explicação da classificação automática (qual mensagem disparou cada etapa).
-  const funnelAuto = explainHistory(messages.map((m) => ({ text: m.text, direction: m.direction })), aiCfg?.vertical);
+  const funnelAuto = explainHistory(messages.map((m) => ({ text: m.text, direction: m.direction })), aiCfg?.vertical, !!lead);
 
   return NextResponse.json({
     contact: {

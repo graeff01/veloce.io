@@ -11,7 +11,7 @@ const META: Record<string, { label: string; color: string }> = {
   convertido:  { label: "Convertido",  color: "#DC2626" }, // vermelho (quente)
 };
 
-export type FunnelLead = { contactId: string; name: string; waId: string; lastMessageAt: string | null; ageDays: number | null };
+export type FunnelLead = { contactId: string; name: string; waId: string; lastMessageAt: string | null; ageDays: number | null; evidence: string | null };
 export type FunnelStage = {
   key: string; label: string; color: string;
   reached: number;           // volume do funil (acumulado: chegou até aqui)
@@ -36,7 +36,7 @@ export async function getClientFunnel(clientId: string): Promise<FunnelData | nu
 
   const convs = await prisma.waConversation.findMany({
     where: { connectionId: wa.id },
-    select: { contactId: true, funnelStage: true, firstInboundAt: true, firstResponseSec: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
+    select: { contactId: true, funnelStage: true, funnelEvidence: true, firstInboundAt: true, firstResponseSec: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
   });
 
   const now = Date.now();
@@ -77,6 +77,7 @@ export async function getClientFunnel(clientId: string): Promise<FunnelData | nu
           waId: c.contact.waId,
           lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
           ageDays: c.lastMessageAt ? Math.round((now - c.lastMessageAt.getTime()) / DAY) : null,
+          evidence: c.funnelEvidence ?? null,
         })),
     };
   });
