@@ -99,7 +99,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
                     <div style={{ padding: "14px 18px", fontSize: 13, color: "var(--p-muted)" }}>Nenhum lead parado nesta etapa.</div>
                   ) : (
                     s.leads.map((l) => (
-                      <Link key={l.contactId} href={`/r/${token}/conversas`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 18px", borderTop: "1px solid var(--p-border)", textDecoration: "none", color: "var(--p-text)" }}>
+                      <Link key={l.contactId} href={`/r/${token}/conversas?c=${l.contactId}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 18px", borderTop: "1px solid var(--p-border)", textDecoration: "none", color: "var(--p-text)" }}>
                         <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: s.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{l.name[0]?.toUpperCase()}</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>

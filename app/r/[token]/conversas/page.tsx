@@ -9,8 +9,9 @@ import { PortalConversations } from "@/components/portal/portal-conversations";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function ConversasPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function ConversasPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ c?: string }> }) {
   const { token } = await params;
+  const { c: initialContact } = await searchParams;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -60,7 +61,7 @@ export default async function ConversasPage({ params }: { params: Promise<{ toke
         </div>
       </div>
 
-      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} />
+      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} initialContact={initialContact ?? null} />
     </main>
   );
 }

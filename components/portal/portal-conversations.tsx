@@ -39,11 +39,11 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
 }
 
-export function PortalConversations({ token, brandName, logoUrl }: { token: string; brandName: string; logoUrl: string | null }) {
+export function PortalConversations({ token, brandName, logoUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; initialContact?: string | null }) {
   const [list, setList] = useState<Row[] | null>(null);
   const [tab, setTab] = useState<"all" | "ads">("all");
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initialContact ?? null);
   const [conv, setConv] = useState<Conv | null>(null);
   const [loadingConv, setLoadingConv] = useState(false);
 
