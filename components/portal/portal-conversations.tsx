@@ -5,7 +5,7 @@ import { Search, Eye } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; funnelStage: string | null }
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null } | null; funnelStage: string | null; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -147,6 +147,23 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
             {/* mensagens */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>
+              {/* Card do anúncio que originou o lead (estilo referral CTWA) */}
+              {conv.lead && (conv.lead.image || conv.lead.adTitle) && (
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                  <a href={conv.lead.sourceUrl ?? undefined} target="_blank" rel="noopener noreferrer" style={{ display: "flex", gap: 0, maxWidth: 380, width: "100%", background: "var(--wa-in)", border: "1px solid var(--p-border)", borderRadius: 12, overflow: "hidden", textDecoration: "none", color: "var(--wa-text)", boxShadow: "0 1px 3px rgba(0,0,0,.1)" }}>
+                    {conv.lead.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={conv.lead.image} alt="" style={{ width: 88, height: 88, objectFit: "cover", flexShrink: 0 }} />
+                    )}
+                    <div style={{ padding: "10px 12px", minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--p-accent)", textTransform: "uppercase", letterSpacing: 0.4 }}>📣 Veio deste anúncio</div>
+                      {conv.lead.adTitle && <div style={{ fontSize: 13, fontWeight: 700, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>{conv.lead.adTitle}</div>}
+                      {conv.lead.adBody && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adBody}</div>}
+                      {conv.lead.sourceUrl && <div style={{ fontSize: 11, color: "var(--p-accent)", marginTop: 4, fontWeight: 600 }}>ver anúncio →</div>}
+                    </div>
+                  </a>
+                </div>
+              )}
               {grouped.map((g, gi) => (
                 <div key={gi}>
                   <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>

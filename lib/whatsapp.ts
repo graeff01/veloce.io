@@ -24,6 +24,10 @@ export interface WaReferral {
   headline?: string;
   body?: string;
   ctwa_clid?: string;
+  image_url?: string;     // imagem do criativo (CTWA referral)
+  video_url?: string;
+  thumbnail_url?: string;
+  media_type?: string;
 }
 
 interface WaMediaRef { id?: string; mime_type?: string; caption?: string; filename?: string }

@@ -961,6 +961,7 @@ model WaLead {
   adTitle       String?  // headline do anúncio (do referral)
   adModel       String?  // modelo detectado na mensagem ("Taos Highline") — chave de agrupamento
   adBody        String?
+  adImageUrl    String?  // imagem/thumbnail do criativo vinda no referral CTWA (pode expirar)
   sourceType    String?  // "ad" | "post" | ...
   sourceUrl     String?
   ctwaClid      String?

@@ -222,7 +222,7 @@ async function main() {
       inboundCount: inCount, outboundCount: outCount, openedAt: firstInbound,
     } });
     if (l.adId) {
-      await prisma.waLead.create({ data: { connectionId: wa.id, contactId: contact.id, waId: l.waId, name: l.name, adId: l.adId, adTitle: metaAds.find((a) => a.adId === l.adId)?.name, sourceType: "ad", enteredAt: firstInbound } });
+      await prisma.waLead.create({ data: { connectionId: wa.id, contactId: contact.id, waId: l.waId, name: l.name, adId: l.adId, adTitle: metaAds.find((a) => a.adId === l.adId)?.name, adBody: "Agende sua visita pelo WhatsApp 🏡", adImageUrl: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=400&q=60", sourceUrl: "https://facebook.com", sourceType: "ad", enteredAt: firstInbound } });
     }
   }
 

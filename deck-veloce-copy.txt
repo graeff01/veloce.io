@@ -1,0 +1,123 @@
+====================================================
+DECK VELOCE — TEXTO DE CADA SLIDE (para o designer)
+====================================================
+
+
+----------------------------------------------------
+SLIDE 01 — QUEBRA DE PADRÃO
+----------------------------------------------------
+
+(tag) VELOCE
+
+HEADLINE:
+Seu marketing está gerando crescimento — ou só movimento?
+
+SUB:
+A maioria das empresas investe todo mês sem conseguir responder 4 perguntas:
+
+- De onde realmente vêm os melhores leads?
+- Onde a venda está sendo perdida?
+- Qual campanha paga a conta — e qual só queima dinheiro?
+- Quanto está vazando na operação agora, sem ninguém ver?
+
+(logo Veloce embaixo, discreta)
+
+
+----------------------------------------------------
+SLIDE 02 — POSICIONAMENTO
+----------------------------------------------------
+
+TÍTULO:
+A maioria entrega aparência. Nós entregamos operação.
+
+COMPARATIVO (duas colunas):
+
+AGÊNCIA TRADICIONAL
+- Sobe anúncio
+- Entrega criativo
+- Manda relatório no fim do mês
+- Some até o próximo boleto
+
+VELOCE
+- Monitora a operação inteira
+- Lê os dados em tempo real
+- Detecta o gargalo no mesmo dia
+- Acompanha de perto, sempre
+
+FRASE DE FECHAMENTO:
+Crescimento não vem de post bonito. Vem de decisão tomada na hora certa, com a informação certa.
+
+
+----------------------------------------------------
+SLIDE 03 — O SISTEMA (slide principal)
+----------------------------------------------------
+
+TÍTULO:
+Tecnologia proprietária Veloce
+
+SUB:
+Não é um serviço. É uma infraestrutura de crescimento que a gente construiu — e que nenhuma agência comum tem.
+
+BLOCO 1 — Dashboard em tempo real
+O dono acompanha leads, anúncios e KPIs quando quiser — sem depender de call nem de relatório.
+
+BLOCO 2 — Monitoramento de conversas
+A gente vê o que ninguém vê: tempo de resposta, lead sem retorno, onde o comercial trava.
+(destaque) Um lead ignorado hoje é uma venda do concorrente amanhã.
+
+BLOCO 3 — Funil completo
+Da impressão até a venda fechada. Sabemos quantos clicaram, viraram lead, responderam — e onde o funil quebra.
+
+BLOCO 4 — Bot de alertas no Telegram  (DESTAQUE VISUAL — desenhar como notificação de celular)
+Se algo importante acontece, você sabe na hora:
+🔴 Lead sem resposta há 2h
+📉 Campanha perdendo performance
+📈 CPL caiu 18% hoje
+
+FRASE FINAL:
+Enquanto outros descobrem o problema no fim do mês, você descobre no minuto em que acontece.
+
+
+----------------------------------------------------
+SLIDE 04 — O VALOR REAL
+----------------------------------------------------
+
+TÍTULO:
+O que isso muda pra você
+
+CLAREZA
+Você sabe exatamente o que está acontecendo, sem achismo.
+
+CONTROLE
+Sua operação deixa de ser caixa-preta.
+
+VELOCIDADE
+O problema é pego antes de virar prejuízo.
+
+PREVISIBILIDADE
+Você escala com segurança, não no escuro.
+
+FRASE:
+Sem informação, crescer é aposta.
+Com a Veloce, crescer vira engenharia.
+
+
+----------------------------------------------------
+SLIDE 05 — EXCLUSIVIDADE + CTA
+----------------------------------------------------
+
+TÍTULO:
+Trabalhamos com poucos. De propósito.
+
+TEXTO:
+A Veloce não cresce por volume. A gente limita o número de clientes ativos porque nosso modelo exige proximidade real, análise contínua e relação de confiança — não dá pra fazer isso bem com a agenda lotada.
+
+Por isso, em muitos casos, evitamos atender concorrentes diretos na mesma região.
+
+FRASE GRANDE (a "pulga atrás da orelha"):
+Se o seu concorrente começar a operar com inteligência antes de você, a vantagem deixa de ser sua — e passa a jogar contra.
+
+CTA:
+A gente seleciona com quem trabalha. Se enxergamos potencial na sua operação, vale uma conversa.
+
+====================================================

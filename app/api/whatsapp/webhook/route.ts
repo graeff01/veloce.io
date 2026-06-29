@@ -178,6 +178,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
             adTitle: ref?.headline ?? adModel ?? null,
             adModel: adModel ?? null,
             adBody: ref?.body ?? null,
+            adImageUrl: ref?.image_url ?? ref?.thumbnail_url ?? null,
             sourceType: ref?.source_type ?? (adModel ? "message" : null),
             sourceUrl: ref?.source_url ?? null,
             ctwaClid: ref?.ctwa_clid ?? null,
