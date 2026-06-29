@@ -376,7 +376,7 @@ export function AdsTab({ clientId }: { clientId: string }) {
 
             {ads.leadsSemIdentificacao > 0 && (
               <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "-8px 2px 0" }}>
-                {ads.leadsSemIdentificacao} lead(s) de anúncio sem identificação de campanha (origem não reconhecida) não entram nas linhas acima.
+                {ads.leadsSemIdentificacao} lead(s) de anúncio sem identificação de campanha entram no TOTAL (e no CPL), mas não nas linhas por campanha acima.
               </p>
             )}
           </>

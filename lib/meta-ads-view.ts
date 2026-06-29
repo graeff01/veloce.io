@@ -234,9 +234,13 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
   campaignRows.sort((a, b) => b.spend - a.spend || b.leads - a.leads);
 
   // ── Totais ──
-  let spend = 0, impressions = 0, clicks = 0, leadTotal = 0, metaLeads = 0;
+  let spend = 0, impressions = 0, clicks = 0, leadAttributed = 0, metaLeads = 0;
   for (const a of adRows) { spend += a.spend; impressions += a.impressions; clicks += a.clicks; metaLeads += a.metaLeads; }
-  for (const c of campaignRows) leadTotal += c.leads;
+  for (const c of campaignRows) leadAttributed += c.leads;
+  // TOTAL de leads de anúncio = atribuídos + sem identificação (= todos os WaLead do
+  // período). Coerente com o Painel; o CPL usa o total. As linhas por campanha
+  // mostram só os atribuídos (a diferença = leadsSemIdentificacao, explicada na nota).
+  const leadTotal = leadAttributed + semIdentificacao;
   const tr = ratios(spend, impressions, clicks, leadTotal);
 
   return {

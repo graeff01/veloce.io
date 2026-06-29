@@ -36,6 +36,7 @@ export interface AdsReportData {
   ads: AdsReportRow[];
   campaignsCount: number;
   adsCount: number;
+  leadsSemIdentificacao?: number;
 }
 
 // ── Formatação ───────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ function AdsReportDocument({ data }: { data: AdsReportData }) {
           O CPL real usa esse número (não os leads modelados da Meta), refletindo o resultado verdadeiro do investimento.
           A conversão clique→lead mede quantos cliques pagos viraram conversa real — o indicador de eficiência do investimento.
           {"  "}{data.campaignsCount} campanha(s) e {data.adsCount} anúncio(s) com atividade no período.
+          {data.leadsSemIdentificacao ? `  Inclui ${data.leadsSemIdentificacao} lead(s) de anúncio sem campanha identificada — contam no total e no CPL, mas não nas tabelas por campanha.` : ""}
         </Text>
         <Footer data={data} />
       </Page>

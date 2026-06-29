@@ -95,6 +95,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     })),
     campaignsCount: shownCampaigns.length,
     adsCount: shownAds.length,
+    leadsSemIdentificacao: view.leadsSemIdentificacao,
   };
 
   const buffer = await renderToBuffer(buildAdsReport(data));
