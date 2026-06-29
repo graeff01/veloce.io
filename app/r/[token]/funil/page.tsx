@@ -49,6 +49,7 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
           background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}
+        @keyframes spin{to{transform:rotate(360deg)}}
         @media(prefers-reduced-motion:reduce){.heatbar{animation:none!important}}`}</style>
       <PortalFunnel token={token} data={funnel} />
     </main>

@@ -37,12 +37,9 @@ interface Signal { stage: SignalStage; re: RegExp; who: Who }
 const SIGNALS_BASE: Signal[] = [
   // Perdido — o LEAD declara saída/compra em outro.
   { stage: "perdido", who: "lead", re: /(n[ãa]o tenho (mais )?interesse|desisti|j[áa] comprei|comprei (em |n)outro|fechei com outr|encontrei outr|n[ãa]o quero mais|deixa pra l[áa]|n[ãa]o vou (querer|levar))/i },
-  // Convertido — SÓ fechamento 100% confirmado: pagamento feito OU compra explícita
-  // COM A LOJA OU "fechei/fechamos o negócio/compra" (passado). Intenção ("quero
-  // fechar", "vou comprar") NÃO converte — é negociação.
-  { stage: "convertido", who: "lead", re: /(comprei\b.{0,30}(com|de) voc[êe]s|comprei (aqui|com voc[êe]s|de voc[êe]s)|fiz (o |a )?(pix|pagamento|transfer[êe]ncia)|j[áa] (paguei|fiz (o |a )?(pix|pagamento|transfer[êe]ncia))|\bpaguei\b|transferi (o |a )?(valor|dinheiro|pix|sinal)|fech(ei|amos) (o |a )?(neg[óo]cio|compra)|neg[óo]cio fechado|compra (finalizada|conclu[íi]da))/i },
-  // Convertido — LOJA só com confirmação inequívoca de VENDA.
-  { stage: "convertido", who: "store", re: /(parab[ée]ns pela compra|(venda|compra) (confirmada|fechada|finalizada)|pode (emitir|faturar))/i },
+  // CONVERTIDO é MANUAL — o automático NÃO marca venda (alta acurácia + base do CAPI).
+  // Só vira "convertido" quando alguém (cliente/time) marca como vendido. O automático
+  // avança no máximo até Negociação.
   // Negociação — LEAD negociando o negócio (preço/condição/compromisso de pagamento).
   { stage: "negociacao", who: "lead", re: /(aceita (a )?troca|dou (na |de )?troca|troco (o |meu|na)|troca no meu|\bna troca\b|aceita meu (carro|ve[íi]culo|im[óo]vel)|tenho .{0,20}(pra|para) (dar na )?troca|\bdesconto\b|abaixa (o |um )?(pre[çc]o|valor|pouco)|faz por (r\$|\d|quanto|menos)|consegue (fazer )?por (r\$|\d|menos)|qual o m[íi]nimo|melhor (pre[çc]o|valor)|[úu]ltimo (pre[çc]o|valor)|quero financiar|vou financiar|quero parcelar|vou parcelar|parcelar em \d|financiar em \d|(r\$ ?)?\d[\d.,]* ?(mil )?de entrada|de entrada de (r\$|\d)|dar (de |o )?entrada|dar (o )?sinal|fazer (uma )?proposta|podemos? fechar|vamos fechar|pode fechar|quero fechar|vou fechar|vou comprar|vou levar\b|quero levar|vou ficar com|quero ficar com|pode (reservar|separar)|quero (esse|essa)\b)/i },
   // Qualificado — interesse concreto do LEAD: preço, specs, estado, fotos, condição

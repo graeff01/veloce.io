@@ -1,15 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { TrendingUp, TrendingDown, ChevronDown, MessageCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, ChevronDown, MessageCircle, Loader2 } from "lucide-react";
 import type { FunnelData } from "@/lib/notifications/client-funnel";
+
+const STAGE_OPTS: [string, string][] = [["recebido", "Recebido"], ["respondido", "Respondido"], ["qualificado", "Qualificado"], ["negociacao", "Negociação"], ["convertido", "Convertido"], ["perdido", "Perdido"]];
 
 const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, padding: 18 };
 const cap: React.CSSProperties = { fontSize: 12, color: "var(--p-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 };
 
 export function PortalFunnel({ token, data }: { token: string; data: FunnelData | null }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function setStage(contactId: string, stage: string) {
+    setBusy(contactId);
+    try {
+      await fetch(`/api/portal/${token}/funnel/${contactId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
+      router.refresh();
+    } catch { /* ignore */ }
+    setBusy(null);
+  }
 
   if (!data || data.total === 0) {
     return (
@@ -99,15 +113,28 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
                     <div style={{ padding: "14px 18px", fontSize: 13, color: "var(--p-muted)" }}>Nenhum lead parado nesta etapa.</div>
                   ) : (
                     s.leads.map((l) => (
-                      <Link key={l.contactId} href={`/r/${token}/conversas?c=${l.contactId}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 18px", borderTop: "1px solid var(--p-border)", textDecoration: "none", color: "var(--p-text)" }}>
-                        <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: s.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{l.name[0]?.toUpperCase()}</span>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
-                          {l.evidence && <span style={{ display: "block", fontSize: 11.5, color: "var(--p-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.evidence}>“{l.evidence}”</span>}
-                        </span>
-                        {l.ageDays != null && <span style={{ fontSize: 12, color: l.ageDays >= 3 ? "#DC2626" : "var(--p-muted)", fontWeight: 600, flexShrink: 0 }}>{l.ageDays === 0 ? "hoje" : `há ${l.ageDays}d`}</span>}
-                        <MessageCircle size={15} style={{ color: "var(--p-muted)", flexShrink: 0 }} />
-                      </Link>
+                      <div key={l.contactId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 18px", borderTop: "1px solid var(--p-border)" }}>
+                        <Link href={`/r/${token}/conversas?c=${l.contactId}`} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, textDecoration: "none", color: "var(--p-text)" }}>
+                          <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: s.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{l.name[0]?.toUpperCase()}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
+                            {l.evidence && <span style={{ display: "block", fontSize: 11.5, color: "var(--p-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.evidence}>“{l.evidence}”</span>}
+                          </span>
+                          {l.ageDays != null && <span style={{ fontSize: 12, color: l.ageDays >= 3 ? "#DC2626" : "var(--p-muted)", fontWeight: 600, flexShrink: 0 }}>{l.ageDays === 0 ? "hoje" : `há ${l.ageDays}d`}</span>}
+                        </Link>
+                        {busy === l.contactId ? (
+                          <Loader2 size={15} style={{ color: "var(--p-muted)", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                        ) : (
+                          <>
+                            {s.key !== "convertido" && (
+                              <button onClick={() => setStage(l.contactId, "convertido")} title="Marcar este lead como vendido" style={{ flexShrink: 0, padding: "5px 9px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>✓ Vendido</button>
+                            )}
+                            <select value={s.key} onChange={(e) => setStage(l.contactId, e.target.value)} title="Mover etapa do lead" style={{ flexShrink: 0, fontSize: 11, padding: "5px 4px", borderRadius: 7, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--p-text)", cursor: "pointer" }}>
+                              {STAGE_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                            </select>
+                          </>
+                        )}
+                      </div>
                     ))
                   )}
                 </div>

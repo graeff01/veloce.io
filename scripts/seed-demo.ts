@@ -215,7 +215,7 @@ async function main() {
     }
     const evid = ["qualificado", "negociacao", "convertido", "perdido"].includes(l.stage) ? l.msgs.find(([d]) => d === "in")?.[1]?.slice(0, 160) ?? null : null;
     await prisma.waConversation.create({ data: {
-      connectionId: wa.id, contactId: contact.id, status: l.status, funnelStage: l.stage, funnelEvidence: evid,
+      connectionId: wa.id, contactId: contact.id, status: l.status, funnelStage: l.stage, funnelManual: l.stage === "convertido", funnelEvidence: evid,
       firstInboundAt: firstInbound, firstResponseSec: l.respMin != null ? l.respMin * 60 : null,
       firstResponseAt: l.respMin != null ? new Date(firstInbound.getTime() + l.respMin * 60000) : null,
       lastInboundAt: lastIn, lastOutboundAt: lastOut, lastMessageAt: lastOut ?? lastIn,
