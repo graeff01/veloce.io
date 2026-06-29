@@ -59,13 +59,13 @@ function Radial({ score, size = 120 }: { score: number; size?: number }) {
 
 function BreakdownBar({ label, value, weight }: { label: string; value: number; weight: string }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-        <span style={{ fontSize: 12.5, color: "var(--p-text)", fontWeight: 600 }}>{label} <span style={{ color: "var(--p-muted)", fontWeight: 400, fontSize: 10.5 }}>· {weight}</span></span>
-        <span style={{ fontSize: 13, fontWeight: 800, color: scoreColor(value) }}>{value}</span>
+    <div style={{ marginBottom: 15 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <span style={{ fontSize: 13, color: "var(--p-text)", fontWeight: 600 }}>{label} <span style={{ color: "var(--p-muted)", fontWeight: 400, fontSize: 11 }}>· {weight}</span></span>
+        <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(value) }}>{value}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 4, background: "var(--p-bg)", overflow: "hidden" }}>
-        <div style={{ width: `${value}%`, height: "100%", background: scoreColor(value), borderRadius: 4 }} />
+      <div style={{ height: 9, borderRadius: 5, background: "var(--p-bg)", overflow: "hidden" }}>
+        <div style={{ width: `${value}%`, height: "100%", background: `linear-gradient(90deg, ${scoreColor(value)}, ${scoreColor(value)}cc)`, borderRadius: 5, animation: "barFill 1s cubic-bezier(.22,1,.36,1) both" }} />
       </div>
     </div>
   );
@@ -83,7 +83,7 @@ function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 3, flex: 1, minHeight: 70 }}>
         {series.map((s, i) => {
           const h = Math.max(3, Math.round((s.leads / maxV) * 100));
-          return <div key={i} title={`${s.day.slice(8, 10)}/${s.day.slice(5, 7)}: ${s.leads}`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "var(--p-accent)" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 4 }} />;
+          return <div key={i} title={`${s.day.slice(8, 10)}/${s.day.slice(5, 7)}: ${s.leads}`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "linear-gradient(180deg, var(--p-accent), color-mix(in srgb, var(--p-accent) 70%, transparent))" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 4, transformOrigin: "bottom", animation: "barGrow .7s cubic-bezier(.22,1,.36,1) both", animationDelay: `${Math.round((i / Math.max(1, series.length)) * 450)}ms` }} />;
         })}
       </div>
       <div style={{ display: "flex", gap: 3, marginTop: 6 }}>
@@ -132,6 +132,9 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const a = data.atendimento;
   const d = data.deltas;
   const sc = data.score;
+  const factors = [["Marketing", sc.marketing], ["Atendimento", sc.atendimento], ["Conversão", sc.conversao]] as const;
+  const lowest = factors.reduce((x, y) => (y[1] < x[1] ? y : x));
+  const healthHint = sc.total >= 80 ? "Operação saudável em todas as frentes." : `Maior oportunidade de melhora: ${lowest[0]} (${lowest[1]}/100).`;
   const semResposta = Math.max(0, a.leads - a.respondidos);
   const atualizado = new Date(data.generatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const lostOps = semResposta > 0 ? Math.max(1, Math.round(semResposta * Math.max(a.leads > 0 ? a.conversoes / a.leads : 0, 0.1))) : 0;
@@ -181,10 +184,15 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           .p-chart{grid-area:cha;min-height:0}
           .p-ops{grid-area:ops}
         }
+        .radial-glow{position:absolute;inset:16px;border-radius:50%;filter:blur(22px);opacity:.22;z-index:0;animation:glowPulse 3.2s ease-in-out infinite}
         @keyframes radialIn{from{stroke-dashoffset:var(--c)}}
+        @keyframes glowPulse{0%,100%{opacity:.15;transform:scale(.9)}50%{opacity:.42;transform:scale(1.06)}}
+        @keyframes barGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+        @keyframes barFill{from{width:0}}
         @keyframes alertGlow{0%,100%{box-shadow:0 8px 26px rgba(220,38,38,.35),0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 8px 26px rgba(220,38,38,.45),0 0 0 12px rgba(239,68,68,0)}}
         @keyframes alertPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
         @keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.25}}
+        @media(prefers-reduced-motion:reduce){.radial-glow{animation:none}}
         @media print{.ptopbar{display:none!important}.pmain{background:#fff!important;height:auto!important;overflow:visible!important}}`}</style>
 
       <div className="ptopbar">
@@ -228,19 +236,26 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
 
         {/* ROW 3a · HEALTH SCORE */}
         <div className="p-health" style={{ ...card, display: "flex", flexDirection: "column" }}>
-          <div style={cap}>Health Score <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· metodologia Veloce</span></div>
-          <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 12, flex: 1, minHeight: 0, flexWrap: "wrap" }}>
-            <div style={{ textAlign: "center" }}>
-              <Radial score={sc.total} />
-              <div style={{ fontSize: 13.5, fontWeight: 800, color: scoreColor(sc.total) }}>{data.health.label}</div>
+          <div>
+            <div style={cap}>Health Score</div>
+            <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 3 }}>Saúde geral da sua operação — de 0 a 100, quanto maior melhor.</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, flex: 1, minHeight: 0, flexWrap: "wrap", justifyContent: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <div style={{ position: "relative", width: 138, height: 138, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div className="radial-glow" style={{ background: scoreColor(sc.total) }} />
+                <div style={{ position: "relative", zIndex: 1 }}><Radial score={sc.total} size={138} /></div>
+              </div>
+              <div style={{ fontSize: 14.5, fontWeight: 800, color: scoreColor(sc.total), marginTop: 2 }}>{data.health.label}</div>
               {benchmark != null && <div style={{ fontSize: 11, color: "var(--p-muted)", marginTop: 1 }}>melhor que {benchmark}% das contas</div>}
             </div>
-            <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
               <BreakdownBar label="Marketing" value={sc.marketing} weight="40%" />
               <BreakdownBar label="Atendimento" value={sc.atendimento} weight="35%" />
               <BreakdownBar label="Conversão" value={sc.conversao} weight="25%" />
             </div>
           </div>
+          <div style={{ fontSize: 12.5, color: "var(--p-muted)", paddingTop: 12, marginTop: 4, borderTop: "1px solid var(--p-border)" }}>{healthHint}</div>
         </div>
 
         {/* ROW 3b · EVOLUÇÃO (maior agora) */}
