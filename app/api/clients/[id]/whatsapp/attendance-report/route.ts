@@ -52,6 +52,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const tempoMedioMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
   const taxaResposta = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
 
+  // Distribuição do tempo de resposta (mesmas faixas da "Velocidade de atendimento").
+  const buckets = { upTo5: 0, upTo30: 0, upTo60: 0, over60: 0, sem: 0 };
+  for (const c of convs) {
+    const sec = c.firstResponseSec;
+    if (sec == null) buckets.sem++;
+    else if (sec <= 300) buckets.upTo5++;
+    else if (sec <= 1800) buckets.upTo30++;
+    else if (sec <= 3600) buckets.upTo60++;
+    else buckets.over60++;
+  }
+
   const adConvs = convs.filter((c) => adIds.has(c.contactId));
   const ads = adConvs.length > 0 ? {
     leads: adConvs.length,
@@ -92,6 +103,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     periodLabel: `${MONTHS[month - 1]} de ${year}`,
     generatedAt: now.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
     totals: { leads, respondidos, taxaResposta, semResposta, tempoMedioMin, conversoes },
+    buckets,
     ads,
     narrative,
     semRespostaList,
