@@ -108,9 +108,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const adRows = leads.filter((l) => l.isAd);
   const ads = adRows.length > 0 ? block(adRows) : null;
 
-  // ── Distribuição do tempo de resposta (todos os leads) ──────────────────────
+  // ── Distribuição do tempo de resposta (mesma base do bloco em destaque: anúncio) ─
   const buckets = { upTo5: 0, upTo30: 0, upTo60: 0, over60: 0, sem: 0 };
-  for (const l of leads) {
+  for (const l of (ads ? adRows : leads)) {
     const sec = l.responseSec;
     if (sec == null) buckets.sem++;
     else if (sec <= 300) buckets.upTo5++;
@@ -118,7 +118,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     else if (sec <= 3600) buckets.upTo60++;
     else buckets.over60++;
   }
-  const over1hCount = buckets.over60;
 
   // ── Listas de auditoria (completas) ─────────────────────────────────────────
   const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
@@ -161,30 +160,40 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       dateLabel: fmtDate(l.startedAt),
     }));
 
-  // ── Narrativa ────────────────────────────────────────────────────────────────
-  const tempoMedioSec = geral.tempoMedioSec;
+  // ── Bloco em destaque (foco em anúncio; cai pro geral só se não houver anúncio) ─
+  const primary = ads ?? geral;
+  const primaryRows = ads ? adRows : leads;
+  let pOver1h = 0, pSem = 0;
+  for (const l of primaryRows) {
+    if (l.responseSec == null) pSem++;
+    else if (l.responseSec > 3600) pOver1h++;
+  }
+  const riskCount = pOver1h + pSem; // respondidos +1h + sem resposta = leads em risco
+  const tempoMedioSec = primary.tempoMedioSec;
   const lento = tempoMedioSec != null && tempoMedioSec > 1800;
+
+  // ── Narrativa (foco em anúncio) ──────────────────────────────────────────────
   const narrative =
-    `No período, ${num(geral.leads)} lead${geral.leads !== 1 ? "s" : ""} chegaram pelo WhatsApp e ${geral.taxaResposta}% foram respondidos` +
+    `No período, ${num(primary.leads)} lead${primary.leads !== 1 ? "s" : ""} de anúncio (mídia paga) chegaram pelo WhatsApp e ${primary.taxaResposta}% foram respondidos` +
     `${tempoMedioSec != null ? `, com tempo médio de ${fmtDuration(tempoMedioSec)}` : ""}. ` +
     (lento
       ? "A referência de mercado é responder em até ~10 minutos, janela em que o lead ainda está quente e a conversão acontece. Acima disso, o lead esfria, busca o concorrente e a venda se perde — mesmo com todo o investimento já feito para trazê-lo. "
       : "O ritmo de resposta está dentro do esperado. ") +
-    (ads && ads.leads > 0
-      ? `Dos ${num(ads.leads)} leads de anúncio (mídia paga), ${num(ads.semResposta)} ficaram sem resposta — leads comprados que não tiveram retorno.`
+    (primary.semResposta > 0
+      ? `${num(primary.semResposta)} ficaram sem resposta — leads comprados que não tiveram retorno.`
       : "");
 
   const data: AttendanceReportData = {
     clientName: client.name,
     periodLabel: `${MONTHS[month - 1]} de ${year}`,
     generatedAt: now.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
-    geral,
-    ads,
+    primary,
+    primaryIsAd: ads != null,
     buckets,
     tempoMedioSec,
     tempoMedioLabel: tempoMedioSec != null ? fmtDuration(tempoMedioSec) : "—",
-    over1hCount,
-    over1hShare: geral.leads > 0 ? Math.round((over1hCount / geral.leads) * 100) : 0,
+    riskCount,
+    riskShare: primary.leads > 0 ? Math.round((riskCount / primary.leads) * 100) : 0,
     narrative,
     noResponseList,
     slowList,

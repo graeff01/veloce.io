@@ -20,13 +20,13 @@ export interface AttendanceReportData {
   clientName: string;
   periodLabel: string;
   generatedAt: string;
-  geral: AttendanceBlock;
-  ads: AttendanceBlock | null;
+  primary: AttendanceBlock;     // bloco em destaque (anúncio; geral só se não houver anúncio)
+  primaryIsAd: boolean;
   buckets: { upTo5: number; upTo30: number; upTo60: number; over60: number; sem: number };
   tempoMedioSec: number | null;
   tempoMedioLabel: string;
-  over1hCount: number;
-  over1hShare: number;
+  riskCount: number;            // respondidos +1h + sem resposta (no bloco em destaque)
+  riskShare: number;
   narrative: string;
   noResponseList: AttendanceLead[];
   slowList: AttendanceLead[];
@@ -174,7 +174,6 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
     { v: b.over60, c: ORANGE, label: "Mais de 1h" },
     { v: b.sem, c: RED, label: "Sem resposta" },
   ];
-  const slowTotal = d.over1hCount + b.sem; // respondidos tarde + ignorados = leads em risco
   return (
     <Document title={`Diagnóstico de Atendimento — ${d.clientName}`} author="Veloce.io">
       {/* CAPA (modelo) */}
@@ -197,36 +196,28 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
         <Text style={s.kicker}>Panorama do atendimento</Text>
         <Text style={s.title}>Como os leads foram atendidos</Text>
 
-        {/* Bloco GERAL */}
-        <Text style={s.blockLabel}>Todos os leads (WhatsApp)</Text>
-        <KpiBlock b={d.geral} />
+        {/* Bloco em destaque — só leads de anúncio (mídia paga) */}
+        <Text style={s.adLabel}>{d.primaryIsAd ? "Leads de anúncio (mídia paga)" : "Todos os leads (WhatsApp)"}</Text>
+        <KpiBlock b={d.primary} />
 
         {/* Alerta de problema (tempo médio + leads em risco) */}
-        {(d.tempoMedioSec != null && d.tempoMedioSec > 1800) || slowTotal > 0 ? (
+        {(d.tempoMedioSec != null && d.tempoMedioSec > 1800) || d.riskCount > 0 ? (
           <View style={s.alert}>
             <View style={s.alertRow}>
               <Text style={s.alertBig}>{d.tempoMedioLabel}</Text>
               <Text style={s.alertHead}>de tempo médio até a 1ª resposta{"\n"}— muito acima dos ~10 min em que o lead converte</Text>
             </View>
             <Text style={s.alertText}>
-              {num(slowTotal)} lead{slowTotal !== 1 ? "s" : ""} ({d.over1hShare}% do total) foram respondidos só depois de 1 hora ou nunca tiveram resposta.
+              {num(d.riskCount)} lead{d.riskCount !== 1 ? "s" : ""} de anúncio ({d.riskShare}% do total) foram respondidos só depois de 1 hora ou nunca tiveram resposta.
               Cada hora de espera esfria o lead: ele procura o concorrente e a venda se perde — mesmo já tendo sido pago pela mídia.
             </Text>
           </View>
         ) : null}
 
-        {/* Bloco ANÚNCIO (duplicidade) */}
-        {d.ads && (
-          <>
-            <Text style={s.adLabel}>Somente leads de anúncio (mídia paga)</Text>
-            <KpiBlock b={d.ads} />
-          </>
-        )}
-
         <Text style={s.para}>{d.narrative}</Text>
 
         {/* Distribuição do tempo de resposta */}
-        <Text style={s.secLabel}>Distribuição do tempo de resposta</Text>
+        <Text style={s.secLabel}>Distribuição do tempo de resposta{d.primaryIsAd ? " — leads de anúncio" : ""}</Text>
         <View style={s.bar}>
           {segs.map((g, i) => g.v > 0 ? <View key={i} style={{ flexGrow: g.v, backgroundColor: g.c }} /> : null)}
         </View>
