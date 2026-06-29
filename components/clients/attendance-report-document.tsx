@@ -49,11 +49,13 @@ const s = StyleSheet.create({
   para: { fontSize: 10.5, color: INK2, lineHeight: 1.55, marginBottom: 14 },
   // Distribuição do tempo de resposta
   secLabel: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 7 },
-  bar: { flexDirection: "row", height: 16, borderRadius: 5, overflow: "hidden", marginBottom: 7, backgroundColor: SOFT },
-  legend: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
-  legItem: { flexDirection: "row", alignItems: "center", marginRight: 14, marginBottom: 2 },
+  bar: { flexDirection: "row", height: 16, borderRadius: 5, overflow: "hidden", marginBottom: 8, backgroundColor: SOFT },
+  legendRow: { flexDirection: "row", gap: 6, marginBottom: 16 },
+  legCell: { flex: 1, alignItems: "center", paddingVertical: 7, paddingHorizontal: 3, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 6 },
+  legTop: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
   dot: { width: 7, height: 7, borderRadius: 2, marginRight: 4 },
-  legText: { fontSize: 8.5, color: INK2 },
+  legCount: { fontSize: 13, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.3 },
+  legLabel: { fontSize: 7.5, color: MUTED, textAlign: "center" },
   cols: { flexDirection: "row", gap: 18 },
   col: { flex: 1 },
   colTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 6 },
@@ -74,10 +76,10 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
   const t = d.totals;
   const b = d.buckets;
   const segs = [
-    { v: b.upTo5, c: GREEN, label: "≤ 5 min" },
-    { v: b.upTo30, c: LIME, label: "5–30 min" },
-    { v: b.upTo60, c: AMBER, label: "30–60 min" },
-    { v: b.over60, c: ORANGE, label: "+ 1 h" },
+    { v: b.upTo5, c: GREEN, label: "Até 5 min" },
+    { v: b.upTo30, c: LIME, label: "5 a 30 min" },
+    { v: b.upTo60, c: AMBER, label: "30 a 60 min" },
+    { v: b.over60, c: ORANGE, label: "Mais de 1h" },
     { v: b.sem, c: RED, label: "Sem resposta" },
   ];
   return (
@@ -123,9 +125,12 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
         <View style={s.bar}>
           {segs.map((g, i) => g.v > 0 ? <View key={i} style={{ flexGrow: g.v, backgroundColor: g.c }} /> : null)}
         </View>
-        <View style={s.legend}>
+        <View style={s.legendRow}>
           {segs.map((g, i) => (
-            <View key={i} style={s.legItem}><View style={[s.dot, { backgroundColor: g.c }]} /><Text style={s.legText}>{g.label}: {num(g.v)}</Text></View>
+            <View key={i} style={s.legCell}>
+              <View style={s.legTop}><View style={[s.dot, { backgroundColor: g.c }]} /><Text style={s.legCount}>{num(g.v)}</Text></View>
+              <Text style={s.legLabel}>{g.label}</Text>
+            </View>
           ))}
         </View>
 
