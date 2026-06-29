@@ -114,6 +114,8 @@ export interface ClientDashboard {
   periodLabel: string;
   narrative: string[];
   health: { score: number; label: string };
+  score: { marketing: number; atendimento: number; conversao: number; total: number };
+  deltas: { leads: number | null; spend: number | null; cpl: number | null; conversao: number | null; tempoResposta: number | null };
   atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
@@ -146,6 +148,27 @@ function healthScore(a: ClientDashboard["atendimento"], hot: number): { score: n
   return { score, label };
 }
 
+// Health Score com breakdown (metodologia Veloce): Marketing 40% · Atendimento 35% ·
+// Conversão 25%. Determinístico e auditável.
+function vclamp(v: number) { return Math.max(0, Math.min(100, Math.round(v))); }
+function healthBreakdown(a: ClientDashboard["atendimento"], series: { day: string; leads: number }[]): ClientDashboard["score"] {
+  const semResposta = Math.max(0, a.leads - a.respondidos);
+  const semRatio = a.leads > 0 ? semResposta / a.leads : 0;
+  const timePenalty = a.tempoMedioMin == null ? 12 : Math.min(45, (a.tempoMedioMin / 60) * 6);
+  const atendimento = a.leads > 0 ? vclamp(100 - semRatio * 70 - timePenalty) : 55;
+  const conversao = a.leads > 0 ? vclamp((a.conversoes / a.leads) * 100 * 5) : 55;
+  // Marketing: volume + crescimento + estabilidade da captação (variância da série).
+  const vals = series.map((s) => s.leads);
+  const mean = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : 0;
+  const variance = vals.length ? vals.reduce((x, y) => x + (y - mean) ** 2, 0) / vals.length : 0;
+  const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
+  const stability = mean > 0 ? vclamp((1 - Math.min(1, cv)) * 12) : 0;
+  const growth = a.deltaPct != null ? Math.max(-30, Math.min(30, a.deltaPct)) * 0.6 : 0;
+  const marketing = vclamp(60 + (a.leads > 0 ? 8 : -25) + growth + stability);
+  const total = vclamp(marketing * 0.40 + atendimento * 0.35 + conversao * 0.25);
+  return { marketing, atendimento, conversao, total };
+}
+
 function narrative(a: ClientDashboard["atendimento"], hot: number, periodWord: string): string[] {
   const out: string[] = [];
   if (a.leads === 0) { out.push(`Nenhum lead novo ${periodWord} até agora.`); return out; }
@@ -168,14 +191,19 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   const connIds = await connIdsFor(clientId);
   const excluded = await excludedTokens(clientId);
 
-  const [convsRaw, prevLeads, waiting, metaConn, wa] = await Promise.all([
+  const [convsRaw, prevConvsRaw, waiting, metaConn, wa] = await Promise.all([
     connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true, firstInboundAt: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
-    connIds.length ? prisma.waConversation.count({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
+    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     waitingWithTemp(connIds, excluded),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
     prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
   ]);
   const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
+  const prevConvs = prevConvsRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
+  const prevLeads = prevConvs.length;
+  const prevConversoes = prevConvs.filter((c) => c.funnelStage === "convertido").length;
+  const prevTimes = prevConvs.map((c) => c.firstResponseSec).filter((s): s is number => s != null);
+  const prevTempoMedio = prevTimes.length ? Math.round(prevTimes.reduce((a, b) => a + b, 0) / prevTimes.length / 60) : null;
 
   const leads = convs.length;
   const respondidos = convs.filter((c) => c.firstResponseSec != null).length;
@@ -200,14 +228,20 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   // Mídia + melhor campanha (leads reais de anúncio agrupados por campanha).
   let midia: ClientDashboard["midia"] = null;
   let bestCampaign: ClientDashboard["bestCampaign"] = null;
+  let spendCur = 0, spendPrev = 0, cplCur: number | null = null, cplPrev: number | null = null;
   if (metaConn) {
-    const [spendAgg, adLeads, leadRows] = await Promise.all([
+    const [spendAgg, adLeads, leadRows, prevSpendAgg, prevAdLeads] = await Promise.all([
       prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: start } } }),
       wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: now } } }) : Promise.resolve(0),
       wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: now }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevStart, lt: prevEnd } } }),
+      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
     ]);
     const spend = spendAgg._sum.spend ?? 0;
     midia = { spend, leads: adLeads, cpl: adLeads > 0 ? spend / adLeads : null };
+    spendCur = spend; cplCur = midia.cpl;
+    spendPrev = prevSpendAgg._sum.spend ?? 0;
+    cplPrev = prevAdLeads > 0 ? spendPrev / prevAdLeads : null;
 
     const adIds = leadRows.map((r) => r.adId).filter((x): x is string => !!x);
     if (adIds.length) {
@@ -234,11 +268,25 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     }
   }
 
+  // Deltas vs. período anterior (contexto temporal nos KPIs).
+  const pct = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+  const convRateCur = leads > 0 ? conversoes / leads : 0;
+  const convRatePrev = prevLeads > 0 ? prevConversoes / prevLeads : 0;
+  const deltas: ClientDashboard["deltas"] = {
+    leads: deltaPct,
+    spend: pct(spendCur, spendPrev),
+    cpl: cplCur != null && cplPrev != null ? pct(cplCur, cplPrev) : null,
+    conversao: convRatePrev > 0 ? Math.round(((convRateCur - convRatePrev) / convRatePrev) * 100) : null,
+    tempoResposta: tempoMedioMin != null && prevTempoMedio != null ? pct(tempoMedioMin, prevTempoMedio) : null,
+  };
+
   return {
     generatedAt: now.toISOString(),
     period, periodLabel: label,
     narrative: narrative(atendimento, hot, period === "week" ? "nos últimos 7 dias" : "no mês"),
     health: healthScore(atendimento, hot),
+    score: healthBreakdown(atendimento, series),
+    deltas,
     atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
     midia, bestCampaign, series,
