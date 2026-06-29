@@ -2,17 +2,35 @@ import React from "react";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import "@/lib/pdf-fonts";
 
-export interface AttendanceRow { name: string; metric: string }
+export interface AttendanceLead {
+  name: string;
+  origin: "ad" | "organic";
+  metric: string;
+  dateLabel: string;
+}
+export interface AttendanceBlock {
+  leads: number;
+  respondidos: number;
+  taxaResposta: number;
+  semResposta: number;
+  tempoMedioSec: number | null;
+  conversoes: number;
+}
 export interface AttendanceReportData {
   clientName: string;
   periodLabel: string;
   generatedAt: string;
-  totals: { leads: number; respondidos: number; taxaResposta: number; semResposta: number; tempoMedioMin: number | null; conversoes: number };
+  geral: AttendanceBlock;
+  ads: AttendanceBlock | null;
   buckets: { upTo5: number; upTo30: number; upTo60: number; over60: number; sem: number };
-  ads: { leads: number; semResposta: number; conversoes: number } | null;
+  tempoMedioSec: number | null;
+  tempoMedioLabel: string;
+  over1hCount: number;
+  over1hShare: number;
   narrative: string;
-  semRespostaList: AttendanceRow[];
-  slowest: AttendanceRow[];
+  noResponseList: AttendanceLead[];
+  slowList: AttendanceLead[];
+  lostList: AttendanceLead[];
 }
 
 const num = (v: number) => v.toLocaleString("pt-BR");
@@ -39,30 +57,46 @@ const s = StyleSheet.create({
   runMeta: { fontSize: 8, color: FAINT },
   kicker: { fontSize: 8, color: FAINT, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 5 },
   title: { fontSize: 18, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 14, letterSpacing: -0.3 },
-  kpiGrid: { flexDirection: "row", gap: 9, marginBottom: 13 },
+  blockLabel: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 7 },
+  kpiGrid: { flexDirection: "row", gap: 9, marginBottom: 14 },
   kpiCell: { flex: 1, paddingVertical: 11, paddingHorizontal: 11, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 8 },
   kpiLabel: { fontSize: 7.5, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 },
   kpiValue: { fontSize: 18, fontFamily: "Helvetica-Bold", letterSpacing: -0.5 },
-  adBox: { backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 8, padding: 11, marginBottom: 13 },
-  adLabel: { fontSize: 8, color: RED, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
-  adText: { fontSize: 11, color: INK, lineHeight: 1.5 },
+  // Banda de alerta (problema)
+  alert: { backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FCA5A5", borderLeftWidth: 4, borderLeftColor: RED, borderRadius: 8, paddingVertical: 13, paddingHorizontal: 15, marginBottom: 14 },
+  alertRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  alertBig: { fontSize: 26, fontFamily: "Helvetica-Bold", color: RED, letterSpacing: -0.8, marginRight: 10 },
+  alertHead: { fontSize: 11, fontFamily: "Helvetica-Bold", color: RED, flex: 1, lineHeight: 1.3 },
+  alertText: { fontSize: 9.5, color: "#7F1D1D", lineHeight: 1.5 },
+  adLabel: { fontSize: 8, color: RED, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 7 },
   para: { fontSize: 10.5, color: INK2, lineHeight: 1.55, marginBottom: 14 },
   // Distribuição do tempo de resposta
   secLabel: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 7 },
   bar: { flexDirection: "row", height: 16, borderRadius: 5, overflow: "hidden", marginBottom: 8, backgroundColor: SOFT },
-  legendRow: { flexDirection: "row", gap: 6, marginBottom: 16 },
+  legendRow: { flexDirection: "row", gap: 6 },
   legCell: { flex: 1, alignItems: "center", paddingVertical: 7, paddingHorizontal: 3, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 6 },
   legTop: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
   dot: { width: 7, height: 7, borderRadius: 2, marginRight: 4 },
   legCount: { fontSize: 13, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.3 },
   legLabel: { fontSize: 7.5, color: MUTED, textAlign: "center" },
-  cols: { flexDirection: "row", gap: 18 },
-  col: { flex: 1 },
-  colTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 6 },
-  tRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4.5, borderBottomWidth: 0.5, borderBottomColor: LINE },
-  tName: { fontSize: 9.5, color: INK2, flex: 1, paddingRight: 6 },
-  empty: { fontSize: 9, color: FAINT, paddingVertical: 5 },
+  // Tabelas de auditoria
+  auditTitle: { fontSize: 13, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 3, letterSpacing: -0.2 },
+  auditSub: { fontSize: 9, color: MUTED, marginBottom: 9, lineHeight: 1.45 },
+  thead: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: INK, paddingBottom: 5, marginBottom: 1 },
+  th: { fontSize: 7.5, color: MUTED, textTransform: "uppercase", letterSpacing: 0.5, fontFamily: "Helvetica-Bold" },
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 5, borderBottomWidth: 0.5, borderBottomColor: LINE },
+  cName: { flex: 1, fontSize: 9.5, color: INK2, paddingRight: 6 },
+  cOrigin: { width: 78 },
+  cMetric: { width: 120, fontSize: 9.5, fontFamily: "Helvetica-Bold", textAlign: "right", paddingRight: 8 },
+  cDate: { width: 42, fontSize: 9, color: FAINT, textAlign: "right" },
+  pill: { alignSelf: "flex-start", fontSize: 7.5, paddingVertical: 1.5, paddingHorizontal: 6, borderRadius: 3, overflow: "hidden", fontFamily: "Helvetica-Bold" },
+  pillAd: { backgroundColor: "#EEF2FF", color: ACCENT },
+  pillOrg: { backgroundColor: "#F1F5F9", color: MUTED },
+  empty: { fontSize: 9, color: FAINT, paddingVertical: 6 },
+  totalRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 6 },
+  totalTxt: { fontSize: 8.5, color: MUTED },
   note: { fontSize: 8.5, color: FAINT, lineHeight: 1.5, marginTop: 16, borderTopWidth: 1, borderTopColor: LINE, paddingTop: 9 },
+  secGap: { marginTop: 22 },
 });
 
 function Meta({ label, value }: { label: string; value: string }) {
@@ -71,9 +105,67 @@ function Meta({ label, value }: { label: string; value: string }) {
 function Kpi({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return <View style={s.kpiCell}><Text style={s.kpiLabel}>{label}</Text><Text style={[s.kpiValue, { color: danger ? RED : INK }]}>{value}</Text></View>;
 }
+function KpiBlock({ b }: { b: AttendanceBlock }) {
+  return (
+    <View style={s.kpiGrid}>
+      <Kpi label="Leads recebidos" value={num(b.leads)} />
+      <Kpi label="Respondidos" value={`${b.taxaResposta}%`} danger={b.taxaResposta < 80} />
+      <Kpi label="Sem resposta" value={num(b.semResposta)} danger={b.semResposta > 0} />
+      <Kpi label="Tempo médio" value={b.tempoMedioSec != null ? fmtSec(b.tempoMedioSec) : "—"} danger={(b.tempoMedioSec ?? 0) > 1800} />
+    </View>
+  );
+}
+
+function fmtSec(sec: number): string {
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const rem = min % 60;
+  if (h < 24) return rem ? `${h}h ${rem}min` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d} dia${d > 1 ? "s" : ""}`;
+}
+
+function OriginPill({ origin }: { origin: "ad" | "organic" }) {
+  return origin === "ad"
+    ? <Text style={[s.pill, s.pillAd]}>Anúncio</Text>
+    : <Text style={[s.pill, s.pillOrg]}>Orgânico</Text>;
+}
+
+function AuditTable({ title, sub, rows, metricHead, color, emptyMsg }: {
+  title: string; sub: string; rows: AttendanceLead[]; metricHead: string; color: string; emptyMsg: string;
+}) {
+  return (
+    <View style={s.secGap} wrap>
+      <Text style={s.auditTitle}>{title}</Text>
+      <Text style={s.auditSub}>{sub}</Text>
+      {rows.length === 0 ? (
+        <Text style={s.empty}>{emptyMsg}</Text>
+      ) : (
+        <>
+          <View style={s.thead} fixed>
+            <Text style={[s.th, { flex: 1 }]}>Lead</Text>
+            <Text style={[s.th, s.cOrigin]}>Origem</Text>
+            <Text style={[s.th, s.cMetric]}>{metricHead}</Text>
+            <Text style={[s.th, s.cDate]}>Entrada</Text>
+          </View>
+          {rows.map((r, i) => (
+            <View key={i} style={s.row} wrap={false}>
+              <Text style={s.cName}>{r.name}</Text>
+              <View style={s.cOrigin}><OriginPill origin={r.origin} /></View>
+              <Text style={[s.cMetric, { color }]}>{r.metric}</Text>
+              <Text style={s.cDate}>{r.dateLabel}</Text>
+            </View>
+          ))}
+          <View style={s.totalRow}><Text style={s.totalTxt}>{num(rows.length)} lead{rows.length !== 1 ? "s" : ""} no total</Text></View>
+        </>
+      )}
+    </View>
+  );
+}
 
 function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
-  const t = d.totals;
   const b = d.buckets;
   const segs = [
     { v: b.upTo5, c: GREEN, label: "Até 5 min" },
@@ -82,6 +174,7 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
     { v: b.over60, c: ORANGE, label: "Mais de 1h" },
     { v: b.sem, c: RED, label: "Sem resposta" },
   ];
+  const slowTotal = d.over1hCount + b.sem; // respondidos tarde + ignorados = leads em risco
   return (
     <Document title={`Diagnóstico de Atendimento — ${d.clientName}`} author="Veloce.io">
       {/* CAPA (modelo) */}
@@ -98,24 +191,36 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
         <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
 
-      {/* CONTEÚDO (1 página) */}
+      {/* PANORAMA */}
       <Page size="A4" style={s.page}>
         <View style={s.runHead}><Text style={s.runBrand}>{d.clientName}</Text><Text style={s.runMeta}>Diagnóstico de Atendimento · {d.periodLabel}</Text></View>
         <Text style={s.kicker}>Panorama do atendimento</Text>
         <Text style={s.title}>Como os leads foram atendidos</Text>
 
-        <View style={s.kpiGrid}>
-          <Kpi label="Leads recebidos" value={num(t.leads)} />
-          <Kpi label="Respondidos" value={`${t.taxaResposta}%`} />
-          <Kpi label="Sem resposta" value={num(t.semResposta)} danger={t.semResposta > 0} />
-          <Kpi label="Tempo médio" value={t.tempoMedioMin != null ? `${num(t.tempoMedioMin)} min` : "—"} danger={(t.tempoMedioMin ?? 0) > 30} />
-        </View>
+        {/* Bloco GERAL */}
+        <Text style={s.blockLabel}>Todos os leads (WhatsApp)</Text>
+        <KpiBlock b={d.geral} />
 
-        {d.ads && (
-          <View style={s.adBox}>
-            <Text style={s.adLabel}>Leads de anúncio (investimento em mídia)</Text>
-            <Text style={s.adText}>{num(d.ads.leads)} leads gerados pelos anúncios · {num(d.ads.semResposta)} ficaram sem resposta · {num(d.ads.conversoes)} convertido{d.ads.conversoes !== 1 ? "s" : ""}.</Text>
+        {/* Alerta de problema (tempo médio + leads em risco) */}
+        {(d.tempoMedioSec != null && d.tempoMedioSec > 1800) || slowTotal > 0 ? (
+          <View style={s.alert}>
+            <View style={s.alertRow}>
+              <Text style={s.alertBig}>{d.tempoMedioLabel}</Text>
+              <Text style={s.alertHead}>de tempo médio até a 1ª resposta{"\n"}— muito acima dos ~10 min em que o lead converte</Text>
+            </View>
+            <Text style={s.alertText}>
+              {num(slowTotal)} lead{slowTotal !== 1 ? "s" : ""} ({d.over1hShare}% do total) foram respondidos só depois de 1 hora ou nunca tiveram resposta.
+              Cada hora de espera esfria o lead: ele procura o concorrente e a venda se perde — mesmo já tendo sido pago pela mídia.
+            </Text>
           </View>
+        ) : null}
+
+        {/* Bloco ANÚNCIO (duplicidade) */}
+        {d.ads && (
+          <>
+            <Text style={s.adLabel}>Somente leads de anúncio (mídia paga)</Text>
+            <KpiBlock b={d.ads} />
+          </>
         )}
 
         <Text style={s.para}>{d.narrative}</Text>
@@ -134,23 +239,43 @@ function AttendanceDoc({ data: d }: { data: AttendanceReportData }) {
           ))}
         </View>
 
-        {/* Listas */}
-        <View style={s.cols}>
-          <View style={s.col}>
-            <Text style={s.colTitle}>Leads ainda sem resposta</Text>
-            {d.semRespostaList.length === 0 ? <Text style={s.empty}>Nenhum — tudo respondido.</Text> : d.semRespostaList.map((r, i) => (
-              <View key={i} style={s.tRow}><Text style={s.tName}>{r.name}</Text><Text style={{ fontSize: 9.5, color: RED, fontFamily: "Helvetica-Bold" }}>{r.metric}</Text></View>
-            ))}
-          </View>
-          <View style={s.col}>
-            <Text style={s.colTitle}>Respostas mais demoradas</Text>
-            {d.slowest.length === 0 ? <Text style={s.empty}>Sem dados no período.</Text> : d.slowest.map((r, i) => (
-              <View key={i} style={s.tRow}><Text style={s.tName}>{r.name}</Text><Text style={{ fontSize: 9.5, color: AMBER, fontFamily: "Helvetica-Bold" }}>{r.metric}</Text></View>
-            ))}
-          </View>
-        </View>
-
         <Text style={s.note}>Este diagnóstico avalia a OPERAÇÃO e o PROCESSO de atendimento — não pessoas. Volume de leads acima da capacidade de resposta eleva o tempo de retorno; leads que esperam esfriam e convertem menos. Objetivo: dimensionar a capacidade (reforço de equipe e/ou atendimento automático) para aproveitar o investimento já feito em mídia. Gerado em {d.generatedAt}.</Text>
+      </Page>
+
+      {/* AUDITORIA (lista completa) */}
+      <Page size="A4" style={s.page}>
+        <View style={s.runHead}><Text style={s.runBrand}>{d.clientName}</Text><Text style={s.runMeta}>Auditoria de atendimento · {d.periodLabel}</Text></View>
+        <Text style={s.kicker}>O que foi negligenciado</Text>
+        <Text style={s.title}>Auditoria lead a lead</Text>
+
+        <AuditTable
+          title="Leads sem resposta"
+          sub="Pessoas que chamaram e nunca receberam retorno no período. O vazamento mais direto da operação."
+          rows={d.noResponseList}
+          metricHead="Esperando"
+          color={RED}
+          emptyMsg="Nenhum — todo lead recebeu resposta."
+        />
+
+        <AuditTable
+          title="Respondidos com mais de 1 hora"
+          sub="Leads que até receberam resposta, mas tarde demais — fora da janela em que ainda estavam quentes."
+          rows={d.slowList}
+          metricHead="Tempo de resposta"
+          color={AMBER}
+          emptyMsg="Nenhum — todas as respostas saíram em menos de 1 hora."
+        />
+
+        <AuditTable
+          title="Oportunidades de venda perdidas pela demora"
+          sub="Leads que nunca foram respondidos ou só depois de 1 hora, não converteram e já esfriaram (sem atividade há mais de 24h). Casos em que a demora provavelmente custou a venda."
+          rows={d.lostList}
+          metricHead="O que aconteceu"
+          color={RED}
+          emptyMsg="Nenhuma oportunidade perdida identificada por demora."
+        />
+
+        <Text style={s.note}>Critério conservador: só entram leads frios (sem atividade há mais de 24h) que não converteram e tiveram resposta acima de 1 hora ou nenhuma resposta. Não inclui leads ainda em conversa. Gerado em {d.generatedAt}.</Text>
       </Page>
     </Document>
   );

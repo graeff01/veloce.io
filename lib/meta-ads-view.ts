@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { canonicalAdName } from "@/lib/wa-leads";
 import { onlyDigits } from "@/lib/whatsapp";
+import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
 // ── Visão "Gerenciador enxuto" da aba Anúncios ──────────────────────────────
 // Cruza investimento (Meta, por ad_id) com o comportamento REAL do lead no
@@ -81,15 +82,16 @@ function ratios(spend: number, impressions: number, clicks: number, leads: numbe
 }
 
 export async function computeMetaAdsView(clientId: string, start: Date, end: Date): Promise<MetaAdsView> {
-  const [metaConn, waConn] = await Promise.all([
+  const [metaConn, waConn, excl] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
     prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, displayPhone: true } }),
+    excludedTokens(clientId),
   ]);
 
   const connectedNumber = waConn?.displayPhone ? onlyDigits(waConn.displayPhone) : null;
   if (!metaConn) return { connected: false, hasData: false, totals: EMPTY_TOTALS, campaigns: [], ads: [], leadsSemIdentificacao: 0, connectedNumber };
 
-  const [insightRows, ads, campaigns, adsets, leads] = await Promise.all([
+  const [insightRows, ads, campaigns, adsets, leadsRaw] = await Promise.all([
     prisma.metaAdInsight.groupBy({
       by: ["adId"],
       where: { connectionId: metaConn.id, date: { gte: start, lt: end } },
@@ -115,10 +117,13 @@ export async function computeMetaAdsView(clientId: string, start: Date, end: Dat
     waConn
       ? prisma.waLead.findMany({
           where: { connectionId: waConn.id, enteredAt: { gte: start, lt: end } },
-          select: { adId: true, adModel: true, adTitle: true },
+          select: { adId: true, adModel: true, adTitle: true, name: true },
         })
-      : Promise.resolve([] as { adId: string | null; adModel: string | null; adTitle: string | null }[]),
+      : Promise.resolve([] as { adId: string | null; adModel: string | null; adTitle: string | null; name: string | null }[]),
   ]);
+
+  // Exclui donos/diretoria/família — não são leads (coerência com Painel/Diagnóstico).
+  const leads = leadsRaw.filter((l) => !nameExcluded(l.name, excl));
 
   const adMeta = new Map(ads.map((a) => [a.adId, a]));
   const campMeta = new Map(campaigns.map((c) => [c.campaignId, c]));
