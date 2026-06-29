@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Megaphone, Bot, BarChart3, Send, Radar,
+  Columns3, User, Mic, Bot, BarChart3, Send, Radar,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -23,7 +23,7 @@ import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
 import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
 import { BotTab } from "@/components/clients/bot-tab";
-import { FacebookGlyph, GoogleGlyph } from "@/components/clients/brand-glyphs";
+import { FacebookGlyph, GoogleGlyph, WhatsAppGlyph } from "@/components/clients/brand-glyphs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +195,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const allTabs: { key: Tab; label: string; icon: React.ReactNode; brand?: string }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
     { key: "reunioes",  label: "Reuniões",  icon: <Mic size={13} /> },
-    { key: "leads",     label: "WhatsApp",  icon: <Megaphone size={13} /> },
+    { key: "leads",     label: "WhatsApp",  icon: <WhatsAppGlyph size={14} />, brand: "#25D366" },
     { key: "anuncios",  label: "Anúncios",  icon: <FacebookGlyph size={14} />, brand: "#1877F2" },
     { key: "google",    label: "Google",    icon: <GoogleGlyph size={14} />,   brand: "#4285F4" },
     { key: "inteligencia", label: "Inteligência", icon: <Radar size={13} /> },
