@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { buildAttendanceReport, type AttendanceReportData, type AttendanceRow } from "@/components/clients/attendance-report-document";
 
 export const runtime = "nodejs";
@@ -30,13 +31,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
   if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
 
-  const [convs, adLeads] = await Promise.all([
+  const [convsRaw, adLeads, excl] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId: conn.id, firstInboundAt: { gte: start, lt: end } },
       select: { contactId: true, firstInboundAt: true, firstResponseSec: true, funnelStage: true, contact: { select: { name: true, waId: true } } },
     }),
     prisma.waLead.findMany({ where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } }, select: { contactId: true } }),
+    excludedTokens(id),
   ]);
+  // Remove nomes excluídos (donos/diretoria/família — não são leads).
+  const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excl));
   const adIds = new Set(adLeads.map((l) => l.contactId));
   const nameOf = (c: (typeof convs)[number]) => (c.contact.name || "").trim() || `Lead ···${c.contact.waId.slice(-4)}`;
 

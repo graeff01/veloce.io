@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
 // Etapas ORDENADAS do funil (frio → quente). A cor é a "temperatura" do lead:
 // escala sequencial (azul→vermelho), perceptualmente correta pra dados ordenados.
@@ -34,10 +35,15 @@ export async function getClientFunnel(clientId: string): Promise<FunnelData | nu
   const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
   if (!wa) return null;
 
-  const convs = await prisma.waConversation.findMany({
-    where: { connectionId: wa.id },
-    select: { contactId: true, funnelStage: true, funnelEvidence: true, firstInboundAt: true, firstResponseSec: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
-  });
+  const [convsRaw, excl] = await Promise.all([
+    prisma.waConversation.findMany({
+      where: { connectionId: wa.id },
+      select: { contactId: true, funnelStage: true, funnelEvidence: true, firstInboundAt: true, firstResponseSec: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
+    }),
+    excludedTokens(clientId),
+  ]);
+  // Remove donos/diretoria/família — não são leads.
+  const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excl));
 
   const now = Date.now();
   const DAY = 86_400_000;
