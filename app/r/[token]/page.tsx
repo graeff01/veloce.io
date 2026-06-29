@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, type Period } from "@/lib/notifications/client-report";
-import { buildTheme, themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
+import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
@@ -13,21 +13,19 @@ export const dynamic = "force-dynamic";
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const int = (v: number) => v.toLocaleString("pt-BR");
 
-const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 18, padding: 20, boxShadow: "0 1px 2px rgba(0,0,0,.04), 0 10px 28px rgba(0,0,0,.045)" };
-const cap: React.CSSProperties = { fontSize: 11.5, color: "var(--p-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 };
+const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, padding: 16, boxShadow: "0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.045)" };
+const cap: React.CSSProperties = { fontSize: 11, color: "var(--p-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 };
 
 const scoreColor = (s: number) => (s >= 80 ? "#16a34a" : s >= 60 ? "#2d8cf0" : s >= 40 ? "#e8a33d" : "#d6453d");
 
-// Delta temporal (↑/↓ colorido por direção desejada).
-function Delta({ pct, goodWhenUp, note }: { pct: number | null; goodWhenUp?: boolean; note?: string }) {
+function Delta({ pct, goodWhenUp }: { pct: number | null; goodWhenUp?: boolean }) {
   if (pct == null) return null;
   const up = pct >= 0;
   const neutral = goodWhenUp === undefined;
   const color = neutral ? "var(--p-muted)" : up === goodWhenUp ? "#16a34a" : "#d6453d";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700, color, marginTop: 7 }}>
-      {up ? "↑" : "↓"} {up ? "+" : ""}{pct}%
-      <span style={{ color: "var(--p-muted)", fontWeight: 400 }}>{note ?? "vs. anterior"}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color, marginTop: 6 }}>
+      {up ? "↑" : "↓"} {up ? "+" : ""}{pct}% <span style={{ color: "var(--p-muted)", fontWeight: 400 }}>vs. anterior</span>
     </span>
   );
 }
@@ -36,14 +34,13 @@ function Kpi({ label, value, delta, goodWhenUp, sub }: { label: string; value: s
   return (
     <div style={card}>
       <div style={cap}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 800, color: "var(--p-text)", lineHeight: 1.05, marginTop: 10, letterSpacing: "-0.02em" }}>{value}</div>
-      {delta != null ? <div><Delta pct={delta} goodWhenUp={goodWhenUp} /></div> : sub ? <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 8 }}>{sub}</div> : null}
+      <div style={{ fontSize: 27, fontWeight: 800, color: "var(--p-text)", lineHeight: 1.05, marginTop: 8, letterSpacing: "-0.02em" }}>{value}</div>
+      {delta != null ? <div><Delta pct={delta} goodWhenUp={goodWhenUp} /></div> : sub ? <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 7 }}>{sub}</div> : null}
     </div>
   );
 }
 
-// Radial premium do Health Score.
-function Radial({ score, size = 132 }: { score: number; size?: number }) {
+function Radial({ score, size = 120 }: { score: number; size?: number }) {
   const R = 54, C = 2 * Math.PI * R;
   const off = C * (1 - Math.max(0, Math.min(100, score)) / 100);
   const col = scoreColor(score);
@@ -53,21 +50,21 @@ function Radial({ score, size = 132 }: { score: number; size?: number }) {
       <circle cx="64" cy="64" r={R} fill="none" stroke={col} strokeWidth="11" strokeLinecap="round"
         strokeDasharray={C} strokeDashoffset={off} transform="rotate(-90 64 64)"
         style={{ ["--c" as string]: `${C}px`, animation: "radialIn 1.1s cubic-bezier(.22,1,.36,1) both" }} />
-      <text x="64" y="58" textAnchor="middle" dominantBaseline="central" style={{ fontSize: 34, fontWeight: 800, fill: "var(--p-text)", letterSpacing: "-1px" }}>{score}</text>
-      <text x="64" y="82" textAnchor="middle" style={{ fontSize: 11, fontWeight: 600, fill: "var(--p-muted)" }}>de 100</text>
+      <text x="64" y="58" textAnchor="middle" dominantBaseline="central" style={{ fontSize: 33, fontWeight: 800, fill: "var(--p-text)", letterSpacing: "-1px" }}>{score}</text>
+      <text x="64" y="82" textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 600, fill: "var(--p-muted)" }}>de 100</text>
     </svg>
   );
 }
 
 function BreakdownBar({ label, value, weight }: { label: string; value: number; weight: string }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-        <span style={{ fontSize: 13, color: "var(--p-text)", fontWeight: 600 }}>{label} <span style={{ color: "var(--p-muted)", fontWeight: 400, fontSize: 11 }}>· {weight}</span></span>
-        <span style={{ fontSize: 13.5, fontWeight: 800, color: scoreColor(value) }}>{value}</span>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <span style={{ fontSize: 12.5, color: "var(--p-text)", fontWeight: 600 }}>{label} <span style={{ color: "var(--p-muted)", fontWeight: 400, fontSize: 10.5 }}>· {weight}</span></span>
+        <span style={{ fontSize: 13, fontWeight: 800, color: scoreColor(value) }}>{value}</span>
       </div>
-      <div style={{ height: 7, borderRadius: 5, background: "var(--p-bg)", overflow: "hidden" }}>
-        <div style={{ width: `${value}%`, height: "100%", background: scoreColor(value), borderRadius: 5, transition: "width .6s" }} />
+      <div style={{ height: 6, borderRadius: 4, background: "var(--p-bg)", overflow: "hidden" }}>
+        <div style={{ width: `${value}%`, height: "100%", background: scoreColor(value), borderRadius: 4 }} />
       </div>
     </div>
   );
@@ -77,12 +74,12 @@ function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
   const maxV = Math.max(1, ...series.map((s) => s.leads));
   const total = series.reduce((s, x) => s + x.leads, 0);
   return (
-    <div style={card}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+    <div className="p-chart" style={{ ...card, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={cap}>Evolução de leads</span>
         <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{total} no período · pico {maxV}/dia</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 96 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, flex: 1, minHeight: 70 }}>
         {series.map((s, i) => {
           const h = Math.max(3, Math.round((s.leads / maxV) * 100));
           return <div key={i} title={`${s.day.slice(8, 10)}/${s.day.slice(5, 7)}: ${s.leads}`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "var(--p-accent)" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 4 }} />;
@@ -139,15 +136,14 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const atualizado = new Date(data.generatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const lostOps = semResposta > 0 ? Math.max(1, Math.round(semResposta * Math.max(a.leads > 0 ? a.conversoes / a.leads : 0, 0.1))) : 0;
 
-  // Resumo executivo — gerado dos dados reais.
   const summary: string[] = [];
   if (a.leads === 0) summary.push("Ainda não há leads novos no período. Assim que entrarem, o resumo da operação aparece aqui automaticamente.");
   else {
-    summary.push(`Sua operação gerou ${int(a.leads)} lead${a.leads !== 1 ? "s" : ""} neste período${d.leads != null ? ` (${d.leads >= 0 ? "+" : ""}${d.leads}% vs. período anterior)` : ""}.`);
-    if (data.midia?.cpl != null) summary.push(`O custo por lead está em ${brl(data.midia.cpl)}${d.cpl != null ? `, ${d.cpl <= 0 ? "uma melhora" : "uma alta"} de ${Math.abs(d.cpl)}%` : ""}.`);
-    if (a.tempoMedioMin != null && a.tempoMedioMin > 30) summary.push(`Porém o tempo de resposta está em ${int(a.tempoMedioMin)} min — acima do ideal, o que está impactando a conversão.`);
-    else if (a.tempoMedioMin != null) summary.push(`O atendimento segue ágil, com ${int(a.tempoMedioMin)} min de resposta média.`);
-    if (semResposta > 0) summary.push(`Há ${int(semResposta)} lead${semResposta !== 1 ? "s" : ""} ainda sem resposta — atenção prioritária.`);
+    summary.push(`Sua operação gerou ${int(a.leads)} lead${a.leads !== 1 ? "s" : ""} neste período${d.leads != null ? ` (${d.leads >= 0 ? "+" : ""}${d.leads}% vs. anterior)` : ""}.`);
+    if (data.midia?.cpl != null) summary.push(`Custo por lead em ${brl(data.midia.cpl)}${d.cpl != null ? `, ${d.cpl <= 0 ? "melhora" : "alta"} de ${Math.abs(d.cpl)}%` : ""}.`);
+    if (a.tempoMedioMin != null && a.tempoMedioMin > 30) summary.push(`Porém o tempo de resposta está em ${int(a.tempoMedioMin)} min — acima do ideal, impactando a conversão.`);
+    else if (a.tempoMedioMin != null) summary.push(`Atendimento ágil, com ${int(a.tempoMedioMin)} min de resposta média.`);
+    if (semResposta > 0) summary.push(`${int(semResposta)} lead${semResposta !== 1 ? "s" : ""} ainda sem resposta.`);
   }
 
   const tab = (key: Period, label: string) => {
@@ -165,18 +161,33 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           background-image:radial-gradient(1200px 480px at 50% -160px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
           background-size:100% 600px, 26px 26px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
         .ptopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
-        .ptopbar-in{max-width:1160px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+        .ptopbar-in{max-width:1160px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
         .ptopmeta{display:flex;align-items:center;gap:12px;margin-left:auto}
         .pupdated{display:none;font-size:11.5px;color:var(--p-muted)}
         .ptoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:170px}
-        .pwrap{max-width:1160px;margin:0 auto;padding:26px 22px 64px;display:flex;flex-direction:column;gap:18px}
-        .pkpis{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-        .p2col{display:grid;grid-template-columns:1fr;gap:16px}
-        @media(min-width:760px){ .ptopbar-in,.pwrap{padding-left:26px;padding-right:26px} .pupdated{display:block} .pkpis{grid-template-columns:repeat(4,1fr)} .p2col{grid-template-columns:5fr 6fr} }
+        .pwrap{max-width:1160px;margin:0 auto;padding:18px 22px 56px;display:flex;flex-direction:column;gap:14px}
+        .pkpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+        @media(min-width:760px){ .ptopbar-in,.pwrap{padding-left:26px;padding-right:26px} .pupdated{display:block} .pkpis{grid-template-columns:repeat(4,1fr)} }
+        /* PC: tela cheia, SEM rolagem — grid distribui tudo na altura */
+        @media(min-width:1100px) and (min-height:640px){
+          .pmain{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+          .ptopbar-in,.pwrap{max-width:none}
+          .pwrap{flex:1;min-height:0;padding:14px 24px;display:grid;gap:13px;
+            grid-template-columns:1fr 1fr 1.3fr;
+            grid-template-rows:auto auto minmax(0,1fr) auto;
+            grid-template-areas:"sum sum sum" "kpi kpi kpi" "hea opp cha" "ops ops ops"}
+          .p-summary{grid-area:sum}.pkpis{grid-area:kpi}
+          .p-health{grid-area:hea;min-height:0;overflow:hidden}
+          .p-opp{grid-area:opp;min-height:0;overflow:hidden}
+          .p-chart{grid-area:cha;min-height:0}
+          .p-ops{grid-area:ops}
+        }
         @keyframes radialIn{from{stroke-dashoffset:var(--c)}}
-        @media print{.ptopbar{display:none!important}.pmain{background:#fff!important}}`}</style>
+        @keyframes alertGlow{0%,100%{box-shadow:0 8px 26px rgba(220,38,38,.35),0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 8px 26px rgba(220,38,38,.45),0 0 0 12px rgba(239,68,68,0)}}
+        @keyframes alertPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+        @keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.25}}
+        @media print{.ptopbar{display:none!important}.pmain{background:#fff!important;height:auto!important;overflow:visible!important}}`}</style>
 
-      {/* Topbar */}
       <div className="ptopbar">
         <div className="ptopbar-in">
           <div className="ptopmeta">
@@ -190,12 +201,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
       <div className="pwrap">
 
         {/* ROW 1 · EXECUTIVE SUMMARY */}
-        <div style={{ ...card, padding: "22px 24px", background: "linear-gradient(120deg, var(--p-accent-soft), var(--p-surface) 60%)", borderColor: "var(--p-accent-soft)" }}>
+        <div className="p-summary" style={{ ...card, padding: "16px 20px", background: "linear-gradient(120deg, var(--p-accent-soft), var(--p-surface) 62%)", borderColor: "var(--p-accent-soft)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--p-accent)" }} />
             <span style={{ ...cap, color: "var(--p-accent)" }}>Resumo Veloce da Operação</span>
           </div>
-          <p style={{ fontSize: 16.5, lineHeight: 1.55, color: "var(--p-text)", marginTop: 12, fontWeight: 500, maxWidth: 860 }}>{summary.join(" ")}</p>
+          <p style={{ fontSize: 15.5, lineHeight: 1.5, color: "var(--p-text)", marginTop: 9, fontWeight: 500 }}>{summary.slice(0, 4).join(" ")}</p>
         </div>
 
         {/* ROW 2 · KPIs */}
@@ -206,56 +217,62 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <Kpi label="Conversão" value={`${convPct}%`} delta={d.conversao} goodWhenUp />
         </div>
 
-        {/* ROW 3 · HEALTH SCORE | OPORTUNIDADES */}
-        <div className="p2col">
-          <div style={card}>
-            <div style={cap}>Health Score</div>
-            <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 3 }}>metodologia Veloce · Marketing · Atendimento · Conversão</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 22, marginTop: 14, flexWrap: "wrap" }}>
-              <div style={{ textAlign: "center" }}>
-                <Radial score={sc.total} />
-                <div style={{ fontSize: 14, fontWeight: 800, color: scoreColor(sc.total), marginTop: 2 }}>{data.health.label}</div>
-                {benchmark != null && <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 2 }}>melhor que {benchmark}% das contas</div>}
-              </div>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <BreakdownBar label="Marketing" value={sc.marketing} weight="40%" />
-                <BreakdownBar label="Atendimento" value={sc.atendimento} weight="35%" />
-                <BreakdownBar label="Conversão" value={sc.conversao} weight="25%" />
-              </div>
+        {/* ROW 3a · HEALTH SCORE */}
+        <div className="p-health" style={{ ...card, display: "flex", flexDirection: "column" }}>
+          <div style={cap}>Health Score <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· metodologia Veloce</span></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 12, flex: 1, minHeight: 0, flexWrap: "wrap" }}>
+            <div style={{ textAlign: "center" }}>
+              <Radial score={sc.total} />
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: scoreColor(sc.total) }}>{data.health.label}</div>
+              {benchmark != null && <div style={{ fontSize: 11, color: "var(--p-muted)", marginTop: 1 }}>melhor que {benchmark}% das contas</div>}
             </div>
-          </div>
-
-          <div style={{ ...card, borderLeft: `4px solid ${semResposta > 0 ? "#d6453d" : "#16a34a"}` }}>
-            <div style={cap}>Onde estamos perdendo oportunidades</div>
-            {semResposta > 0 ? (
-              <>
-                <div style={{ fontSize: 34, fontWeight: 800, color: "#d6453d", marginTop: 12, letterSpacing: "-1px" }}>{int(semResposta)} <span style={{ fontSize: 17, fontWeight: 700, color: "var(--p-text)" }}>leads sem resposta</span></div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 16 }}>
-                  <div>
-                    <div style={cap}>Impacto estimado</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--p-text)", marginTop: 4 }}>~ {int(lostOps)} oportunidade{lostOps !== 1 ? "s" : ""} perdida{lostOps !== 1 ? "s" : ""}</div>
-                  </div>
-                  <div>
-                    <div style={cap}>Principal causa</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--p-text)", marginTop: 4 }}>{a.tempoMedioMin != null ? `Tempo de resposta: ${int(a.tempoMedioMin)} min` : "Leads sem retorno"}</div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a", marginTop: 14 }}>✅ Nenhuma oportunidade parada — todos os leads foram respondidos.</div>
-            )}
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <BreakdownBar label="Marketing" value={sc.marketing} weight="40%" />
+              <BreakdownBar label="Atendimento" value={sc.atendimento} weight="35%" />
+              <BreakdownBar label="Conversão" value={sc.conversao} weight="25%" />
+            </div>
           </div>
         </div>
 
-        {/* ROW 4 · EVOLUÇÃO */}
+        {/* ROW 3b · OPORTUNIDADES (alerta vibrante) */}
+        <div className="p-opp" style={{ ...card, border: "none", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "center",
+          background: semResposta > 0 ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#16a34a,#15803d)",
+          animation: semResposta > 0 ? "alertGlow 1.9s ease-in-out infinite" : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#fff", animation: semResposta > 0 ? "dotBlink 1s ease-in-out infinite" : "none" }} />
+            <span style={{ ...cap, color: "rgba(255,255,255,.95)" }}>Onde estamos perdendo oportunidades</span>
+          </div>
+          {semResposta > 0 ? (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
+                <span style={{ fontSize: 52, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px", transformOrigin: "left", animation: "alertPulse 1.6s ease-in-out infinite" }}>{int(semResposta)}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", opacity: 0.95 }}>leads sem resposta</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginTop: 12, color: "#fff" }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>Impacto estimado</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, marginTop: 2 }}>~ {int(lostOps)} oportunidade{lostOps !== 1 ? "s" : ""} perdida{lostOps !== 1 ? "s" : ""}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>Principal causa</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, marginTop: 2 }}>{a.tempoMedioMin != null ? `Resposta: ${int(a.tempoMedioMin)} min` : "Leads sem retorno"}</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginTop: 10 }}>👌 Tudo respondido</div>
+          )}
+        </div>
+
+        {/* ROW 3c · EVOLUÇÃO */}
         {data.series.length > 1 && <Sparkline series={data.series} />}
 
-        {/* ROW 5 · OPERAÇÃO VELOCE */}
-        <div style={{ ...card, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "var(--p-bg)" }}>
+        {/* ROW 4 · OPERAÇÃO VELOCE */}
+        <div className="p-ops" style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
           <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#16a34a", boxShadow: "0 0 0 4px rgba(22,163,74,.15)" }} />
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--p-text)" }}>Operação Veloce · monitoramento ativo</div>
-            <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2 }}>Sua operação é acompanhada e otimizada em tempo real pela equipe Veloce. Período: {data.periodLabel} · atualizado {atualizado}.</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--p-text)" }}>Operação Veloce · monitoramento ativo</div>
+            <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 1 }}>Sua operação é acompanhada e otimizada em tempo real pela equipe Veloce · {data.periodLabel} · atualizado {atualizado}.</div>
           </div>
         </div>
 
