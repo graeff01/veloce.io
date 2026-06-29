@@ -111,6 +111,9 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {recalcMsg && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{recalcMsg}</span>}
+            <a href={`/api/clients/${clientId}/whatsapp/attendance-report?year=${year}&month=${month}`} target="_blank" rel="noopener noreferrer" title="Diagnóstico de atendimento (PDF) — sem apontar pessoas" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
+              <FileText size={13} /> Diagnóstico (PDF)
+            </a>
             <button onClick={recalcFunnel} disabled={recalcing} title="Reclassificar o funil de todos os leads pelo histórico" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: recalcing ? "not-allowed" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
               {recalcing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Recalcular funil
             </button>
