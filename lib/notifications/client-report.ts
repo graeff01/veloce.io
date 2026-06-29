@@ -116,6 +116,7 @@ export interface ClientDashboard {
   health: { score: number; label: string };
   score: { marketing: number; atendimento: number; conversao: number; total: number };
   deltas: { leads: number | null; spend: number | null; cpl: number | null; conversao: number | null; tempoResposta: number | null };
+  responseBuckets: { upTo5: number; upTo30: number; upTo60: number; over60: number; sem: number };
   atendimento: { leads: number; leadsPrev: number; deltaPct: number | null; respondidos: number; taxaResposta: number; tempoMedioMin: number | null; conversoes: number };
   termometro: { hot: number; warm: number; cold: number; total: number };
   midia: { spend: number; leads: number; cpl: number | null } | null;
@@ -212,6 +213,17 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   const tempoMedioMin = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length / 60) : null;
   const taxaResposta = leads > 0 ? Math.round((respondidos / leads) * 100) : 0;
   const deltaPct = prevLeads > 0 ? Math.round(((leads - prevLeads) / prevLeads) * 100) : null;
+
+  // Distribuição do tempo de 1ª resposta (qualidade operacional do atendimento).
+  const responseBuckets = { upTo5: 0, upTo30: 0, upTo60: 0, over60: 0, sem: 0 };
+  for (const c of convs) {
+    const sec = c.firstResponseSec;
+    if (sec == null) responseBuckets.sem++;
+    else if (sec <= 300) responseBuckets.upTo5++;
+    else if (sec <= 1800) responseBuckets.upTo30++;
+    else if (sec <= 3600) responseBuckets.upTo60++;
+    else responseBuckets.over60++;
+  }
   const atendimento = { leads, leadsPrev: prevLeads, deltaPct, respondidos, taxaResposta, tempoMedioMin, conversoes };
 
   // Série diária de conversas (mini-gráfico de tendência no painel).
@@ -287,6 +299,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     health: healthScore(atendimento, hot),
     score: healthBreakdown(atendimento, series),
     deltas,
+    responseBuckets,
     atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
     midia, bestCampaign, series,

@@ -71,27 +71,34 @@ function BreakdownBar({ label, value, weight }: { label: string; value: number; 
   );
 }
 
-function Sparkline({ series }: { series: { day: string; leads: number }[] }) {
-  const maxV = Math.max(1, ...series.map((s) => s.leads));
-  const total = series.reduce((s, x) => s + x.leads, 0);
+// Velocidade de atendimento — distribuição do tempo de 1ª resposta (qualidade operacional).
+function AttendanceSpeed({ tempoMedio, taxa, buckets }: { tempoMedio: number | null; taxa: number; buckets: { upTo5: number; upTo30: number; upTo60: number; over60: number; sem: number } }) {
+  const rows = [
+    { label: "Respondido em até 5 min", value: buckets.upTo5, color: "#16a34a" },
+    { label: "Entre 5 e 30 min", value: buckets.upTo30, color: "#65a30d" },
+    { label: "Entre 30 e 60 min", value: buckets.upTo60, color: "#e8a33d" },
+    { label: "Mais de 1 hora", value: buckets.over60, color: "#f97316" },
+    { label: "Sem resposta", value: buckets.sem, color: "#d6453d" },
+  ];
+  const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="p-chart" style={{ ...card, display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-        <span style={cap}>Evolução de leads</span>
-        <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{total} no período · pico {maxV}/dia</span>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span style={cap}>Velocidade de atendimento</span>
+        <span style={{ fontSize: 12, color: "var(--p-muted)" }}>{tempoMedio != null ? `${int(tempoMedio)} min em média` : "sem dados"} · {taxa}% respondidos</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, flex: 1, minHeight: 70 }}>
-        {series.map((s, i) => {
-          const h = Math.max(3, Math.round((s.leads / maxV) * 100));
-          return <div key={i} title={`${s.day.slice(8, 10)}/${s.day.slice(5, 7)}: ${s.leads}`} style={{ flex: 1, minWidth: 2, height: `${h}%`, background: s.leads ? "linear-gradient(180deg, var(--p-accent), color-mix(in srgb, var(--p-accent) 70%, transparent))" : "var(--p-border)", opacity: s.leads ? 1 : 0.5, borderRadius: 4, transformOrigin: "bottom", animation: "barGrow .7s cubic-bezier(.22,1,.36,1) both", animationDelay: `${Math.round((i / Math.max(1, series.length)) * 450)}ms` }} />;
-        })}
-      </div>
-      <div style={{ display: "flex", gap: 3, marginTop: 6 }}>
-        {series.map((s, i) => {
-          const step = Math.max(1, Math.ceil(series.length / 8));
-          const show = i % step === 0 || i === series.length - 1;
-          return <span key={i} style={{ flex: 1, minWidth: 2, textAlign: "center", fontSize: 9.5, color: "var(--p-muted)" }}>{show ? s.day.slice(8, 10) : ""}</span>;
-        })}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 11, marginTop: 12 }}>
+        {rows.map((r, i) => (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+              <span style={{ fontSize: 12.5, color: "var(--p-text)", fontWeight: 600 }}>{r.label}</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: r.color }}>{r.value}</span>
+            </div>
+            <div style={{ height: 9, borderRadius: 5, background: "var(--p-bg)", overflow: "hidden" }}>
+              <div style={{ width: `${(r.value / max) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${r.color}, ${r.color}cc)`, borderRadius: 5, animation: "barFill 1s cubic-bezier(.22,1,.36,1) both" }} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -258,8 +265,8 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <div style={{ fontSize: 12.5, color: "var(--p-muted)", paddingTop: 12, marginTop: 4, borderTop: "1px solid var(--p-border)" }}>{healthHint}</div>
         </div>
 
-        {/* ROW 3b · EVOLUÇÃO (maior agora) */}
-        {data.series.length > 1 && <Sparkline series={data.series} />}
+        {/* ROW 3b · VELOCIDADE DE ATENDIMENTO */}
+        <AttendanceSpeed tempoMedio={a.tempoMedioMin} taxa={a.taxaResposta} buckets={data.responseBuckets} />
 
         {/* ROW 4 · OPERAÇÃO VELOCE */}
         <div className="p-ops" style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
