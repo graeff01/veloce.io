@@ -133,7 +133,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const d = data.deltas;
   const sc = data.score;
   const semResposta = Math.max(0, a.leads - a.respondidos);
-  const convPct = a.leads > 0 ? Math.round((a.conversoes / a.leads) * 100) : 0;
   const atualizado = new Date(data.generatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const lostOps = semResposta > 0 ? Math.max(1, Math.round(semResposta * Math.max(a.leads > 0 ? a.conversoes / a.leads : 0, 0.1))) : 0;
 
@@ -174,12 +173,11 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           .pmain{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
           .ptopbar-in,.pwrap{max-width:none}
           .pwrap{flex:1;min-height:0;padding:14px 24px;display:grid;gap:13px;
-            grid-template-columns:1fr 1fr 1.3fr;
+            grid-template-columns:1fr 1.7fr;
             grid-template-rows:auto auto minmax(0,1fr) auto;
-            grid-template-areas:"sum sum sum" "kpi kpi kpi" "hea opp cha" "ops ops ops"}
+            grid-template-areas:"sum sum" "kpi kpi" "hea cha" "ops ops"}
           .p-summary{grid-area:sum}.pkpis{grid-area:kpi}
           .p-health{grid-area:hea;min-height:0;overflow:hidden}
-          .p-opp{grid-area:opp;min-height:0;overflow:hidden}
           .p-chart{grid-area:cha;min-height:0}
           .p-ops{grid-area:ops}
         }
@@ -215,7 +213,17 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <Kpi label="Investimento" value={data.midia ? brl(data.midia.spend) : "—"} delta={data.midia ? d.spend : null} sub={!data.midia ? "sem anúncios conectados" : undefined} />
           <Kpi label="Leads" value={int(a.leads)} delta={d.leads} goodWhenUp sub={data.midia ? `${int(data.midia.leads)} de anúncio` : undefined} />
           <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} delta={data.midia?.cpl != null ? d.cpl : null} goodWhenUp={false} />
-          <Kpi label="Conversão" value={`${convPct}%`} delta={d.conversao} goodWhenUp />
+          {/* Alerta vibrante no lugar do KPI de conversão */}
+          <div style={{ ...card, border: "none", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "center",
+            background: semResposta > 0 ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#16a34a,#15803d)",
+            animation: semResposta > 0 ? "alertGlow 1.9s ease-in-out infinite" : "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", animation: semResposta > 0 ? "dotBlink 1s ease-in-out infinite" : "none" }} />
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "rgba(255,255,255,.95)" }}>Leads sem resposta</span>
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1, marginTop: 8, transformOrigin: "left", animation: semResposta > 0 ? "alertPulse 1.6s ease-in-out infinite" : "none" }}>{semResposta > 0 ? int(semResposta) : "👌"}</div>
+            <div style={{ fontSize: 11.5, color: "#fff", opacity: 0.92, marginTop: 6 }}>{semResposta > 0 ? `~ ${int(lostOps)} oportunidade${lostOps !== 1 ? "s" : ""} parada${lostOps !== 1 ? "s" : ""}` : "tudo respondido"}</div>
+          </div>
         </div>
 
         {/* ROW 3a · HEALTH SCORE */}
@@ -235,37 +243,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           </div>
         </div>
 
-        {/* ROW 3b · OPORTUNIDADES (alerta vibrante) */}
-        <div className="p-opp" style={{ ...card, border: "none", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "center",
-          background: semResposta > 0 ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#16a34a,#15803d)",
-          animation: semResposta > 0 ? "alertGlow 1.9s ease-in-out infinite" : "none" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#fff", animation: semResposta > 0 ? "dotBlink 1s ease-in-out infinite" : "none" }} />
-            <span style={{ ...cap, color: "rgba(255,255,255,.95)" }}>Onde estamos perdendo oportunidades</span>
-          </div>
-          {semResposta > 0 ? (
-            <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
-                <span style={{ fontSize: 52, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px", transformOrigin: "left", animation: "alertPulse 1.6s ease-in-out infinite" }}>{int(semResposta)}</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", opacity: 0.95 }}>leads sem resposta</span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginTop: 12, color: "#fff" }}>
-                <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>Impacto estimado</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, marginTop: 2 }}>~ {int(lostOps)} oportunidade{lostOps !== 1 ? "s" : ""} perdida{lostOps !== 1 ? "s" : ""}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>Principal causa</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, marginTop: 2 }}>{a.tempoMedioMin != null ? `Resposta: ${int(a.tempoMedioMin)} min` : "Leads sem retorno"}</div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginTop: 10 }}>👌 Tudo respondido</div>
-          )}
-        </div>
-
-        {/* ROW 3c · EVOLUÇÃO */}
+        {/* ROW 3b · EVOLUÇÃO (maior agora) */}
         {data.series.length > 1 && <Sparkline series={data.series} />}
 
         {/* ROW 4 · OPERAÇÃO VELOCE */}
