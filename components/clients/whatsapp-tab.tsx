@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Loader2, AlertTriangle, CheckCircle2, MessageSquare, ExternalLink, Settings2, FileText,
+  Loader2, AlertTriangle, CheckCircle2, MessageSquare, ExternalLink, Settings2, FileText, RefreshCw,
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
@@ -35,6 +35,18 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
   const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
   const [open, setOpen] = useState<WaConversationContact | null>(null);
   const [editing, setEditing] = useState(false);
+  const [recalcing, setRecalcing] = useState(false);
+  const [recalcMsg, setRecalcMsg] = useState("");
+
+  async function recalcFunnel() {
+    setRecalcing(true); setRecalcMsg("");
+    try {
+      const r = await fetch(`/api/clients/${clientId}/whatsapp/funnel-recalc`, { method: "POST" });
+      const d = await r.json();
+      setRecalcMsg(r.ok ? `✓ ${d.updated} de ${d.scanned} reclassificados` : (d.error || "Falha ao recalcular"));
+    } catch { setRecalcMsg("Falha ao recalcular"); }
+    setRecalcing(false);
+  }
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -97,9 +109,15 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
               </p>
             </div>
           </div>
-          <button onClick={() => setEditing(true)} title="Atualizar conexão" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-            <Settings2 size={13} /> Atualizar conexão
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {recalcMsg && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{recalcMsg}</span>}
+            <button onClick={recalcFunnel} disabled={recalcing} title="Reclassificar o funil de todos os leads pelo histórico" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: recalcing ? "not-allowed" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
+              {recalcing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Recalcular funil
+            </button>
+            <button onClick={() => setEditing(true)} title="Atualizar conexão" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              <Settings2 size={13} /> Atualizar conexão
+            </button>
+          </div>
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
