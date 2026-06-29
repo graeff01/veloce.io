@@ -35,7 +35,8 @@ function Kpi({ label, value, delta, goodWhenUp, sub }: { label: string; value: s
     <div style={card}>
       <div style={cap}>{label}</div>
       <div style={{ fontSize: 27, fontWeight: 800, color: "var(--p-text)", lineHeight: 1.05, marginTop: 8, letterSpacing: "-0.02em" }}>{value}</div>
-      {delta != null ? <div><Delta pct={delta} goodWhenUp={goodWhenUp} /></div> : sub ? <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 7 }}>{sub}</div> : null}
+      {delta != null && <div><Delta pct={delta} goodWhenUp={goodWhenUp} /></div>}
+      {sub && <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: delta != null ? 4 : 7 }}>{sub}</div>}
     </div>
   );
 }
@@ -212,7 +213,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         {/* ROW 2 · KPIs */}
         <div className="pkpis">
           <Kpi label="Investimento" value={data.midia ? brl(data.midia.spend) : "—"} delta={data.midia ? d.spend : null} sub={!data.midia ? "sem anúncios conectados" : undefined} />
-          <Kpi label="Leads" value={int(a.leads)} delta={d.leads} goodWhenUp />
+          <Kpi label="Leads" value={int(a.leads)} delta={d.leads} goodWhenUp sub={data.midia ? `${int(data.midia.leads)} de anúncio` : undefined} />
           <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} delta={data.midia?.cpl != null ? d.cpl : null} goodWhenUp={false} />
           <Kpi label="Conversão" value={`${convPct}%`} delta={d.conversao} goodWhenUp />
         </div>
