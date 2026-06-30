@@ -50,15 +50,17 @@ const s = StyleSheet.create({
   healthLabel: { fontSize: 12, fontFamily: "Helvetica-Bold", color: INK },
   healthSub: { fontSize: 9, color: MUTED, marginTop: 2, lineHeight: 1.4 },
   healthTrack: { height: 6, backgroundColor: SOFT, borderRadius: 3, marginTop: 7, overflow: "hidden" },
-  // Placar (duas colunas)
-  cols: { flexDirection: "row", gap: 18, marginBottom: 22 },
-  col: { flex: 1 },
-  colHead: { flexDirection: "row", alignItems: "center", marginBottom: 11 },
+  // Placar (duas colunas em painéis de mesma altura)
+  cols: { flexDirection: "row", gap: 14, marginBottom: 22, alignItems: "stretch" },
+  col: { flex: 1, borderRadius: 10, borderWidth: 1, paddingVertical: 15, paddingHorizontal: 15 },
+  colWin: { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
+  colConcern: { backgroundColor: REDSOFT, borderColor: "#FECACA" },
+  colHead: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
   colDot: { width: 8, height: 8, borderRadius: 4, marginRight: 7 },
   colTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.6 },
-  item: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
-  itemMetric: { width: 64, fontSize: 16, fontFamily: "Helvetica-Bold", letterSpacing: -0.5, paddingRight: 8 },
-  itemLabel: { flex: 1, fontSize: 9.5, color: INK2, lineHeight: 1.4, paddingTop: 3 },
+  item: { flexDirection: "row", alignItems: "baseline", marginBottom: 13 },
+  itemMetric: { width: 82, fontSize: 15, fontFamily: "Helvetica-Bold", letterSpacing: -0.4, paddingRight: 8 },
+  itemLabel: { flex: 1, fontSize: 9.5, color: INK2, lineHeight: 1.4 },
   // Resultado (KPIs)
   secLabel: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 9 },
   kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
@@ -90,9 +92,9 @@ const s = StyleSheet.create({
   note: { fontSize: 8.5, color: FAINT, lineHeight: 1.5, marginTop: 14 },
 });
 
-function Item({ it, color }: { it: ScorecardItem; color: string }) {
+function Item({ it, color, last }: { it: ScorecardItem; color: string; last?: boolean }) {
   return (
-    <View style={s.item}>
+    <View style={[s.item, last ? { marginBottom: 0 } : {}]}>
       <Text style={[s.itemMetric, { color }]}>{it.metric}</Text>
       <Text style={s.itemLabel}>{it.label}</Text>
     </View>
@@ -154,13 +156,13 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
 
         {d.hasData ? (
           <View style={s.cols}>
-            <View style={s.col}>
+            <View style={[s.col, s.colWin]}>
               <View style={s.colHead}><View style={[s.colDot, { backgroundColor: GREEN }]} /><Text style={[s.colTitle, { color: GREEN }]}>O que foi bem</Text></View>
-              {sc.wins.map((it, i) => <Item key={i} it={it} color={GREEN} />)}
+              {sc.wins.map((it, i) => <Item key={i} it={it} color={GREEN} last={i === sc.wins.length - 1} />)}
             </View>
-            <View style={s.col}>
+            <View style={[s.col, s.colConcern]}>
               <View style={s.colHead}><View style={[s.colDot, { backgroundColor: RED }]} /><Text style={[s.colTitle, { color: RED }]}>Pontos de atenção</Text></View>
-              {sc.concerns.map((it, i) => <Item key={i} it={it} color={RED} />)}
+              {sc.concerns.map((it, i) => <Item key={i} it={it} color={RED} last={i === sc.concerns.length - 1} />)}
             </View>
           </View>
         ) : (
