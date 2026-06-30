@@ -1,7 +1,7 @@
 import React from "react";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import "@/lib/pdf-fonts";
-import type { ClientReportData, ScorecardItem } from "@/lib/client-report";
+import type { ClientReportData } from "@/lib/client-report";
 
 const num = (v: number) => v.toLocaleString("pt-BR");
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -41,35 +41,16 @@ const s = StyleSheet.create({
   runBrand: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK },
   runMeta: { fontSize: 8, color: FAINT },
   kicker: { fontSize: 8, color: FAINT, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 5 },
-  title: { fontSize: 19, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 18, letterSpacing: -0.3, lineHeight: 1.15 },
-  // Barra de saúde (slim)
-  healthRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: LINE },
-  healthScore: { fontSize: 30, fontFamily: "Helvetica-Bold", letterSpacing: -1 },
-  healthScoreMax: { fontSize: 11, color: FAINT, fontFamily: "Helvetica" },
-  healthMeta: { flex: 1 },
-  healthLabel: { fontSize: 12, fontFamily: "Helvetica-Bold", color: INK },
-  healthSub: { fontSize: 9, color: MUTED, marginTop: 2, lineHeight: 1.4 },
-  healthTrack: { height: 6, backgroundColor: SOFT, borderRadius: 3, marginTop: 7, overflow: "hidden" },
-  // Placar (duas colunas em painéis de mesma altura)
-  cols: { flexDirection: "row", gap: 14, marginBottom: 22, alignItems: "stretch" },
-  col: { flex: 1, borderRadius: 10, borderWidth: 1, paddingVertical: 15, paddingHorizontal: 15 },
-  colWin: { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
-  colConcern: { backgroundColor: REDSOFT, borderColor: "#FECACA" },
-  colHead: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
-  colDot: { width: 8, height: 8, borderRadius: 4, marginRight: 7 },
-  colTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.6 },
-  item: { flexDirection: "row", alignItems: "baseline", marginBottom: 13 },
-  itemMetric: { width: 82, fontSize: 15, fontFamily: "Helvetica-Bold", letterSpacing: -0.4, paddingRight: 8 },
-  itemLabel: { flex: 1, fontSize: 9.5, color: INK2, lineHeight: 1.4 },
+  title: { fontSize: 19, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 10, letterSpacing: -0.3, lineHeight: 1.15 },
+  lead: { fontSize: 11.5, color: INK2, lineHeight: 1.55, marginBottom: 18 },
   // Resultado (KPIs)
-  secLabel: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: INK, marginBottom: 9 },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  kpiCell: { width: "31.5%", paddingVertical: 10, paddingHorizontal: 11, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 8 },
-  kpiLabel: { fontSize: 7.5, color: MUTED, marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.4 },
-  kpiValue: { fontSize: 17, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.5 },
-  kpiGrowth: { fontSize: 7.5, marginTop: 3, fontFamily: "Helvetica-Bold" },
+  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 11 },
+  kpiCell: { width: "31.3%", paddingVertical: 14, paddingHorizontal: 13, backgroundColor: SOFT, borderWidth: 1, borderColor: LINE, borderRadius: 9 },
+  kpiLabel: { fontSize: 7.5, color: MUTED, marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.4 },
+  kpiValue: { fontSize: 21, fontFamily: "Helvetica-Bold", color: INK, letterSpacing: -0.6 },
+  kpiGrowth: { fontSize: 8, marginTop: 5, fontFamily: "Helvetica-Bold" },
+  kpiFoot: { fontSize: 8.5, color: FAINT, marginTop: 16 },
   // Gargalo
-  lead: { fontSize: 11.5, color: INK2, lineHeight: 1.55, marginBottom: 16 },
   costBox: { flexDirection: "row", backgroundColor: REDSOFT, borderWidth: 1, borderColor: "#FCA5A5", borderLeftWidth: 4, borderLeftColor: RED, borderRadius: 8, padding: 14, marginBottom: 16, gap: 16 },
   costCell: { flex: 1 },
   costDivider: { width: 1, backgroundColor: "#FCA5A5" },
@@ -92,14 +73,6 @@ const s = StyleSheet.create({
   note: { fontSize: 8.5, color: FAINT, lineHeight: 1.5, marginTop: 14 },
 });
 
-function Item({ it, color, last }: { it: ScorecardItem; color: string; last?: boolean }) {
-  return (
-    <View style={[s.item, last ? { marginBottom: 0 } : {}]}>
-      <Text style={[s.itemMetric, { color }]}>{it.metric}</Text>
-      <Text style={s.itemLabel}>{it.label}</Text>
-    </View>
-  );
-}
 function Kpi({ label, value, growth }: { label: string; value: string; growth?: number | null }) {
   const g = growth !== undefined ? growthLabel(growth ?? null) : null;
   return (
@@ -114,7 +87,6 @@ function Kpi({ label, value, growth }: { label: string; value: string; growth?: 
 function ClientReportDoc({ data: d }: { data: ClientReportData }) {
   const b = d.bottleneck;
   const r = d.results;
-  const sc = d.scorecard;
   const bk = d.attendance.buckets;
   const segs = [
     { v: bk.upTo5min, c: GREEN, label: "até 5 min" },
@@ -123,6 +95,12 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
     { v: bk.over1h, c: "#F97316", label: "mais de 1h" },
     { v: bk.unanswered, c: RED, label: "sem resposta" },
   ];
+  const resumo = d.hasData
+    ? `${num(r.leads.value ?? 0)} leads de anúncio chegaram pela mídia paga no período` +
+      `${r.conversoes.value != null ? `, ${num(r.conversoes.value)} converteram` : ""}` +
+      `${r.taxaAtendimentoPct != null ? ` e ${r.taxaAtendimentoPct}% foram atendidos` : ""}.` +
+      `${r.tempoMedianoSec != null ? ` A primeira resposta saiu, na mediana, em ${fmtDur(r.tempoMedianoSec)}.` : ""}`
+    : "Não há leads de anúncio registrados neste período.";
   return (
     <Document title={`Relatório de desempenho — ${d.clientName}`} author="Veloce.io">
       {/* CAPA minimalista */}
@@ -137,38 +115,13 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
         <Text style={s.coverBrandBottom}>veloce.io</Text>
       </Page>
 
-      {/* PLACAR — acertos × atenção + resultado */}
+      {/* RESULTADO DO MÊS */}
       <Page size="A4" style={s.page}>
         <View style={s.runHead}><Text style={s.runBrand}>{d.clientName}</Text><Text style={s.runMeta}>Relatório de desempenho · {d.periodLabel}</Text></View>
-        <Text style={s.kicker}>Balanço do mês · leads de anúncio (mídia paga)</Text>
+        <Text style={s.kicker}>Desempenho · leads de anúncio (mídia paga)</Text>
+        <Text style={s.title}>Resultado do mês</Text>
+        <Text style={s.lead}>{resumo}</Text>
 
-        {d.hasData && (
-          <View style={s.healthRow}>
-            <Text style={[s.healthScore, { color: d.health.color }]}>{d.health.score}<Text style={s.healthScoreMax}> /100</Text></Text>
-            <View style={s.healthMeta}>
-              <Text style={s.healthLabel}>Saúde do atendimento: {d.health.label}</Text>
-              <Text style={s.healthSub}>Quantos leads são respondidos e quão rápido — quanto mais alto, menos oportunidade perdida.</Text>
-              <View style={s.healthTrack}><View style={{ height: 6, width: `${d.health.score}%`, backgroundColor: d.health.color }} /></View>
-            </View>
-          </View>
-        )}
-
-        {d.hasData ? (
-          <View style={s.cols}>
-            <View style={[s.col, s.colWin]}>
-              <View style={s.colHead}><View style={[s.colDot, { backgroundColor: GREEN }]} /><Text style={[s.colTitle, { color: GREEN }]}>O que foi bem</Text></View>
-              {sc.wins.map((it, i) => <Item key={i} it={it} color={GREEN} last={i === sc.wins.length - 1} />)}
-            </View>
-            <View style={[s.col, s.colConcern]}>
-              <View style={s.colHead}><View style={[s.colDot, { backgroundColor: RED }]} /><Text style={[s.colTitle, { color: RED }]}>Pontos de atenção</Text></View>
-              {sc.concerns.map((it, i) => <Item key={i} it={it} color={RED} last={i === sc.concerns.length - 1} />)}
-            </View>
-          </View>
-        ) : (
-          <Text style={s.lead}>Não há leads registrados no WhatsApp neste período para montar o balanço.</Text>
-        )}
-
-        <Text style={s.secLabel}>O resultado no mês</Text>
         <View style={s.kpiGrid}>
           <Kpi label="Leads de anúncio" value={r.leads.value != null ? num(r.leads.value) : "—"} growth={r.leads.growthPct} />
           <Kpi label="Conversões" value={r.conversoes.value != null ? num(r.conversoes.value) : "—"} growth={r.conversoes.growthPct} />
@@ -177,6 +130,7 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
           <Kpi label="Investimento em mídia" value={r.investimento != null ? brl(r.investimento) : "—"} />
           <Kpi label="Custo por lead real" value={r.cplReal != null ? brl(r.cplReal) : "—"} />
         </View>
+        <Text style={s.kpiFoot}>Variações comparadas a {d.prevPeriodLabel}. Números do sistema real — nada estimado.</Text>
       </Page>
 
       {/* GARGALO + AÇÃO */}
@@ -227,7 +181,7 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
               ))}
             </View>
             {d.offHours.pct != null && (
-              <Text style={s.note}>{d.offHours.pct}% dos leads chegaram fora do horário comercial{d.offHours.peakHour != null ? `, com pico às ${String(d.offHours.peakHour).padStart(2, "0")}h` : ""}. Números do sistema real — nada estimado. Gerado em {d.generatedAt}.</Text>
+              <Text style={s.note}>{d.offHours.pct}% dos leads de anúncio chegaram fora do horário comercial{d.offHours.peakHour != null ? `, com pico às ${String(d.offHours.peakHour).padStart(2, "0")}h` : ""}. Gerado em {d.generatedAt}.</Text>
             )}
           </View>
         </Page>
