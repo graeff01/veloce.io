@@ -17,6 +17,9 @@ const COMMERCIAL_END = 18;   // 18h
 
 export interface ReportMetric { value: number | null; growthPct: number | null }
 
+// Item do placar: um fato medido (número + o que ele significa).
+export interface ScorecardItem { metric: string; label: string }
+
 export interface Bottleneck {
   title: string;        // o gargalo, em poucas palavras
   headline: string;     // 1 frase de impacto
@@ -37,6 +40,7 @@ export interface ClientReportData {
   hasData: boolean;
 
   health: { score: number; label: string; color: string };
+  scorecard: { wins: ScorecardItem[]; concerns: ScorecardItem[] };
   bottleneck: Bottleneck | null;
 
   // O que o cliente quer ver (resultado)
@@ -149,6 +153,41 @@ export async function computeClientReport(clientId: string, year: number, month:
 
   const bottleneck = hasData ? pickBottleneck(cur, ads, { offPct, leadsOff, peakHour }) : null;
 
+  // ── Placar: acertos × pontos de atenção (fatos medidos, sem opinião) ──
+  const wins: ScorecardItem[] = [];
+  const concerns: ScorecardItem[] = [];
+  if (hasData) {
+    const respPct = Math.round(respRate * 100);
+    if (respPct >= 85) wins.push({ metric: `${respPct}%`, label: "dos leads foram respondidos" });
+    else concerns.push({ metric: String(cur.unanswered), label: "leads ficaram sem resposta" });
+
+    if (median != null) {
+      if (median <= 600) wins.push({ metric: fmtDur(median), label: "de resposta (mediana) — dentro da janela" });
+      else concerns.push({ metric: fmtDur(median), label: "de espera mediana pela 1ª resposta" });
+    }
+
+    if (cur.buckets.over1h > 0) concerns.push({ metric: String(cur.buckets.over1h), label: "respostas levaram mais de 1 hora" });
+    else if (cur.responded > 0) wins.push({ metric: "0", label: "respostas acima de 1 hora" });
+
+    const lg = results.leads.growthPct;
+    if (lg != null && lg > 0) wins.push({ metric: `+${lg}%`, label: "em leads vs mês anterior" });
+    else if (lg != null && lg < 0) concerns.push({ metric: `${lg}%`, label: "em leads vs mês anterior" });
+
+    const cg = results.conversoes.growthPct;
+    if (cg != null && cg > 0) wins.push({ metric: `+${cg}%`, label: "em conversões vs mês anterior" });
+    else if (cg != null && cg < 0) concerns.push({ metric: `${cg}%`, label: "em conversões vs mês anterior" });
+
+    const adUn = cur.adAttendance.unanswered;
+    const wasted = ads.totals.cpl != null && adUn > 0 ? ads.totals.cpl * adUn : null;
+    if (adUn > 0) concerns.push({ metric: String(adUn), label: `leads de anúncio sem resposta${wasted != null ? ` (${brl(wasted)})` : ""}` });
+
+    if (offPct != null && offPct >= 40) concerns.push({ metric: `${offPct}%`, label: "dos leads chegam fora do horário comercial" });
+
+    if (wins.length === 0) wins.push({ metric: "—", label: "sem destaques positivos no período" });
+    if (concerns.length === 0) concerns.push({ metric: "0", label: "pontos críticos no período" });
+  }
+  const scorecard = { wins: wins.slice(0, 4), concerns: concerns.slice(0, 4) };
+
   return {
     clientName: client.name,
     periodLabel,
@@ -156,6 +195,7 @@ export async function computeClientReport(clientId: string, year: number, month:
     generatedAt,
     hasData,
     health,
+    scorecard,
     bottleneck,
     results,
     attendance: {
@@ -270,6 +310,7 @@ function empty(clientName: string, periodLabel: string, prevPeriodLabel: string,
   return {
     clientName, periodLabel, prevPeriodLabel, generatedAt, hasData: false,
     health: { score: 0, label: "Sem dados", color: "#94A3B8" },
+    scorecard: { wins: [], concerns: [] },
     bottleneck: null,
     results: { leads: { value: null, growthPct: null }, conversoes: { value: null, growthPct: null }, taxaAtendimentoPct: null, tempoMedianoSec: null, investimento: null, cplReal: null, adLeads: null },
     attendance: { respondidos: 0, semResposta: 0, over1h: 0, buckets: { upTo5min: 0, upTo30min: 0, upTo1h: 0, over1h: 0, unanswered: 0 } },
