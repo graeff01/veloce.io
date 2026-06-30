@@ -24,6 +24,16 @@ export interface Overview {
   medianFirstResponseSec: number | null;
   buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
   byOrigin: { ad: number; organic: number };
+  // Recorte de atendimento dos leads de ANÚNCIO (mídia paga). Centraliza o que o
+  // PDF do WhatsApp e o relatório de reunião precisam — sem recalcular por fora.
+  adAttendance: {
+    leads: number;
+    responded: number;
+    unanswered: number;
+    over1h: number;
+    converted: number;
+    avgFirstResponseSec: number | null;
+  };
   byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
   converted: number;
   series: { date: string; leads: number }[];
@@ -132,6 +142,28 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   // Todos os contatos de anúncio do período (com ou sem conversa).
   const adCount = adContactIds.size;
 
+  // Recorte de atendimento dos leads de anúncio. Importados (sem conversa ao vivo)
+  // entram como sem resposta — mesma convenção do total.
+  const adTimes: number[] = [];
+  let adResponded = 0, adOver1h = 0, adConverted = 0;
+  for (const c of convs) {
+    if (!adContactIds.has(c.contactId)) continue;
+    if (c.firstResponseSec != null) {
+      adResponded++;
+      adTimes.push(c.firstResponseSec);
+      if (c.firstResponseSec > 3600) adOver1h++;
+    }
+    if (c.funnelStage === "convertido") adConverted++;
+  }
+  const adAttendance = {
+    leads: adCount,
+    responded: adResponded,
+    unanswered: adCount - adResponded,
+    over1h: adOver1h,
+    converted: adConverted,
+    avgFirstResponseSec: mean(adTimes),
+  };
+
   // Agrupa por anúncio canônico (funde variações do mesmo carro) + conta
   // conversões (funil = "convertido").
   const modelByContact = new Map<string, string>();
@@ -224,6 +256,7 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
     medianFirstResponseSec: median(times),
     buckets,
     byOrigin: { ad: adCount, organic: total - adCount },
+    adAttendance,
     byAd: [...byAdMap.entries()]
       .map(([adTitle, v]) => ({ adTitle, total: v.leads, converted: v.converted, conversionRate: v.leads ? v.converted / v.leads : 0 }))
       .sort((a, b) => b.total - a.total),
