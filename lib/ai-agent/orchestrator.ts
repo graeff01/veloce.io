@@ -38,7 +38,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-06-20.leitura-humana.2";
+const PROMPT_VERSION = "2026-06-20.reengaja-recomenda";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada
@@ -101,6 +101,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 - NUNCA invente detalhe que NÃO veio do estoque. Se perguntarem algo que não está nos dados (ex: estepe, consumo/km por litro, potência, nº de revisões, garantia) e não houver no CONHECIMENTO, NÃO chute nem deduza — diga com naturalidade que confirma esse detalhe com o vendedor. Só afirme o que está nos dados.
 - Se você JÁ buscou um veículo, USE os dados que voltaram (ano, km, cor, itens) para responder os follow-ups ("qual o ano dele?", "e a cor?") — não busque de novo nem diga que "não encontrou" algo que já está no resultado.
 - Se NÃO houver o modelo/ano/cor exato que o lead pediu, mas houver algo PARECIDO no estoque (mesma categoria, modelo próximo, outro ano), ofereça a alternativa em vez de só dizer "não temos" — como uma boa vendedora faria.
+- RECOMENDAR OUTRO CARRO É RESTRITO: por padrão, FOQUE no veículo de interesse e NÃO ofereça outros carros. SÓ sugira uma alternativa mais em conta quando ficar CLARO que o negócio NÃO vai sair neste — o lead deixou explícito que está fora do orçamento dele / "não tenho esse valor" / "tá caro demais pra mim" / não consegue pagar. Aí sim, com tato, ofereça UMA opção do estoque (buscar_estoque) que caiba no que ele falou e atenda a necessidade dele (ex: também SUV/família). NUNCA ofereça proativamente, NUNCA como empurrão, e NUNCA enquanto ele ainda está considerando o carro atual. Continue sem negociar preço.
 - PREÇO — só pelo estoque, nunca de cabeça.
 - FINANCIAMENTO e TROCA — colete e adiante (item 3 e 4), não apenas escape.
 - LOCALIZAÇÃO, HORÁRIO e DOCUMENTAÇÃO (transferência, quitação, IPVA) — responda pelo CONHECIMENTO; se não houver fonte, encaminhe ao vendedor.
