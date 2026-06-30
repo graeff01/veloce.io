@@ -33,6 +33,10 @@ export interface Overview {
     over1h: number;
     converted: number;
     avgFirstResponseSec: number | null;
+    medianFirstResponseSec: number | null;
+    buckets: { upTo5min: number; upTo30min: number; upTo1h: number; over1h: number; unanswered: number };
+    offHoursPct: number | null;  // % dos leads de anúncio que chegaram fora do horário comercial
+    peakHour: number | null;     // hora de pico de chegada dos leads de anúncio
   };
   byAd: { adTitle: string; total: number; converted: number; conversionRate: number }[];
   converted: number;
@@ -145,23 +149,43 @@ export async function computeOverview(connectionId: string, start: Date, end: Da
   // Recorte de atendimento dos leads de anúncio. Importados (sem conversa ao vivo)
   // entram como sem resposta — mesma convenção do total.
   const adTimes: number[] = [];
-  let adResponded = 0, adOver1h = 0, adConverted = 0;
+  let adResponded = 0, adConverted = 0;
+  const adBuckets = { upTo5min: 0, upTo30min: 0, upTo1h: 0, over1h: 0, unanswered: 0 };
   for (const c of convs) {
     if (!adContactIds.has(c.contactId)) continue;
-    if (c.firstResponseSec != null) {
+    const sec = c.firstResponseSec;
+    if (sec != null) {
       adResponded++;
-      adTimes.push(c.firstResponseSec);
-      if (c.firstResponseSec > 3600) adOver1h++;
+      adTimes.push(sec);
+      if (sec <= 300) adBuckets.upTo5min++;
+      else if (sec <= 1800) adBuckets.upTo30min++;
+      else if (sec <= 3600) adBuckets.upTo1h++;
+      else adBuckets.over1h++;
     }
     if (c.funnelStage === "convertido") adConverted++;
+  }
+  adBuckets.unanswered = adCount - adResponded; // inclui importados (sem conversa)
+  // Chegada dos leads de anúncio (enteredAt) → fora do horário comercial e pico.
+  const adByHour = new Array(24).fill(0);
+  let adOff = 0, adWithTime = 0;
+  for (const l of adLeads) {
+    if (!l.enteredAt) continue;
+    adWithTime++;
+    const h = l.enteredAt.getHours(), wd = l.enteredAt.getDay();
+    adByHour[h]++;
+    if (h < 8 || h >= 18 || wd === 0 || wd === 6) adOff++;
   }
   const adAttendance = {
     leads: adCount,
     responded: adResponded,
     unanswered: adCount - adResponded,
-    over1h: adOver1h,
+    over1h: adBuckets.over1h,
     converted: adConverted,
     avgFirstResponseSec: mean(adTimes),
+    medianFirstResponseSec: median(adTimes),
+    buckets: adBuckets,
+    offHoursPct: adWithTime ? Math.round((adOff / adWithTime) * 100) : null,
+    peakHour: adByHour.some((c) => c > 0) ? adByHour.indexOf(Math.max(...adByHour)) : null,
   };
 
   // Agrupa por anúncio canônico (funde variações do mesmo carro) + conta

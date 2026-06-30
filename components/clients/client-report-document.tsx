@@ -140,8 +140,7 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
       {/* PLACAR — acertos × atenção + resultado */}
       <Page size="A4" style={s.page}>
         <View style={s.runHead}><Text style={s.runBrand}>{d.clientName}</Text><Text style={s.runMeta}>Relatório de desempenho · {d.periodLabel}</Text></View>
-        <Text style={s.kicker}>Balanço do mês</Text>
-        <Text style={s.title}>O que foi bem e o que precisa de atenção</Text>
+        <Text style={s.kicker}>Balanço do mês · leads de anúncio (mídia paga)</Text>
 
         {d.hasData && (
           <View style={s.healthRow}>
@@ -171,7 +170,7 @@ function ClientReportDoc({ data: d }: { data: ClientReportData }) {
 
         <Text style={s.secLabel}>O resultado no mês</Text>
         <View style={s.kpiGrid}>
-          <Kpi label="Leads gerados" value={r.leads.value != null ? num(r.leads.value) : "—"} growth={r.leads.growthPct} />
+          <Kpi label="Leads de anúncio" value={r.leads.value != null ? num(r.leads.value) : "—"} growth={r.leads.growthPct} />
           <Kpi label="Conversões" value={r.conversoes.value != null ? num(r.conversoes.value) : "—"} growth={r.conversoes.growthPct} />
           <Kpi label="Atendimento" value={r.taxaAtendimentoPct != null ? `${r.taxaAtendimentoPct}%` : "—"} />
           <Kpi label="Resposta (mediana)" value={fmtDur(r.tempoMedianoSec)} />
