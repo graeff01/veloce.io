@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Bot, BarChart3, Send, Radar,
+  Columns3, User, Mic, Bot, BarChart3, Send, Radar, FileText,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -23,6 +23,7 @@ import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
 import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
 import { BotTab } from "@/components/clients/bot-tab";
+import { ReportsTab } from "@/components/clients/reports-tab";
 import { FacebookGlyph, GoogleGlyph, WhatsAppGlyph } from "@/components/clients/brand-glyphs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -139,7 +140,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "inteligencia" | "ia" | "bot";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "inteligencia" | "ia" | "bot" | "relatorios";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -189,8 +190,8 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     CRITICAL:  { label: "Crítico",    color: "var(--red)",   bg: "var(--red-soft)"   },
   }[client.stats.health];
 
-  // Operação e Perfil são sempre fixas; o resto depende dos módulos do cliente.
-  const CORE_TABS: Tab[] = ["operacao", "perfil"];
+  // Operação, Relatórios e Perfil são sempre fixas; o resto depende dos módulos.
+  const CORE_TABS: Tab[] = ["operacao", "relatorios", "perfil"];
   // brand: cor da marca aplicada ao título + sublinhado (Meta = azul Facebook, Google = azul Google).
   const allTabs: { key: Tab; label: string; icon: React.ReactNode; brand?: string }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
@@ -201,6 +202,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "inteligencia", label: "Inteligência", icon: <Radar size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
+    { key: "relatorios", label: "Relatórios", icon: <FileText size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
   const tabs = client.modules
@@ -333,6 +335,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {activeTab === "bot" && (
         <BotTab clientId={clientId} />
+      )}
+
+      {activeTab === "relatorios" && (
+        <ReportsTab clientId={clientId} modules={client.modules} />
       )}
 
       {activeTab === "perfil" && (
