@@ -1161,6 +1161,9 @@ model LeadProfile {
   urgency         String?  // prazo de compra em texto (ex: "essa semana", "sem pressa")
   visitIntent     Boolean? // demonstrou intenção de ir à loja / ver de perto
   readyToBuy      Boolean? // sinal forte: quer fechar / pediu proposta
+  usageContext    String?  // uso/motivação: família, trabalho, 1º carro, viagem, upgrade (leitura humana)
+  buyingPriority  String?  // o que mais pesa pra ele: preço, economia, segurança/procedência, espaço, financiamento caber
+  decisionStage   String?  // estágio: pesquisando | comparando | decidido
   score           Int      @default(0)
   temperature     String?  // cold | warm | hot (cache da classificação do score v2)
   lastSentiment   String?  // último sentiment detectado (display no CRM + emotional drift)

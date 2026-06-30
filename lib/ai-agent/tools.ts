@@ -40,6 +40,9 @@ export const TOOL_DEFS: ToolDef[] = [
         urgencia: { type: "string", description: "prazo de compra em texto, ex: 'essa semana', 'esse mês', 'sem pressa'" },
         quer_visitar: { type: "boolean", description: "demonstrou intenção de ir à loja / ver de perto / test drive" },
         pronto_para_comprar: { type: "boolean", description: "sinal forte: quer fechar, pediu proposta, decidido" },
+        uso_motivacao: { type: "string", description: "pra que/por que quer o carro: família, trabalho, primeiro carro, viagem, upgrade" },
+        prioridade: { type: "string", description: "o que mais pesa na decisão dele: preço, economia, segurança/procedência, espaço, status, ou o financiamento caber" },
+        estagio_decisao: { type: "string", description: "em que pé está: 'pesquisando', 'comparando modelos' ou 'decidido' (só falta fechar)" },
       } },
     },
   },
@@ -97,6 +100,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         urgency: (args.urgencia as string) || undefined,
         visitIntent: typeof args.quer_visitar === "boolean" ? args.quer_visitar : undefined,
         readyToBuy: typeof args.pronto_para_comprar === "boolean" ? args.pronto_para_comprar : undefined,
+        usageContext: (args.uso_motivacao as string) || undefined,
+        buyingPriority: (args.prioridade as string) || undefined,
+        decisionStage: (args.estagio_decisao as string) || undefined,
       };
       // Atualiza dados e relê o perfil consolidado para repontuar (estado, não delta).
       const prevTemp = (await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId }, select: { temperature: true } }))?.temperature ?? null;
