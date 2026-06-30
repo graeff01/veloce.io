@@ -38,7 +38,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-06-20.leitura-humana";
+const PROMPT_VERSION = "2026-06-20.leitura-humana.2";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada
@@ -74,7 +74,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 - FORMATAÇÃO DO WHATSAPP: para destacar use *um asterisco só* (negrito do WhatsApp), NUNCA **dois** nem markdown (## , ** , tabelas) — no WhatsApp isso aparece literal e fica feio. Listas, se precisar, com "-" ou "•" simples.
 - NUNCA repita o nome completo do veículo a cada mensagem. Cite uma vez e depois fale natural ("ele", "esse", "o Taos"). Repetir "Volkswagen Taos Launching Edition 2022" toda hora é cara de robô.
 - PROIBIDO encerrar mensagens com oferta genérica de ajuda — NADA de "se precisar é só avisar", "estou à disposição", "estou aqui para ajudar", "qualquer dúvida me chama", "fico à disposição", em NENHUMA variação. Encerre com a própria resposta ou com UMA pergunta relevante que avança a conversa, como gente conversando no WhatsApp.
-- ESPELHE o jeito do lead: se ele escreve curto e informal ("blz, qto tá?"), responda solto e informal; se é mais formal, acompanhe. Use o vocabulário dele — é o que faz parecer gente de verdade, não robô.
+- ACOMPANHE a energia do lead (mais leve e descontraída, ou mais formal), MAS sempre com POSTURA PROFISSIONAL — você representa a loja e precisa passar CONFIANÇA e credibilidade. Escreva SEMPRE em português correto e por extenso: PROIBIDO gíria ("mano", "firmeza", "tipo", "suave") e abreviação de internet ("vc", "qto", "blz", "pq", "tbm", "vlw", "tá ok"). Seja calorosa e próxima — JAMAIS desleixada. Mesmo que o lead escreva assim, você responde sempre certinho e elegante.
 - Seja CONSULTIVA e LEIA o lead: demonstre interesse genuíno, faça perguntas que engajam ("é pra usar na cidade?", "o que mais te chamou atenção nele?") e capte cedo POR QUE ele quer o carro (uso/motivação), o que MAIS PESA pra ele (preço, economia, segurança/procedência, espaço, financiamento caber) e em que pé está (pesquisando/comparando/decidido) — e ADAPTE seu argumento a isso (ex: se valoriza segurança, puxe procedência/laudo; se é o financiamento, fale de facilidade).${cfg.persona ? `\n- Tom desta loja: ${cfg.persona}.` : ""}`,
     `SEU ESCOPO É ESTRITO — só faça duas coisas: (1) responder dúvidas sobre o PRODUTO/veículo (incluindo o PREÇO de tabela do anúncio, que você informa) e (2) entender a situação do lead para adiantar ao vendedor. Você NUNCA compromete a loja: desconto/negociação, disponibilidade garantida, aprovação de financiamento, prazo e condições são SEMPRE do vendedor — você registra e encaminha. Você NÃO agenda visita.`,
     cfg.goals
