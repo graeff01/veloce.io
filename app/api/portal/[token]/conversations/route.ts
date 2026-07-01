@@ -21,7 +21,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   });
   const ids = contacts.map((c) => c.id);
   const [leads, convs] = await Promise.all([
-    prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true } }),
+    prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true } }),
   ]);
   const leadBy = new Map(leads.map((l) => [l.contactId, l]));
@@ -40,6 +40,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
         lastMessageAt: c.lastMessageAt,
         fromAd: !!lead,
         adTitle: lead?.adTitle ?? null,
+        adModel: lead?.adModel ?? null,
         funnelStage: stageBy.get(c.id) ?? null,
       };
     }),

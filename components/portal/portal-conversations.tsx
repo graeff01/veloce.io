@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Eye } from "lucide-react";
 
-interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; funnelStage: string | null }
+interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
+
+// Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
+const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
 interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; items: Msg[] }
 
@@ -42,6 +45,7 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
 export function PortalConversations({ token, brandName, logoUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; initialContact?: string | null }) {
   const [list, setList] = useState<Row[] | null>(null);
   const [tab, setTab] = useState<"all" | "ads">("all");
+  const [adFilter, setAdFilter] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(initialContact ?? null);
   const [conv, setConv] = useState<Conv | null>(null);
@@ -54,7 +58,17 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => { setConv(d); setLoadingConv(false); });
   }, [sel, token]);
 
-  const items = (list ?? []).filter((c) => (tab === "all" || c.fromAd) && (!q.trim() || c.name.toLowerCase().includes(q.trim().toLowerCase())));
+  // Anúncios distintos (para os filtros por anúncio), com contagem, do mais frequente.
+  const adGroups = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of list ?? []) if (c.fromAd) { const k = adLabelOf(c); m.set(k, (m.get(k) ?? 0) + 1); }
+    return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
+  }, [list]);
+
+  const items = (list ?? []).filter((c) =>
+    (tab === "all" || c.fromAd) &&
+    (tab !== "ads" || !adFilter || adLabelOf(c) === adFilter) &&
+    (!q.trim() || c.name.toLowerCase().includes(q.trim().toLowerCase())));
 
   // agrupa mensagens por dia (divisores estilo WhatsApp)
   const grouped = useMemo(() => {
@@ -68,8 +82,17 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   }, [conv]);
 
   const tabChip = (k: "all" | "ads", label: string) => (
-    <button onClick={() => setTab(k)} style={{ padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: tab === k ? "var(--p-accent-soft)" : "transparent", color: tab === k ? "var(--p-accent)" : "var(--wa-muted)" }}>{label}</button>
+    <button onClick={() => { setTab(k); if (k === "all") setAdFilter(null); }} style={{ padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: tab === k ? "var(--p-accent-soft)" : "transparent", color: tab === k ? "var(--p-accent)" : "var(--wa-muted)" }}>{label}</button>
   );
+
+  const adChip = (label: string | null, text: string, count: number) => {
+    const on = adFilter === label;
+    return (
+      <button key={text} onClick={() => setAdFilter(label)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: `1px solid ${on ? "var(--p-accent)" : "var(--p-border)"}`, cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: 20, whiteSpace: "nowrap", background: on ? "var(--p-accent-soft)" : "var(--p-bg)", color: on ? "var(--p-accent)" : "var(--p-text)" }}>
+        {text} <span style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>{count}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
@@ -91,7 +114,15 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
           </div>
         </div>
         {/* abas */}
-        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", borderBottom: "1px solid var(--p-border)" }}>{tabChip("all", "Conversas")}{tabChip("ads", "Leads de anúncio")}</div>
+        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px" }}>{tabChip("all", "Conversas")}{tabChip("ads", "Leads de anúncio")}</div>
+        {/* filtro por anúncio (só na aba de anúncios) */}
+        {tab === "ads" && adGroups.length > 0 && (
+          <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
+            {adChip(null, "Todos", adGroups.reduce((s, g) => s + g.count, 0))}
+            {adGroups.map((g) => adChip(g.label, g.label, g.count))}
+          </div>
+        )}
+        {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
