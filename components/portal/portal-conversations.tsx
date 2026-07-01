@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Eye } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
@@ -50,13 +50,38 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [sel, setSel] = useState<string | null>(initialContact ?? null);
   const [conv, setConv] = useState<Conv | null>(null);
   const [loadingConv, setLoadingConv] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
 
-  useEffect(() => { fetch(`/api/portal/${token}/conversations`).then((r) => (r.ok ? r.json() : [])).then((d) => setList(Array.isArray(d) ? d : [])); }, [token]);
+  // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch(`/api/portal/${token}/conversations`).then((r) => (r.ok ? r.json() : [])).then((d) => { if (alive) setList(Array.isArray(d) ? d : []); }).catch(() => {});
+    load();
+    const iv = setInterval(() => { if (!document.hidden) load(); }, 12000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [token]);
+
+  // Conversa aberta — carrega (com spinner) e AUTO-ATUALIZA em silêncio (novas mensagens).
   useEffect(() => {
     if (!sel) { setConv(null); return; }
-    setLoadingConv(true);
-    fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => { setConv(d); setLoadingConv(false); });
+    let alive = true;
+    nearBottomRef.current = true; // ao abrir uma conversa, começa no fim
+    const load = (silent: boolean) => {
+      if (!silent) setLoadingConv(true);
+      return fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!alive) return; setConv(d); if (!silent) setLoadingConv(false); }).catch(() => { if (alive && !silent) setLoadingConv(false); });
+    };
+    load(false);
+    const iv = setInterval(() => { if (!document.hidden) load(true); }, 7000);
+    return () => { alive = false; clearInterval(iv); };
   }, [sel, token]);
+
+  // Rola pro fim quando abre a conversa ou chega mensagem nova — mas só se já estava embaixo.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [conv?.items?.length, sel]);
 
   // Anúncios distintos (para os filtros por anúncio), com contagem, do mais frequente.
   const adGroups = useMemo(() => {
@@ -177,7 +202,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             </div>
 
             {/* mensagens */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>
+            <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>
               {/* Card do anúncio que originou o lead (estilo referral CTWA) */}
               {conv.lead && (conv.lead.image || conv.lead.adTitle) && (
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
