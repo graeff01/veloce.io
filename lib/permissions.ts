@@ -38,11 +38,12 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
     "content:create",
     "content:update",
   ] as Permission[],
-  // DESIGNER: papel ENXUTO — só o módulo de Conteúdo da Veloce. Lê a pauta, sobe
-  // arte e move o card (criação→revisão). NÃO cria pauta, NÃO aprova, NÃO apaga,
-  // e não tem acesso a clientes/finanças/IA/etc.
+  // DESIGNER: módulo de Conteúdo da Veloce. Lê a pauta, CRIA pauta, edita o briefing,
+  // sobe arte e move o card. NÃO aprova/agenda/publica e NÃO apaga (controle do gestor).
+  // Sem acesso a clientes/finanças/IA/etc. Toda ação fica na timeline da pauta (auditoria).
   DESIGNER: [
     "content:read",
+    "content:create",
     "content:update",
   ] as Permission[],
 };

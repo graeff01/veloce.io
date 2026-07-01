@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendTelegramToUser } from "@/lib/notifications/telegram";
 import type { Role } from "@prisma/client";
 
-type Kind = "comment" | "status" | "art" | "created";
+type Kind = "comment" | "status" | "art" | "created" | "edit" | "delete";
 
 // Registra um item no feed da pauta (comentário ou evento automático).
 export async function logActivity(opts: {

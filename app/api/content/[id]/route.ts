@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/permissions";
 import { parseDueDate } from "@/lib/utils";
 import { logActivity, notifyHandoff } from "@/lib/content/activity";
+import { recordAudit } from "@/lib/audit";
 import type { Role } from "@prisma/client";
 import { z } from "zod";
 
@@ -81,8 +82,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const actorId = session!.user.id;
   if (d.status !== undefined && d.status !== post.status) {
     await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "status", body: `moveu para ${STAGE_LABEL[d.status] ?? d.status}` });
-    if (d.status === "revisao") await notifyHandoff({ event: "revisao", postTitle: updated.title, actorName, actorId, actorIsDesigner: !canBrief });
-    if (d.status === "aprovado") await notifyHandoff({ event: "aprovado", postTitle: updated.title, actorName, actorId, actorIsDesigner: !canBrief });
+    if (d.status === "revisao") await notifyHandoff({ event: "revisao", postTitle: updated.title, actorName, actorId, actorIsDesigner: role === "DESIGNER" });
+    if (d.status === "aprovado") await notifyHandoff({ event: "aprovado", postTitle: updated.title, actorName, actorId, actorIsDesigner: role === "DESIGNER" });
   }
   if (d.artUrl !== undefined && (d.artUrl || null) !== (post.artUrl || null)) {
     await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: d.artUrl ? "atualizou o link da arte final" : "removeu o link da arte" });
@@ -90,19 +91,40 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (d.previewUrl !== undefined && (d.previewUrl || null) !== (post.previewUrl || null) && d.previewUrl) {
     await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "art", body: "subiu uma prévia da arte" });
   }
+  // Auditoria — registra edições do briefing (quem mudou o quê) na timeline da pauta.
+  if (canBrief) {
+    const changed: string[] = [];
+    if (d.title !== undefined && d.title.trim() !== post.title) changed.push("título");
+    if (d.type !== undefined && d.type !== post.type) changed.push("tipo");
+    if (d.copy !== undefined && (d.copy || null) !== (post.copy || null)) changed.push("copy");
+    if (d.references !== undefined && (d.references || null) !== (post.references || null)) changed.push("referências");
+    if (d.publishDate !== undefined) {
+      const newT = d.publishDate ? parseDueDate(d.publishDate)?.getTime() ?? null : null;
+      const oldT = post.publishDate ? post.publishDate.getTime() : null;
+      if (newT !== oldT) changed.push("data");
+    }
+    if (d.feedback !== undefined && (d.feedback || null) !== (post.feedback || null)) changed.push("feedback");
+    if (changed.length) await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "edit", body: `editou o briefing (${changed.join(", ")})` });
+  }
 
   return NextResponse.json(updated);
 }
 
-// DELETE — só quem tem content:delete (admin). Soft delete.
+// DELETE — só quem tem content:delete (admin). Soft delete + auditoria.
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("content:delete");
+  const { error, session } = await requireAuth("content:delete");
   if (error) return error;
 
   const post = await prisma.contentPost.findFirst({ where: { id, deletedAt: null } });
   if (!post) return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
 
   await prisma.contentPost.update({ where: { id }, data: { deletedAt: new Date() } });
+
+  // Auditoria: quem apagou o quê (timeline da pauta + trilha global de ações sensíveis).
+  const actorName = session!.user.name ?? "Alguém";
+  await logActivity({ postId: id, authorId: session!.user.id, authorName: actorName, kind: "delete", body: "apagou a pauta" });
+  await recordAudit({ userId: session!.user.id, action: "content.delete", target: id, meta: { title: post.title } });
+
   return NextResponse.json({ ok: true });
 }

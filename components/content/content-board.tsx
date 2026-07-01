@@ -40,7 +40,8 @@ export function ContentBoard() {
   const { data: session } = useSession();
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
-  const canBrief = role === "ADMIN" || role === "OPERATIONAL";
+  // Designer agora cria pauta e edita o briefing (content:create). Aprovar/apagar = isAdmin.
+  const canBrief = role === "ADMIN" || role === "OPERATIONAL" || role === "DESIGNER";
 
   const now = new Date();
   const [view, setView] = useState<"board" | "calendar">("board");

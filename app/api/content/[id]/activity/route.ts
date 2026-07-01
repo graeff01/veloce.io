@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { hasPermission } from "@/lib/permissions";
 import { logActivity, notifyHandoff } from "@/lib/content/activity";
 import type { Role } from "@prisma/client";
 import { z } from "zod";
@@ -42,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const activity = await logActivity({ postId: id, authorId: actorId, authorName: actorName, kind: "comment", body: parsed.data.body.trim() });
 
-  await notifyHandoff({ event: "comment", postTitle: post.title, actorName, actorId, actorIsDesigner: !hasPermission(role, "content:create"), commentSnippet: parsed.data.body });
+  await notifyHandoff({ event: "comment", postTitle: post.title, actorName, actorId, actorIsDesigner: role === "DESIGNER", commentSnippet: parsed.data.body });
 
   return NextResponse.json(activity, { status: 201 });
 }
