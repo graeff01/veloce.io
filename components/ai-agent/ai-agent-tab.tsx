@@ -5,7 +5,7 @@ import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
-  History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap,
+  History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { TabHeader } from "@/components/clients/tab-header";
 
@@ -57,12 +57,16 @@ const STATUS_OPTS: { key: string; label: string; hint: string }[] = [
   { key: "live", label: "Produção", hint: "atende leads de verdade (fora do horário)" },
 ];
 
+function SecTitle({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>{children}</div>;
+}
+
 function ConfigSection({ clientId }: { clientId: string }) {
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [tab, setTab] = useState<"persona" | "operacao" | "guardrails">("persona");
+  const [advOpen, setAdvOpen] = useState(false);
 
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
@@ -106,14 +110,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <button onClick={togglePause} style={{ ...btn(), flexShrink: 0, background: cfg.paused ? "#fff" : "var(--red)", color: cfg.paused ? "var(--red)" : "#fff", border: "none" }}>{cfg.paused ? "Retomar agente" : "Pausar agora"}</button>
       </div>
 
-      {/* Sub-navegação da configuração — poucos itens, mesma altitude (aqui a tab horizontal faz sentido) */}
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", paddingBottom: 4 }}>
-        {([{ k: "persona", l: "Persona" }, { k: "operacao", l: "Operação" }, { k: "guardrails", l: "Guardrails" }] as const).map((t) => (
-          <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t.k ? "var(--accent-soft)" : "transparent", color: tab === t.k ? "var(--accent)" : "var(--text-muted)" }}>{t.l}</button>
-        ))}
-      </div>
+      {/* ══ ESSENCIAL — o que se ajusta no dia a dia ══ */}
 
-      {tab === "operacao" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Estado: liga/desliga + estágio */}
       <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
@@ -139,43 +138,9 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>Só <b>Produção</b> envia mensagens reais. Use <b>Teste</b> para validar antes de ativar com leads.</p>
       </div>
 
-      <div style={{ ...card, borderColor: cfg.testMode ? "var(--accent)" : "var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Modo canário (teste em produção)</div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Com isto ligado, mesmo em Produção a IA responde <b>somente</b> os números abaixo. Teste o fluxo real pelo seu WhatsApp sem risco com cliente.</p>
-          </div>
-          <button onClick={() => set({ testMode: !cfg.testMode })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.testMode ? "var(--accent)" : "var(--border)", position: "relative", flexShrink: 0 }}>
-            <span style={{ position: "absolute", top: 3, left: cfg.testMode ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
-          </button>
-        </div>
-        {cfg.testMode && (
-          <div style={{ marginTop: 12 }}>
-            <label style={label}>Números liberados (um por linha, com DDD — ex: 5551999990000)</label>
-            <textarea style={{ ...input, minHeight: 70, resize: "vertical", fontFamily: "monospace" }}
-              value={cfg.testNumbers.join("\n")}
-              onChange={(e) => set({ testNumbers: e.target.value.split("\n").map((s) => s.replace(/\D/g, "")).filter(Boolean) })}
-              placeholder={"5551999990000\n5551988887777"} />
-            {cfg.testNumbers.length === 0 && <p style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>⚠️ Lista vazia: a IA não responderá ninguém enquanto o modo canário estiver ligado.</p>}
-          </div>
-        )}
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-          <label style={label}>Números da triagem (operador) — recebem as fichas dos leads</label>
-          <textarea style={{ ...input, minHeight: 60, resize: "vertical", fontFamily: "monospace" }}
-            value={cfg.operatorNumbers.join("\n")}
-            onChange={(e) => set({ operatorNumbers: e.target.value.split("\n").map((s) => s.replace(/\D/g, "")).filter(Boolean) })}
-            placeholder={"5551999990000"} />
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>Esses números NÃO são tratados como lead. Quando mandam mensagem, a IA devolve as fichas dos leads triados (e empurra os quentes na hora, com a janela aberta). Use qualquer WhatsApp, menos o da própria IA.</p>
-        </div>
-      </div>
-
+      {/* Persona e mensagens */}
       <div style={card}>
-        <label style={label}>Horário comercial — a IA atua FORA disto (no fuso do cliente)</label>
-        <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
-      </div>
-      </div>}
-
-      {tab === "persona" && <div style={card}>
+        <SecTitle>Persona e mensagens</SecTitle>
         <label style={label}>Nome da assistente</label>
         <input style={input} value={cfg.assistantName ?? ""} onChange={(e) => set({ assistantName: e.target.value })} placeholder="Ex: Helena" />
         <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>A IA se apresenta com esse nome (humaniza). Ex.: &quot;Oi! Aqui é a Helena, da {"{loja}"}&quot;.</p>
@@ -193,30 +158,13 @@ function ConfigSection({ clientId }: { clientId: string }) {
         <textarea style={{ ...input, minHeight: 70, resize: "vertical" }} value={cfg.rules ?? ""} onChange={(e) => set({ rules: e.target.value })} placeholder="Ex: sempre oferecer visita; horário da loja; nunca falar de concorrentes..." />
         <label style={{ ...label, marginTop: 14 }}>Mensagem de fallback (quando escala / não pode responder)</label>
         <input style={input} value={cfg.fallbackMessage ?? ""} onChange={(e) => set({ fallbackMessage: e.target.value })} placeholder="Ex: Vou pedir para um vendedor te dar os detalhes, tá? 😊" />
+      </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Transcrever áudios do lead</div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Converte áudio em texto (não analisa documentos nem imagens). Recomendado.</p>
-          </div>
-          <button onClick={() => set({ audioTranscription: !cfg.audioTranscription })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.audioTranscription ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
-            <span style={{ position: "absolute", top: 3, left: cfg.audioTranscription ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
-          </button>
-        </div>
-      </div>}
-
-      {tab === "guardrails" && <div style={card}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <ShieldAlert size={15} color="var(--accent)" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Segurança & limites</span>
-        </div>
-
-        <label style={{ ...label, marginTop: 12 }}>Segmento do cliente (define as regras de bloqueio)</label>
-        <select style={input} value={cfg.vertical} onChange={(e) => set({ vertical: e.target.value })}>
-          {VERTICALS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
-        </select>
-        <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Ex.: automotivo bloqueia desconto/financiamento/troca; imobiliário bloqueia negociar valor e reservar unidade.</p>
-
+      {/* Quando e pra quem */}
+      <div style={card}>
+        <SecTitle>Quando e pra quem</SecTitle>
+        <label style={label}>Horário comercial — a IA atua FORA disto (no fuso do cliente)</label>
+        <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
         <label style={{ ...label, marginTop: 16 }}>A quem a IA responde</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {[
@@ -229,30 +177,94 @@ function ConfigSection({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
+      </div>
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 16 }}>
-          <div style={{ width: 220 }}>
-            <label style={label}>Não assumir se um humano respondeu há (min)</label>
-            <input style={input} type="number" min={0} value={cfg.humanTakeoverMin} onChange={(e) => set({ humanTakeoverMin: Number(e.target.value) })} />
-            <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Evita a IA falar por cima do vendedor. 0 = desligado.</p>
+      {/* ══ AVANÇADO — set-once, recolhido ══ */}
+      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <button onClick={() => setAdvOpen(!advOpen)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "14px 16px", background: "transparent", border: "none", cursor: "pointer" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <ShieldAlert size={15} color="var(--text-muted)" />
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Configurações avançadas</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>segurança, limites e integração — mexe raramente</span>
           </div>
-          <div style={{ width: 200 }}>
-            <label style={label}>Teto de gasto diário (US$)</label>
-            <input style={input} type="number" min={0} step={0.5} value={cfg.dailyUsdCap ?? ""} placeholder="sem limite" onChange={(e) => set({ dailyUsdCap: e.target.value ? Number(e.target.value) : null })} />
-            <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Pausa a IA deste cliente ao atingir o valor no dia.</p>
-          </div>
-        </div>
+          {advOpen ? <ChevronDown size={16} color="var(--text-muted)" /> : <ChevronRight size={16} color="var(--text-muted)" />}
+        </button>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Avisar que é atendimento automático</div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Anexa o aviso de robô na 1ª mensagem (transparência). Recomendado.</p>
+        {advOpen && (
+          <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <label style={label}>Segmento do cliente (define as regras de bloqueio)</label>
+              <select style={input} value={cfg.vertical} onChange={(e) => set({ vertical: e.target.value })}>
+                {VERTICALS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+              </select>
+              <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Ex.: automotivo bloqueia desconto/financiamento/troca; imobiliário bloqueia negociar valor e reservar unidade.</p>
+            </div>
+
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ width: 220 }}>
+                <label style={label}>Não assumir se um humano respondeu há (min)</label>
+                <input style={input} type="number" min={0} value={cfg.humanTakeoverMin} onChange={(e) => set({ humanTakeoverMin: Number(e.target.value) })} />
+                <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Evita a IA falar por cima do vendedor. 0 = desligado.</p>
+              </div>
+              <div style={{ width: 200 }}>
+                <label style={label}>Teto de gasto diário (US$)</label>
+                <input style={input} type="number" min={0} step={0.5} value={cfg.dailyUsdCap ?? ""} placeholder="sem limite" onChange={(e) => set({ dailyUsdCap: e.target.value ? Number(e.target.value) : null })} />
+                <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Pausa a IA deste cliente ao atingir o valor no dia.</p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Avisar que é atendimento automático</div>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Anexa o aviso de robô na 1ª mensagem (transparência). Recomendado.</p>
+              </div>
+              <button onClick={() => set({ disclosureEnabled: !cfg.disclosureEnabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.disclosureEnabled ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: cfg.disclosureEnabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Transcrever áudios do lead</div>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Converte áudio em texto (não analisa documentos nem imagens). Recomendado.</p>
+              </div>
+              <button onClick={() => set({ audioTranscription: !cfg.audioTranscription })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.audioTranscription ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: cfg.audioTranscription ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+              </button>
+            </div>
+
+            <div style={{ ...card, borderColor: cfg.testMode ? "var(--accent)" : "var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Modo canário (teste em produção)</div>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Com isto ligado, mesmo em Produção a IA responde <b>somente</b> os números abaixo. Teste o fluxo real pelo seu WhatsApp sem risco com cliente.</p>
+                </div>
+                <button onClick={() => set({ testMode: !cfg.testMode })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.testMode ? "var(--accent)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+                  <span style={{ position: "absolute", top: 3, left: cfg.testMode ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+                </button>
+              </div>
+              {cfg.testMode && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={label}>Números liberados (um por linha, com DDD — ex: 5551999990000)</label>
+                  <textarea style={{ ...input, minHeight: 70, resize: "vertical", fontFamily: "monospace" }}
+                    value={cfg.testNumbers.join("\n")}
+                    onChange={(e) => set({ testNumbers: e.target.value.split("\n").map((s) => s.replace(/\D/g, "")).filter(Boolean) })}
+                    placeholder={"5551999990000\n5551988887777"} />
+                  {cfg.testNumbers.length === 0 && <p style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>⚠️ Lista vazia: a IA não responderá ninguém enquanto o modo canário estiver ligado.</p>}
+                </div>
+              )}
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                <label style={label}>Números da triagem (operador) — recebem as fichas dos leads</label>
+                <textarea style={{ ...input, minHeight: 60, resize: "vertical", fontFamily: "monospace" }}
+                  value={cfg.operatorNumbers.join("\n")}
+                  onChange={(e) => set({ operatorNumbers: e.target.value.split("\n").map((s) => s.replace(/\D/g, "")).filter(Boolean) })}
+                  placeholder={"5551999990000"} />
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>Esses números NÃO são tratados como lead. Quando mandam mensagem, a IA devolve as fichas dos leads triados (e empurra os quentes na hora, com a janela aberta). Use qualquer WhatsApp, menos o da própria IA.</p>
+              </div>
+            </div>
           </div>
-          <button onClick={() => set({ disclosureEnabled: !cfg.disclosureEnabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.disclosureEnabled ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
-            <span style={{ position: "absolute", top: 3, left: cfg.disclosureEnabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
-          </button>
-        </div>
-      </div>}
+        )}
+      </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
         <button onClick={save} disabled={saving} style={btn(true)}>
