@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles } from "lucide-react";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" }) {
+export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
   function toggle() {
@@ -18,7 +18,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "conversas" | "funil", href: string, label: string, icon: React.ReactNode) => {
+  const item = (key: "painel" | "conversas" | "funil" | "ia", href: string, label: string, icon: React.ReactNode) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -53,6 +53,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
         <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", opacity: 0.7 }}>Menu</div>
           {item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
+          {item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
           {item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
           {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
         </nav>
