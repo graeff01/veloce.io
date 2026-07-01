@@ -125,7 +125,7 @@ export interface ClientDashboard {
 }
 
 // Início do período (BRT) + período comparável anterior, para "semana" ou "mês".
-function periodRanges(period: Period): { start: Date; now: Date; prevStart: Date; prevEnd: Date; label: string } {
+export function periodRanges(period: Period): { start: Date; now: Date; prevStart: Date; prevEnd: Date; label: string } {
   const now = new Date();
   if (period === "week") {
     const start = new Date(now.getTime() - 7 * 86_400_000);
