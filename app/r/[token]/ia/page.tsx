@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { buildImpact } from "@/lib/ai-agent/impact";
+import { normalizePeriod, recentMonths, periodRanges } from "@/lib/notifications/client-report";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { PortalPeriod } from "@/components/portal/portal-period";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,8 +74,9 @@ function QualityBar({ hot, warm, cold }: { hot: number; warm: number; cold: numb
 export default async function IaPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ p?: string }> }) {
   const { token } = await params;
   const { p } = await searchParams;
-  const period: "week" | "month" = p === "week" ? "week" : "month";
-  const days = period === "week" ? 7 : 30;
+  const months = recentMonths(12);
+  const period = normalizePeriod(p);
+  const selected = period === "week" ? "week" : period === "month" ? months[0].value : period;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -99,19 +102,14 @@ export default async function IaPage({ params, searchParams }: { params: Promise
     );
   }
 
-  const data = await buildImpact(portal.clientId, days);
+  const { start, end, label: periodLabel } = periodRanges(period);
+  const data = await buildImpact(portal.clientId, { start, end });
   const rt = data.responseTime;
   const speedup = rt.aiMedianSec && rt.humanMedianSec && rt.aiMedianSec > 0 ? Math.round(rt.humanMedianSec / rt.aiMedianSec) : null;
-  const periodLabel = period === "week" ? "últimos 7 dias" : "últimos 30 dias";
 
   const summary = data.leads.attended === 0
     ? "A IA ainda não atendeu leads neste período. Assim que ela entrar em ação fora do horário, os resultados aparecem aqui automaticamente."
     : `Neste período a IA atendeu ${int(data.leads.attended)} lead${data.leads.attended !== 1 ? "s" : ""} fora do horário${rt.aiMedianSec != null ? `, respondendo em ${fmtDur(rt.aiMedianSec)} em média` : ""}${data.recovered > 0 ? ` e reativou ${int(data.recovered)} que estava${data.recovered !== 1 ? "m" : ""} esfriando` : ""}.`;
-
-  const tab = (key: "week" | "month", label: string) => {
-    const on = period === key;
-    return <a href={`?p=${key}`} style={{ flex: 1, textAlign: "center", padding: "7px 0", fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: "none", color: on ? "var(--p-on-accent)" : "var(--p-muted)", background: on ? "var(--p-accent)" : "transparent", borderRadius: 9 }}>{label}</a>;
-  };
 
   return (
     <main className="imain">
@@ -133,7 +131,7 @@ export default async function IaPage({ params, searchParams }: { params: Promise
 
       <div className="itopbar">
         <div className="itopbar-in">
-          <div className="itoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
+          <PortalPeriod selected={selected} months={months} />
         </div>
       </div>
 

@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientAds } from "@/lib/notifications/client-ads";
-import { periodRanges } from "@/lib/notifications/client-report";
+import { periodRanges, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { PortalPeriod } from "@/components/portal/portal-period";
 import { PortalCreatives, type PortalCampaign, type PortalCreative } from "@/components/portal/portal-creatives";
 
 export const runtime = "nodejs";
@@ -41,7 +42,9 @@ function Kpi({ label, value, delta, goodWhenUp, sub }: { label: string; value: s
 export default async function AnunciosPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ p?: string }> }) {
   const { token } = await params;
   const { p } = await searchParams;
-  const period: "week" | "month" = p === "week" ? "week" : "month";
+  const months = recentMonths(12);
+  const period = normalizePeriod(p);
+  const selected = period === "week" ? "week" : period === "month" ? months[0].value : period;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -67,10 +70,10 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
     );
   }
 
-  const { start, now } = periodRanges(period);
+  const { start, end } = periodRanges(period);
   const [data, adsView] = await Promise.all([
     getClientAds(portal.clientId, period),
-    computeMetaAdsView(portal.clientId, start, now),
+    computeMetaAdsView(portal.clientId, start, end),
   ]);
   const cur = data.currency;
   const maxSpend = Math.max(1, ...data.series.map((s) => s.spend));
@@ -90,10 +93,6 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
       ? "Ainda não há investimento registrado neste período. Os números aparecem aqui automaticamente."
       : `Neste período foram investidos ${money(data.spend, cur)} em anúncios, gerando ${int(data.leads)} lead${data.leads !== 1 ? "s" : ""}${data.cpl != null ? ` a ${money(data.cpl, cur)} cada` : ""}.`;
 
-  const tab = (key: "week" | "month", label: string) => {
-    const on = period === key;
-    return <a href={`?p=${key}`} style={{ flex: 1, textAlign: "center", padding: "7px 0", fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: "none", color: on ? "var(--p-on-accent)" : "var(--p-muted)", background: on ? "var(--p-accent)" : "transparent", borderRadius: 9 }}>{label}</a>;
-  };
 
   return (
     <main className="amain">
@@ -117,7 +116,7 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
 
       <div className="atopbar">
         <div className="atopbar-in">
-          <div className="atoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
+          <PortalPeriod selected={selected} months={months} />
         </div>
       </div>
 

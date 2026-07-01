@@ -25,7 +25,7 @@ export interface ClientAds {
 const pctDelta = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
 
 export async function getClientAds(clientId: string, period: Period = "month"): Promise<ClientAds> {
-  const { start, now, prevStart, prevEnd, label } = periodRanges(period);
+  const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const [metaConn, wa] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true, currency: true } }),
     prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
@@ -39,9 +39,9 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   if (!metaConn) return empty;
 
   const [insightRows, prevSpendAgg, leadRows, prevAdLeads] = await Promise.all([
-    prisma.metaAdInsight.findMany({ where: { connectionId: metaConn.id, date: { gte: start, lt: now } }, select: { adId: true, date: true, spend: true } }),
+    prisma.metaAdInsight.findMany({ where: { connectionId: metaConn.id, date: { gte: start, lt: end } }, select: { adId: true, date: true, spend: true } }),
     prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevStart, lt: prevEnd } } }),
-    wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: now }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
+    wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: end }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
     wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
   ]);
 
@@ -95,11 +95,11 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   for (const r of insightRows) { const k = dayKey(r.date); spendByDay.set(k, (spendByDay.get(k) ?? 0) + r.spend); }
   const leadsByDay = new Map<string, number>();
   if (wa) {
-    const leadDays = await prisma.waLead.findMany({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: now } }, select: { enteredAt: true } });
+    const leadDays = await prisma.waLead.findMany({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: end } }, select: { enteredAt: true } });
     for (const l of leadDays) { const k = dayKey(l.enteredAt); leadsByDay.set(k, (leadsByDay.get(k) ?? 0) + 1); }
   }
   const series: ClientAds["series"] = [];
-  for (let t = start.getTime(); t <= now.getTime(); t += 86_400_000) { const k = dayKey(new Date(t)); series.push({ day: k, spend: Math.round((spendByDay.get(k) ?? 0) * 100) / 100, leads: leadsByDay.get(k) ?? 0 }); }
+  for (let t = start.getTime(); t <= end.getTime(); t += 86_400_000) { const k = dayKey(new Date(t)); series.push({ day: k, spend: Math.round((spendByDay.get(k) ?? 0) * 100) / 100, leads: leadsByDay.get(k) ?? 0 }); }
 
   return {
     hasMeta: true, periodLabel: label, currency: metaConn.currency || "BRL",
