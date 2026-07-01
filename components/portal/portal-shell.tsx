@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone } from "lucide-react";
+import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
@@ -64,6 +65,9 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />} {theme === "dark" ? "Tema claro" : "Tema escuro"}
         </button>
       </aside>
+
+      {/* Consultor Veloce — assistente flutuante em todo o portal */}
+      <PortalAdvisor token={token} />
     </>
   );
 }
