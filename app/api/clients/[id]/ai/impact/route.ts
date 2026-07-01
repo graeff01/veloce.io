@@ -8,5 +8,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { error } = await requireAuth("clients:read");
   if (error) return error;
   const days = Math.min(180, Math.max(1, Number(new URL(req.url).searchParams.get("days") || 30)));
-  return NextResponse.json(await buildImpact(id, days));
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86_400_000);
+  return NextResponse.json(await buildImpact(id, { start, end }));
 }

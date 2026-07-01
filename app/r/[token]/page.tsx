@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { getClientDashboard, getBenchmark, type Period } from "@/lib/notifications/client-report";
+import { getClientDashboard, getBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
+import { PortalPeriod } from "@/components/portal/portal-period";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
@@ -107,7 +108,9 @@ function AttendanceSpeed({ tempoMedio, taxa, buckets }: { tempoMedio: number | n
 export default async function PortalPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ p?: string }> }) {
   const { token } = await params;
   const { p } = await searchParams;
-  const period: Period = p === "week" ? "week" : "month";
+  const months = recentMonths(12);
+  const period = normalizePeriod(p);
+  const selected = period === "week" ? "week" : period === "month" ? months[0].value : period;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -156,10 +159,6 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
     if (semResposta > 0) summary.push(`${int(semResposta)} lead${semResposta !== 1 ? "s" : ""} ainda sem resposta.`);
   }
 
-  const tab = (key: Period, label: string) => {
-    const on = period === key;
-    return <a href={`?p=${key}`} style={{ flex: 1, textAlign: "center", padding: "7px 0", fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: "none", color: on ? "var(--p-on-accent)" : "var(--p-muted)", background: on ? "var(--p-accent)" : "transparent", borderRadius: 9 }}>{label}</a>;
-  };
 
   return (
     <main className="pmain">
@@ -207,7 +206,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           <div className="ptopmeta">
             <span className="pupdated">Atualizado {atualizado}</span>
             <PortalShare />
-            <div className="ptoggle">{tab("month", "Mês")}{tab("week", "7 dias")}</div>
+            <PortalPeriod selected={selected} months={months} />
           </div>
         </div>
       </div>

@@ -106,7 +106,7 @@ export async function resultadosHoje(clientId: string): Promise<string> {
 // ── Read-model do DASHBOARD (client-safe) ────────────────────────────────────
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-export type Period = "week" | "month";
+export type Period = "week" | "month" | (string & {}); // "week" | "month" | "YYYY-MM"
 
 export interface ClientDashboard {
   generatedAt: string;
@@ -124,18 +124,45 @@ export interface ClientDashboard {
   series: { day: string; leads: number }[];
 }
 
-// Início do período (BRT) + período comparável anterior, para "semana" ou "mês".
-export function periodRanges(period: Period): { start: Date; now: Date; prevStart: Date; prevEnd: Date; label: string } {
-  const now = new Date();
-  if (period === "week") {
-    const start = new Date(now.getTime() - 7 * 86_400_000);
-    return { start, now, prevStart: new Date(now.getTime() - 14 * 86_400_000), prevEnd: start, label: "Últimos 7 dias" };
-  }
+const MONTH_RE = /^(\d{4})-(\d{2})$/;
+
+// Normaliza o ?p da URL: "week", "YYYY-MM" (mês específico) ou "month" (mês atual).
+export function normalizePeriod(p?: string | null): Period {
+  if (p === "week") return "week";
+  if (p && MONTH_RE.test(p)) return p;
+  return "month";
+}
+
+// Últimos N meses (mais recente primeiro) — alimenta o seletor de período do portal.
+export function recentMonths(n = 12): { value: string; label: string }[] {
   const [y, m] = nowParts(TZ).ymd.split("-").map(Number);
+  const out: { value: string; label: string }[] = [];
+  for (let i = 0; i < n; i++) {
+    let yy = y, mo = m - i;
+    while (mo <= 0) { mo += 12; yy--; }
+    out.push({ value: `${yy}-${String(mo).padStart(2, "0")}`, label: `${MONTHS[mo - 1]} ${yy}` });
+  }
+  return out;
+}
+
+// Início do período (BRT) + período comparável anterior. Aceita "week", "month"
+// (mês atual) ou "YYYY-MM". Para mês passado, end = início do mês seguinte (mês cheio).
+export function periodRanges(period: Period): { start: Date; end: Date; prevStart: Date; prevEnd: Date; label: string } {
+  const realNow = new Date();
+  if (period === "week") {
+    const start = new Date(realNow.getTime() - 7 * 86_400_000);
+    return { start, end: realNow, prevStart: new Date(realNow.getTime() - 14 * 86_400_000), prevEnd: start, label: "Últimos 7 dias" };
+  }
+  const match = typeof period === "string" ? MONTH_RE.exec(period) : null;
+  const [cy, cm] = nowParts(TZ).ymd.split("-").map(Number);
+  const y = match ? Number(match[1]) : cy;
+  const m = match ? Number(match[2]) : cm;
   const mm = (yy: number, mo: number) => wallToInstant(`${yy}-${String(mo).padStart(2, "0")}-01`, "00:00", TZ);
   const start = mm(y, m);
+  const nextStart = mm(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1);
+  const end = y === cy && m === cm ? realNow : nextStart; // mês atual = até agora; passado = mês cheio
   const prevStart = mm(m === 1 ? y - 1 : y, m === 1 ? 12 : m - 1);
-  return { start, now, prevStart, prevEnd: new Date(prevStart.getTime() + (now.getTime() - start.getTime())), label: `${MONTHS[m - 1]} ${y}` };
+  return { start, end, prevStart, prevEnd: new Date(prevStart.getTime() + (end.getTime() - start.getTime())), label: `${MONTHS[m - 1]} ${y}` };
 }
 
 // Health Score 0–100 (velocidade 35 + resposta 30 + conversão 20 + quentes atendidos 15).
@@ -188,12 +215,12 @@ function narrative(a: ClientDashboard["atendimento"], hot: number, periodWord: s
 }
 
 export async function getClientDashboard(clientId: string, period: Period = "month"): Promise<ClientDashboard> {
-  const { start, now, prevStart, prevEnd, label } = periodRanges(period);
+  const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const connIds = await connIdsFor(clientId);
   const excluded = await excludedTokens(clientId);
 
   const [convsRaw, prevConvsRaw, waiting, metaConn, wa] = await Promise.all([
-    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: now } }, select: { firstResponseSec: true, funnelStage: true, firstInboundAt: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
+    connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: start, lt: end } }, select: { firstResponseSec: true, funnelStage: true, firstInboundAt: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     waitingWithTemp(connIds, excluded),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
@@ -231,7 +258,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   const dayCounts = new Map<string, number>();
   for (const c of convs) { if (c.firstInboundAt) { const k = dayKey(c.firstInboundAt); dayCounts.set(k, (dayCounts.get(k) ?? 0) + 1); } }
   const series: { day: string; leads: number }[] = [];
-  for (let t = start.getTime(); t <= now.getTime(); t += 86_400_000) { const k = dayKey(new Date(t)); series.push({ day: k, leads: dayCounts.get(k) ?? 0 }); }
+  for (let t = start.getTime(); t <= end.getTime(); t += 86_400_000) { const k = dayKey(new Date(t)); series.push({ day: k, leads: dayCounts.get(k) ?? 0 }); }
 
   const hot = waiting.filter((w) => w.temp === "hot").length;
   const warm = waiting.filter((w) => w.temp === "warm").length;
@@ -243,9 +270,9 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   let spendCur = 0, spendPrev = 0, cplCur: number | null = null, cplPrev: number | null = null;
   if (metaConn) {
     const [spendAgg, adLeads, leadRows, prevSpendAgg, prevAdLeads] = await Promise.all([
-      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: start } } }),
-      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: now } } }) : Promise.resolve(0),
-      wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: now }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: start, lt: end } } }),
+      wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: end } } }) : Promise.resolve(0),
+      wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: end }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
       prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevStart, lt: prevEnd } } }),
       wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
     ]);
@@ -293,7 +320,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   };
 
   return {
-    generatedAt: now.toISOString(),
+    generatedAt: new Date().toISOString(),
     period, periodLabel: label,
     narrative: narrative(atendimento, hot, period === "week" ? "nos últimos 7 dias" : "no mês"),
     health: healthScore(atendimento, hot),
@@ -309,10 +336,10 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
 // Benchmark anônimo: percentil da TAXA DE RESPOSTA deste cliente vs. as demais contas.
 // Retorna "% das contas que este cliente supera" (null se não há base suficiente).
 export async function getBenchmark(clientId: string, period: Period = "month"): Promise<number | null> {
-  const { start, now } = periodRanges(period);
+  const { start, end } = periodRanges(period);
   const [totals, responded, conns] = await Promise.all([
-    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: now } }, _count: { _all: true } }),
-    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: now }, firstResponseSec: { not: null } }, _count: { _all: true } }),
+    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: end } }, _count: { _all: true } }),
+    prisma.waConversation.groupBy({ by: ["connectionId"], where: { firstInboundAt: { gte: start, lt: end }, firstResponseSec: { not: null } }, _count: { _all: true } }),
     prisma.waConnection.findMany({ select: { id: true, clientId: true } }),
   ]);
   const toClient = new Map(conns.map((c) => [c.id, c.clientId]));
