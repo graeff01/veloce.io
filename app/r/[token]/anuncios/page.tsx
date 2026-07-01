@@ -7,6 +7,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalPeriod } from "@/components/portal/portal-period";
+import { PortalCreativeMedia } from "@/components/portal/portal-creative-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -154,10 +155,10 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
             ) : (
               <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 12, overflow: "hidden", background: "var(--p-bg)", border: "1px solid var(--p-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {data.bestCreative.image
-                    // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={data.bestCreative.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                    : <span style={{ fontSize: 34 }}>📣</span>}
+                  <PortalCreativeMedia
+                    videoSrc={data.bestCreative.videoId && data.bestCreative.creativeId ? `/api/portal/${token}/creative/${data.bestCreative.creativeId}/video` : null}
+                    poster={data.bestCreative.image}
+                  />
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.bestCreative.campaignName}</div>
