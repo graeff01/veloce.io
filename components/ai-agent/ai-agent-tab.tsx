@@ -5,7 +5,7 @@ import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
-  History, Target, FileText, ScrollText, LineChart, Sparkles,
+  History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap,
 } from "lucide-react";
 import { TabHeader } from "@/components/clients/tab-header";
 
@@ -676,6 +676,124 @@ function CostSection({ clientId }: { clientId: string }) {
   );
 }
 
+// ── Impacto / ROI (Resultados) — prova de valor pro dono da loja (#3) ──────────
+interface Impact {
+  windowDays: number;
+  responseTime: { aiMedianSec: number | null; humanMedianSec: number | null; aiCount: number; humanCount: number };
+  leads: { attended: number; qualified: number; hot: number };
+  recovered: number;
+  cost: { totalUsd: number; perLeadUsd: number; leads: number };
+}
+
+// Formata segundos em algo legível: "12s", "8min", "2h 36min".
+function fmtDur(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h ${m}min` : `${h}h`;
+}
+
+const usdFmt = (n: number) => `US$ ${n.toFixed(n < 1 ? 4 : 2)}`;
+
+function ImpactSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<Impact | null>(null);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/impact?days=${days}`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData(d);
+    });
+  }, [clientId, days]);
+
+  if (!data) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  const rt = data.responseTime;
+  const speedup = rt.aiMedianSec && rt.humanMedianSec && rt.aiMedianSec > 0 ? Math.round(rt.humanMedianSec / rt.aiMedianSec) : null;
+  const emptyHint = (t: string) => <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>O que a IA entregou nos últimos {data.windowDays} dias.</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ ...input, width: 120 }}>
+          {[7, 30, 90].map((d) => <option key={d} value={d}>{d} dias</option>)}
+        </select>
+      </div>
+
+      {/* Herói — tempo de resposta: IA (segundos) x histórico humano da loja */}
+      <div style={{ ...card, borderColor: "var(--accent)", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
+          <Zap size={16} style={{ color: "var(--accent)" }} /> Velocidade de resposta
+        </div>
+        {rt.aiMedianSec == null ? emptyHint("Sem dados ainda — aparece quando a IA começar a atender leads.") : (
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 28, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>IA (mediana)</div>
+              <div style={{ fontSize: 34, fontWeight: 800, color: "var(--accent)", lineHeight: 1.1 }}>{fmtDur(rt.aiMedianSec)}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{rt.aiCount} lead{rt.aiCount === 1 ? "" : "s"}</div>
+            </div>
+            {rt.humanMedianSec != null && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>Antes (humano)</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-secondary)", lineHeight: 1.2 }}>{fmtDur(rt.humanMedianSec)}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{rt.humanCount} lead{rt.humanCount === 1 ? "" : "s"}</div>
+              </div>
+            )}
+            {speedup && speedup > 1 && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--green)", padding: "4px 12px", borderRadius: 99, background: "var(--bg-base)", marginBottom: 4 }}>≈ {speedup}× mais rápido</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Leads atendidos / Recuperados / Custo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+        <div style={card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Leads atendidos pela IA</div>
+          {data.leads.attended === 0 ? emptyHint("Sem leads atendidos ainda.") : (
+            <>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text-primary)" }}>{data.leads.attended}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "var(--bg-base)", color: "var(--text-secondary)" }}>{data.leads.qualified} qualificados</span>
+                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "var(--bg-base)", color: "var(--red)" }}>🔥 {data.leads.hot} quentes</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Leads recuperados</div>
+          {data.recovered === 0 ? emptyHint("Nenhum re-engajamento no período.") : (
+            <>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "var(--green)" }}>{data.recovered}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>reativados pela IA antes de esfriar</div>
+            </>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Custo × retorno</div>
+          {data.cost.leads === 0 ? emptyHint("Sem custo registrado ainda.") : (
+            <div style={{ display: "flex", gap: 20 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Total ({data.windowDays}d)</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", marginTop: 2 }}>{usdFmt(data.cost.totalUsd)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Por lead</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--green)", marginTop: 2 }}>{usdFmt(data.cost.perLeadUsd)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Avaliação (Validar) — juiz IA, A/B e revisão humana ───────────────────────
 function EvaluationSection({ clientId }: { clientId: string }) {
   const [data, setData] = useState<Insights | null>(null);
@@ -1184,7 +1302,7 @@ function AnalyticsSection({ clientId }: { clientId: string }) {
 }
 
 // ── Root (navegação interna em sidebar, agrupada por modo de uso) ─────────────
-type Section = "overview" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
+type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 // Item de navegação da sidebar da IA — com hover e indicador ativo.
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -1215,6 +1333,9 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
 
   const nav: { group?: string; items: { key: Section; label: string; icon: React.ReactNode }[] }[] = [
     { items: [{ key: "overview", label: "Visão geral", icon: <LayoutDashboard size={14} /> }] },
+    { group: "Resultados", items: [
+      { key: "impacto", label: "Impacto", icon: <TrendingUp size={14} /> },
+    ] },
     { group: "Construir", items: [
       { key: "config", label: "Configuração", icon: <Bot size={14} /> },
       { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={14} /> },
@@ -1255,6 +1376,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {section === "overview" && <OverviewSection clientId={clientId} onNavigate={setSection} />}
+        {section === "impacto" && <ImpactSection clientId={clientId} />}
         {section === "config" && <ConfigSection clientId={clientId} />}
         {section === "console" && <ConsoleSection clientId={clientId} />}
         {section === "avaliacao" && <EvaluationSection clientId={clientId} />}
