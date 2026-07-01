@@ -7,7 +7,7 @@ export function isWithinBusinessHours(windows: Window[], weekday: number, minute
   return (windows ?? []).some((w) => w.weekday === weekday && minutes >= toMin(w.start) && minutes < toMin(w.end));
 }
 
-interface CfgLike { enabled: boolean; status: string; businessHours: unknown; timezone: string; paused?: boolean }
+interface CfgLike { enabled: boolean; status: string; businessHours: unknown; timezone: string; paused?: boolean; testMode?: boolean }
 
 // Decide se a IA deve assumir. Atua só: kill-switch global desligado, NÃO pausada pelo
 // cliente, status "live", habilitada e FORA do horário comercial (no fuso do tenant).
@@ -16,6 +16,10 @@ export function shouldRespond(cfg: CfgLike | null): { respond: boolean; reason: 
   if (!cfg || !cfg.enabled) return { respond: false, reason: "agente desligado" };
   if (cfg.paused) return { respond: false, reason: "pausado pelo cliente (kill-switch)" };
   if (cfg.status !== "live") return { respond: false, reason: `status ${cfg.status} (não está em produção)` };
+
+  // Canário: ignora o horário comercial para permitir validar em PRD a qualquer hora.
+  // Seguro — o respond.ts filtra e só responde os números de teste; nenhum lead real é tocado.
+  if (cfg.testMode) return { respond: true, reason: "canário (ignora horário)" };
 
   const hours = (cfg.businessHours as Window[]) ?? [];
   if (hours.length === 0) return { respond: false, reason: "horário comercial não configurado" };
