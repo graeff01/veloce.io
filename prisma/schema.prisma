@@ -650,6 +650,8 @@ model MetaCreative {
   title        String?
   body         String?
   thumbnailUrl String?
+  imageUrl     String?  // imagem em alta (object_story_spec/asset_feed_spec) — melhor que a thumb
+  videoId      String?  // id do vídeo na Meta (quando o criativo é vídeo) — fonte resolvida sob demanda
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

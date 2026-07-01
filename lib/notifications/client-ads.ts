@@ -18,7 +18,7 @@ export interface ClientAds {
   cpl: number | null;
   deltas: { spend: number | null; leads: number | null; cpl: number | null };
   topCampaigns: { name: string; spend: number; leads: number; cpl: number | null; pctSpend: number }[];
-  bestCreative: { campaignName: string; leads: number; image: string | null } | null;
+  bestCreative: { campaignName: string; leads: number; image: string | null; creativeId: string | null; videoId: string | null } | null;
   series: { day: string; spend: number; leads: number }[];
 }
 
@@ -82,11 +82,13 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
     const campId = adToCamp.get(bestAd);
     const creativeId = adToCreative.get(bestAd) ?? null;
     let image: string | null = null;
+    let videoId: string | null = null;
     if (creativeId) {
-      const cr = await prisma.metaCreative.findUnique({ where: { connectionId_creativeId: { connectionId: metaConn.id, creativeId } }, select: { thumbnailUrl: true } });
-      image = cr?.thumbnailUrl ?? null;
+      const cr = await prisma.metaCreative.findUnique({ where: { connectionId_creativeId: { connectionId: metaConn.id, creativeId } }, select: { thumbnailUrl: true, imageUrl: true, videoId: true } });
+      image = cr?.imageUrl || cr?.thumbnailUrl || null; // prioriza alta resolução
+      videoId = cr?.videoId ?? null;
     }
-    bestCreative = { campaignName: (campId && campNames.get(campId)) || "Campanha", leads: bestAdN, image };
+    bestCreative = { campaignName: (campId && campNames.get(campId)) || "Campanha", leads: bestAdN, image, creativeId, videoId };
   }
 
   // Série diária: investimento x leads (evolução).

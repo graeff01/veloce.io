@@ -125,6 +125,19 @@ function extractWhatsappNumber(creative: CreativeRow | undefined): string | null
   return m ? m[1] : null;
 }
 
+// Imagem em alta + id do vídeo do criativo (object_story_spec / asset_feed_spec).
+// Best-effort: varre os specs por "video_id" e por uma "image_url"/"picture" de
+// resolução decente. Nunca lança — cai para a thumbnail quando não acha nada.
+function extractMedia(creative: CreativeRow | undefined): { imageUrl: string | null; videoId: string | null } {
+  if (!creative) return { imageUrl: null, videoId: null };
+  const blob = JSON.stringify(creative.object_story_spec ?? "") + JSON.stringify(creative.asset_feed_spec ?? "");
+  const vid = blob.match(/"video_id"\s*:\s*"(\d+)"/);
+  // Prioriza image_url (alta) e picture; ignora as p64x64 (thumb minúscula).
+  const img = blob.match(/"image_url"\s*:\s*"([^"]+)"/) || blob.match(/"picture"\s*:\s*"([^"]+)"/);
+  const imageUrl = img ? img[1].replace(/\\\//g, "/") : null;
+  return { imageUrl, videoId: vid ? vid[1] : null };
+}
+
 export interface MetaSyncResult {
   campaigns: number; adsets: number; ads: number; creatives: number; insightDays: number;
   period: { since: string; until: string };
@@ -177,7 +190,8 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
         `${GRAPH}/${acct}/adcreatives?fields=${CR_BASE}&limit=300&${auth}`, "adcreatives")
     : [];
   const waByCreative = new Map<string, string | null>();
-  for (const cr of creatives) waByCreative.set(cr.id, extractWhatsappNumber(cr));
+  const mediaByCreative = new Map<string, { imageUrl: string | null; videoId: string | null }>();
+  for (const cr of creatives) { waByCreative.set(cr.id, extractWhatsappNumber(cr)); mediaByCreative.set(cr.id, extractMedia(cr)); }
 
   // 2) Insights diários em nível de anúncio (frequency cai para base se recusado).
   const timeRange = `{"since":"${since}","until":"${until}"}`;
@@ -229,8 +243,8 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
   await runChunked(creatives, (cr) =>
     prisma.metaCreative.upsert({
       where: { connectionId_creativeId: { connectionId, creativeId: cr.id } },
-      create: { connectionId, creativeId: cr.id, name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null },
-      update: { name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null, updatedAt: now },
+      create: { connectionId, creativeId: cr.id, name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null, imageUrl: mediaByCreative.get(cr.id)?.imageUrl ?? null, videoId: mediaByCreative.get(cr.id)?.videoId ?? null },
+      update: { name: cr.name ?? null, title: cr.title ?? null, body: cr.body ?? null, thumbnailUrl: cr.thumbnail_url ?? null, imageUrl: mediaByCreative.get(cr.id)?.imageUrl ?? null, videoId: mediaByCreative.get(cr.id)?.videoId ?? null, updatedAt: now },
     }),
   );
 
