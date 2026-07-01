@@ -27,6 +27,13 @@ interface RunnerInput {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Divide a resposta da IA em até 3 bolhas por LINHA EM BRANCO (cadência humana).
+// Sem linha em branco → 1 mensagem só (comportamento de antes).
+function splitBlocks(text: string): string[] {
+  const parts = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  return parts.length <= 1 ? [text.trim()] : parts.slice(0, 3);
+}
+
 async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string }, to: string, text: string) {
   let last: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
   for (let a = 0; a < 2; a++) {
@@ -149,13 +156,22 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   });
   if (!out.reply) return "skipped"; // limite/desligado — nada a enviar
 
-  // 8) Envia. Se falhar após retries, sinaliza erro para a fila re-tentar.
-  const sent = await sendWithRetry(conn, contact.waId, out.reply);
-  if (!sent.ok) {
-    await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${sent.error}` }).catch(() => {});
-    return "error";
+  // 8) Envia. A IA pode separar a resposta em até 3 bolhas (linha em branco) — cadência
+  //    humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar DEPOIS de já ter enviado
+  //    algo, para sem re-enfileirar (evita duplicar mensagens ao lead).
+  const blocks = splitBlocks(out.reply);
+  let sent: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
+  for (let i = 0; i < blocks.length; i++) {
+    const r = await sendWithRetry(conn, contact.waId, blocks[i]);
+    if (!r.ok) {
+      await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${r.error}` }).catch(() => {});
+      if (i === 0) return "error";
+      break;
+    }
+    sent = r;
+    await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-${Date.now()}-${i}`, blocks[i], new Date());
+    if (i < blocks.length - 1) await sleep(900);
   }
-  await storeOutbound(conn.id, contact.id, sent.waMessageId || `ia-${Date.now()}`, out.reply, new Date());
 
   // Pipeline assíncrono (fora do caminho crítico): memória rolante + inteligência
   // (intent/sentiment/objeção da mensagem do lead). Nunca atrasa nem quebra o atendimento.
