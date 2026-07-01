@@ -10,8 +10,9 @@ import { windowCost } from "@/lib/ai-agent/usage";
 export interface ImpactSummary {
   windowDays: number;
   responseTime: { aiMedianSec: number | null; humanMedianSec: number | null; aiCount: number; humanCount: number };
-  leads: { attended: number; qualified: number; hot: number };
+  leads: { attended: number; qualified: number; hot: number; warm: number; cold: number };
   recovered: number;
+  fichasEntregues: number;
   cost: { totalUsd: number; perLeadUsd: number; leads: number };
 }
 
@@ -29,7 +30,7 @@ export async function buildImpact(clientId: string, days = 30): Promise<ImpactSu
   const connIds = conns.map((c) => c.id);
 
   if (connIds.length === 0) {
-    return { windowDays: days, responseTime: { aiMedianSec: null, humanMedianSec: null, aiCount: 0, humanCount: 0 }, leads: { attended: 0, qualified: 0, hot: 0 }, recovered: 0, cost: { totalUsd: 0, perLeadUsd: 0, leads: 0 } };
+    return { windowDays: days, responseTime: { aiMedianSec: null, humanMedianSec: null, aiCount: 0, humanCount: 0 }, leads: { attended: 0, qualified: 0, hot: 0, warm: 0, cold: 0 }, recovered: 0, fichasEntregues: 0, cost: { totalUsd: 0, perLeadUsd: 0, leads: 0 } };
   }
 
   // Contatos atendidos pela IA na janela (saída aiGenerated) — base de "leads atendidos".
@@ -39,17 +40,21 @@ export async function buildImpact(clientId: string, days = 30): Promise<ImpactSu
   });
   const aiContactIds = aiOutMsgs.map((m) => m.contactId);
 
-  const [convRows, qualified, hot, recovered, cost] = await Promise.all([
+  const [convRows, qualified, tempRows, recovered, fichasEntregues, cost] = await Promise.all([
     // Conversas com 1ª resposta na janela — split IA x humano pela mediana do tempo.
     prismaUnscoped.waConversation.findMany({
       where: { connectionId: { in: connIds }, firstResponseAt: { gte: since }, firstResponseSec: { not: null } },
       select: { contactId: true, firstResponseSec: true },
     }),
     prismaUnscoped.leadProfile.count({ where: { connectionId: { in: connIds }, qualified: true } }),
-    prismaUnscoped.leadProfile.count({ where: { connectionId: { in: connIds }, temperature: "hot" } }),
+    prismaUnscoped.leadProfile.groupBy({ by: ["temperature"], where: { connectionId: { in: connIds }, temperature: { not: null } }, _count: { _all: true } }),
     prismaUnscoped.waConversation.count({ where: { connectionId: { in: connIds }, reengagedAt: { gte: since } } }),
+    prismaUnscoped.waConversation.count({ where: { connectionId: { in: connIds }, fichaSentAt: { gte: since } } }),
     windowCost(clientId, days),
   ]);
+
+  const tempOf = (k: string) => (tempRows.find((r) => r.temperature === k)?._count._all ?? 0);
+  const hot = tempOf("hot"), warm = tempOf("warm"), cold = tempOf("cold");
 
   const aiSet = new Set(aiContactIds);
   const aiSecs: number[] = [];
@@ -62,8 +67,9 @@ export async function buildImpact(clientId: string, days = 30): Promise<ImpactSu
   return {
     windowDays: days,
     responseTime: { aiMedianSec: median(aiSecs), humanMedianSec: median(humanSecs), aiCount: aiSecs.length, humanCount: humanSecs.length },
-    leads: { attended: aiContactIds.length, qualified, hot },
+    leads: { attended: aiContactIds.length, qualified, hot, warm, cold },
     recovered,
+    fichasEntregues,
     cost: { totalUsd: cost.totalUsd, perLeadUsd: cost.perLeadUsd, leads: cost.leads },
   };
 }
