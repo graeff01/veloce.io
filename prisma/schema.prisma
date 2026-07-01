@@ -1105,6 +1105,7 @@ model AiJob {
   payload        Json?     // metadados da última mensagem (type/mediaId/mime/text)
   status         String    @default("pending") // pending | processing
   attempts       Int       @default(0)
+  generatedReply String?   // resposta já gerada (retry idempotente: reenvia sem re-gerar)
   runAfter       DateTime  @default(now()) // debounce/backoff: só processa após este instante
   lockedAt       DateTime? // claim atômico anti-concorrência (expira após timeout)
   lastError      String?
