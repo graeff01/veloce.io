@@ -68,6 +68,24 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   });
   if (!contact) return "skipped";
 
+  // Retry IDEMPOTENTE: se um attempt anterior JÁ gerou a resposta (mas o envio falhou),
+  // apenas REENVIA a mesma — não re-roda o agente (evita re-gerar, re-mandar foto ou
+  // perder a saudação/nome). Só respeita opt-out/silenciar.
+  const pending = await prisma.aiJob.findUnique({ where: { contactId: contact.id }, select: { generatedReply: true } });
+  if (pending?.generatedReply) {
+    if (contact.aiOptedOut || contact.aiSilenced) return "skipped";
+    const blocks = splitBlocks(pending.generatedReply);
+    let ok = false;
+    for (let i = 0; i < blocks.length; i++) {
+      const r = await sendWithRetry(conn, contact.waId, blocks[i]);
+      if (!r.ok) { if (i === 0) return "error"; break; }
+      ok = true;
+      await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-${Date.now()}-${i}`, blocks[i], new Date());
+      if (i < blocks.length - 1) await sleep(900);
+    }
+    return ok ? "sent" : "error";
+  }
+
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: conn.clientId } });
 
   // 0) Modo operador: se quem mandou é um número da triagem, NÃO é lead — entrega as
@@ -155,6 +173,10 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     inboundText, idempotencyKey: input.idempotencyKey, inboundMediaType: mediaType ?? undefined,
   });
   if (!out.reply) return "skipped"; // limite/desligado — nada a enviar
+
+  // Cacheia a resposta no job: se o envio falhar, o retry REENVIA esta (não re-gera nem
+  // re-manda foto, e preserva a saudação/nome). Removida quando o job é concluído/apagado.
+  await prisma.aiJob.update({ where: { contactId: contact.id }, data: { generatedReply: out.reply } }).catch(() => {});
 
   // 8) Envia. A IA pode separar a resposta em até 3 bolhas (linha em branco) — cadência
   //    humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar DEPOIS de já ter enviado
