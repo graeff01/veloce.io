@@ -36,7 +36,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
   return (
     <>
       <style>{`.pside{display:none}
-        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain{margin-left:236px} }`}</style>
+        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain{margin-left:236px} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>
         {/* marca do cliente */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, height: 56, padding: "0 6px", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
