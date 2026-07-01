@@ -1340,68 +1340,84 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; labe
   );
 }
 
-export function AiAgentTab({ clientId }: { clientId: string }) {
-  const [section, setSection] = useState<Section>("overview");
+// ── Áreas de nível 1 (4) → cada uma com suas sub-seções ──
+const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: Section; label: string }[] }[] = [
+  { key: "geral", label: "Visão geral", icon: <LayoutDashboard size={15} />, subs: [
+    { key: "overview", label: "Visão geral" },
+  ] },
+  { key: "config", label: "Configuração", icon: <Bot size={15} />, subs: [
+    { key: "config", label: "Configuração" },
+    { key: "conhecimento", label: "Conhecimento" },
+    { key: "catalogo", label: "Estoque" },
+    { key: "prompts", label: "Prompt Lab" },
+    { key: "memoria", label: "Memória" },
+  ] },
+  { key: "testar", label: "Testar", icon: <FlaskConical size={15} />, subs: [
+    { key: "console", label: "Console" },
+    { key: "avaliacao", label: "Avaliação" },
+  ] },
+  { key: "monitorar", label: "Monitorar", icon: <Activity size={15} />, subs: [
+    { key: "impacto", label: "Impacto" },
+    { key: "atividade", label: "Atividade" },
+    { key: "analytics", label: "Analytics" },
+    { key: "inteligencia", label: "Inteligência" },
+    { key: "qualificacao", label: "Qualificação" },
+    { key: "custos", label: "Custos" },
+    { key: "logs", label: "Logs" },
+  ] },
+];
 
-  const nav: { group?: string; items: { key: Section; label: string; icon: React.ReactNode }[] }[] = [
-    { items: [{ key: "overview", label: "Visão geral", icon: <LayoutDashboard size={14} /> }] },
-    { group: "Resultados", items: [
-      { key: "impacto", label: "Impacto", icon: <TrendingUp size={14} /> },
-    ] },
-    { group: "Construir", items: [
-      { key: "config", label: "Configuração", icon: <Bot size={14} /> },
-      { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={14} /> },
-      { key: "catalogo", label: "Estoque", icon: <Package size={14} /> },
-      { key: "prompts", label: "Prompt Lab", icon: <FileText size={14} /> },
-      { key: "memoria", label: "Memória", icon: <History size={14} /> },
-    ] },
-    { group: "Validar", items: [
-      { key: "console", label: "Console", icon: <FlaskConical size={14} /> },
-      { key: "avaliacao", label: "Avaliação", icon: <ClipboardCheck size={14} /> },
-    ] },
-    { group: "Operar", items: [
-      { key: "atividade", label: "Atividade", icon: <Activity size={14} /> },
-      { key: "custos", label: "Custos", icon: <DollarSign size={14} /> },
-      { key: "logs", label: "Logs", icon: <ScrollText size={14} /> },
-    ] },
-    { group: "Inteligência", items: [
-      { key: "inteligencia", label: "Inteligência", icon: <Brain size={14} /> },
-      { key: "qualificacao", label: "Qualificação", icon: <Target size={14} /> },
-      { key: "analytics", label: "Analytics", icon: <LineChart size={14} /> },
-    ] },
-  ];
+export function AiAgentTab({ clientId }: { clientId: string }) {
+  const [area, setArea] = useState<string>("geral");
+  const [sub, setSub] = useState<Section>("overview");
+
+  // Navega direto pra uma sub-seção (usado pela Visão geral) selecionando a área que a contém.
+  function goTo(target: Section) {
+    const a = AREAS.find((ar) => ar.subs.some((sx) => sx.key === target));
+    if (a) { setArea(a.key); setSub(target); }
+  }
+  function openArea(a: (typeof AREAS)[number]) {
+    setArea(a.key);
+    setSub(a.subs[0].key);
+  }
+
+  const current = AREAS.find((a) => a.key === area) ?? AREAS[0];
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-base)" }}>
       <TabHeader icon={<Sparkles size={16} />} title="Agente de IA" subtitle="Configura, valida e opera a IA de atendimento deste cliente" />
       <div style={{ padding: "24px 28px", display: "flex", gap: 20, alignItems: "flex-start" }}>
-      <aside style={{ width: 216, flexShrink: 0, position: "sticky", top: 16, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: 10, display: "flex", flexDirection: "column" }}>
-        {nav.map((grp, gi) => (
-          <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 2, ...(grp.group ? { marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--border)" } : {}) }}>
-            {grp.group && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.7, padding: "0 11px 6px" }}>{grp.group}</div>}
-            {grp.items.map((it) => (
-              <NavItem key={it.key} icon={it.icon} label={it.label} active={section === it.key} onClick={() => setSection(it.key)} />
-            ))}
-          </div>
+      <aside style={{ width: 190, flexShrink: 0, position: "sticky", top: 16, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow-card)", padding: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+        {AREAS.map((a) => (
+          <NavItem key={a.key} icon={a.icon} label={a.label} active={area === a.key} onClick={() => openArea(a)} />
         ))}
       </aside>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        {section === "overview" && <OverviewSection clientId={clientId} onNavigate={setSection} />}
-        {section === "impacto" && <ImpactSection clientId={clientId} />}
-        {section === "config" && <ConfigSection clientId={clientId} />}
-        {section === "console" && <ConsoleSection clientId={clientId} />}
-        {section === "avaliacao" && <EvaluationSection clientId={clientId} />}
-        {section === "catalogo" && <CatalogSection clientId={clientId} />}
-        {section === "conhecimento" && <KnowledgeSection clientId={clientId} />}
-        {section === "memoria" && <MemorySection clientId={clientId} />}
-        {section === "prompts" && <PromptLabSection clientId={clientId} />}
-        {section === "inteligencia" && <InsightsSection clientId={clientId} />}
-        {section === "qualificacao" && <QualificationSection clientId={clientId} />}
-        {section === "analytics" && <AnalyticsSection clientId={clientId} />}
-        {section === "atividade" && <ActivitySection clientId={clientId} />}
-        {section === "custos" && <CostSection clientId={clientId} />}
-        {section === "logs" && <LogsSection clientId={clientId} />}
+        {/* Sub-abas da área (só quando há mais de uma) */}
+        {current.subs.length > 1 && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--border)", paddingBottom: 6, marginBottom: 18 }}>
+            {current.subs.map((sx) => (
+              <button key={sx.key} onClick={() => setSub(sx.key)} style={{ padding: "6px 13px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: sub === sx.key ? "var(--accent-soft)" : "transparent", color: sub === sx.key ? "var(--accent)" : "var(--text-muted)" }}>{sx.label}</button>
+            ))}
+          </div>
+        )}
+
+        {sub === "overview" && <OverviewSection clientId={clientId} onNavigate={goTo} />}
+        {sub === "impacto" && <ImpactSection clientId={clientId} />}
+        {sub === "config" && <ConfigSection clientId={clientId} />}
+        {sub === "console" && <ConsoleSection clientId={clientId} />}
+        {sub === "avaliacao" && <EvaluationSection clientId={clientId} />}
+        {sub === "catalogo" && <CatalogSection clientId={clientId} />}
+        {sub === "conhecimento" && <KnowledgeSection clientId={clientId} />}
+        {sub === "memoria" && <MemorySection clientId={clientId} />}
+        {sub === "prompts" && <PromptLabSection clientId={clientId} />}
+        {sub === "inteligencia" && <InsightsSection clientId={clientId} />}
+        {sub === "qualificacao" && <QualificationSection clientId={clientId} />}
+        {sub === "analytics" && <AnalyticsSection clientId={clientId} />}
+        {sub === "atividade" && <ActivitySection clientId={clientId} />}
+        {sub === "custos" && <CostSection clientId={clientId} />}
+        {sub === "logs" && <LogsSection clientId={clientId} />}
       </div>
       </div>
     </div>
