@@ -1,14 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientAds } from "@/lib/notifications/client-ads";
-import { periodRanges, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
-import { computeMetaAdsView } from "@/lib/meta-ads-view";
+import { normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalPeriod } from "@/components/portal/portal-period";
-import { PortalCreatives, type PortalCampaign, type PortalCreative } from "@/components/portal/portal-creatives";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,22 +68,9 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
     );
   }
 
-  const { start, end } = periodRanges(period);
-  const [data, adsView] = await Promise.all([
-    getClientAds(portal.clientId, period),
-    computeMetaAdsView(portal.clientId, start, end),
-  ]);
+  const data = await getClientAds(portal.clientId, period);
   const cur = data.currency;
   const maxSpend = Math.max(1, ...data.series.map((s) => s.spend));
-
-  // Curadoria: só resultado + imagem chegam ao cliente (nada de CTR/CPC/rankings).
-  const portalCampaigns: PortalCampaign[] = adsView.campaigns
-    .filter((c) => c.spend > 0 || c.leads > 0)
-    .sort((a, b) => b.spend - a.spend)
-    .map((c) => ({ campaignId: c.campaignId, name: c.name, status: c.status, spend: c.spend, leads: c.leads, cpl: c.cpl }));
-  const portalCreatives: PortalCreative[] = adsView.ads
-    .filter((a) => a.spend > 0 || a.leads > 0)
-    .map((a) => ({ adId: a.adId, name: a.name, campaignId: a.campaignId, campaignName: a.campaignName, thumbnailUrl: a.thumbnailUrl, spend: a.spend, leads: a.leads }));
 
   const summary = !data.hasMeta
     ? "Assim que sua conta de anúncios estiver conectada, a transparência do investimento aparece aqui."
@@ -201,9 +186,6 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
             </div>
           )}
         </div>
-
-        {/* CAMPANHAS E CRIATIVOS */}
-        {data.hasMeta && <PortalCreatives campaigns={portalCampaigns} creatives={portalCreatives} currency={cur} />}
 
         {/* NARRATIVA */}
         <div style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
