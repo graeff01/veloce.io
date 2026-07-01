@@ -50,6 +50,17 @@ export interface CostBreakdown {
   leads30d: number; costPerLead: number;
 }
 
+// Custo agregado numa janela arbitrária (dias) + custo por lead — usado pelo painel de impacto.
+export async function windowCost(clientId: string, days: number): Promise<{ totalUsd: number; leads: number; perLeadUsd: number }> {
+  const since = new Date(Date.now() - days * 864e5);
+  const [total, leadRows] = await Promise.all([
+    spendSince(clientId, since),
+    prismaUnscoped.aiInteraction.findMany({ where: { clientId, createdAt: { gte: since } }, distinct: ["contactId"], select: { contactId: true } }),
+  ]);
+  const leads = leadRows.length;
+  return { totalUsd: Math.round(total * 1e4) / 1e4, leads, perLeadUsd: leads ? Math.round((total / leads) * 1e4) / 1e4 : 0 };
+}
+
 // Cost monitor por cliente — hoje / 7d / 30d + por pipeline + custo por lead.
 export async function costBreakdown(clientId: string): Promise<CostBreakdown> {
   const now = Date.now();
