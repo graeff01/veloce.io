@@ -23,9 +23,9 @@ function approach(p: { temperature?: string | null; readyToBuy?: boolean | null;
   if (p.buyingPriority) parts.push(`O que mais pesa pra ele: ${p.buyingPriority} — conecte o argumento nisso.`);
   if (p.hasTradeIn) parts.push("Leve já a avaliação da troca.");
   if (p.budget) parts.push("Tenha proposta dentro do orçamento informado.");
-  if (p.lastSentiment && /SKEPTICAL|FRUSTRATED|ANGRY|CONFUSED/i.test(p.lastSentiment)) parts.push("Lead com receio/insegurança — comece reduzindo a desconfiança (procedência, laudo cautelar, garantia).");
+  if (p.lastSentiment && /SKEPTICAL|FRUSTRATED|ANGRY|CONFUSED/i.test(p.lastSentiment)) parts.push("Lead com receio/insegurança — comece reduzindo a desconfiança (procedência, revisão, garantia).");
   if (openObjections.includes("PRICE")) parts.push("Atenção: objeção de PREÇO em aberto — prepare argumento de valor.");
-  if (openObjections.includes("TRUST")) parts.push("Objeção de CONFIANÇA — reforce laudo cautelar e garantia.");
+  if (openObjections.includes("TRUST")) parts.push("Objeção de CONFIANÇA — reforce a procedência, a revisão e a garantia.");
   if (openObjections.includes("COMPETITOR")) parts.push("Está comparando com concorrência — destaque diferenciais.");
   return parts.join(" ");
 }
