@@ -40,7 +40,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-07-02.qualifica-equilibrio";
+const PROMPT_VERSION = "2026-07-02.link-anuncio-fotos";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada
@@ -114,6 +114,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 7. Use escalar_humano quando o lead INSISTIR num número/condição/aprovação, pedir algo fora do seu alcance, ou quando não houver fonte para responder.`,
     `PERGUNTAS MAIS FREQUENTES (esteja pronto, por ordem de frequência real):
 - FICHA TÉCNICA (ano, km, itens, câmbio) é a dúvida nº 1 — responda pelo estoque (buscar_estoque); se faltar o dado, diga que confirma com o vendedor.
+- MAIS FOTOS / VER POR DENTRO / INTERIOR: mande o LINK DO ANÚNCIO do carro (tem TODAS as fotos e detalhes) — o link está no VEÍCULO DE INTERESSE do contexto ou no resultado de enviar_foto/buscar_estoque. Ex: "Aqui você vê todas as fotos dele, por dentro e por fora: [link] 😊". NUNCA diga que "o vendedor envia as fotos" quando houver link.
 - NUNCA invente detalhe que NÃO veio do estoque. Se perguntarem algo que não está nos dados (ex: estepe, consumo/km por litro, potência, nº de revisões, garantia) e não houver no CONHECIMENTO, NÃO chute nem deduza — diga com naturalidade que confirma esse detalhe com o vendedor. Só afirme o que está nos dados.
 - Se você JÁ buscou um veículo, USE os dados que voltaram (ano, km, cor, itens) para responder os follow-ups ("qual o ano dele?", "e a cor?") — não busque de novo nem diga que "não encontrou" algo que já está no resultado.
 - Se NÃO houver o modelo/ano/cor exato que o lead pediu, mas houver algo PARECIDO no estoque (mesma categoria, modelo próximo, outro ano), ofereça a alternativa em vez de só dizer "não temos" — como uma boa vendedora faria.
@@ -250,7 +251,8 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
       if (item) {
         vehicle = `${item.title}${item.price ? ` — R$ ${item.price.toLocaleString("pt-BR")}` : ""}`
           + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`
-          + `${item.imageUrl ? " — foto disponível (use enviar_foto se pedirem)" : " — sem foto cadastrada"}`;
+          + `${item.imageUrl ? " — foto disponível (use enviar_foto se pedirem)" : " — sem foto cadastrada"}`
+          + `${item.url ? ` — LINK DO ANÚNCIO (todas as fotos e detalhes; mande este link se o lead pedir MAIS fotos ou ver por dentro): ${item.url}` : ""}`;
       }
     }
     // A/B: variante (se houver) sobrescreve o prompt base; registrada p/ comparar métricas.

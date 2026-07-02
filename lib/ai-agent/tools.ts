@@ -81,8 +81,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const total = await prisma.catalogItem.count({ where: { clientId: ctx.clientId, available: true } });
         return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item encontrado para "${termo}".`, decision: "respondeu_duvida" };
       }
-      const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`).join("\n");
-      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}`, decision: "respondeu_duvida" };
+      const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}${(i as { url?: string | null }).url ? ` [link do anúncio (todas as fotos): ${(i as { url?: string }).url}]` : ""}`).join("\n");
+      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}\nSe o lead pedir mais fotos/ver por dentro, mande o link do anúncio do carro.`, decision: "respondeu_duvida" };
     }
 
     case "atualizar_perfil": {
@@ -164,7 +164,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         } }).catch(() => {});
       }
       if (okCount === 0) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
-      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. Não reenvie fotos sem o lead pedir.` };
+      const adLink = (item as { url?: string | null })?.url;
+      const maisFotos = adLink
+        ? `Se o lead pedir MAIS fotos ou ver POR DENTRO/interior, mande este link do anúncio (tem TODAS as fotos e detalhes): ${adLink} — não diga que o vendedor envia.`
+        : `Se pedir mais fotos, ofereça que o vendedor envia.`;
+      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. ${maisFotos} Não reenvie fotos sem o lead pedir.` };
     }
 
     case "escalar_humano": {
