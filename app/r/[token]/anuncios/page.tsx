@@ -71,7 +71,6 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
 
   const data = await getClientAds(portal.clientId, period);
   const cur = data.currency;
-  const maxSpend = Math.max(1, ...data.series.map((s) => s.spend));
 
   const summary = !data.hasMeta
     ? "Assim que sua conta de anúncios estiver conectada, a transparência do investimento aparece aqui."
@@ -167,25 +166,6 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
               </div>
             )}
           </div>
-        </div>
-
-        {/* EVOLUÇÃO */}
-        <div style={{ ...card, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <span style={cap}>Evolução do investimento</span>
-            <span style={{ fontSize: 12, color: "var(--p-muted)" }}>investimento por dia · leads na base</span>
-          </div>
-          {data.series.every((s) => s.spend === 0) ? (
-            <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 12 }}>Sem investimento no período.</div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 120, marginTop: 16 }}>
-              {data.series.map((s, i) => (
-                <div key={i} title={`${s.day}: ${money(s.spend, cur)} · ${s.leads} lead${s.leads !== 1 ? "s" : ""}`} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%" }}>
-                  <div style={{ width: "100%", height: `${(s.spend / maxSpend) * 100}%`, minHeight: s.spend > 0 ? 3 : 0, background: "linear-gradient(180deg, var(--p-accent), var(--p-accent-soft))", borderRadius: "3px 3px 0 0", transformOrigin: "bottom", animation: "colGrow .9s cubic-bezier(.22,1,.36,1) both" }} />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* NARRATIVA */}

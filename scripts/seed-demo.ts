@@ -112,13 +112,13 @@ async function main() {
     await prisma.metaAdSet.create({ data: { connectionId: metaConn.id, adsetId: `as_${c.campaignId}`, campaignId: c.campaignId, name: `${c.name} — Conjunto`, status: "ACTIVE", destinationType: "WHATSAPP", learningStage: "SUCCESS" } });
   }
   const metaAds = [
-    { adId: "ad_2q_1", campaignId: "mc_2q", name: "2Q Zona Sul · Vídeo tour", creativeId: "cr_2q_1", dailySpend: 38, leads: 3 },
-    { adId: "ad_2q_2", campaignId: "mc_2q", name: "2Q Zona Sul · Carrossel", creativeId: "cr_2q_2", dailySpend: 22, leads: 1 },
-    { adId: "ad_lanc_1", campaignId: "mc_lanc", name: "Lançamento Jardins · Planta", creativeId: "cr_lanc_1", dailySpend: 30, leads: 2 },
-    { adId: "ad_studio_1", campaignId: "mc_studio", name: "Studios · Locação", creativeId: "cr_studio_1", dailySpend: 18, leads: 1 },
+    { adId: "ad_2q_1", campaignId: "mc_2q", name: "2Q Zona Sul · Vídeo tour", creativeId: "cr_2q_1", dailySpend: 38, leads: 3, img: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1080&q=80" },
+    { adId: "ad_2q_2", campaignId: "mc_2q", name: "2Q Zona Sul · Carrossel", creativeId: "cr_2q_2", dailySpend: 22, leads: 1, img: "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1080&q=80" },
+    { adId: "ad_lanc_1", campaignId: "mc_lanc", name: "Lançamento Jardins · Planta", creativeId: "cr_lanc_1", dailySpend: 30, leads: 2, img: "https://images.unsplash.com/photo-1560185007-cde436f6a4d0?auto=format&fit=crop&w=1080&q=80" },
+    { adId: "ad_studio_1", campaignId: "mc_studio", name: "Studios · Locação", creativeId: "cr_studio_1", dailySpend: 18, leads: 1, img: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1080&q=80" },
   ];
   for (const a of metaAds) {
-    await prisma.metaCreative.create({ data: { connectionId: metaConn.id, creativeId: a.creativeId, title: a.name, body: "Agende sua visita pelo WhatsApp", thumbnailUrl: null } });
+    await prisma.metaCreative.create({ data: { connectionId: metaConn.id, creativeId: a.creativeId, title: a.name, body: "Agende sua visita pelo WhatsApp", thumbnailUrl: a.img, imageUrl: a.img } });
     await prisma.metaAd.create({ data: { connectionId: metaConn.id, adId: a.adId, adsetId: `as_${a.campaignId}`, campaignId: a.campaignId, creativeId: a.creativeId, name: a.name, status: "ACTIVE", startedAt: dAgo(40), qualityRanking: "ABOVE_AVERAGE" } });
     for (let d = 0; d < daysSoFar; d++) {
       const imp = 900 + Math.round(Math.random() * 600);

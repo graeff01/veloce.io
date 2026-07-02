@@ -131,7 +131,8 @@ function extractWhatsappNumber(creative: CreativeRow | undefined): string | null
 function extractMedia(creative: CreativeRow | undefined): { imageUrl: string | null; videoId: string | null } {
   if (!creative) return { imageUrl: null, videoId: null };
   const blob = JSON.stringify(creative.object_story_spec ?? "") + JSON.stringify(creative.asset_feed_spec ?? "");
-  const vid = blob.match(/"video_id"\s*:\s*"(\d+)"/);
+  // video_id pode vir como string ("123") OU número (123) no spec — pega os dois.
+  const vid = blob.match(/"video_id"\s*:\s*"?(\d+)"?/);
   // Prioriza image_url (alta) e picture; ignora as p64x64 (thumb minúscula).
   const img = blob.match(/"image_url"\s*:\s*"([^"]+)"/) || blob.match(/"picture"\s*:\s*"([^"]+)"/);
   const imageUrl = img ? img[1].replace(/\\\//g, "/") : null;
