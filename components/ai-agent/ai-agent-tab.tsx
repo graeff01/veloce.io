@@ -168,6 +168,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
           {[
             { key: "off_hours", label: "Só fora do horário", hint: "atende quando a loja está fechada" },
             { key: "always", label: "Sempre (24h)", hint: "atende também no horário comercial" },
+            { key: "ads_in_hours", label: "24h — no horário, só anúncio", hint: "no horário só lead de anúncio; fora, todos" },
           ].map((s) => (
             <button key={s.key} onClick={() => set({ answerMode: s.key })} style={{ ...btn(cfg.answerMode === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.answerMode === s.key ? "var(--accent)" : "var(--border)" }}>
               <span>{s.label}</span>
@@ -175,20 +176,24 @@ function ConfigSection({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
-        <label style={{ ...label, marginTop: 16 }}>Horário comercial da loja (no fuso do cliente){cfg.answerMode === "always" ? " — informativo no modo 24h" : " — a IA atua FORA disto"}</label>
+        <label style={{ ...label, marginTop: 16 }}>Horário comercial da loja (no fuso do cliente){cfg.answerMode === "always" ? " — informativo no modo 24h" : cfg.answerMode === "ads_in_hours" ? " — define quando a IA restringe a só anúncio" : " — a IA atua FORA disto"}</label>
         <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
         <label style={{ ...label, marginTop: 16 }}>A quem a IA responde</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {[
-            { key: "all", label: "Todos os leads", hint: "qualquer mensagem fora do horário" },
-            { key: "ads_only", label: "Só leads de anúncio", hint: "ignora quem não veio de campanha" },
-          ].map((s) => (
-            <button key={s.key} onClick={() => set({ scopeMode: s.key })} style={{ ...btn(cfg.scopeMode === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.scopeMode === s.key ? "var(--accent)" : "var(--border)" }}>
-              <span>{s.label}</span>
-              <span style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>{s.hint}</span>
-            </button>
-          ))}
-        </div>
+        {cfg.answerMode === "ads_in_hours" ? (
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Automático neste modo: <b>só anúncio</b> dentro do horário comercial e <b>todos os leads</b> fora dele.</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { key: "all", label: "Todos os leads", hint: "qualquer mensagem" },
+              { key: "ads_only", label: "Só leads de anúncio", hint: "ignora quem não veio de campanha" },
+            ].map((s) => (
+              <button key={s.key} onClick={() => set({ scopeMode: s.key })} style={{ ...btn(cfg.scopeMode === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.scopeMode === s.key ? "var(--accent)" : "var(--border)" }}>
+                <span>{s.label}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>{s.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ══ AVANÇADO — set-once, recolhido ══ */}

@@ -21,8 +21,9 @@ export function shouldRespond(cfg: CfgLike | null): { respond: boolean; reason: 
   // Seguro — o respond.ts filtra e só responde os números de teste; nenhum lead real é tocado.
   if (cfg.testMode) return { respond: true, reason: "canário (ignora horário)" };
 
-  // Modo "sempre" (24h): atende inclusive dentro do horário comercial.
-  if (cfg.answerMode === "always") return { respond: true, reason: "atende sempre (24h)" };
+  // Modos 24h: atende inclusive dentro do horário comercial. No "ads_in_hours" o
+  // ESCOPO muda por horário (respond.ts): dentro do horário só anúncio, fora todos.
+  if (cfg.answerMode === "always" || cfg.answerMode === "ads_in_hours") return { respond: true, reason: "atende 24h" };
 
   const hours = (cfg.businessHours as Window[]) ?? [];
   if (hours.length === 0) return { respond: false, reason: "horário comercial não configurado" };

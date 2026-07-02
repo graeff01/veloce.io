@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { shouldRespond } from "./gatekeeper";
+import { shouldRespond, isWithinBusinessHours } from "./gatekeeper";
+import { nowParts } from "@/lib/tz";
+import type { Window } from "@/lib/visit-availability";
 import { runAgent } from "./orchestrator";
 import { globalSpendExceeded, clientSpendExceeded } from "./limits";
 import { isOptOut, OPT_OUT_REPLY } from "./optout";
@@ -131,8 +133,15 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     if (human) return "skipped"; // operador no controle
   }
 
-  // 4) Escopo: ads_only responde apenas leads vindos de anúncio.
-  if (cfg?.scopeMode === "ads_only") {
+  // 4) Escopo efetivo (a quem responde). No modo "ads_in_hours" varia por horário:
+  //    DENTRO do horário comercial → só anúncio; FORA → todos. Nos demais, usa scopeMode.
+  let effectiveScope = cfg?.scopeMode ?? "all";
+  if (cfg?.answerMode === "ads_in_hours") {
+    const { weekday, minutes } = nowParts(cfg.timezone || "America/Sao_Paulo");
+    const within = isWithinBusinessHours((cfg.businessHours as Window[]) ?? [], weekday, minutes);
+    effectiveScope = within ? "ads_only" : "all";
+  }
+  if (effectiveScope === "ads_only") {
     const lead = await prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { id: true } });
     if (!lead) return "skipped";
   }
@@ -201,7 +210,7 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // Se o vendedor responder o lead, o takeover humano já silencia a IA naquele contato.
   if (sent.ok) {
     if (out.decision === "escalou") void handoffToOperators(conn, contact.id).catch(() => {});
-    else if (cfg?.answerMode === "always") void handoffToOperators(conn, contact.id, { requireHot: true }).catch(() => {});
+    else if (cfg?.answerMode === "always" || cfg?.answerMode === "ads_in_hours") void handoffToOperators(conn, contact.id, { requireHot: true }).catch(() => {});
   }
 
   // Pipeline assíncrono (fora do caminho crítico): memória rolante + inteligência

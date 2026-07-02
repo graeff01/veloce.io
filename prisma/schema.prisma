@@ -1075,7 +1075,7 @@ model AiAgentConfig {
   goals           String?  // objetivos do atendimento
   rules           String?  // regras específicas do cliente (entram no prompt)
   businessHours   Json     @default("[]") // [{weekday,start,end}] — janela do horário comercial
-  answerMode      String   @default("off_hours") // off_hours (só fora do horário) | always (24h, inclusive no horário)
+  answerMode      String   @default("off_hours") // off_hours (só fora do horário) | always (24h) | ads_in_hours (24h; no horário só anúncio, fora todos)
   timezone        String   @default("America/Sao_Paulo")
   language        String   @default("pt-BR")
   fallbackMessage String?  // mensagem quando não sabe / vai escalar

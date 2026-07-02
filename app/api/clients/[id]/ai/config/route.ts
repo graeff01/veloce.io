@@ -21,7 +21,7 @@ const putSchema = z.object({
   goals: z.string().max(2000).nullable().optional(),
   rules: z.string().max(6000).nullable().optional(),
   businessHours: z.array(windowSchema).optional(),
-  answerMode: z.enum(["off_hours", "always"]).optional(),
+  answerMode: z.enum(["off_hours", "always", "ads_in_hours"]).optional(),
   timezone: z.string().optional(),
   language: z.string().optional(),
   fallbackMessage: z.string().max(1000).nullable().optional(),
