@@ -36,14 +36,18 @@ export async function pendingFichas(clientId: string, operatorNumbers: string[])
   const leads = await prismaUnscoped.waLead.findMany({ where: { connectionId: { in: connIds } }, select: { contactId: true } });
   const ids = [...new Set(leads.map((l) => l.contactId))];
   if (!ids.length) return [];
-  const [convs, profiles, contacts] = await Promise.all([
+  const [convs, profiles, contacts, aiMsgs] = await Promise.all([
     prismaUnscoped.waConversation.findMany({ where: { contactId: { in: ids }, lastInboundAt: { not: null } }, select: { contactId: true, fichaSentAt: true, lastInboundAt: true } }),
     prismaUnscoped.leadProfile.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, temperature: true } }),
     prismaUnscoped.waContact.findMany({ where: { id: { in: ids } }, select: { id: true, waId: true } }),
+    // SÓ leads que a IA REALMENTE atendeu (tem msg aiGenerated) — não os que humano pegou.
+    prismaUnscoped.waMessage.findMany({ where: { contactId: { in: ids }, direction: "out", aiGenerated: true }, select: { contactId: true }, distinct: ["contactId"] }),
   ]);
   const tempBy = new Map(profiles.map((p) => [p.contactId, p.temperature ?? "cold"]));
   const waIdBy = new Map(contacts.map((c) => [c.id, c.waId]));
+  const aiAttended = new Set(aiMsgs.map((m) => m.contactId));
   return convs
+    .filter((c) => aiAttended.has(c.contactId))                                   // só quem a IA atendeu
     .filter((c) => c.lastInboundAt && (!c.fichaSentAt || c.lastInboundAt > c.fichaSentAt))
     .map((c) => ({ contactId: c.contactId, waId: waIdBy.get(c.contactId) ?? "", temperature: tempBy.get(c.contactId) ?? "cold", lastInboundAt: c.lastInboundAt as Date }))
     .filter((p) => p.waId && !operatorNumbers.some((n) => sameBrazilNumber(n, p.waId))) // nunca o próprio operador
