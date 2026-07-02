@@ -164,7 +164,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         } }).catch(() => {});
       }
       if (okCount === 0) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
-      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente brevemente e siga a conversa (não reenvie fotos sem o lead pedir).` };
+      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. Não reenvie fotos sem o lead pedir.` };
     }
 
     case "escalar_humano": {
