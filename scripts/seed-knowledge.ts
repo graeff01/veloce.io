@@ -23,6 +23,7 @@ const CHUNKS: { title: string; content: string }[] = [
   { title: "Garantia e procedência", content: "Todos os veículos da Boqueirão são revisados e com procedência. Garantia: veículos ano 2018 em diante têm 1 ano de garantia de motor e câmbio (caixa), podendo chegar a 2 anos; veículos até 2017 têm 3 meses de garantia de motor e câmbio (caixa). Os detalhes da garantia de cada veículo são confirmados com o vendedor." },
   { title: "Financiamento", content: "A Boqueirão trabalha com mais de 13 bancos parceiros, buscando as melhores taxas, com aprovação rápida — é possível sair com o veículo no mesmo dia. A simulação pode ser feita pelo site ou direto com o vendedor. A loja aceita veículo na troca como parte do pagamento ou da entrada. Os valores de entrada e parcelas são fechados pelo vendedor." },
   { title: "Troca de veículo", content: "A Boqueirão avalia o seu usado para troca. A avaliação é presencial e gratuita, e o valor do seu veículo pode ser usado como entrada na compra de outro. Leve o documento do veículo (CRLV) para agilizar." },
+  { title: "Entrega e clientes de outras cidades", content: "A Boqueirão já realizou a entrega de veículos em diversas cidades do Rio Grande do Sul. Para clientes de outras cidades, mais distantes ou que acham a loja longe, não é obrigatório ir até Canoas: o vendedor combina os detalhes da entrega, da documentação e das condições diretamente com o cliente no horário comercial. Assim o cliente é bem atendido mesmo à distância." },
 ];
 
 async function embed(text: string): Promise<number[]> {
