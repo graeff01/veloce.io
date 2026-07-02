@@ -168,7 +168,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     }
 
     case "escalar_humano": {
-      return { result: "Ok. Diga ao lead que um vendedor dará sequência no horário comercial e registre o motivo. Não prometa prazo específico.", decision: "escalou" };
+      return { result: "Ok. Diga ao lead, de forma natural, que já vai chamar um vendedor pra dar sequência no atendimento e registre o motivo. NÃO prometa prazo específico (nem 'no horário comercial') — só que um vendedor vai continuar.", decision: "escalou" };
     }
 
     default:

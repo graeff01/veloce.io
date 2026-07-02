@@ -1,6 +1,7 @@
 import { prismaUnscoped } from "@/lib/prisma";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { buildFicha } from "./ficha";
+import { scoreLead } from "./scoring";
 import { sameBrazilNumber } from "@/lib/phone-br";
 
 // ── Modo Operador (pull) ─────────────────────────────────────────────────────────
@@ -68,6 +69,40 @@ async function deliverFicha(conn: Conn, toWaId: string, toContactId: string | nu
   }
   await prismaUnscoped.waConversation.update({ where: { contactId: p.contactId }, data: { fichaSentAt: new Date() } }).catch(() => {});
   return true;
+}
+
+// PUSH intraday (modo 24h): a IA qualificou/escalou um lead durante o expediente → manda
+// a ficha pro(s) vendedor(es) no WhatsApp NA HORA, pra assumirem a conversa. Só WhatsApp.
+// Se a janela de 24h do vendedor estiver fechada, o WhatsApp bloqueia: NÃO marca
+// fichaSentAt → o lead segue pendente e cai no próximo lote que o vendedor puxar (nada
+// se perde, tudo dentro do WhatsApp). requireHot: só empurra se o lead estiver "quente".
+export async function handoffToOperators(conn: Conn, contactId: string, opts?: { requireHot?: boolean }): Promise<boolean> {
+  const convo = await prismaUnscoped.waConversation.findUnique({ where: { contactId }, select: { fichaSentAt: true } });
+  if (convo?.fichaSentAt) return false; // ficha já enviada — não repete
+
+  if (opts?.requireHot) {
+    const profile = await prismaUnscoped.leadProfile.findUnique({ where: { contactId } });
+    if (!profile || scoreLead(profile).temperature !== "hot") return false;
+  }
+
+  const cfg = await prismaUnscoped.aiAgentConfig.findUnique({ where: { clientId: conn.clientId }, select: { operatorNumbers: true } });
+  const nums = ((cfg?.operatorNumbers as string[]) ?? []).filter(Boolean);
+  if (!nums.length) return false;
+
+  const [contact, ficha] = await Promise.all([
+    prismaUnscoped.waContact.findUnique({ where: { id: contactId }, select: { waId: true } }),
+    buildFicha(conn.clientId, contactId),
+  ]);
+  if (!ficha) return false;
+
+  const text = `🔥 Lead qualificado — assuma pelo WhatsApp:\n\n${ficha}${contact?.waId ? `\n👉 Falar com o lead: https://wa.me/${contact.waId.replace(/\D/g, "")}` : ""}`;
+  let anyOk = false;
+  for (const n of nums) {
+    const sent = await sendWhatsAppText(conn, n, text);
+    if (sent.ok) anyOk = true;
+  }
+  if (anyOk) await prismaUnscoped.waConversation.update({ where: { contactId }, data: { fichaSentAt: new Date() } }).catch(() => {});
+  return anyOk;
 }
 
 // PULL: a triadora mandou mensagem → devolve TODAS as fichas pendentes (o lote da manhã).

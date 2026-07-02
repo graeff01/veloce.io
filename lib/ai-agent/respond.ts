@@ -8,7 +8,7 @@ import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
-import { isOperator, handleOperatorCommand } from "./operator";
+import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
 import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
@@ -193,6 +193,15 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     sent = r;
     await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-${Date.now()}-${i}`, blocks[i], new Date());
     if (i < blocks.length - 1) await sleep(900);
+  }
+
+  // Handoff no WhatsApp: a IA qualifica e passa a bola pro vendedor entrar na conversa.
+  //  • escalou (bateu numa parede) → manda a ficha pro vendedor na hora, em qualquer modo.
+  //  • modo 24h + lead ficou QUENTE → manda a ficha pro vendedor assumir (só 1x por lead).
+  // Se o vendedor responder o lead, o takeover humano já silencia a IA naquele contato.
+  if (sent.ok) {
+    if (out.decision === "escalou") void handoffToOperators(conn, contact.id).catch(() => {});
+    else if (cfg?.answerMode === "always") void handoffToOperators(conn, contact.id, { requireHot: true }).catch(() => {});
   }
 
   // Pipeline assíncrono (fora do caminho crítico): memória rolante + inteligência
