@@ -9,12 +9,28 @@ import { createEscalationTask } from "./escalation";
 // Rede de segurança: o cron /api/cron/ai-agent chama processDueJobs periodicamente —
 // se um deploy derrubar o nudge, o job persistido é processado no próximo tick.
 
-const DEBOUNCE_MS = Number(process.env.AI_AGENT_DEBOUNCE_MS || 6000);
+const DEBOUNCE_MS = Number(process.env.AI_AGENT_DEBOUNCE_MS || 8000);          // base: espera 8s por novas msgs
+const DEBOUNCE_FRAGMENT_MS = Number(process.env.AI_AGENT_DEBOUNCE_FRAG_MS || 25000); // msg parece incompleta: espera mais
 const STALE_LOCK_MS = 2 * 60_000; // job "processing" preso há mais que isto é re-elegível
 const MAX_ATTEMPTS = 4;
 const BACKOFF_MS = 30_000;
 
 const nudges = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Detecta mensagem que provavelmente é um FRAGMENTO — o lead vai continuar digitando
+// (ex.: "Eu moro", "No rio", "de onde"). Nesses casos esperamos mais antes de responder,
+// pra não responder frase pela metade (o lead que escreve em partes é comum no WhatsApp).
+const CONT_WORD = /(?:^|\s)(e|ou|de|do|da|dos|das|no|na|nos|nas|pra|para|que|com|em|meu|minha|se|mas|então|por|é|ta|tá|to|tô|um|uma|o|a|os|as|mais|só|sobre|tem|quero|queria|onde|quando|como|qual)$/i;
+export function looksIncomplete(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  if (t.length < 25) return true;        // muito curta → provável fragmento
+  if (CONT_WORD.test(t)) return true;    // termina em conjunção/preposição/pergunta pendente
+  return false;                          // frase média/longa e "fechada" → resposta normal
+}
+export function debounceFor(text: string): number {
+  return looksIncomplete(text) ? DEBOUNCE_FRAGMENT_MS : DEBOUNCE_MS;
+}
 
 // Enfileira (ou reagenda) o atendimento de um contato. 1 linha por contato:
 // rajadas de mensagens colapsam num único job (o orquestrador lê todo o histórico).
@@ -25,7 +41,8 @@ export async function enqueueAgentJob(job: {
   idempotencyKey?: string;
   payload: JobPayload;
 }): Promise<void> {
-  const runAfter = new Date(Date.now() + DEBOUNCE_MS);
+  const delay = debounceFor((job.payload as unknown as JobPayload)?.text ?? "");
+  const runAfter = new Date(Date.now() + delay);
   await prisma.aiJob.upsert({
     where: { contactId: job.contactId },
     create: {
@@ -45,7 +62,7 @@ export async function enqueueAgentJob(job: {
   nudges.set(job.contactId, setTimeout(() => {
     nudges.delete(job.contactId);
     void runOneContact(job.contactId).catch(() => {});
-  }, DEBOUNCE_MS + 250));
+  }, delay + 250));
 }
 
 // Claim atômico de um job específico: vence quem conseguir marcar processing.
