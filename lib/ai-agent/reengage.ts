@@ -52,16 +52,18 @@ export async function reengageStalled(): Promise<{ nudged: number }> {
       if (count >= MAX_PER_SWEEP) break;
       if (!c.lastInboundAt || !c.lastOutboundAt) continue;
       if (c.lastOutboundAt <= c.lastInboundAt) continue;                          // lead falou por último → não cutuca
-      if (c.reengagedAt && c.reengagedAt >= c.lastInboundAt) continue;            // já cutucou neste silêncio
+      if (c.reengagedAt) continue;                                                // UMA cutucada por conversa (nunca repete)
 
       const [profile, contact, lastMsg] = await Promise.all([
         prismaUnscoped.leadProfile.findUnique({ where: { contactId: c.contactId }, select: { productInterest: true } }),
         prismaUnscoped.waContact.findUnique({ where: { id: c.contactId }, select: { waId: true, aiOptedOut: true, aiSilenced: true } }),
-        prismaUnscoped.waMessage.findFirst({ where: { contactId: c.contactId }, orderBy: { timestamp: "desc" }, select: { direction: true, aiGenerated: true } }),
+        prismaUnscoped.waMessage.findFirst({ where: { contactId: c.contactId }, orderBy: { timestamp: "desc" }, select: { direction: true, aiGenerated: true, text: true } }),
       ]);
       if (!profile) continue;                                                     // não engajou → não cutuca
       if (!contact || contact.aiOptedOut || contact.aiSilenced) continue;        // opt-out / silenciado
       if (!lastMsg || lastMsg.direction !== "out" || !lastMsg.aiGenerated) continue; // humano assumiu → não cutuca
+      // Conversa JÁ concluída/encaminhada (a IA já fez o handoff) → não cutuca, é redundante e robótico.
+      if (/vendedor|entrar? em contato|deixei (tudo )?anotado|já registr|horário comercial|test drive|conhecer.*(de )?perto/i.test(lastMsg.text || "")) continue;
 
       const conn = await prismaUnscoped.waConnection.findUnique({ where: { id: c.connectionId }, select: { id: true, phoneNumberId: true, accessToken: true } });
       if (!conn) continue;
