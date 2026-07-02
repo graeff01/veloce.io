@@ -269,11 +269,18 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
   let bestCampaign: ClientDashboard["bestCampaign"] = null;
   let spendCur = 0, spendPrev = 0, cplCur: number | null = null, cplPrev: number | null = null;
   if (metaConn) {
+    // metaAdInsight.date é o date_start gravado à MEIA-NOITE UTC (marcador de dia).
+    // Cortar por meia-noite de São Paulo (03:00Z) descartava o gasto do 1º dia do
+    // período. Filtramos por dia-calendário em UTC — igual à aba Anúncios interna.
+    const utcDayStart = (d: Date) => new Date(`${d.toLocaleDateString("en-CA", { timeZone: TZ })}T00:00:00.000Z`);
+    const utcDayEndExcl = (d: Date) => new Date(utcDayStart(new Date(d.getTime() - 1)).getTime() + 86_400_000);
+    const insStart = utcDayStart(start), insEnd = utcDayEndExcl(end);
+    const prevInsStart = utcDayStart(prevStart), prevInsEnd = utcDayEndExcl(prevEnd);
     const [spendAgg, adLeads, leadRows, prevSpendAgg, prevAdLeads] = await Promise.all([
-      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: start, lt: end } } }),
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: insStart, lt: insEnd } } }),
       wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: end } } }) : Promise.resolve(0),
       wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: end }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
-      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevStart, lt: prevEnd } } }),
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevInsStart, lt: prevInsEnd } } }),
       wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
     ]);
     const spend = spendAgg._sum.spend ?? 0;
