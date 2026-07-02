@@ -37,7 +37,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const [messages, lead, conversation, tags, profile, aiCfg] = await Promise.all([
-    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000 }),
+    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { createdAt: "asc" }], take: 2000 }),
     prisma.waLead.findUnique({ where: { contactId: contact.id } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id } }),
     prisma.waContactTag.findMany({ where: { contactId: contact.id }, include: { tag: true } }),
