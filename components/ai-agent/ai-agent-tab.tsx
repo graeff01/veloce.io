@@ -42,7 +42,7 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[]; operatorNumbers: string[] }
+interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; answerMode: string; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[]; operatorNumbers: string[] }
 
 const VERTICALS: { key: string; label: string }[] = [
   { key: "automotivo", label: "Automotivo (veículos)" },
@@ -71,7 +71,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [], operatorNumbers: Array.isArray(d?.operatorNumbers) ? d.operatorNumbers : [] });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], answerMode: d?.answerMode ?? "off_hours", fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [], operatorNumbers: Array.isArray(d?.operatorNumbers) ? d.operatorNumbers : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -118,7 +118,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
             <Power size={15} color={cfg.enabled ? "var(--green)" : "var(--text-muted)"} /> Agente {cfg.enabled ? "ligado" : "desligado"}
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Quando ligado, a IA responde leads <b>fora do horário comercial</b> definido abaixo.</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Quando ligado, a IA responde leads {cfg.answerMode === "always" ? <b>sempre (24h)</b> : <>somente <b>fora do horário comercial</b></>} — configure abaixo.</p>
         </div>
         <button onClick={() => set({ enabled: !cfg.enabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.enabled ? "var(--green)" : "var(--border)", position: "relative", transition: "background .15s" }}>
           <span style={{ position: "absolute", top: 3, left: cfg.enabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
@@ -163,7 +163,19 @@ function ConfigSection({ clientId }: { clientId: string }) {
       {/* Quando e pra quem */}
       <div style={card}>
         <SecTitle>Quando e pra quem</SecTitle>
-        <label style={label}>Horário comercial — a IA atua FORA disto (no fuso do cliente)</label>
+        <label style={{ ...label, marginTop: 4 }}>Quando a IA atende</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { key: "off_hours", label: "Só fora do horário", hint: "atende quando a loja está fechada" },
+            { key: "always", label: "Sempre (24h)", hint: "atende também no horário comercial" },
+          ].map((s) => (
+            <button key={s.key} onClick={() => set({ answerMode: s.key })} style={{ ...btn(cfg.answerMode === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.answerMode === s.key ? "var(--accent)" : "var(--border)" }}>
+              <span>{s.label}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>{s.hint}</span>
+            </button>
+          ))}
+        </div>
+        <label style={{ ...label, marginTop: 16 }}>Horário comercial da loja (no fuso do cliente){cfg.answerMode === "always" ? " — informativo no modo 24h" : " — a IA atua FORA disto"}</label>
         <WindowsEditor value={cfg.businessHours} onChange={(w) => set({ businessHours: w })} />
         <label style={{ ...label, marginTop: 16 }}>A quem a IA responde</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
