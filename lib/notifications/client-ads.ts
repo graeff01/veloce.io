@@ -38,9 +38,19 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   };
   if (!metaConn) return empty;
 
+  // metaAdInsight.date é o date_start do dia gravado à MEIA-NOITE UTC — um marcador
+  // de dia-calendário, não um instante. Filtrar por meia-noite de São Paulo (03:00Z)
+  // deixa o gasto do 1º dia do período (00:00Z) DE FORA (cai no período anterior),
+  // divergindo da aba Anúncios interna (fonte correta, que filtra em UTC no servidor
+  // Railway). Convertemos os limites para dia-calendário em UTC para bater com ela.
+  const utcDayStart = (d: Date) => new Date(`${d.toLocaleDateString("en-CA", { timeZone: TZ })}T00:00:00.000Z`);
+  const utcDayEndExcl = (d: Date) => new Date(utcDayStart(new Date(d.getTime() - 1)).getTime() + 86_400_000);
+  const insStart = utcDayStart(start), insEnd = utcDayEndExcl(end);
+  const prevInsStart = utcDayStart(prevStart), prevInsEnd = utcDayEndExcl(prevEnd);
+
   const [insightRows, prevSpendAgg, leadRows, prevAdLeads] = await Promise.all([
-    prisma.metaAdInsight.findMany({ where: { connectionId: metaConn.id, date: { gte: start, lt: end } }, select: { adId: true, date: true, spend: true } }),
-    prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevStart, lt: prevEnd } } }),
+    prisma.metaAdInsight.findMany({ where: { connectionId: metaConn.id, date: { gte: insStart, lt: insEnd } }, select: { adId: true, date: true, spend: true } }),
+    prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: metaConn.id, date: { gte: prevInsStart, lt: prevInsEnd } } }),
     wa ? prisma.waLead.groupBy({ by: ["adId"], where: { connectionId: wa.id, enteredAt: { gte: start, lt: end }, adId: { not: null } }, _count: { _all: true } }) : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
     wa ? prisma.waLead.count({ where: { connectionId: wa.id, enteredAt: { gte: prevStart, lt: prevEnd } } }) : Promise.resolve(0),
   ]);
@@ -94,7 +104,9 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   // Série diária: investimento x leads (evolução).
   const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TZ });
   const spendByDay = new Map<string, number>();
-  for (const r of insightRows) { const k = dayKey(r.date); spendByDay.set(k, (spendByDay.get(k) ?? 0) + r.spend); }
+  // Insight já é um marcador de dia-calendário (00:00Z) — a data ISO em UTC É o
+  // date_start. Usar dayKey (SP) sobre 00:00Z deslocaria o gasto pro dia anterior.
+  for (const r of insightRows) { const k = r.date.toISOString().slice(0, 10); spendByDay.set(k, (spendByDay.get(k) ?? 0) + r.spend); }
   const leadsByDay = new Map<string, number>();
   if (wa) {
     const leadDays = await prisma.waLead.findMany({ where: { connectionId: wa.id, enteredAt: { gte: start, lt: end } }, select: { enteredAt: true } });
