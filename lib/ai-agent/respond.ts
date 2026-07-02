@@ -8,6 +8,7 @@ import { isOptOut, OPT_OUT_REPLY } from "./optout";
 import { createEscalationTask } from "./escalation";
 import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
+import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
@@ -218,6 +219,11 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   void updateRollingMemory(contact.id, conn.clientId).catch(() => {});
   if (input.idempotencyKey) {
     void analyzeMessage({ clientId: conn.clientId, connectionId: conn.id, contactId: contact.id, waMessageId: input.idempotencyKey, text: inboundText }).catch(() => {});
+  }
+  // Backstop de qualificação: lê a conversa e preenche o perfil (garante a ficha completa),
+  // mesmo que a IA não tenha chamado atualizar_perfil. Pula acks triviais (economia).
+  if (!/^(ok|sim|n[aã]o|blz|beleza|obrigad\w*|valeu|certo|isso|uhum|t[aá] bom|pode ser)\W*$/i.test(inboundText.trim())) {
+    void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
   }
   // Self-improvement: avalia a qualidade da resposta da IA (juiz LLM, amostrado).
   void evaluateResponse({
