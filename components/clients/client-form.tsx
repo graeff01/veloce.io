@@ -9,12 +9,11 @@ const MODULES: { key: string; label: string; desc: string }[] = [
   { key: "leads",        label: "WhatsApp",     desc: "Conversas e leads" },
   { key: "anuncios",     label: "Anúncios (Meta)", desc: "Facebook / Instagram" },
   { key: "google",       label: "Google Ads",   desc: "Campanhas no Google" },
-  { key: "inteligencia", label: "Inteligência", desc: "Concorrência" },
   { key: "ia",           label: "IA",           desc: "Agente de atendimento" },
   { key: "bot",          label: "BOT",          desc: "Portal e alertas" },
 ];
 // Google entra desligado por padrão (só quando o cliente roda Google).
-const DEFAULT_MODULE_KEYS = ["reunioes", "leads", "anuncios", "inteligencia", "ia", "bot"];
+const DEFAULT_MODULE_KEYS = ["reunioes", "leads", "anuncios", "ia", "bot"];
 
 /* ─── Types ─────────────────────────────────────────────── */
 

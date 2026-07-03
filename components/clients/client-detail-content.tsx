@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Bot, BarChart3, Send, Radar, FileText,
+  Columns3, User, Mic, Bot, BarChart3, Send, FileText,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -18,7 +18,6 @@ import { FixedDemandsSection } from "@/components/clients/fixed-demands-section"
 import { KanbanBoard } from "@/components/clients/kanban-board";
 import { MeetingsTab } from "@/components/clients/meetings-tab";
 import { WhatsAppTab } from "@/components/clients/whatsapp-tab";
-import { CompetitiveIntelTab } from "@/components/clients/competitive-intel-tab";
 import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
 import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
@@ -140,7 +139,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "inteligencia" | "ia" | "bot" | "relatorios";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "ia" | "bot" | "relatorios";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -165,7 +164,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "inteligencia", "ia", "bot"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "ia", "bot"];
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
 
@@ -199,7 +198,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "leads",     label: "WhatsApp",  icon: <WhatsAppGlyph size={14} />, brand: "#25D366" },
     { key: "anuncios",  label: "Anúncios",  icon: <FacebookGlyph size={14} />, brand: "#1877F2" },
     { key: "google",    label: "Google",    icon: <GoogleGlyph size={14} />,   brand: "#4285F4" },
-    { key: "inteligencia", label: "Inteligência", icon: <Radar size={13} /> },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
     { key: "relatorios", label: "Relatórios", icon: <FileText size={13} /> },
@@ -323,10 +321,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {activeTab === "google" && (
         <GoogleAdsTab clientId={clientId} />
-      )}
-
-      {activeTab === "inteligencia" && (
-        <CompetitiveIntelTab clientId={clientId} />
       )}
 
       {activeTab === "ia" && (
