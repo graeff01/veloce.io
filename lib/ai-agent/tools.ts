@@ -147,7 +147,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // Lista de fotos: capa + galeria, sem duplicar. Quantidade limitada (1 na abertura, até 3 sob pedido).
       const gallery = Array.isArray(item?.images) ? item!.images : [];
       const photos = [...new Set([item?.imageUrl, ...gallery].filter(Boolean))] as string[];
-      if (!photos.length) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
+      if (!photos.length) return { result: "Sem foto desse veículo no sistema. NÃO prometa que o vendedor envia a foto — em modo assistência isso é caso de [SKIP] (não responda); no fluxo normal, siga por texto com os dados que você tem." };
       const interior = args.interior === true;
       const qtd = Math.max(1, Math.min(5, Number(args.quantidade) || (interior ? 4 : 1)));
       // Interior: as fotos internas ficam no FINAL da galeria (as externas vêm primeiro).
