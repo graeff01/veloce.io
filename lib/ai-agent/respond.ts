@@ -277,3 +277,61 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
   return { ok, reply: out.reply };
 }
+
+// Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem
+// resposta (atendente não respondeu), a IA entra — MAS só responde o que ELA SABE (foto,
+// km, preço, itens, local, horário). Se for do vendedor / ela não sabe, fica QUIETA (o
+// autoMode devolve "[SKIP]" e não enviamos nada — não se mete nem diz "vou chamar"). 1x por
+// mensagem do lead (autoRepliedAt). Respeita opt-out e operador que assumiu (aiSilenced).
+const AUTO_REPLY_MIN = Number(process.env.AI_AUTO_REPLY_MIN || 10);   // min sem resposta
+const AUTO_REPLY_MAX_H = Number(process.env.AI_AUTO_REPLY_MAX_H || 6); // não responde msg muito antiga
+
+export async function autoReplyStalled(): Promise<{ replied: number }> {
+  const cfgs = await prisma.aiAgentConfig.findMany({
+    where: { enabled: true, paused: false, status: "live", answerMode: { in: ["always", "ads_in_hours"] } },
+    select: { clientId: true, businessHours: true, timezone: true },
+  });
+  const now = Date.now();
+  let replied = 0;
+  for (const cfg of cfgs) {
+    const hours = (cfg.businessHours as Window[]) ?? [];
+    if (!hours.length) continue;
+    const { weekday, minutes } = nowParts(cfg.timezone || "America/Sao_Paulo");
+    if (!isWithinBusinessHours(hours, weekday, minutes)) continue; // auto-resposta é SÓ em horário comercial
+    const connIds = (await prisma.waConnection.findMany({ where: { clientId: cfg.clientId }, select: { id: true } })).map((c) => c.id);
+    if (!connIds.length) continue;
+    const candidates = await prisma.waConversation.findMany({
+      where: { connectionId: { in: connIds }, lastInboundAt: { gte: new Date(now - AUTO_REPLY_MAX_H * 3600_000), lte: new Date(now - AUTO_REPLY_MIN * 60_000) } },
+      select: { contactId: true, lastInboundAt: true, lastOutboundAt: true, autoRepliedAt: true }, take: 100,
+    });
+    for (const c of candidates) {
+      if (!c.lastInboundAt) continue;
+      if (c.lastOutboundAt && c.lastOutboundAt >= c.lastInboundAt) continue; // já respondido (humano ou IA)
+      if (c.autoRepliedAt && c.autoRepliedAt >= c.lastInboundAt) continue;   // já tentou nesta mensagem
+      const contact = await prisma.waContact.findUnique({ where: { id: c.contactId }, select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } } });
+      if (!contact) continue;
+      await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { autoRepliedAt: new Date() } }).catch(() => {}); // marca ANTES (mesmo se skip)
+      if (contact.aiOptedOut || contact.aiSilenced) continue;
+      const last = await prisma.waMessage.findFirst({ where: { contactId: c.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { text: true } });
+      const inboundText = last?.text?.trim();
+      if (!inboundText) continue;
+
+      const out = await runAgent({ clientId: contact.connection.clientId, connectionId: contact.connection.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText }, { autoMode: true }).catch(() => null);
+      const reply = out?.reply?.trim();
+      // Só envia se teve resposta CONCRETA: [SKIP]/escalou/bloqueado/vazio → fica quieta.
+      if (!out || !reply || reply.includes("[SKIP]") || out.decision === "escalou" || out.status === "blocked") continue;
+      const conn = contact.connection;
+      const blocks = splitBlocks(reply);
+      let ok = false;
+      for (let i = 0; i < blocks.length; i++) {
+        const r = await sendWithRetry(conn, contact.waId, blocks[i]);
+        if (!r.ok) break;
+        ok = true;
+        await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-auto-${Date.now()}-${i}`, blocks[i], new Date());
+        if (i < blocks.length - 1) await sleep(900);
+      }
+      if (ok) { replied++; void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {}); }
+    }
+  }
+  return { replied };
+}

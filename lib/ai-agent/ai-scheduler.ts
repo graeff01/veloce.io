@@ -1,5 +1,6 @@
 import { processDueJobs } from "@/lib/ai-agent/queue";
 import { reengageStalled } from "@/lib/ai-agent/reengage";
+import { autoReplyStalled } from "@/lib/ai-agent/respond";
 import { captureException } from "@/lib/observability";
 
 // Agendador interno do worker do agente. O caminho feliz é o "nudge" em memória logo
@@ -11,6 +12,7 @@ let started = false;
 const TICK_MS = 60 * 1000;        // a cada 60s
 const FIRST_DELAY_MS = 20 * 1000; // 20s após subir
 const REENGAGE_TICK_MS = 10 * 60 * 1000; // re-engajamento de lead silenciado a cada 10min
+const AUTO_REPLY_TICK_MS = 3 * 60 * 1000; // auto-resposta de lead sem atendimento a cada 3min
 
 export function startAiAgentScheduler(): void {
   if (started) return;
@@ -21,5 +23,8 @@ export function startAiAgentScheduler(): void {
   // Re-engajamento dentro da janela: recupera lead engajado que ficou em silêncio.
   const reTick = () => { void reengageStalled().catch((e) => captureException(e, { where: "ai-scheduler.reengage" })); };
   setInterval(reTick, REENGAGE_TICK_MS);
-  console.log("[ai-scheduler] worker do agente agendado (60s fila + 10min re-engajamento)");
+  // Auto-resposta: lead sem atendimento em horário comercial → a IA responde o que sabe.
+  const autoTick = () => { void autoReplyStalled().catch((e) => captureException(e, { where: "ai-scheduler.autoreply" })); };
+  setInterval(autoTick, AUTO_REPLY_TICK_MS);
+  console.log("[ai-scheduler] worker do agente agendado (60s fila + 10min re-engajamento + 3min auto-resposta)");
 }
