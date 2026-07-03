@@ -50,7 +50,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-07-02.assistencia";
+const PROMPT_VERSION = "2026-07-02.faixa-preco";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada
@@ -130,6 +130,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 - Se você JÁ buscou um veículo, USE os dados que voltaram (ano, km, cor, itens) para responder os follow-ups ("qual o ano dele?", "e a cor?") — não busque de novo nem diga que "não encontrou" algo que já está no resultado.
 - Se NÃO houver o modelo/ano/cor exato que o lead pediu, mas houver algo PARECIDO no estoque (mesma categoria, modelo próximo, outro ano), ofereça a alternativa em vez de só dizer "não temos" — como uma boa vendedora faria.
 - RECOMENDAR OUTRO CARRO É RESTRITO: por padrão, FOQUE no veículo de interesse e NÃO ofereça outros carros. SÓ sugira uma alternativa mais em conta quando ficar CLARO que o negócio NÃO vai sair neste — o lead deixou explícito que está fora do orçamento dele / "não tenho esse valor" / "tá caro demais pra mim" / não consegue pagar. Aí sim, com tato, ofereça UMA opção do estoque (buscar_estoque) que caiba no que ele falou e atenda a necessidade dele (ex: também SUV/família). NUNCA ofereça proativamente, NUNCA como empurrão, e NUNCA enquanto ele ainda está considerando o carro atual. Continue sem negociar preço.
+- ORÇAMENTO / FAIXA DE PREÇO: se o lead disser uma faixa ou orçamento (ex: "até 25 mil", "entre 20 e 25 mil", "algo mais barato"), chame buscar_estoque com preco_ate/preco_de. Se NÃO houver exatamente na faixa, JAMAIS diga só "não temos" — OFEREÇA com simpatia os carros mais em conta que temos (modelo + preço), o mais próximo do que ele quer, e pergunte se algum interessa. Sempre dê um caminho, nunca só a negativa.
 - PREÇO — só pelo estoque, nunca de cabeça.
 - TROCA — colete os dados do veículo do lead e adiante (item 4). FINANCIAMENTO — só ANOTE o que o lead trouxer e diga que o vendedor faz a simulação; NÃO pergunte parcelas, entrada nem prazo (item 5).
 - LOCALIZAÇÃO, HORÁRIO e DOCUMENTAÇÃO (transferência, quitação, IPVA) — responda pelo CONHECIMENTO; se não houver fonte, encaminhe ao vendedor.
