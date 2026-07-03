@@ -53,7 +53,8 @@ export const TOOL_DEFS: ToolDef[] = [
       description: "Envia ao lead a(s) FOTO(s) do veículo. Na abertura mande SÓ 1 (a capa). Só mande mais (2-3) se o lead PEDIR mais fotos ou perguntar do interior — nunca encha de fotos.",
       parameters: { type: "object", properties: {
         termo: { type: "string", description: "modelo do veículo, se diferente do de interesse do lead" },
-        quantidade: { type: "number", description: "quantas fotos enviar (1 = só a capa; 2-3 só quando o lead pedir mais)" },
+        quantidade: { type: "number", description: "quantas fotos enviar (1 = só a capa; 4-5 quando o lead pede mais / ver por dentro)" },
+        interior: { type: "boolean", description: "true quando o lead quer ver o INTERIOR / por dentro — manda as fotos internas (do final da galeria), não as externas" },
       } },
     },
   },
@@ -81,8 +82,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const total = await prisma.catalogItem.count({ where: { clientId: ctx.clientId, available: true } });
         return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item encontrado para "${termo}".`, decision: "respondeu_duvida" };
       }
-      const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}${(i as { url?: string | null }).url ? ` [link do anúncio (todas as fotos): ${(i as { url?: string }).url}]` : ""}`).join("\n");
-      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}\nSe o lead pedir mais fotos/ver por dentro, mande o link do anúncio do carro.`, decision: "respondeu_duvida" };
+      const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`).join("\n");
+      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}\nSe o lead pedir fotos ou ver por dentro, use enviar_foto (você mesma manda as fotos, não o vendedor).`, decision: "respondeu_duvida" };
     }
 
     case "atualizar_perfil": {
@@ -147,8 +148,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const gallery = Array.isArray(item?.images) ? item!.images : [];
       const photos = [...new Set([item?.imageUrl, ...gallery].filter(Boolean))] as string[];
       if (!photos.length) return { result: "Sem foto cadastrada desse veículo. Ofereça que o vendedor envia as fotos, ou siga por texto." };
-      const qtd = Math.max(1, Math.min(3, Number(args.quantidade) || 1));
-      const toSend = photos.slice(0, qtd);
+      const interior = args.interior === true;
+      const qtd = Math.max(1, Math.min(5, Number(args.quantidade) || (interior ? 4 : 1)));
+      // Interior: as fotos internas ficam no FINAL da galeria (as externas vêm primeiro).
+      const toSend = interior && photos.length > qtd ? photos.slice(-qtd) : photos.slice(0, qtd);
       if (ctx.mode === "test") return { result: `(teste) Enviaria ${toSend.length} foto(s) de ${item!.title} (não enviado).` };
 
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
@@ -164,11 +167,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         } }).catch(() => {});
       }
       if (okCount === 0) return { result: "Não consegui enviar a foto agora; siga por texto e ofereça que o vendedor envia." };
-      const adLink = (item as { url?: string | null })?.url;
-      const maisFotos = adLink
-        ? `Se o lead pedir MAIS fotos ou ver POR DENTRO/interior, mande este link do anúncio (tem TODAS as fotos e detalhes): ${adLink} — não diga que o vendedor envia.`
-        : `Se pedir mais fotos, ofereça que o vendedor envia.`;
-      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. ${maisFotos} Não reenvie fotos sem o lead pedir.` };
+      const restante = photos.length - okCount;
+      const maisFotos = restante > 0
+        ? `Se o lead pedir MAIS fotos ou ver POR DENTRO/interior, chame enviar_foto de novo com quantidade 5 (a loja tem mais fotos deste carro) — você mesma manda, NÃO diga que o vendedor envia.`
+        : `Já enviou as fotos que a loja tem deste carro; se pedir ainda mais, diga que o vendedor pode enviar outras.`;
+      return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. ${maisFotos} Não reenvie as MESMAS fotos sem o lead pedir.` };
     }
 
     case "escalar_humano": {
