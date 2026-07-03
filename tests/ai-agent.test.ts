@@ -72,6 +72,20 @@ test("anti-injection: bloqueia vazamento de prompt em qualquer vertical (inclusi
   assert.equal(checkReply("Claro! Posso te ajudar com o Taos.", resolveBlockRules("automotivo")).allowed, true);
 });
 
+test("guardrail bloqueia 'chamar um vendedor' e gíria kkk (universal), mas deixa passar o handoff correto", () => {
+  for (const v of ["automotivo", "imobiliario", "servicos"]) {
+    const rules = resolveBlockRules(v);
+    assert.equal(checkReply("Vou chamar um vendedor para ele te ajudar rapidinho kkk", rules).allowed, false, v);
+    assert.equal(checkReply("já vou chamar o vendedor pra você", rules).allowed, false, v);
+    assert.equal(checkReply("deixa eu chamar alguém pra te atender", rules).allowed, false, v);
+    assert.equal(checkReply("pode deixar kkkk", rules).allowed, false, v);
+  }
+  // Handoff CORRETO (vendedor entra em contato) NÃO é bloqueado.
+  const rules = resolveBlockRules("automotivo");
+  assert.equal(checkReply("O vendedor vai entrar em contato com você no horário comercial 😊", rules).allowed, true);
+  assert.equal(checkReply("Deixei tudo anotado pro vendedor te passar as condições.", rules).allowed, true);
+});
+
 // ── Opt-out (LGPD): trava determinística, conservadora ──
 
 test("opt-out detecta pedidos inequívocos de parada", () => {

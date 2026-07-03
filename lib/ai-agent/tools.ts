@@ -198,7 +198,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     }
 
     case "escalar_humano": {
-      return { result: "Ok. Diga ao lead, de forma natural, que já vai chamar um vendedor pra dar sequência no atendimento e registre o motivo. NÃO prometa prazo específico (nem 'no horário comercial') — só que um vendedor vai continuar.", decision: "escalou" };
+      return { result: "Ok, o vendedor já foi acionado. Diga ao lead, de forma natural, que um VENDEDOR VAI ENTRAR EM CONTATO pra dar sequência — NUNCA diga 'vou chamar um vendedor' (isso soa como se tivesse alguém disponível na hora). Siga o STATUS DA LOJA: se ABERTA, 'o vendedor já vai entrar em contato'; se FECHADA, 'no próximo horário comercial'. NÃO prometa horário exato. Nada de gíria (sem 'kkk').", decision: "escalou" };
     }
 
     default:
