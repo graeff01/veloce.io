@@ -11,7 +11,10 @@ const STOP = new Set([
   "ano", "por", "com", "valor", "preco", "preço", "quanto", "tem", "esse", "essa",
   "disponivel", "disponível", "carro", "veiculo", "veículo", "modelo", "quero", "qual",
   "quais", "versao", "versão", "dele", "dela", "sobre", "mais", "detalhes", "gostaria",
-  "cor", "ainda", "aqui", "tipo", "tinha", "queria", "ficha",
+  "cor", "ainda", "aqui", "tipo", "tinha", "queria", "ficha", "fotos", "foto", "dentro", "interior",
+  // cores ficam nos ATRIBUTOS, não no título — não exigir no match (senão "Tera preto" acha 0)
+  "preto", "preta", "branco", "branca", "prata", "prato", "vermelho", "vermelha", "cinza",
+  "azul", "verde", "amarelo", "amarela", "dourado", "dourada", "bege", "marrom", "vinho",
 ]);
 
 // Tokens significativos do termo (>=3 chars, sem stopwords). Puro/testável.

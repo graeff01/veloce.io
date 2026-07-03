@@ -24,6 +24,7 @@ interface RunOpts {
   mode?: "live" | "test";
   transcript?: ChatMessage[]; // memória efêmera (apenas no modo test)
   autoMode?: boolean; // auto-resposta de lead sem atendimento: só responde se SOUBER, senão "[SKIP]"
+  suppressGreeting?: boolean; // entrando numa conversa em andamento (auto/manual) → NÃO saúda, só responde
 }
 
 // Instrução do MODO AUTO: a IA entra só pra não deixar o lead no vácuo quando o atendente
@@ -45,7 +46,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-07-02.fotos-interior";
+const PROMPT_VERSION = "2026-07-02.carro-certo";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada
@@ -118,6 +119,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 6. PRÓXIMO PASSO (afirmativo — NÃO peça permissão): quando o lead demonstrar interesse, CONFIRME o próximo passo dizendo que já deixou tudo anotado e que o vendedor vai entrar em contato no horário comercial (assim que a loja abrir) para acertar os detalhes — sem prometer horário exato e SEM perguntar "quer que eu peça?". QUANDO O LEAD CONFIRMAR (disser "ok", "pode ser", "tenho interesse", "tá bom"), FECHE de forma afirmativa e PARE — NÃO emende outra oferta nem outra pergunta ("quer que eu...?", "quer aproveitar pra...?"). Uma única mensagem curta de fechamento basta. Um leve senso de oportunidade ("esse modelo tem bastante procura") é bem-vindo uma vez, sem pressão. Não fique repetindo "anotei".
 7. Use escalar_humano quando o lead INSISTIR num número/condição/aprovação, pedir algo fora do seu alcance, ou quando não houver fonte para responder.`,
     `PERGUNTAS MAIS FREQUENTES (esteja pronto, por ordem de frequência real):
+- CARRO CERTO (CRÍTICO): responda/mande foto SEMPRE do modelo que o LEAD nomeou, nunca de outro. Ao chamar enviar_foto/buscar_estoque, use EXATAMENTE o modelo que o lead falou. Modelos de nome PARECIDO são carros DIFERENTES (ex: Tera ≠ Taos, Nivus ≠ Virtus) — jamais troque um pelo outro. Se o lead pediu "Tera" e você só tem outro parecido, NÃO mande o parecido como se fosse; diga que confirma/busca o que ele pediu.
 - FICHA TÉCNICA (ano, km, itens, câmbio) é a dúvida nº 1 — responda pelo estoque (buscar_estoque); se faltar o dado, diga que confirma com o vendedor.
 - MAIS FOTOS / VER POR DENTRO / INTERIOR: VOCÊ MESMA manda as fotos (enviar_foto), NUNCA diga que "o vendedor envia as fotos". Se o lead quer ver POR DENTRO/interior, chame enviar_foto com interior=true (aí ela manda as fotos INTERNAS, não as externas). Se só pediu "mais fotos", quantidade 4-5. Comente curtinho ("te mandei as fotos de dentro dele 😊") e pare.
 - NUNCA invente detalhe que NÃO veio do estoque. Se perguntarem algo que não está nos dados (ex: estepe, consumo/km por litro, potência, nº de revisões, garantia) e não houver no CONHECIMENTO, NÃO chute nem deduza — diga com naturalidade que confirma esse detalhe com o vendedor. Só afirme o que está nos dados.
@@ -138,7 +140,7 @@ function buildStablePrompt(cfg: PromptCfg): string {
 function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string, storeOpen: boolean | null): string {
   return [
     firstNote || "",
-    vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por este anúncio — já saiba responder ano/km/itens e ofereça a foto):\n${vehicle}` : "",
+    vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por ESTE anúncio):\n${vehicle}\nATENÇÃO: isto é só o carro do anúncio. Se o lead PERGUNTAR ou PEDIR outro modelo (nomear outro carro), responda sobre o carro que ELE pediu — busque com buscar_estoque e mande a foto DESSE (enviar_foto termo="modelo que o lead falou"). NUNCA mande este carro do anúncio no lugar do que o lead pediu.` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
     qualif || "",
@@ -200,7 +202,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Saudação na 1ª mensagem: usa o texto fixo da loja (greetingMessage) se houver,
   // senão a saudação padrão. Vale em live e em teste (Console) para refletir o real.
   let disclosureText = "";
-  if (isFirst && cfg?.disclosureEnabled !== false) {
+  if (isFirst && cfg?.disclosureEnabled !== false && !opts.autoMode && !opts.suppressGreeting) {
     disclosureText = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
   }
   // Saudação juntada à 1ª resposta com UMA quebra só → vira UM balão (abertura leve:
