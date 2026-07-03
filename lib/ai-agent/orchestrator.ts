@@ -29,7 +29,11 @@ interface RunOpts {
 
 // Instrução do MODO AUTO: a IA entra só pra não deixar o lead no vácuo quando o atendente
 // humano demorou. Só responde o que ELA SABE; o resto devolve "[SKIP]" (o chamador não envia).
-const AUTO_MODE_NOTE = `MODO AUTO — um atendente humano está cuidando deste lead, mas demorou a responder, e você entra SÓ pra não deixar o lead no vácuo. REGRA CRÍTICA: você SÓ responde se tiver uma resposta CONCRETA e ÚTIL que VOCÊ SABE de fato — mandar foto do carro, responder ano/km/preço/cor/itens (do estoque), localização/horário (do conhecimento). Se a mensagem do lead for sobre NEGOCIAÇÃO/desconto, financiamento, avaliação de troca, disponibilidade garantida, agendamento, algo pessoal do atendimento, OU qualquer coisa que dependa do vendedor ou que você não sabe: você NÃO responde — devolva EXATAMENTE "[SKIP]" e mais nada. NUNCA diga que vai chamar o vendedor, NUNCA escale, NUNCA se meta no que é do vendedor. Na dúvida, "[SKIP]".`;
+const AUTO_MODE_NOTE = `MODO ASSISTÊNCIA — um atendente humano JÁ está cuidando deste lead; você entra só pra ajudar a responder, não pra assumir. REGRAS:
+- Você SÓ responde o que VOCÊ SABE de fato: mandar foto do carro, ano/km/preço/cor/itens (do estoque), localização/horário (do conhecimento). Vá DIRETO na pergunta do lead.
+- Se der, faça UMA pergunta curta que QUALIFICA e aproxima da VENDA (uso, forma de pagamento, troca). O objetivo é deixar o lead mais qualificado.
+- PROIBIDO oferecer "passar pro vendedor", dizer "já deixo anotado pro vendedor", perguntar "quer mais detalhes?" ou "quer que eu chame o vendedor?" — o atendente humano já está aí, você NÃO chama ninguém nem se mete no papel dele.
+- Se a mensagem for sobre negociação/desconto, financiamento, avaliação de troca, disponibilidade, agendamento, ou algo que dependa do vendedor / que você não sabe / uma FOTO que NÃO existe no sistema: responda EXATAMENTE "[SKIP]" e mais nada. NÃO diga que o vendedor vai enviar/atender — apenas "[SKIP]" (o vendedor cuida). Na dúvida, "[SKIP]".`;
 
 export interface RunOutput {
   reply: string | null;
@@ -46,7 +50,7 @@ interface PromptCfg { language: string; assistantName: string | null; storeName:
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
-const PROMPT_VERSION = "2026-07-02.carro-certo";
+const PROMPT_VERSION = "2026-07-02.assistencia";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const RECENT_TOKEN_BUDGET = Number(process.env.AI_RECENT_TOKEN_BUDGET || 1200); // orçamento da janela curta
 const CHAT_TEMPERATURE = Number(process.env.AI_CHAT_TEMPERATURE || 0.6); // conversa mais natural/variada

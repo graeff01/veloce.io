@@ -261,10 +261,14 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   const inboundText = last?.text?.trim();
   if (!inboundText) return { ok: false, error: "Não há mensagem do lead para responder." };
 
-  const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText }, { suppressGreeting: true });
-  if (!out.reply) return { ok: false, error: "A IA não gerou resposta (verifique se está habilitada)." };
+  const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText }, { autoMode: true });
+  const reply = out.reply?.trim();
+  // [SKIP]/escalou/bloqueado → a IA não tem o que responder (é do vendedor); não envia nada.
+  if (!reply || reply.includes("[SKIP]") || out.decision === "escalou" || out.status === "blocked") {
+    return { ok: false, error: "A IA não tem uma resposta para isso — é com o vendedor." };
+  }
 
-  const blocks = splitBlocks(out.reply);
+  const blocks = splitBlocks(reply);
   let ok = false;
   for (let i = 0; i < blocks.length; i++) {
     const r = await sendWithRetry(conn, contact.waId, blocks[i]);
@@ -275,7 +279,7 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   }
   void updateRollingMemory(contact.id, conn.clientId).catch(() => {});
   void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
-  return { ok, reply: out.reply };
+  return { ok, reply };
 }
 
 // Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem
