@@ -145,6 +145,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ai, setAi] = useState<{ summary: string; suggestedStage: string | null } | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+  const [aiReplying, setAiReplying] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -240,6 +241,19 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     if (!d.ficha) { alert("Não foi possível gerar a ficha."); return; }
     try { await navigator.clipboard.writeText(d.ficha); alert("✅ Ficha copiada! Cole no grupo ou mande direto pro vendedor."); }
     catch { window.prompt("Copie a ficha:", d.ficha); }
+  }
+  // Aciona a IA manualmente pra responder o lead (ex: lead sem resposta, mesmo em horário
+  // comercial). A IA responde a última mensagem do lead; ignora horário, respeita opt-out.
+  async function aiReply() {
+    if (!selected || aiReplying) return;
+    setAiReplying(true);
+    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}/ai-reply`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    setAiReplying(false);
+    if (!r.ok) { alert(d.error || "Não foi possível gerar a resposta da IA."); return; }
+    const rr = await fetch(`/api/clients/${clientId}/whatsapp/conversations/${selected}`);
+    const dd = await rr.json().catch(() => null);
+    if (dd) setDetail(dd);
   }
   // LGPD — apaga o que a IA guardou deste contato (irreversível).
   async function eraseAi() {
@@ -411,6 +425,12 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {!detail?.contact.aiOptedOut && (
+                    <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+                      style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", cursor: aiReplying ? "wait" : "pointer", padding: "0 10px", fontSize: 12, fontWeight: 600, background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)", opacity: aiReplying ? 0.6 : 1 }}>
+                      <Sparkles size={14} /> {aiReplying ? "Respondendo…" : "IA responder"}
+                    </button>
+                  )}
                   <button onClick={genFicha} title="Gerar ficha do lead e copiar (handoff pro vendedor)"
                     style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", cursor: "pointer", padding: "0 10px", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "#fff" }}>
                     <FileText size={14} /> Ficha
