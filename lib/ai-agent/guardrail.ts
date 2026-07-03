@@ -48,6 +48,11 @@ const DEFAULT_BY_VERTICAL: Record<string, BlockRule[]> = {
 // inclusive sobre override do tenant. 2ª linha de defesa contra prompt injection.
 const UNIVERSAL: BlockRule[] = [
   { re: /(regras absolutas|prompt do sistema|system prompt|minhas instru[cç][oõ]es (s[aã]o|internas|completas)|repetir (as )?instru[cç][oõ]es|fui instru[ií]d[oa] a|conforme (as )?instru[cç][oõ]es acima)/, reason: "tentou vazar instruções/prompt do sistema" },
+  // Handoff: a IA NÃO chama ninguém na hora — quem é acionado é o vendedor, que ENTRA EM CONTATO.
+  // "vou chamar um vendedor" é promessa falsa de disponibilidade imediata (e some sem a tool escalar_humano).
+  { re: /\bchamar\s+(um |o |a |uma |)?(vendedor|atendente|consultor|colega|especialista|algu[eé]m|equipe)/, reason: "prometeu chamar vendedor na hora (deve acionar handoff: vendedor entra em contato)" },
+  // Gíria/informalidade proibida (risada "kkk").
+  { re: /\bk{3,}\b/, reason: "usou gíria kkk" },
 ];
 
 // Resolve as regras efetivas: UNIVERSAL + (override do tenant > padrão do vertical > genérico).

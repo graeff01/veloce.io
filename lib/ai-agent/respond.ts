@@ -210,7 +210,9 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   //  • modo 24h + lead ficou QUENTE → manda a ficha pro vendedor assumir (só 1x por lead).
   // Se o vendedor responder o lead, o takeover humano já silencia a IA naquele contato.
   if (sent.ok) {
-    if (out.decision === "escalou") void handoffToOperators(conn, contact.id).catch(() => {});
+    // escalou OU bloqueado pelo guardrail (bateu numa parede: negociação/parcelas/"vou chamar
+    // vendedor") → o vendedor é acionado DE VERDADE na hora (ficha), em qualquer modo.
+    if (out.decision === "escalou" || out.status === "blocked") void handoffToOperators(conn, contact.id).catch(() => {});
     else if (cfg?.answerMode === "always" || cfg?.answerMode === "ads_in_hours") void handoffToOperators(conn, contact.id, { requireHot: true }).catch(() => {});
   }
 
