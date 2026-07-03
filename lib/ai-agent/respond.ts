@@ -261,7 +261,7 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   const inboundText = last?.text?.trim();
   if (!inboundText) return { ok: false, error: "Não há mensagem do lead para responder." };
 
-  const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText });
+  const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText }, { suppressGreeting: true });
   if (!out.reply) return { ok: false, error: "A IA não gerou resposta (verifique se está habilitada)." };
 
   const blocks = splitBlocks(out.reply);
