@@ -21,8 +21,12 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "buscar_estoque",
-      description: "Busca produtos no catálogo do cliente (ex: carros). Use SEMPRE que o lead perguntar sobre produto/preço/ficha técnica. Nunca invente.",
-      parameters: { type: "object", properties: { termo: { type: "string", description: "modelo/termo procurado, ex: 'Taos' ou 'SUV até 120 mil'" } }, required: ["termo"] },
+      description: "Busca produtos no catálogo (ex: carros) por modelo E/OU faixa de preço. Use SEMPRE que o lead perguntar produto/preço/ficha, ou der um ORÇAMENTO/faixa. Se não houver na faixa, retorna os mais próximos/em conta pra você oferecer. Nunca invente.",
+      parameters: { type: "object", properties: {
+        termo: { type: "string", description: "modelo/termo procurado, ex: 'Taos'. Opcional se buscar só por preço." },
+        preco_de: { type: "number", description: "preço MÍNIMO em reais, se o lead deu uma faixa (ex: 20000)" },
+        preco_ate: { type: "number", description: "preço MÁXIMO em reais / orçamento do lead (ex: 25000). Se não houver nessa faixa, volta os mais em conta." },
+      } },
     },
   },
   {
@@ -77,13 +81,32 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
   switch (name) {
     case "buscar_estoque": {
       const termo = String(args.termo ?? "").trim();
+      const precoDe = Number(args.preco_de) || 0;
+      const precoAte = Number(args.preco_ate) || 0;
+      const fmt = (arr: { title: string; price: number | null; attributes: unknown }[]) =>
+        arr.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`).join("\n");
+      const sel = { title: true, price: true, attributes: true } as const;
+
+      // Busca por FAIXA DE PREÇO (lead deu orçamento) — com fallback pros mais próximos.
+      if (precoDe || precoAte) {
+        const priceWhere: { gte?: number; lte?: number } = {};
+        if (precoDe) priceWhere.gte = precoDe;
+        if (precoAte) priceWhere.lte = precoAte;
+        const inRange = await prisma.catalogItem.findMany({ where: { clientId: ctx.clientId, available: true, price: priceWhere }, orderBy: { price: "asc" }, take: 6, select: sel });
+        if (inRange.length) return { result: `Na faixa pedida:\n${fmt(inRange)}\nSe o lead pedir fotos, use enviar_foto.`, decision: "respondeu_duvida" };
+        // Nada na faixa → oferece os MAIS EM CONTA disponíveis (o mais próximo do orçamento).
+        const closest = await prisma.catalogItem.findMany({ where: { clientId: ctx.clientId, available: true, price: { not: null } }, orderBy: { price: "asc" }, take: 4, select: sel });
+        if (!closest.length) return { result: "Catálogo sem itens com preço; não invente, encaminhe ao vendedor.", decision: "respondeu_duvida" };
+        return { result: `NÃO há carro exatamente nessa faixa. Em vez de só dizer "não temos", OFEREÇA com simpatia os mais em conta que temos (modelo + preço) e pergunte se algum interessa:\n${fmt(closest)}`, decision: "respondeu_duvida" };
+      }
+
+      // Busca por MODELO/termo.
       const items = await searchCatalog(ctx.clientId, termo);
       if (items.length === 0) {
         const total = await prisma.catalogItem.count({ where: { clientId: ctx.clientId, available: true } });
-        return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item encontrado para "${termo}".`, decision: "respondeu_duvida" };
+        return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item para "${termo}". Se o lead deu um orçamento/faixa, chame buscar_estoque com preco_ate/preco_de pra oferecer o mais próximo.`, decision: "respondeu_duvida" };
       }
-      const list = items.map((i) => `- ${i.title}${i.price ? ` — R$ ${i.price.toLocaleString("pt-BR")}` : ""}${i.attributes ? ` (${Object.entries(i.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`).join("\n");
-      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${list}\nSe o lead pedir fotos ou ver por dentro, use enviar_foto (você mesma manda as fotos, não o vendedor).`, decision: "respondeu_duvida" };
+      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${fmt(items)}\nSe o lead pedir fotos ou ver por dentro, use enviar_foto (você mesma manda as fotos, não o vendedor).`, decision: "respondeu_duvida" };
     }
 
     case "atualizar_perfil": {
