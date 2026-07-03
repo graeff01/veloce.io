@@ -48,6 +48,11 @@ const AVATAR_PALETTE = ["#7C3AED","#3B82F6","#10B981","#F59E0B","#EF4444","#EC48
 const MEDIA_TYPES = new Set(["image", "sticker", "audio", "video", "document"]);
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
+// "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
+// Se a última foi da loja (saída), a conversa está respondida.
+function isWaiting(c: ConvRow) {
+  return c.lastDirection != null && c.lastDirection !== "out";
+}
 function avatarColor(seed: string) {
   let h = 0;
   for (const ch of seed) h = (h + ch.charCodeAt(0)) % AVATAR_PALETTE.length;
@@ -139,7 +144,9 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   const [list, setList] = useState<ConvRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [q, setQ] = useState(sp0.get("busca") ?? "");
-  const [filter, setFilter] = useState<"all" | "ads">(sp0.get("origem") === "ads" ? "ads" : "all");
+  const [filter, setFilter] = useState<"all" | "ads" | "waiting">(
+    sp0.get("origem") === "ads" ? "ads" : sp0.get("origem") === "waiting" ? "waiting" : "all",
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -162,7 +169,9 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     if (q) sp.set("busca", q); else sp.delete("busca");
-    if (filter === "ads") sp.set("origem", "ads"); else sp.delete("origem");
+    if (filter === "ads") sp.set("origem", "ads");
+    else if (filter === "waiting") sp.set("origem", "waiting");
+    else sp.delete("origem");
     const qs = sp.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, [q, filter]);
@@ -269,6 +278,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
   const filtered = useMemo(() => {
     let r = list;
     if (filter === "ads") r = r.filter((c) => c.fromAd);
+    else if (filter === "waiting") r = r.filter((c) => isWaiting(c));
     const term = q.trim().toLowerCase();
     if (term) r = r.filter((c) => (c.name ?? "").toLowerCase().includes(term) || c.waId.includes(term));
     return r;
@@ -313,17 +323,22 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
 
           {/* Filter pills */}
           <div style={{ display: "flex", gap: 6, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-            {(["all","ads"] as const).map((f) => {
-              const count = f === "ads" ? list.filter((c) => c.fromAd).length : list.length;
+            {(["all","waiting","ads"] as const).map((f) => {
+              const count = f === "ads" ? list.filter((c) => c.fromAd).length
+                : f === "waiting" ? list.filter(isWaiting).length
+                : list.length;
               const active = filter === f;
+              const isWait = f === "waiting";
+              const activeBg = isWait ? "#1FA855" : "var(--accent)";
               return (
                 <button key={f} onClick={() => setFilter(f)} style={{
                   height: 28, padding: "0 12px", borderRadius: 99, border: active ? "none" : "1px solid var(--border)",
-                  background: active ? "var(--accent)" : "transparent",
+                  background: active ? activeBg : "transparent",
                   color: active ? "#fff" : "var(--text-secondary)",
                   fontSize: 12, fontWeight: active ? 600 : 400, cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
                 }}>
-                  {f === "all" ? "Todas" : "Meta Ads"}
+                  {isWait && <span style={{ width: 7, height: 7, borderRadius: "50%", background: active ? "#fff" : "#1FA855", flexShrink: 0 }} />}
+                  {f === "all" ? "Todas" : isWait ? "Aguardando" : "Meta Ads"}
                   <span style={{ fontSize: 10.5, fontWeight: 700, padding: "1px 5px", borderRadius: 99, background: active ? "rgba(255,255,255,0.2)" : "var(--bg-elevated)", color: active ? "#fff" : "var(--text-muted)" }}>
                     {count}
                   </span>
@@ -345,31 +360,33 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
               const isSelected = selected === c.contactId;
               const isMedia = c.lastText?.startsWith("[") ?? false;
               const mIcon = isMedia && c.lastText ? mediaIcon(c.lastText.slice(1, -1).split(" ")[3] ?? "") : null;
+              const waiting = isWaiting(c);
               return (
                 <button key={c.contactId} className="wa-conv-row" onClick={() => setSelected(c.contactId)}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
                     border: "none", cursor: "pointer", textAlign: "left",
-                    background: isSelected ? "color-mix(in srgb, var(--accent) 6%, var(--bg-surface))" : "transparent",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 6%, var(--bg-surface))" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent",
                     borderBottom: "1px solid var(--border)",
-                    borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
+                    borderLeft: isSelected ? "3px solid var(--accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent",
                   }}>
                   <Avatar name={c.displayName ?? c.name} wa={c.waId} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: waiting ? 700 : 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.displayName ?? c.name ?? `+${c.waId}`}</span>
                         <StatusBadge badge={c.badge} />
                       </span>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, letterSpacing: "0.01em" }}>{listTime(c.lastMessageAt)}</span>
+                      <span style={{ fontSize: 11, color: waiting ? "#1FA855" : "var(--text-muted)", fontWeight: waiting ? 700 : 400, flexShrink: 0, letterSpacing: "0.01em" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                      <span style={{ fontSize: 12.5, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, display: "flex", alignItems: "center", gap: 4, fontStyle: isMedia ? "italic" : "normal" }}>
+                      <span style={{ fontSize: 12.5, color: waiting ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: waiting ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, display: "flex", alignItems: "center", gap: 4, fontStyle: isMedia ? "italic" : "normal" }}>
                         {c.lastDirection === "out" && <CheckCheck size={13} style={{ color: "var(--accent)", flexShrink: 0 }} />}
                         {mIcon}
                         {c.lastText ? (isMedia ? mediaLabel(c.lastText.replace(/[\[\]]/g, "")) : c.lastText) : <span style={{ opacity: 0.5 }}>—</span>}
                       </span>
                       <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)" }} />}
                         {c.tags?.slice(0, 1).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
                         {c.reportValid === false && <span style={{ fontSize: 9.5, fontWeight: 700, color: "#DC2626", background: "rgba(220,38,38,0.1)", padding: "1px 6px", borderRadius: 99 }}>inválido</span>}
                         {c.fromAd && (
