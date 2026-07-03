@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Sparkles } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
 const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
+// "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
+const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
 interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; items: Msg[] }
 
@@ -44,12 +46,13 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
 
 export function PortalConversations({ token, brandName, logoUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; initialContact?: string | null }) {
   const [list, setList] = useState<Row[] | null>(null);
-  const [tab, setTab] = useState<"all" | "ads">("all");
+  const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
   const [adFilter, setAdFilter] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(initialContact ?? null);
   const [conv, setConv] = useState<Conv | null>(null);
   const [loadingConv, setLoadingConv] = useState(false);
+  const [aiReplying, setAiReplying] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
@@ -90,10 +93,13 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
   }, [list]);
 
-  const items = (list ?? []).filter((c) =>
-    (tab === "all" || c.fromAd) &&
-    (tab !== "ads" || !adFilter || adLabelOf(c) === adFilter) &&
-    (!q.trim() || c.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const items = (list ?? []).filter((c) => {
+    if (tab === "ads" && !c.fromAd) return false;
+    if (tab === "ads" && adFilter && adLabelOf(c) !== adFilter) return false;
+    if (tab === "waiting" && !isWaiting(c)) return false;
+    if (q.trim() && !c.name.toLowerCase().includes(q.trim().toLowerCase())) return false;
+    return true;
+  });
 
   // agrupa mensagens por dia (divisores estilo WhatsApp)
   const grouped = useMemo(() => {
@@ -106,9 +112,33 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     return out;
   }, [conv]);
 
-  const tabChip = (k: "all" | "ads", label: string) => (
-    <button onClick={() => { setTab(k); if (k === "all") setAdFilter(null); }} style={{ padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: tab === k ? "var(--p-accent-soft)" : "transparent", color: tab === k ? "var(--p-accent)" : "var(--wa-muted)" }}>{label}</button>
-  );
+  // Aciona a IA pra responder o lead a partir do portal (mesmo em horário comercial).
+  // A IA só responde o que sabe; se for do vendedor, não envia e avisa.
+  async function aiReply() {
+    if (!sel || aiReplying) return;
+    setAiReplying(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/ai-reply`, { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.error || "Não foi possível gerar a resposta da IA."); return; }
+      const rr = await fetch(`/api/portal/${token}/conversations/${sel}`);
+      const dd = await rr.json().catch(() => null);
+      if (dd) setConv(dd);
+    } finally { setAiReplying(false); }
+  }
+
+  const waitingCount = (list ?? []).filter(isWaiting).length;
+  const tabChip = (k: "all" | "ads" | "waiting", label: string) => {
+    const on = tab === k;
+    const isWait = k === "waiting";
+    return (
+      <button onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: on ? (isWait ? "color-mix(in srgb, #1FA855 15%, transparent)" : "var(--p-accent-soft)") : "transparent", color: on ? (isWait ? "#1FA855" : "var(--p-accent)") : "var(--wa-muted)" }}>
+        {isWait && <span style={{ width: 7, height: 7, borderRadius: "50%", background: on ? "#1FA855" : "var(--wa-muted)" }} />}
+        {label}
+        {isWait && waitingCount > 0 && <span style={{ fontSize: 11, fontWeight: 800 }}>{waitingCount}</span>}
+      </button>
+    );
+  };
 
   const adChip = (label: string | null, text: string, count: number) => {
     const on = adFilter === label;
@@ -139,7 +169,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
           </div>
         </div>
         {/* abas */}
-        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px" }}>{tabChip("all", "Conversas")}{tabChip("ads", "Leads de anúncio")}</div>
+        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{tabChip("ads", "Leads de anúncio")}</div>
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -154,16 +184,18 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             : items.length === 0 ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
+              const waiting = isWaiting(c);
               return (
-                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", background: on ? "var(--p-accent-soft)" : "transparent", cursor: "pointer" }}>
+                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                      <span style={{ fontSize: 11, color: "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
+                      <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                      <span style={{ fontSize: 12.5, color: "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: waiting ? 700 : 400, color: waiting ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
+                      {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} />}
                       {c.fromAd && <span style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>}
                       <StageBadge stage={c.funnelStage} />
                     </div>
@@ -198,6 +230,10 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
                 {conv.lead?.adTitle && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>veio do anúncio “{conv.lead.adTitle}”</div>}
               </div>
+              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                <Sparkles size={14} /> {aiReplying ? "Respondendo…" : "IA responder"}
+              </button>
               <StageBadge stage={conv.funnelStage} />
             </div>
 
@@ -245,7 +281,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
             {/* rodapé só-leitura (no lugar do campo de digitar) */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px", background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", color: "var(--wa-muted)", fontSize: 12, flexShrink: 0 }}>
-              <Eye size={13} /> Somente leitura — você acompanha as conversas por aqui; responda pelo WhatsApp da loja.
+              <Eye size={13} /> Você acompanha as conversas por aqui — responda pelo WhatsApp da loja ou toque em ✨ IA responder pra IA responder o lead.
             </div>
           </>
         )}
