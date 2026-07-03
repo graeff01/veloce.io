@@ -244,3 +244,36 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
   return "sent";
 }
+
+// Acionamento MANUAL da IA a partir do painel (botão "IA responder"): o atendente vê um
+// lead sem resposta e clica pra IA responder o que ele perguntou — IGNORA gatekeeper,
+// horário e answerMode (é ação humana deliberada). Respeita opt-out (LGPD).
+export async function manualAiReply(clientId: string, contactId: string): Promise<{ ok: boolean; reply?: string; error?: string }> {
+  const contact = await prisma.waContact.findUnique({
+    where: { id: contactId },
+    select: { id: true, name: true, waId: true, aiOptedOut: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } },
+  });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, error: "Conversa não encontrada." };
+  if (contact.aiOptedOut) return { ok: false, error: "Este lead pediu para não receber mensagens (opt-out)." };
+  const conn = contact.connection;
+
+  const last = await prisma.waMessage.findFirst({ where: { contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { text: true } });
+  const inboundText = last?.text?.trim();
+  if (!inboundText) return { ok: false, error: "Não há mensagem do lead para responder." };
+
+  const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText });
+  if (!out.reply) return { ok: false, error: "A IA não gerou resposta (verifique se está habilitada)." };
+
+  const blocks = splitBlocks(out.reply);
+  let ok = false;
+  for (let i = 0; i < blocks.length; i++) {
+    const r = await sendWithRetry(conn, contact.waId, blocks[i]);
+    if (!r.ok) { if (i === 0) return { ok: false, error: `Falha no envio: ${r.error}` }; break; }
+    ok = true;
+    await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-manual-${Date.now()}-${i}`, blocks[i], new Date());
+    if (i < blocks.length - 1) await sleep(900);
+  }
+  void updateRollingMemory(contact.id, conn.clientId).catch(() => {});
+  void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
+  return { ok, reply: out.reply };
+}
