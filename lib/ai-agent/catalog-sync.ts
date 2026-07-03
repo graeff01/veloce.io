@@ -41,7 +41,7 @@ async function fetchGallery(link: string): Promise<string[]> {
   try {
     const d = nextData(await fetchInsecure(link)) as { props?: { pageProps?: { offer?: { photos?: { src: string }[] } } } } | null;
     const photos = d?.props?.pageProps?.offer?.photos ?? [];
-    return photos.slice(0, 5).map((p) => `https://imgserver.autocarro.com.br/fotos/grande/${p.src}`).filter(Boolean);
+    return photos.slice(0, 14).map((p) => `https://imgserver.autocarro.com.br/fotos/grande/${p.src}`).filter(Boolean);
   } catch { return []; }
 }
 
