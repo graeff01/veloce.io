@@ -45,6 +45,9 @@ export interface WaIncomingMessage {
   video?: WaMediaRef;
   sticker?: WaMediaRef;
   referral?: WaReferral;
+  // Resposta de reply button (interactive) ou de botão de template (button).
+  interactive?: { type?: string; button_reply?: { id?: string; title?: string }; list_reply?: { id?: string; title?: string } };
+  button?: { payload?: string; text?: string };
 }
 
 // Metadados de mídia (sem baixar o conteúdo) — usado p/ o agente reconhecer o tipo.

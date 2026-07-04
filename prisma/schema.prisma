@@ -986,6 +986,8 @@ model WaConversation {
   funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido
   funnelManual     Boolean   @default(false) // operador definiu a etapa → auto-classificador não toca
   funnelEvidence   String?    // frase que justificou a etapa (auditoria do classificador)
+  saleValue        Float?     // valor da venda confirmado pelo gestor (alimenta receita/ROI)
+  saleConfirmedAt  DateTime?  // quando o gestor confirmou "Vendeu"
   aiSummary        String?    // resumo da conversa p/ o CRM (gerado sob demanda pelo operador)
   aiSuggestedStage String?    // etapa de funil sugerida pela IA
   aiUpdatedAt      DateTime?
@@ -1015,6 +1017,27 @@ model WaConversation {
   @@index([connectionId, funnelStage])
   @@index([connectionId, lastMessageAt])
   @@index([connectionId, firstInboundAt])
+}
+
+// "Fechou?" — pergunta ao gestor quando um lead fica parado em Negociação. Rastreia o
+// disparo (hold-and-flush), casa a resposta do webhook (botão) e agenda o reask.
+model FunnelCheck {
+  id            String    @id @default(cuid())
+  connectionId  String
+  contactId     String    @unique // o LEAD sendo perguntado (1 check ativo por lead)
+  recipientWaId String    // gestor que recebe a pergunta
+  status        String    @default("pending") // pending (a enviar/retido) | sent | answered | done
+  response      String?   // vendeu | negociando | perdeu
+  awaitingValue Boolean   @default(false) // aguardando o gestor digitar o valor da venda
+  reaskCount    Int       @default(0)
+  askedAt       DateTime?
+  reaskAt       DateTime? // quando reperguntar (resposta "ainda negociando")
+  answeredAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([connectionId, status])
+  @@index([recipientWaId, awaitingValue])
 }
 
 // Log de eventos — observabilidade/auditoria da operação.

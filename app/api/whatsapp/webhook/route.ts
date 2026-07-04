@@ -10,6 +10,7 @@ import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
 import { notifyNovoLead } from "@/lib/notifications/novo-lead";
 import { notifyLeadQuente } from "@/lib/notifications/lead-quente";
+import { handleManagerFunnelReply, flushPendingChecks } from "@/lib/notifications/funnel-check";
 import { captureException } from "@/lib/observability";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
@@ -145,6 +146,13 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     });
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
+
+    // Frente 2: resposta do GESTOR ao "fechou?" (botão ou valor da venda). Consome a
+    // mensagem (não segue como lead/IA) e, com a janela reaberta, solta perguntas retidas.
+    if (!outbound) {
+      const handledMgr = await handleManagerFunnelReply({ conn, waId: customerWaId, message: m }).catch(() => false);
+      if (handledMgr) { void flushPendingChecks(conn, customerWaId).catch(() => {}); continue; }
+    }
 
     // Auto-classificação do funil (determinística, sem custo). Vale para lead E
     // loja (ex.: "parabéns pela compra"). Fire-and-forget: nunca bloqueia o webhook.

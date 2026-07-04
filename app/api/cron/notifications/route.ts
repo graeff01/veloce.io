@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCron } from "@/lib/cron-auth";
 import { runDueJobs } from "@/lib/notifications/scheduler-core";
+import { scanStuckNegotiations } from "@/lib/notifications/funnel-check";
 
 export const runtime = "nodejs";
 
@@ -13,5 +14,7 @@ export async function POST(req: NextRequest) {
   const denied = checkCron(req);
   if (denied) return denied;
   await runDueJobs();
-  return NextResponse.json({ ok: true, at: new Date().toISOString() });
+  // Frente 2: pergunta "fechou?" ao gestor (leads parados em Negociação). Best-effort.
+  const funnel = await scanStuckNegotiations().catch(() => ({ created: 0, sent: 0 }));
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), funnel });
 }
