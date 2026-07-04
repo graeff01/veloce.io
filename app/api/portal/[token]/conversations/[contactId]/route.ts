@@ -23,7 +23,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const [messages, lead, conv] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true } }),
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true } }),
-    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true } }),
+    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true } }),
   ]);
 
   // Imagem do criativo: do referral OU do thumbnail sincronizado da Meta (por adId).
@@ -43,6 +43,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     contact: { name: contact.displayName || contact.name || contact.waId },
     lead: lead ? { adTitle: lead.adTitle, adModel: lead.adModel, adBody: lead.adBody, sourceUrl: lead.sourceUrl, image: adImage } : null,
     funnelStage: conv?.funnelStage ?? null,
+    funnelEvidence: conv?.funnelManual ? null : (conv?.funnelEvidence ?? null),
     items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp })),
   });
 }

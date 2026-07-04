@@ -10,7 +10,7 @@ const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -236,6 +236,13 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
               </button>
               <StageBadge stage={conv.funnelStage} />
             </div>
+
+            {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
+            {conv.funnelEvidence && (
+              <div style={{ padding: "6px 8%", fontSize: 11.5, color: "var(--wa-muted)", borderBottom: "1px solid var(--p-border)", lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 700 }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”
+              </div>
+            )}
 
             {/* mensagens */}
             <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>

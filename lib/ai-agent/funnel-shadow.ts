@@ -3,7 +3,7 @@ import { detectStageFromMessage, stageRank } from "@/lib/wa-funnel";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { logWaEvent } from "@/lib/wa-events";
 import { costOf } from "@/lib/ai-agent/usage";
-import type { AutoStage } from "@/lib/ai-agent/scoring";
+import { funnelStageFor, type AutoStage } from "@/lib/ai-agent/scoring";
 import { classifyFunnelLLM, type FunnelVerdict, type FunnelWindowMsg } from "@/lib/ai-agent/funnel-llm";
 
 // ── Motor-cérebro do funil (LLM-first + gate de confiança) e runner de SHADOW ───
@@ -241,4 +241,62 @@ export async function applyProfileStage(opts: {
   } catch {
     /* nunca derruba o atendimento */
   }
+}
+
+// ── Backfill: reclassifica conversas ABERTAS pelo motor novo (LLM + contexto) ────
+// Pra que ao ligar o `active` o painel INTEIRO já apareça correto — não só os leads
+// que mandarem msg depois. Reusa a autoridade única (classifyFunnelLLM → decideStage),
+// então respeita todas as regras de ouro. Dry-run por padrão; só grava com apply=true.
+export interface BackfillChange { contactId: string; name: string | null; from: string | null; to: string; confidence: number | null; evidence: string | null }
+export async function backfillFunnelLLM(opts: {
+  connectionId: string; apply: boolean; limit?: number;
+}): Promise<{ scanned: number; changes: BackfillChange[]; applied: number; costUsd: number }> {
+  const { connectionId, apply } = opts;
+  const conn = await prismaUnscoped.waConnection.findUnique({ where: { id: connectionId }, select: { clientId: true } });
+  if (!conn) return { scanned: 0, changes: [], applied: 0, costUsd: 0 };
+  const clientId = conn.clientId;
+
+  const [cfg, excl] = await Promise.all([
+    prismaUnscoped.aiAgentConfig.findFirst({ where: { clientId }, select: { vertical: true } }),
+    excludedTokens(clientId),
+  ]);
+  const vertical = cfg?.vertical ?? null;
+
+  // Só não-manuais e não-terminais (convertido/perdido são do humano/higiene).
+  const convs = await prismaUnscoped.waConversation.findMany({
+    where: { connectionId, funnelManual: false, funnelStage: { notIn: ["convertido", "perdido"] } },
+    orderBy: { lastMessageAt: "desc" },
+    ...(opts.limit ? { take: opts.limit } : {}),
+    select: { contactId: true, funnelStage: true, outboundCount: true, contact: { select: { name: true } } },
+  });
+
+  const changes: BackfillChange[] = [];
+  let applied = 0;
+  let costUsd = 0;
+
+  // Sequencial de propósito: evita estourar o rate limit da LLM num lote grande.
+  for (const c of convs) {
+    if (nameExcluded(c.contact?.name ?? null, excl)) continue;
+    const recent = await prismaUnscoped.waMessage.findMany({
+      where: { contactId: c.contactId }, orderBy: { timestamp: "desc" }, take: WINDOW_N,
+      select: { text: true, direction: true },
+    });
+    const window: FunnelWindowMsg[] = [...recent].reverse();
+    if (!window.some((m) => m.direction === "in" && m.text)) continue;
+
+    // Perfil determinístico (se houver) entra como candidato, igual ao modo active.
+    const prof = await prismaUnscoped.leadProfile.findUnique({ where: { contactId: c.contactId } });
+    const profileStage = prof ? funnelStageFor(prof) : null;
+
+    const verdict = await classifyFunnelLLM({ window, clientId, vertical, currentStage: c.funnelStage });
+    if (verdict) costUsd += costOf(verdict.model, verdict.tokensIn, verdict.tokensOut);
+    const hasOutbound = (c.outboundCount ?? 0) > 0;
+    const decision = decideStage({ currentStage: c.funnelStage, hasOutbound, verdict, profileStage });
+
+    if (!decision.wouldChange) continue;
+    changes.push({ contactId: c.contactId, name: c.contact?.name ?? null, from: c.funnelStage, to: decision.proposedStage!, confidence: verdict?.confianca ?? null, evidence: decision.evidence });
+    if (apply) { await writeStage(connectionId, c.contactId, decision, c.funnelStage ?? null); applied++; }
+  }
+
+  return { scanned: convs.length, changes, applied, costUsd: Math.round(costUsd * 1e4) / 1e4 };
 }

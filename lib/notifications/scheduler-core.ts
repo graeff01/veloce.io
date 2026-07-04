@@ -12,6 +12,7 @@ import { syncAllCatalogs } from "@/lib/ai-agent/catalog-sync";
 import { runAdsHealth } from "@/lib/notifications/ads-health";
 import { runSlaFirstResponse } from "@/lib/notifications/sla-first-response";
 import { runClientBotJobs, runClientBotHealthAudit } from "@/lib/notifications/client-bot-jobs";
+import { runFunnelAging } from "@/lib/notifications/funnel-aging";
 import { lastTickAt, recordTick } from "@/lib/notifications/heartbeat";
 
 // Núcleo de decisão "o que enviar agora", compartilhado pelo agendador interno
@@ -92,6 +93,9 @@ export async function runDueJobs(): Promise<void> {
 
   // Poda do histórico de logs (>90 dias): 1x/dia.
   if (await gateOnce(`gate:prune:${day}`)) await safe("prune", pruneOldLogs);
+
+  // Higiene do funil: lead parado há N dias → Perdido (automático). 1x/dia.
+  if (await gateOnce(`gate:funnel-aging:${day}`)) await safe("funnel-aging", runFunnelAging);
 
   // LGPD: anonimiza o texto de interações antigas da IA (>retenção): 1x/dia.
   if (await gateOnce(`gate:ai-prune:${day}`)) await safe("ai-prune", pruneOldAiLogs);

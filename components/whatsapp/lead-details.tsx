@@ -18,6 +18,8 @@ interface LeadFull {
   tags: TagT[];
   lead: { adTitle: string | null; adId: string | null; adModel: string | null; sourceType: string | null; sourceUrl: string | null; ctwaClid: string | null; enteredAt: string | null; imported: boolean } | null;
   funnelStage: string | null;
+  funnelEvidence: string | null;
+  funnelManual: boolean;
   items: Msg[];
 }
 
@@ -95,6 +97,15 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: STAGE_COLORS[data.funnelStage] ?? "var(--text-muted)" }} />
             <span style={{ fontSize: 12, color: STAGE_COLORS[data.funnelStage] ?? "var(--text-muted)", fontWeight: 600 }}>{FUNNEL_LABELS[data.funnelStage]}</span>
           </div>
+        )}
+        {/* Por que está nesta etapa — a frase que o classificador usou (auditável). */}
+        {data.funnelEvidence && !data.funnelManual && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+            <span style={{ fontWeight: 600 }}>Por quê:</span> “{data.funnelEvidence}”
+          </div>
+        )}
+        {data.funnelManual && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>Etapa definida manualmente.</div>
         )}
       </Card>
 

@@ -59,6 +59,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),
     lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, adModel: lead.adModel, sourceType: lead.sourceType, sourceUrl: lead.sourceUrl, ctwaClid: lead.ctwaClid, enteredAt: lead.enteredAt, imported: lead.imported } : null,
     funnelStage: conversation?.funnelStage ?? null,
+    funnelEvidence: conversation?.funnelEvidence ?? null, // frase que justificou a etapa (auditoria)
+    funnelManual: conversation?.funnelManual ?? false,
     funnelAuto, // { final, perMsg } — perMsg alinhado a items (mesma ordem)
     status: conversation?.status ?? null,
     leadScore: profile ? { score: profile.score, temperature: profile.temperature, qualified: profile.qualified } : null,
