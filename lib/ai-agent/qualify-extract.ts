@@ -1,6 +1,7 @@
 import { prismaUnscoped } from "@/lib/prisma";
 import { openaiChat } from "@/lib/openai";
-import { scoreLead, funnelStageFor, shouldAdvanceStage } from "./scoring";
+import { scoreLead, funnelStageFor } from "./scoring";
+import { applyProfileStage } from "./funnel-shadow";
 
 // ── Extração de qualificação (backstop determinístico da ficha) ─────────────────
 // Problema: a ficha depende de a IA LEMBRAR de chamar atualizar_perfil durante o chat —
@@ -76,9 +77,6 @@ export async function extractQualification(clientId: string, contactId: string, 
   const { score, temperature } = scoreLead(prof);
   await prismaUnscoped.leadProfile.update({ where: { contactId }, data: { score, temperature, qualified: temperature !== "cold" } }).catch(() => {});
 
-  const convo = await prismaUnscoped.waConversation.findUnique({ where: { contactId }, select: { funnelStage: true } });
-  const next = funnelStageFor(prof);
-  if (shouldAdvanceStage(convo?.funnelStage, next)) {
-    await prismaUnscoped.waConversation.updateMany({ where: { contactId }, data: { funnelStage: next } }).catch(() => {});
-  }
+  // Funil pela AUTORIDADE única (avanço-only; respeita trava manual/terminais/exclusão).
+  await applyProfileStage({ connectionId, contactId, clientId, profileStage: funnelStageFor(prof) });
 }

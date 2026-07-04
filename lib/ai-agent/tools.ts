@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { ToolDef } from "@/lib/openai";
-import { scoreLead, funnelStageFor, shouldAdvanceStage } from "./scoring";
+import { scoreLead, funnelStageFor } from "./scoring";
+import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { sendWhatsAppImage } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
@@ -145,13 +146,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const { score, temperature } = scoreLead(prof);
       await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { score, temperature, qualified: temperature !== "cold" } });
 
-      // Classificação automática no funil (avanço-only; nunca regride nem toca estágio
-      // terminal/manual do operador).
-      const convo = await prisma.waConversation.findUnique({ where: { contactId: ctx.contactId }, select: { funnelStage: true } });
-      const nextStage = funnelStageFor(prof);
-      if (shouldAdvanceStage(convo?.funnelStage, nextStage)) {
-        await prisma.waConversation.updateMany({ where: { contactId: ctx.contactId }, data: { funnelStage: nextStage } }).catch(() => {});
-      }
+      // Classificação automática no funil pela AUTORIDADE única (avanço-only; respeita
+      // trava manual, terminais e exclusão de donos — antes a escrita direta pulava a manual).
+      await applyProfileStage({
+        connectionId: ctx.connectionId, contactId: ctx.contactId, clientId: ctx.clientId,
+        profileStage: funnelStageFor(prof),
+      });
 
       // CRM/comercial: ao esquentar para HOT, avisa o time (idempotente, 1x/dia).
       if (temperature === "hot" && prevTemp !== "hot") {
