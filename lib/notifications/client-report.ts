@@ -98,7 +98,7 @@ export async function resultadosHoje(clientId: string): Promise<string> {
     `📊 <b>Hoje</b>\n` +
     `• 💬 ${leads} lead${leads > 1 ? "s" : ""}\n` +
     `• ✅ ${respondidos} respondido${respondidos !== 1 ? "s" : ""} <i>(${taxa}%)</i>\n` +
-    `• 🎯 ${conversoes} conversã${conversoes !== 1 ? "ões" : "o"}` +
+    `• 🎯 ${conversoes} convers${conversoes !== 1 ? "ões" : "ão"}` +
     (avgMin != null ? `\n• ⏱️ Tempo médio: ${avgMin} min` : "")
   );
 }

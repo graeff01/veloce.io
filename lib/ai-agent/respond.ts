@@ -12,7 +12,8 @@ import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
-import { matchWaBotRecipient, flushHeldAlerts } from "@/lib/notifications/whatsapp-bot";
+import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
+import { handleWaBotInbound } from "@/lib/notifications/wa-bot-commands";
 import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
@@ -101,10 +102,10 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
 
   // 0b) Destinatário do bot no WhatsApp (dono): NÃO é lead. A mensagem dele reabre a janela
-  //     de 24h — soltamos os alertas retidos em digest e paramos aqui (comandos = Fase 1).
+  //     de 24h → solta os alertas retidos e, se for comando (/quentes, /status…), responde.
   const ownerWaId = await matchWaBotRecipient(conn.clientId, contact.waId);
   if (ownerWaId) {
-    await flushHeldAlerts(conn.clientId, ownerWaId, conn, contact.waId).catch(() => {});
+    await handleWaBotInbound({ clientId: conn.clientId, conn, ownerWaId, sendTo: contact.waId, text: input.payload.text ?? "" }).catch(() => {});
     return "skipped";
   }
 
