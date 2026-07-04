@@ -120,7 +120,7 @@ async function alertDowntime(gapMin: number, prev: Date): Promise<void> {
   for (const r of recipients) {
     await claimDispatch(`${key}:${r.userId}`, r.userId, "downtime",
       { title, body, url: "/clients" }, tg,
-      { pushEnabled: r.pushEnabled, telegramEnabled: r.telegramEnabled });
+      { pushEnabled: r.pushEnabled });
   }
 }
 

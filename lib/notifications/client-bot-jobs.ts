@@ -208,7 +208,7 @@ export async function runClientBotHealthAudit(): Promise<void> {
     for (const r of internal) {
       await claimDispatch(`clientbot-health:${day}:${b.clientId}:${r.userId}`, r.userId, "clientbot_health",
         { title, body, url: `/clients/${b.clientId}?tab=bot` }, tg,
-        { pushEnabled: r.pushEnabled, telegramEnabled: r.telegramEnabled });
+        { pushEnabled: r.pushEnabled });
     }
   }
 }

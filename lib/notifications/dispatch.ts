@@ -61,7 +61,6 @@ async function markFailed(dedupeKey: string, error?: string): Promise<void> {
 
 export interface DispatchPref {
   pushEnabled: boolean;
-  telegramEnabled: boolean;
 }
 
 // Envia para os canais ativos do usuário. Telegram foi removido — só web-push.
@@ -90,9 +89,9 @@ export async function claimDispatch(
 ): Promise<boolean> {
   if (!(await claim(dedupeKey, userId, type))) return false;
 
-  // Usuário sem nenhum canal habilitado: não há o que tentar. Mantém o claim
+  // Usuário sem canal habilitado (push off): não há o que tentar. Mantém o claim
   // (status pending→sent) para não re-tentar pra sempre.
-  if (!pref.pushEnabled && !pref.telegramEnabled) {
+  if (!pref.pushEnabled) {
     await markSent(dedupeKey);
     return false;
   }
@@ -110,7 +109,7 @@ export async function claimDispatch(
 export async function recipientsFor(type: "dailyDigest" | "criticalAlerts") {
   const prefs = await prisma.notificationPreference.findMany({
     where: { [type]: true, user: { active: true, deletedAt: null } },
-    select: { userId: true, pushEnabled: true, telegramEnabled: true },
+    select: { userId: true, pushEnabled: true },
   });
   return prefs;
 }

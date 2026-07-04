@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Send, Loader2, Check, Zap } from "lucide-react";
+import { Bell, Loader2, Check, Zap } from "lucide-react";
 
 interface Prefs {
   dailyDigest: boolean;
   criticalAlerts: boolean;
   pushEnabled: boolean;
-  telegramEnabled: boolean;
-  telegramLinked: boolean;
-  telegramUsername: string | null;
 }
 
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -71,23 +68,11 @@ export function NotificationSettings() {
     } finally { setBusy(null); }
   }
 
-  async function connectTelegram() {
-    setBusy("tg");
-    try {
-      const r = await fetch("/api/notifications/telegram-link").then((x) => x.json());
-      if (!r.available) { alert("Telegram ainda não configurado no servidor (bot)."); return; }
-      window.open(r.link, "_blank", "noopener,noreferrer");
-    } finally { setBusy(null); }
-  }
-
   async function sendTest() {
     setBusy("test");
     try {
       const r = await fetch("/api/notifications/test", { method: "POST" }).then((x) => x.json());
-      const parts: string[] = [];
-      parts.push(r.push ? "✅ Navegador" : "—  Navegador (ative acima)");
-      parts.push(r.telegram ? "✅ Telegram" : "—  Telegram (conecte acima)");
-      alert(`Teste enviado:\n${parts.join("\n")}`);
+      alert(`Teste enviado:\n${r.push ? "✅ Navegador" : "—  Navegador (ative acima)"}`);
     } finally { setBusy(null); }
   }
 
@@ -99,7 +84,7 @@ export function NotificationSettings() {
         <Bell size={15} style={{ color: "var(--accent)" }} />
         <div>
           <h2 style={{ fontSize: 14, fontWeight: 650, color: "var(--text-primary)" }}>Notificações</h2>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Resumo do dia e alertas críticos — no navegador e no Telegram.</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Resumo do dia e alertas críticos — no navegador.</p>
         </div>
       </div>
 
@@ -121,17 +106,6 @@ export function NotificationSettings() {
             </button>
           }
         />
-        <Row
-          label="Telegram"
-          hint={prefs.telegramLinked ? `Conectado${prefs.telegramUsername ? ` (@${prefs.telegramUsername})` : ""}.` : "Receba também no Telegram (à prova de falha)."}
-          action={
-            <button onClick={connectTelegram} disabled={busy === "tg"} style={btn(prefs.telegramLinked)}>
-              {busy === "tg" ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : prefs.telegramLinked ? <Check size={12} /> : <Send size={12} />}
-              {prefs.telegramLinked ? "Conectado" : "Conectar"}
-            </button>
-          }
-        />
-
         <div style={{ height: 1, background: "var(--border)" }} />
 
         <Row

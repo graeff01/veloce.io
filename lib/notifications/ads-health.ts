@@ -147,7 +147,7 @@ export async function runAdsHealth(): Promise<{ sent: number; alerts: number }> 
     for (const a of alerts) {
       if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "ads_health",
         { title: a.title, body: a.pushBody, url: `/clients` }, a.tg,
-        { pushEnabled: r.pushEnabled, telegramEnabled: r.telegramEnabled })) sent++;
+        { pushEnabled: r.pushEnabled })) sent++;
     }
   }
   return { sent, alerts: alerts.length };

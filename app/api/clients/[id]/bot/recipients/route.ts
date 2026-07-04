@@ -25,6 +25,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Esse é o número da própria loja. Use o WhatsApp PESSOAL do dono (diferente da linha que atende cliente)." }, { status: 400 });
   }
 
+  // Garante a config de alertas do cliente (cria ativa na 1ª vez).
+  await prisma.clientBot.upsert({ where: { clientId: id }, create: { clientId: id }, update: { active: true } });
+
   const rec = await prisma.clientBotRecipient.upsert({
     where: { clientId_waId: { clientId: id, waId } },
     create: { clientId: id, channel: "whatsapp", waId, role: "dono", active: true },

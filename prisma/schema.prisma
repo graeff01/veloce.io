@@ -56,7 +56,6 @@ model User {
   assignedMovements Movement[]     @relation("AssignedMovements")
   executionLogs     ExecutionLog[]
   pushSubscriptions PushSubscription[]
-  telegramLink      TelegramLink?
   notificationPref  NotificationPreference?
 }
 
@@ -1525,16 +1524,6 @@ model PushSubscription {
 }
 
 // Vínculo do usuário com o chat do Telegram (1:1).
-model TelegramLink {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  chatId    String   @unique
-  username  String?
-  linkedAt  DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 // Preferências de notificação por usuário (opt-in).
 model NotificationPreference {
   userId          String   @id
@@ -1542,7 +1531,6 @@ model NotificationPreference {
   criticalAlerts  Boolean  @default(false)
   leadMessages    Boolean  @default(false) // DESCONTINUADO: lead-por-cliente migrou para o bot do cliente (ClientBot). Coluna dormente.
   pushEnabled     Boolean  @default(true)
-  telegramEnabled Boolean  @default(true)
   updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1587,15 +1575,11 @@ model TelegramMessage {
 // Cada cliente pode ter o próprio bot (criado no BotFather). Os alertas DELE
 // (novo lead, SLA, lead quente…) saem por esse bot, isolados dos outros clientes.
 // O bot da Veloce continua de base para os alertas internos da agência.
+// Config dos alertas por cliente (o transporte é WhatsApp, pela linha da loja).
 model ClientBot {
-  clientId      String   @id // 1 bot por cliente
-  token         String   // token do BotFather (criptografado at-rest)
-  username      String   // @username do bot (sem @)
-  webhookSecret String   @unique // identifica o bot no webhook (path) + valida header
+  clientId      String   @id // 1 config por cliente
   active        Boolean  @default(true)
-  // Marca branca (por cliente)
-  brandName     String?  // nome da marca exibido (ex.: "Imobiliária X"); também vira o nome do bot no Telegram
-  welcomeMessage String? // boas-vindas custom no /start (fallback: texto padrão)
+  brandName     String?  // nome da marca (cosmético)
   // Alertas (liga/desliga por cliente)
   novoLead      Boolean  @default(true)
   slaAlerts     Boolean  @default(true)
@@ -1613,21 +1597,17 @@ model ClientBot {
   updatedAt     DateTime @updatedAt
 }
 
-// Quem recebe os alertas de um cliente (gestor/corretor/dono).
-// channel=telegram usa chatId; channel=whatsapp usa waId (a linha do dono, na WABA da loja).
+// Quem recebe os alertas de um cliente (dono/gestor), no WhatsApp dele.
 model ClientBotRecipient {
   id         String    @id @default(cuid())
   clientId   String
-  channel    String    @default("telegram") // telegram | whatsapp
-  chatId     String?   // Telegram (legado)
+  channel    String    @default("whatsapp") // whatsapp
   waId       String?   // WhatsApp (número do dono)
-  username   String?
-  role       String    @default("corretor") // gestor | corretor | dono
+  role       String    @default("dono") // dono | gestor
   active     Boolean   @default(true)
   mutedUntil DateTime? // snooze temporário (/silenciar) — não recebe alertas até aqui
   createdAt  DateTime  @default(now())
 
-  @@unique([clientId, chatId])
   @@unique([clientId, waId])
   @@index([clientId])
 }
@@ -1698,20 +1678,3 @@ model PortalSession {
   @@index([email])
 }
 
-// Token de convite (escopo cliente + papel), uso único, expira.
-model ClientBotLinkToken {
-  token     String   @id
-  clientId  String
-  role      String   @default("corretor")
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
-// Token curto de vínculo do Telegram (uso único, expira). Charset compatível
-// com o parâmetro start do Telegram (base64url).
-model TelegramLinkToken {
-  token     String   @id
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
