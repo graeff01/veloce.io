@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { getClientDashboard, getBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
+import { getClientDashboard, getBenchmark, getSectorBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
@@ -105,6 +105,19 @@ function AttendanceSpeed({ tempoMedio, taxa, buckets }: { tempoMedio: number | n
   );
 }
 
+// Chip "antes → agora" da tira de transformação.
+function TransChip({ label, before, after, note }: { label: string; before: string; after: string; note?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 10, padding: "5px 10px" }}>
+      <span style={{ fontSize: 10, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: "var(--p-muted)", textDecoration: "line-through" }}>{before}</span>
+      <span style={{ color: "var(--p-muted)" }}>→</span>
+      <span style={{ fontSize: 13.5, fontWeight: 800, color: "#16a34a" }}>{after}</span>
+      {note && <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "rgba(22,163,74,.12)", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>{note}</span>}
+    </div>
+  );
+}
+
 export default async function PortalPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ p?: string }> }) {
   const { token } = await params;
   const { p } = await searchParams;
@@ -131,11 +144,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
     );
   }
 
-  const [client, bot, data, benchmark] = await Promise.all([
+  const [client, bot, data, benchmark, sector] = await Promise.all([
     prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } }),
     prisma.clientBot.findUnique({ where: { clientId: portal.clientId }, select: { brandName: true } }),
     getClientDashboard(portal.clientId, period),
     getBenchmark(portal.clientId, period).catch(() => null),
+    getSectorBenchmark(portal.clientId, period).catch(() => null),
   ]);
 
   const brandName = (bot?.brandName || "").trim() || client?.name || "Painel";
@@ -226,7 +240,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         <div className="pkpis">
           <Kpi label="Investimento" value={data.midia ? brl(data.midia.spend) : "—"} delta={data.midia ? d.spend : null} sub={!data.midia ? "sem anúncios conectados" : undefined} />
           <Kpi label="Leads" value={int(a.leads)} delta={d.leads} goodWhenUp sub={data.midia ? `${int(data.midia.leads)} de anúncio` : undefined} />
-          <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} delta={data.midia?.cpl != null ? d.cpl : null} goodWhenUp={false} />
+          <Kpi label="Custo por lead" value={data.midia?.cpl != null ? brl(data.midia.cpl) : "—"} delta={data.midia?.cpl != null ? d.cpl : null} goodWhenUp={false} sub={sector ? (sector.pctBelow >= 0 ? `${sector.pctBelow}% abaixo do setor` : `${Math.abs(sector.pctBelow)}% acima do setor`) : undefined} />
           {/* Alerta vibrante no lugar do KPI de conversão */}
           <div style={{ ...card, border: "none", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "center",
             background: semResposta > 0 ? "linear-gradient(135deg,#ef4444,#dc2626)" : "linear-gradient(135deg,#16a34a,#15803d)",
@@ -267,13 +281,29 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         {/* ROW 3b · VELOCIDADE DE ATENDIMENTO */}
         <AttendanceSpeed tempoMedio={a.tempoMedioMin} taxa={a.taxaResposta} buckets={data.responseBuckets} />
 
-        {/* ROW 4 · OPERAÇÃO VELOCE */}
-        <div className="p-ops" style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
-          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#16a34a", boxShadow: "0 0 0 4px rgba(22,163,74,.15)" }} />
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--p-text)" }}>Operação Veloce · monitoramento ativo</div>
-            <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 1 }}>Sua operação é acompanhada e otimizada em tempo real pela equipe Veloce · {data.periodLabel} · atualizado {atualizado}.</div>
-          </div>
+        {/* ROW 4 · SUA TRANSFORMAÇÃO (antes → agora → projeção) ou monitoramento */}
+        <div className="p-ops" style={{ ...card, padding: "11px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#16a34a", boxShadow: "0 0 0 4px rgba(22,163,74,.15)", flexShrink: 0 }} />
+          {data.transformation ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--p-text)", flexShrink: 0 }}>Sua transformação <span style={{ fontSize: 11, fontWeight: 500, color: "var(--p-muted)" }}>· desde {data.transformation.baselineLabel}</span></div>
+              {data.transformation.tempo.before != null && data.transformation.tempo.after != null && (
+                <TransChip label="Resposta" before={`${int(data.transformation.tempo.before)}min`} after={`${int(data.transformation.tempo.after)}min`}
+                  note={data.transformation.tempo.after > 0 && data.transformation.tempo.before > data.transformation.tempo.after ? `${Math.round(data.transformation.tempo.before / Math.max(1, data.transformation.tempo.after))}× mais rápido` : undefined} />
+              )}
+              <TransChip label="Conversão" before={`${data.transformation.conversao.before}%`} after={`${data.transformation.conversao.after}%`} />
+              {data.projection && (
+                <div style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--p-text)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  📈 Projeção: ~{int(data.projection.sales)} venda{data.projection.sales !== 1 ? "s" : ""} no próx. mês{data.projection.revenue != null ? ` · ${brl(data.projection.revenue)}` : ""}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--p-text)" }}>Operação Veloce · monitoramento ativo</div>
+              <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 1 }}>Sua operação é acompanhada e otimizada em tempo real pela equipe Veloce · {data.periodLabel} · atualizado {atualizado}.</div>
+            </div>
+          )}
         </div>
 
       </div>

@@ -122,6 +122,10 @@ export interface ClientDashboard {
   midia: { spend: number; leads: number; cpl: number | null } | null;
   bestCampaign: { name: string; leads: number; image: string | null; creativeId: string | null } | null;
   series: { day: string; leads: number }[];
+  // Antes → agora (primeiros 30 dias vs. período atual). null se histórico < 60 dias.
+  transformation: { baselineLabel: string; tempo: { before: number | null; after: number | null }; taxaResposta: { before: number; after: number }; conversao: { before: number; after: number } } | null;
+  // Projeção do próximo mês pelo ritmo atual de vendas. null sem vendas no período.
+  projection: { sales: number; revenue: number | null } | null;
 }
 
 const MONTH_RE = /^(\d{4})-(\d{2})$/;
@@ -326,6 +330,36 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     tempoResposta: tempoMedioMin != null && prevTempoMedio != null ? pct(tempoMedioMin, prevTempoMedio) : null,
   };
 
+  // Transformação (antes → agora): baseline = primeiros 30 dias; só com ≥60d de histórico.
+  let transformation: ClientDashboard["transformation"] = null;
+  if (connIds.length) {
+    const first = await prisma.waConversation.findFirst({ where: { connectionId: { in: connIds }, firstInboundAt: { not: null } }, orderBy: { firstInboundAt: "asc" }, select: { firstInboundAt: true } });
+    if (first?.firstInboundAt && (Date.now() - first.firstInboundAt.getTime()) / 86_400_000 >= 60) {
+      const bStart = first.firstInboundAt, bEnd = new Date(bStart.getTime() + 30 * 86_400_000);
+      const baseRaw = await prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: bStart, lt: bEnd } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } });
+      const bc = baseRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
+      const bTimes = bc.map((c) => c.firstResponseSec).filter((s): s is number => s != null);
+      const bTempo = bTimes.length ? Math.round(bTimes.reduce((a, b) => a + b, 0) / bTimes.length / 60) : null;
+      transformation = {
+        baselineLabel: bStart.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }),
+        tempo: { before: bTempo, after: tempoMedioMin },
+        taxaResposta: { before: bc.length ? Math.round(bc.filter((c) => c.firstResponseSec != null).length / bc.length * 100) : 0, after: taxaResposta },
+        conversao: { before: bc.length ? Math.round(bc.filter((c) => c.funnelStage === "convertido").length / bc.length * 100) : 0, after: leads ? Math.round(conversoes / leads * 100) : 0 },
+      };
+    }
+  }
+
+  // Projeção do próximo mês pelo ritmo atual de vendas (convertidos) + ticket médio real.
+  let projection: ClientDashboard["projection"] = null;
+  if (conversoes > 0) {
+    const daysElapsed = Math.max(1, (end.getTime() - start.getTime()) / 86_400_000);
+    const projSales = Math.round((conversoes / daysElapsed) * 30);
+    const saleRows = connIds.length ? await prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, funnelStage: "convertido", saleValue: { not: null }, saleConfirmedAt: { gte: start, lt: end } }, select: { saleValue: true } }) : [];
+    const withValue = saleRows.filter((s): s is { saleValue: number } => s.saleValue != null);
+    const avgTicket = withValue.length ? withValue.reduce((a, s) => a + s.saleValue, 0) / withValue.length : null;
+    projection = { sales: projSales, revenue: avgTicket != null ? Math.round(projSales * avgTicket) : null };
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     period, periodLabel: label,
@@ -337,7 +371,46 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
     midia, bestCampaign, series,
+    transformation, projection,
   };
+}
+
+// Benchmark de CPL do SETOR (nicho): média do custo por lead das outras contas do mesmo
+// nicho no período. Retorna o % que este cliente está abaixo (+) ou acima (−) da média.
+// Só com base honesta: ≥4 clientes do nicho com CPL calculável; senão null (não mostra).
+export async function getSectorBenchmark(clientId: string, period: Period = "month"): Promise<{ pctBelow: number; sectorCpl: number; clientCpl: number } | null> {
+  const me = await prisma.client.findUnique({ where: { id: clientId }, select: { niche: true } });
+  if (!me?.niche) return null;
+  const peers = await prisma.client.findMany({ where: { niche: me.niche, deletedAt: null }, select: { id: true } });
+  if (peers.length < 4) return null;
+
+  const { start, end } = periodRanges(period);
+  const utcDay = (d: Date) => new Date(`${d.toLocaleDateString("en-CA", { timeZone: TZ })}T00:00:00.000Z`);
+  const insStart = utcDay(start), insEnd = new Date(utcDay(new Date(end.getTime() - 1)).getTime() + 86_400_000);
+
+  const cpls: number[] = [];
+  let clientCpl: number | null = null;
+  for (const p of peers) {
+    const [mc, wc] = await Promise.all([
+      prisma.metaConnection.findUnique({ where: { clientId: p.id }, select: { id: true } }),
+      prisma.waConnection.findUnique({ where: { clientId: p.id }, select: { id: true } }),
+    ]);
+    if (!mc || !wc) continue;
+    const [spendAgg, adLeads] = await Promise.all([
+      prisma.metaAdInsight.aggregate({ _sum: { spend: true }, where: { connectionId: mc.id, date: { gte: insStart, lt: insEnd } } }),
+      prisma.waLead.count({ where: { connectionId: wc.id, enteredAt: { gte: start, lt: end } } }),
+    ]);
+    const spend = spendAgg._sum.spend ?? 0;
+    if (adLeads <= 0 || spend <= 0) continue;
+    const cpl = spend / adLeads;
+    cpls.push(cpl);
+    if (p.id === clientId) clientCpl = cpl;
+  }
+  if (cpls.length < 4 || clientCpl == null) return null;
+  const sectorCpl = cpls.reduce((a, b) => a + b, 0) / cpls.length;
+  if (sectorCpl <= 0) return null;
+  const pctBelow = Math.round(((sectorCpl - clientCpl) / sectorCpl) * 100); // + = abaixo (melhor)
+  return { pctBelow, sectorCpl, clientCpl };
 }
 
 // Benchmark anônimo: percentil da TAXA DE RESPOSTA deste cliente vs. as demais contas.
