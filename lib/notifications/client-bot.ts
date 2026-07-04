@@ -1,148 +1,24 @@
-import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { encryptSecret, decryptSecret } from "@/lib/crypto";
-import { captureException } from "@/lib/observability";
 import { nowParts } from "@/lib/tz";
 import { isWindowOpen, sendWhatsAppBotMessage } from "@/lib/notifications/whatsapp-bot";
 
-// Bot do Telegram POR CLIENTE (marca branca). Cada cliente tem seu bot (criado no
-// BotFather); os alertas dele saem por esse bot, isolados dos outros clientes.
+// Bot de alertas POR CLIENTE, no WhatsApp: os alertas saem pela LINHA DA LOJA
+// (a mesma WABA que atende lead) para o WhatsApp do dono. Config (quais alertas,
+// quiet hours, nomes excluídos) fica em ClientBot; destinatários em ClientBotRecipient
+// (channel=whatsapp, waId). O transporte/janela/hold-and-flush vive em whatsapp-bot.ts.
 
-const API = "https://api.telegram.org/bot";
 const TZ = "America/Sao_Paulo";
-const APP_URL = (process.env.NEXTAUTH_URL || "https://veloceio-production.up.railway.app").replace(/\/$/, "");
 
 export type AlertKind = "novoLead" | "slaAlerts" | "leadQuente" | "leadEsfriando" | "resumoDiario";
 
-// ── Conexão / configuração ───────────────────────────────────────────────────
-
-// Salva (ou atualiza) o bot do cliente: cifra o token, gera o segredo de webhook
-// e registra o webhook na Meta do Telegram. Retorna o resultado do setWebhook.
-export async function connectClientBot(clientId: string, rawToken: string, username: string): Promise<{ ok: boolean; error?: string }> {
-  const token = rawToken.trim();
-  const uname = username.trim().replace(/^@/, "");
-  if (!/^\d+:[\w-]+$/.test(token)) return { ok: false, error: "Token inválido (formato do BotFather: 123456:ABC...)." };
-
-  // Valida o token chamando getMe.
-  const me = await tg(token, "getMe", {}).catch(() => null);
-  if (!me?.ok) return { ok: false, error: "Token não autenticou no Telegram (getMe falhou)." };
-
-  const existing = await prisma.clientBot.findUnique({ where: { clientId } });
-  const webhookSecret = existing?.webhookSecret ?? crypto.randomBytes(18).toString("base64url");
-
-  await prisma.clientBot.upsert({
-    where: { clientId },
-    create: { clientId, token: encryptSecret(token), username: uname, webhookSecret, active: true },
-    update: { token: encryptSecret(token), username: uname, active: true },
-  });
-
-  const hook = await setClientWebhook(token, webhookSecret);
-  if (!hook.ok) return { ok: false, error: `Bot salvo, mas o webhook falhou: ${hook.error}` };
-
-  // Menu de comandos no Telegram (autocomplete do "/"). Best-effort.
-  await tg(token, "setMyCommands", {
-    commands: [
-      { command: "status", description: "Leads aguardando agora" },
-      { command: "quentes", description: "Leads quentes na fila" },
-      { command: "resultados", description: "Placar de hoje" },
-      { command: "semana", description: "Placar dos últimos 7 dias" },
-      { command: "painel", description: "Abrir o painel completo" },
-      { command: "silenciar", description: "Pausar alertas por 2h" },
-      { command: "ajuda", description: "Ver comandos" },
-    ],
-  }).catch(() => {});
-
-  return { ok: true };
-}
-
-async function setClientWebhook(token: string, webhookSecret: string): Promise<{ ok: boolean; error?: string }> {
-  const url = `${APP_URL}/api/telegram/webhook/${webhookSecret}`;
-  const res = await tg(token, "setWebhook", {
-    url,
-    secret_token: webhookSecret,
-    allowed_updates: ["message"],
-    drop_pending_updates: true,
-  }).catch((e) => ({ ok: false, description: String(e) }));
-  return res?.ok ? { ok: true } : { ok: false, error: res?.description ?? "erro desconhecido" };
-}
-
-// Resolve o bot pelo segredo do webhook (path), com o token já decifrado.
-export async function clientBotByWebhook(webhookSecret: string): Promise<{ clientId: string; token: string; webhookSecret: string; welcomeMessage: string | null; brandName: string | null } | null> {
-  const bot = await prisma.clientBot.findUnique({ where: { webhookSecret } });
-  if (!bot) return null;
-  try {
-    return { clientId: bot.clientId, token: decryptSecret(bot.token), webhookSecret: bot.webhookSecret, welcomeMessage: bot.welcomeMessage, brandName: bot.brandName };
-  } catch (e) {
-    captureException(e, { where: "client-bot.decrypt", clientId: bot.clientId });
-    return null;
-  }
-}
-
 // ── Padrão visual das mensagens (style guide) ────────────────────────────────
-// Toda mensagem segue: CABEÇALHO (emoji-categoria + título em negrito) →
-// CONTEXTO (linhas curtas) → 1 CTA principal. Escaneável em 3 segundos.
+// CABEÇALHO (emoji + título em negrito) → CONTEXTO (linhas curtas) → 1 CTA.
+// Continua emitindo "HTML" leve (<b>/<i>/<a>); o transporte converte pro WhatsApp.
 export interface BotCta { label: string; url: string }
 export function botMsg(head: string, lines: (string | null | undefined)[], cta?: BotCta | null): string {
   const body = lines.filter(Boolean).join("\n");
   const action = cta ? `\n\n<a href="${cta.url}">${cta.label}</a>` : "";
   return `${head}${body ? `\n${body}` : ""}${action}`;
-}
-
-// Mensagem de boas-vindas (custom do cliente ou mini-tour padrão, com a marca).
-export function welcomeText(welcomeMessage: string | null, brandName: string | null): string {
-  if (welcomeMessage?.trim()) return welcomeMessage.trim();
-  const marca = brandName?.trim() ? ` da <b>${brandName.trim()}</b>` : "";
-  return (
-    `✅ <b>Conectado ao assistente${marca}!</b>\n` +
-    `Você vai receber aqui:\n` +
-    `• 🚨 Novos leads na hora\n` +
-    `• 🔥 Leads quentes e quem está esperando\n` +
-    `• 🌙 Resumo do dia e da semana\n\n` +
-    `Quando quiser, é só pedir: /status · /quentes · /painel`
-  );
-}
-
-// Marca branca: nome do bot no Telegram (best-effort; o Telegram limita trocas/dia).
-export async function applyBranding(token: string, brandName: string): Promise<void> {
-  const name = brandName.trim().slice(0, 64);
-  if (!name) return;
-  await tg(token, "setMyName", { name }).catch(() => {});
-  await tg(token, "setMyShortDescription", { short_description: `Assistente de atendimento — ${name}`.slice(0, 120) }).catch(() => {});
-}
-
-// ── Convite / destinatários ──────────────────────────────────────────────────
-
-// Convite genérico: quem entra é só destinatário (recebe alertas), sem papel
-// específico e sem qualquer acesso de edição.
-export async function makeInviteToken(clientId: string, role = "membro"): Promise<string | null> {
-  const bot = await prisma.clientBot.findUnique({ where: { clientId }, select: { username: true } });
-  if (!bot) return null;
-  const token = crypto.randomBytes(12).toString("base64url");
-  await prisma.clientBotLinkToken.create({ data: { token, clientId, role, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
-  return `https://t.me/${bot.username}?start=${token}`;
-}
-
-// Consome o token de convite (uso único) e vincula o chat ao cliente+papel.
-export async function consumeInvite(token: string, chatId: string, username: string | null): Promise<{ clientId: string } | null> {
-  const row = await prisma.clientBotLinkToken.findUnique({ where: { token } });
-  if (!row) return null;
-  await prisma.clientBotLinkToken.delete({ where: { token } }).catch(() => {});
-  if (row.expiresAt < new Date()) return null;
-  await prisma.clientBotRecipient.upsert({
-    where: { clientId_chatId: { clientId: row.clientId, chatId } },
-    create: { clientId: row.clientId, chatId, username, role: row.role, active: true },
-    update: { active: true, role: row.role, username },
-  });
-  return { clientId: row.clientId };
-}
-
-export async function deactivateRecipientByChat(clientId: string, chatId: string): Promise<void> {
-  await prisma.clientBotRecipient.updateMany({ where: { clientId, chatId }, data: { active: false } });
-}
-
-// Snooze temporário (/silenciar): pausa alertas deste destinatário por `hours`.
-export async function snoozeRecipient(clientId: string, chatId: string, hours: number): Promise<void> {
-  await prisma.clientBotRecipient.updateMany({ where: { clientId, chatId }, data: { mutedUntil: new Date(Date.now() + hours * 3600_000) } });
 }
 
 // ── Link do WhatsApp do lead + exclusão de nomes ─────────────────────────────
@@ -166,15 +42,6 @@ export function nameExcluded(name: string | null, tokens: string[]): boolean {
   return tokens.some((t) => n.includes(t));
 }
 
-// Só destinatários ativos podem consultar dados (comandos /status etc.).
-export async function isActiveRecipient(clientId: string, chatId: string): Promise<boolean> {
-  const r = await prisma.clientBotRecipient.findUnique({
-    where: { clientId_chatId: { clientId, chatId } },
-    select: { active: true },
-  });
-  return !!r?.active;
-}
-
 // ── Quiet hours ──────────────────────────────────────────────────────────────
 
 // Está dentro do "não perturbe"? (janela em BRT; suporta virar a meia-noite).
@@ -188,8 +55,10 @@ function inQuietHours(quietStart: string | null, quietEnd: string | null): boole
 
 // ── Envio ────────────────────────────────────────────────────────────────────
 
-// Envia um alerta de um cliente para todos os destinatários ativos do bot dele.
-// Respeita: bot ativo, o alerta habilitado e quiet hours (urgent fura o silêncio).
+// Envia um alerta de um cliente para os destinatários ativos (WhatsApp), pela linha
+// da loja. Respeita: bot ativo, alerta habilitado e quiet hours (urgent fura o silêncio).
+// Janela de 24h aberta → envia agora (grátis); fechada/sem conexão → RETÉM (HeldAlert),
+// solto em digest quando o dono reabre a janela (hold-and-flush em whatsapp-bot.ts).
 export async function sendClientAlert(clientId: string, kind: AlertKind, text: string, opts: { urgent?: boolean } = {}): Promise<number> {
   const bot = await prisma.clientBot.findUnique({ where: { clientId } });
   if (!bot || !bot.active) return 0;
@@ -197,92 +66,41 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
   if (!opts.urgent && inQuietHours(bot.quietStart, bot.quietEnd)) return 0;
 
   const recipients = await prisma.clientBotRecipient.findMany({
-    where: { clientId, active: true, OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }] },
-    select: { channel: true, chatId: true, waId: true },
+    where: { clientId, active: true, channel: "whatsapp", waId: { not: null }, OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }] },
+    select: { waId: true },
   });
   if (recipients.length === 0) return 0;
 
-  let sent = 0;
+  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
 
-  // WhatsApp (linha da loja → dono): janela aberta = envia agora (grátis); fechada = retém
-  // (HeldAlert) e solta em digest quando ele reabrir. Nunca dispara template pago aqui.
-  const waRecips = recipients.filter((r) => r.channel === "whatsapp" && r.waId);
-  if (waRecips.length) {
-    const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
-    for (const r of waRecips) {
-      // Envia só se a janela estiver aberta E houver linha; senão RETÉM (nada se perde).
-      const open = conn ? await isWindowOpen(conn.id, r.waId!) : false;
-      if (open && conn) {
-        const res = await sendWhatsAppBotMessage(conn, r.waId!, text);
-        if (res.ok) sent++;
-      } else {
-        await prisma.heldAlert.create({ data: { clientId, waId: r.waId!, kind, text, urgent: !!opts.urgent } }).catch(() => {});
-      }
+  let sent = 0;
+  for (const r of recipients) {
+    const waId = r.waId!;
+    // Envia só se a janela estiver aberta E houver linha; senão RETÉM (nada se perde).
+    const open = conn ? await isWindowOpen(conn.id, waId) : false;
+    if (open && conn) {
+      const res = await sendWhatsAppBotMessage(conn, waId, text);
+      if (res.ok) sent++;
+    } else {
+      await prisma.heldAlert.create({ data: { clientId, waId, kind, text, urgent: !!opts.urgent } }).catch(() => {});
     }
   }
-
-  // Telegram (legado — será removido): mantém enquanto houver destinatário nesse canal.
-  const tgRecips = recipients.filter((r) => r.channel !== "whatsapp" && r.chatId);
-  if (tgRecips.length) {
-    try {
-      const token = decryptSecret(bot.token);
-      await Promise.all(tgRecips.map(async (r) => {
-        const ok = await sendMessage(token, r.chatId!, text).catch(() => false);
-        if (ok) sent++;
-      }));
-    } catch (e) { captureException(e, { where: "client-bot.send.decrypt", clientId }); }
-  }
-
   if (sent > 0) await prisma.clientBot.update({ where: { clientId }, data: { lastAlertAt: new Date() } }).catch(() => {});
   return sent;
 }
 
-// Saúde do bot de um cliente: token válido, webhook configurado, há destinatários.
-// Usado pela auditoria diária (avisa o time) e pela aba BOT.
+// Saúde do bot de um cliente: WhatsApp conectado + há destinatários (número do dono).
 export interface ClientBotHealth { tokenOk: boolean; webhookOk: boolean; recipients: number; lastAlertAt: Date | null; issues: string[] }
 export async function checkClientBotHealth(clientId: string): Promise<ClientBotHealth | null> {
   const bot = await prisma.clientBot.findUnique({ where: { clientId } });
   if (!bot || !bot.active) return null;
-  const recipients = await prisma.clientBotRecipient.count({ where: { clientId, active: true } });
+  const recipients = await prisma.clientBotRecipient.count({ where: { clientId, active: true, channel: "whatsapp" } });
+  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
 
-  let tokenOk = false, webhookOk = false;
-  try {
-    const token = decryptSecret(bot.token);
-    const me = await tg(token, "getMe", {});
-    tokenOk = !!me?.ok;
-    if (tokenOk) {
-      const wh = await tg(token, "getWebhookInfo", {});
-      const url = (wh?.result as { url?: string } | undefined)?.url;
-      webhookOk = !!url && url.includes(bot.webhookSecret);
-    }
-  } catch { tokenOk = false; }
-
+  const ready = !!conn; // "canal pronto" = a linha da loja está conectada
   const issues: string[] = [];
-  if (!tokenOk) issues.push("token inválido — reconecte o bot");
-  else if (!webhookOk) issues.push("webhook não configurado");
-  if (recipients === 0) issues.push("sem destinatários conectados");
+  if (!conn) issues.push("WhatsApp não conectado");
+  if (recipients === 0) issues.push("sem destinatários (número do dono) cadastrados");
 
-  return { tokenOk, webhookOk, recipients, lastAlertAt: bot.lastAlertAt, issues };
-}
-
-// Envio direto (usado no fluxo de vínculo e no teste).
-export async function sendMessage(token: string, chatId: string, text: string): Promise<boolean> {
-  const res = await tg(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }).catch(() => null);
-  return !!res?.ok;
-}
-
-// Chamada base à Bot API com um token específico.
-async function tg(token: string, method: string, body: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; description?: string } | null> {
-  try {
-    const res = await fetch(`${API}${token}/${method}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
-    });
-    return await res.json().catch(() => ({ ok: res.ok }));
-  } catch (e) {
-    captureException(e, { where: `client-bot.${method}` });
-    return null;
-  }
+  return { tokenOk: ready, webhookOk: ready, recipients, lastAlertAt: bot.lastAlertAt, issues };
 }

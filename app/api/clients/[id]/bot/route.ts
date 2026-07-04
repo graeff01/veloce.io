@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
-import { decryptSecret } from "@/lib/crypto";
-import { connectClientBot, applyBranding } from "@/lib/notifications/client-bot";
 
 export const runtime = "nodejs";
 
@@ -42,13 +40,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (error) return error;
   const body = await req.json().catch(() => ({}));
 
-  // (1) Conectar/trocar o token do bot (valida + registra webhook).
-  if (typeof body.token === "string" && body.token.trim()) {
-    const res = await connectClientBot(id, body.token, String(body.username ?? ""));
-    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-  }
-
-  // (2) Atualizar flags de alerta / quiet hours / marca branca (só se o bot existir).
+  // Atualizar flags de alerta / quiet hours / marca branca (só se o bot existir).
   const data: Record<string, unknown> = {};
   for (const k of ["novoLead", "slaAlerts", "leadQuente", "leadEsfriando", "resumoDiario"] as const) {
     if (typeof body[k] === "boolean") data[k] = body[k];
@@ -60,12 +52,6 @@ export async function PUT(req: Request, { params }: Params) {
   if ("excludedNames" in body) data.excludedNames = (body.excludedNames as string)?.trim() || null;
   if (Object.keys(data).length > 0) {
     await prisma.clientBot.updateMany({ where: { clientId: id }, data });
-  }
-
-  // (3) Aplicar a marca no Telegram (nome do bot) quando o nome muda.
-  if (typeof body.brandName === "string" && body.brandName.trim()) {
-    const bot = await prisma.clientBot.findUnique({ where: { clientId: id }, select: { token: true } });
-    if (bot) { try { await applyBranding(decryptSecret(bot.token), body.brandName); } catch { /* best-effort */ } }
   }
 
   return NextResponse.json({ ok: true });
