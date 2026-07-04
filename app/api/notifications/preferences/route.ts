@@ -3,24 +3,18 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 
-// GET — preferências do usuário (cria default se não existir) + status do vínculo Telegram.
+// GET — preferências de notificação do usuário (cria default se não existir).
 export async function GET() {
   const { error, session } = await requireAuth();
   if (error) return error;
   const userId = session!.user.id;
 
-  const [pref, telegram] = await Promise.all([
-    prisma.notificationPreference.findUnique({ where: { userId } }),
-    prisma.telegramLink.findUnique({ where: { userId }, select: { username: true, linkedAt: true } }),
-  ]);
+  const pref = await prisma.notificationPreference.findUnique({ where: { userId } });
 
   return NextResponse.json({
     dailyDigest: pref?.dailyDigest ?? false,
     criticalAlerts: pref?.criticalAlerts ?? false,
     pushEnabled: pref?.pushEnabled ?? true,
-    telegramEnabled: pref?.telegramEnabled ?? true,
-    telegramLinked: !!telegram,
-    telegramUsername: telegram?.username ?? null,
   });
 }
 
@@ -28,7 +22,6 @@ const schema = z.object({
   dailyDigest: z.boolean().optional(),
   criticalAlerts: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
-  telegramEnabled: z.boolean().optional(),
 });
 
 // PUT — atualiza preferências.

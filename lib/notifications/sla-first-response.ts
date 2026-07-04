@@ -62,7 +62,7 @@ export async function runSlaFirstResponse(): Promise<{ sent: number }> {
       // 1x por conversa por dia; claimDispatch re-tenta se o envio falhar.
       if (await claimDispatch(`sla-fr:${day}:${w.contactId}:${r.userId}`, r.userId, "sla_first_response",
         { title, body, url: `/clients/${clientId}?tab=leads` }, tg,
-        { pushEnabled: r.pushEnabled, telegramEnabled: r.telegramEnabled })) sent++;
+        { pushEnabled: r.pushEnabled })) sent++;
     }
   }
   return { sent };

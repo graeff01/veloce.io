@@ -228,7 +228,7 @@ async function main() {
 
   // ── 9. Portal + BOT + IA ──
   await prisma.clientPortal.create({ data: { clientId, token: PORTAL_TOKEN, accentColor: "#1E66F5", mode: "light", active: true } });
-  await prisma.clientBot.create({ data: { clientId, token: "demo", username: "vista_demo_bot", webhookSecret: "demo-webhook-secret-vista", active: true, brandName: "Imobiliária Vista" } });
+  await prisma.clientBot.create({ data: { clientId, active: true, brandName: "Imobiliária Vista" } });
   await prisma.aiAgentConfig.create({ data: { clientId, enabled: true, status: "test", vertical: "imobiliario", assistantName: "Helena", greetingMessage: "Olá! Sou a Helena, assistente da Imobiliária Vista 🏡 Como posso ajudar?", persona: "Consultiva, próxima e ágil", goals: "Qualificar o lead e agendar visita" } });
 
   console.log("✅ Demo populado. Portal: /r/" + PORTAL_TOKEN);

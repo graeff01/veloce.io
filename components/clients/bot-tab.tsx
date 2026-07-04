@@ -1,18 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send, Copy, Check, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { MessageCircle, Copy, Check, Trash2, RefreshCw, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TabHeader } from "@/components/clients/tab-header";
 import { PortalAccessCard } from "@/components/clients/portal-access-card";
 
-interface Recipient { id: string; username: string | null; role: string; createdAt: string }
+interface Recipient { id: string; role: string; channel: string; waId: string | null; createdAt: string }
 interface BotState {
   connected: boolean;
-  username: string | null;
   brandName: string | null;
-  welcomeMessage: string | null;
   excludedNames: string | null;
   alerts: { novoLead: boolean; slaAlerts: boolean; leadQuente: boolean; leadEsfriando: boolean; resumoDiario: boolean };
   quietStart: string | null;
@@ -28,6 +26,16 @@ function timeAgo(iso: string | null): string {
   if (min < 60) return `há ${min} min`;
   if (min < 1440) return `há ${Math.floor(min / 60)}h`;
   return `há ${Math.floor(min / 1440)}d`;
+}
+
+// Formata um waId (só dígitos) como +55 (51) 99999-9999 — best-effort.
+function fmtWa(waId: string | null): string {
+  const d = (waId || "").replace(/\D/g, "");
+  if (d.length < 12) return waId || "";
+  const ddd = d.slice(2, 4), rest = d.slice(4);
+  const mid = rest.length > 8 ? rest.slice(0, 5) : rest.slice(0, 4);
+  const end = rest.length > 8 ? rest.slice(5) : rest.slice(4);
+  return `+${d.slice(0, 2)} (${ddd}) ${mid}-${end}`;
 }
 
 const ALERTS: { key: keyof BotState["alerts"]; label: string; desc: string }[] = [
@@ -61,12 +69,10 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-type Section = "conexao" | "aparencia" | "alertas" | "destinatarios" | "painel";
+type Section = "destinatarios" | "alertas" | "painel";
 const SECTIONS: { key: Section; label: string }[] = [
-  { key: "conexao", label: "Conexão" },
-  { key: "aparencia", label: "Aparência" },
-  { key: "alertas", label: "Alertas" },
   { key: "destinatarios", label: "Destinatários" },
+  { key: "alertas", label: "Alertas" },
   { key: "painel", label: "Painel" },
 ];
 
@@ -87,16 +93,16 @@ function SubNav({ active, onChange }: { active: Section; onChange: (s: Section) 
   );
 }
 
-// Preview de uma mensagem do bot ("ver como o cliente vê") — bolha estilo Telegram.
+// Prévia de um alerta — bolha estilo WhatsApp (como chega no zap do dono).
 function AlertPreview() {
   return (
     <div style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600 }}>Prévia — como chega no Telegram do cliente</div>
-      <div style={{ maxWidth: 320, background: "#fff", color: "#101319", borderRadius: "12px 12px 12px 4px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
-        <div>🔥 <b>Lead QUENTE parado há 18 min</b></div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600 }}>Prévia — como chega no WhatsApp do dono</div>
+      <div style={{ maxWidth: 320, background: "color-mix(in srgb, #1FA855 16%, #fff)", color: "#101319", borderRadius: "12px 12px 12px 4px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
+        <div><b>🔥 Lead QUENTE parado há 18 min</b></div>
         <div>👤 João Silva</div>
         <div>⚠️ Você está prestes a perder — responda agora.</div>
-        <div style={{ marginTop: 8, color: "#2481CC", fontWeight: 600 }}>💬 Responder no WhatsApp →</div>
+        <div style={{ marginTop: 8, color: "#1FA855", fontWeight: 600 }}>Falar com o lead: wa.me/55…</div>
       </div>
     </div>
   );
@@ -104,31 +110,18 @@ function AlertPreview() {
 
 export function BotTab({ clientId }: { clientId: string }) {
   const [state, setState] = useState<BotState | null>(null);
-  const [token, setToken] = useState("");
-  const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [newWa, setNewWa] = useState("");
+  const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [invite, setInvite] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [testMsg, setTestMsg] = useState<string | null>(null);
-  const [brand, setBrand] = useState("");
-  const [welcome, setWelcome] = useState("");
-  const [brandSaved, setBrandSaved] = useState(false);
   const [excluded, setExcluded] = useState("");
-  const [section, setSection] = useState<Section>("conexao");
+  const [section, setSection] = useState<Section>("destinatarios");
   const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string; logoUrl: string | null } | null>(null);
   const [portalCopied, setPortalCopied] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/bot`);
-    if (res.ok) { const d = await res.json(); setState(d); setUsername(d.username ?? ""); setBrand(d.brandName ?? ""); setWelcome(d.welcomeMessage ?? ""); setExcluded(d.excludedNames ?? ""); }
-  }
-
-  async function saveBrand() {
-    setBrandSaved(false);
-    await patch({ brandName: brand, welcomeMessage: welcome });
-    setBrandSaved(true);
-    setTimeout(() => setBrandSaved(false), 2500);
+    if (res.ok) { const d = await res.json(); setState(d); setExcluded(d.excludedNames ?? ""); }
   }
 
   async function loadPortal() {
@@ -176,17 +169,6 @@ export function BotTab({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load(); loadPortal(); }, [clientId]);
 
-  async function connect() {
-    setErr(null); setBusy(true);
-    const res = await fetch(`/api/clients/${clientId}/bot`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token.trim(), username: username.trim() }),
-    });
-    setBusy(false);
-    if (!res.ok) { setErr((await res.json().catch(() => ({})))?.error ?? "Falha ao conectar."); return; }
-    setToken(""); await load();
-  }
-
   async function patch(body: Record<string, unknown>) {
     await fetch(`/api/clients/${clientId}/bot`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   }
@@ -198,12 +180,14 @@ export function BotTab({ clientId }: { clientId: string }) {
     void patch({ [key]: next });
   }
 
-  async function genInvite() {
-    setInvite(null); setCopied(false);
-    const res = await fetch(`/api/clients/${clientId}/bot/invite`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+  async function addRecipient() {
+    setErr(null); setAdding(true);
+    const res = await fetch(`/api/clients/${clientId}/bot/recipients`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ waId: newWa.trim() }),
     });
-    if (res.ok) setInvite((await res.json()).link);
+    setAdding(false);
+    if (!res.ok) { setErr((await res.json().catch(() => ({})))?.error ?? "Falha ao cadastrar o número."); return; }
+    setNewWa(""); await load();
   }
 
   async function removeRecipient(rid: string) {
@@ -215,62 +199,114 @@ export function BotTab({ clientId }: { clientId: string }) {
     setTestMsg(null);
     const res = await fetch(`/api/clients/${clientId}/bot/test`, { method: "POST" });
     const { sent } = await res.json();
-    setTestMsg(sent > 0 ? `✅ Enviado para ${sent} destinatário(s).` : "Nenhum destinatário conectado ainda.");
+    setTestMsg(sent > 0 ? `✅ Enviado para ${sent} destinatário(s).` : "Nenhum destinatário na janela aberta — o alerta fica retido até o dono mandar mensagem.");
   }
 
   if (!state) return <div style={{ padding: 40, color: "var(--text-muted)" }}><Loader2 size={16} className="animate-spin" /></div>;
 
+  const waRecipients = state.recipients.filter((r) => r.channel === "whatsapp");
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-base)" }}>
-      <TabHeader icon={<Send size={16} />} tint="rgba(36,129,204,0.12)" iconColor="#2481CC" title="BOT do Telegram" subtitle="Alertas em tempo real dos leads deste cliente" />
+      <TabHeader icon={<MessageCircle size={16} />} tint="rgba(31,168,85,0.12)" iconColor="#1FA855" title="Alertas no WhatsApp" subtitle="Alertas e comandos dos leads, no WhatsApp do dono" />
       <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
-        Bot do Telegram exclusivo deste cliente. Crie um bot no <b>@BotFather</b>, cole o token aqui e conecte os
-        responsáveis — eles recebem em tempo real os alertas dos leads <b>só deste cliente</b>.
+        Os alertas saem pela <b>própria linha da loja</b> (a mesma que atende lead) para o <b>WhatsApp pessoal do dono</b>.
+        Cadastre o número dele abaixo. Ele também consulta a operação por comandos: <b>/quentes · /status · /resultados</b>.
+        Dentro da janela de 24h é grátis; fora, o alerta fica retido e chega junto quando ele reabrir a conversa.
       </p>
 
-      {state.connected && <SubNav active={section} onChange={setSection} />}
+      <SubNav active={section} onChange={setSection} />
 
-      {/* Conexão */}
-      {(!state.connected || section === "conexao") && (
-      <Card title="🔌 Conexão">
-        {state.connected ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-                <span style={{ fontSize: 13, color: "var(--text-primary)" }}>Conectado a <b>@{state.username}</b></span>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Button variant="secondary" size="sm" onClick={test}><Send size={12} /> Testar</Button>
-                <Button variant="ghost" size="sm" onClick={() => { setToken(""); setState({ ...state, connected: false }); }}><RefreshCw size={12} /> Trocar token</Button>
-              </div>
+      {/* Destinatários */}
+      {section === "destinatarios" && (
+        <Card title="👥 Número do dono">
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <Input label="WhatsApp do dono (com DDD)" placeholder="5551999999999" value={newWa} onChange={(e) => setNewWa(e.target.value)} />
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {state.recipients.length} destinatário{state.recipients.length !== 1 ? "s" : ""} · último alerta {timeAgo(state.lastAlertAt)}
+            <Button variant="primary" size="sm" loading={adding} onClick={addRecipient} disabled={!newWa.trim()}><Plus size={12} /> Cadastrar</Button>
+            <Button variant="secondary" size="sm" onClick={test}>Testar alerta</Button>
+          </div>
+          {err && <p style={{ fontSize: 12, color: "var(--red)", marginBottom: 10 }}>{err}</p>}
+          <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
+            Use o WhatsApp <b>pessoal</b> do dono — diferente da linha que atende cliente. Ele passa a <b>receber os alertas</b> e pode usar os comandos.
+          </p>
+          {waRecipients.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum número cadastrado ainda.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {waRecipients.map((r) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg-base)", borderRadius: 8 }}>
+                  <span style={{ fontSize: 12.5, color: "var(--text-primary)" }}>
+                    {fmtWa(r.waId)} <span style={{ color: "var(--text-muted)" }}>· {r.role === "dono" ? "dono" : r.role}</span>
+                  </span>
+                  <button type="button" onClick={() => removeRecipient(r.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}><Trash2 size={13} /></button>
+                </div>
+              ))}
             </div>
+          )}
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 12 }}>
+            {waRecipients.length} destinatário{waRecipients.length !== 1 ? "s" : ""} · último alerta {timeAgo(state.lastAlertAt)}
           </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Input label="Token do BotFather" placeholder="123456789:ABCdef..." value={token} onChange={(e) => setToken(e.target.value)} />
-            <Input label="@username do bot (sem @)" placeholder="imobiliariax_bot" value={username} onChange={(e) => setUsername(e.target.value)} />
-            {err && <span style={{ fontSize: 12, color: "var(--red)" }}>{err}</span>}
-            <div><Button variant="primary" size="sm" loading={busy} onClick={connect} disabled={!token.trim() || !username.trim()}>Conectar bot</Button></div>
-          </div>
-        )}
-        {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>{testMsg}</p>}
-      </Card>
+          {testMsg && <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>{testMsg}</p>}
+        </Card>
       )}
 
+      {/* Alertas */}
+      {section === "alertas" && (
+        <Card title="🔔 Alertas">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {ALERTS.map((a) => (
+              <div key={a.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{a.label}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{a.desc}</div>
+                </div>
+                <Toggle on={state.alerts[a.key]} onClick={() => toggleAlert(a.key)} />
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>🌙 Não perturbe</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input type="time" value={state.quietStart ?? ""} onChange={(e) => { setState({ ...state, quietStart: e.target.value }); void patch({ quietStart: e.target.value }); }}
+                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
+              <input type="time" value={state.quietEnd ?? ""} onChange={(e) => { setState({ ...state, quietEnd: e.target.value }); void patch({ quietEnd: e.target.value }); }}
+                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>(fora disso, só alertas críticos)</span>
+            </div>
+          </div>
+          {/* Ignorar contatos */}
+          <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 6 }}>🙈 Ignorar contatos</div>
+            <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
+              Nomes/sobrenomes que <b>não</b> devem virar lead nem gerar alerta (ex.: família do dono). Um por linha ou separados por vírgula.
+            </p>
+            <textarea
+              value={excluded}
+              onChange={(e) => setExcluded(e.target.value)}
+              onBlur={() => void patch({ excludedNames: excluded })}
+              placeholder="Erling"
+              rows={2}
+              style={{ width: "100%", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-input)", color: "var(--text-primary)", padding: "9px 12px", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
+            />
+          </div>
+        </Card>
+      )}
+
+      {section === "alertas" && <AlertPreview />}
+
       {/* Painel do cliente (dashboard sem login) */}
-      {state.connected && section === "painel" && (
+      {section === "painel" && (
       <Card title="📊 Painel do cliente">
         {!portal ? (
           <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Carregando…</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-              Link <b>sem login</b> com o painel de performance do cliente (marca dele). Envie ou use o comando <b>/painel</b> no bot.
+              Link <b>sem login</b> com o painel de performance do cliente (marca dele). Envie ou use o comando <b>/painel</b> no WhatsApp.
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8 }}>
               <span style={{ fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{portal.link}</span>
@@ -304,116 +340,7 @@ export function BotTab({ clientId }: { clientId: string }) {
       </Card>
       )}
 
-      {state.connected && section === "painel" && <PortalAccessCard clientId={clientId} />}
-
-      {/* Marca branca */}
-      {state.connected && section === "aparencia" && (
-        <Card title="🎨 Marca branca">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Input label="Nome da marca" placeholder="Ex.: Imobiliária Boqueirão" value={brand} onChange={(e) => setBrand(e.target.value)} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)" }}>Mensagem de boas-vindas</label>
-              <textarea
-                value={welcome}
-                onChange={(e) => setWelcome(e.target.value)}
-                placeholder="Texto enviado quando alguém conecta (deixe vazio para o padrão)."
-                rows={3}
-                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-input)", color: "var(--text-primary)", padding: "9px 12px", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
-              />
-            </div>
-            <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-              O nome também é aplicado como nome do bot no Telegram (o avatar é definido no @BotFather). Suporta <b>&lt;b&gt;negrito&lt;/b&gt;</b> na boas-vindas.
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Button variant="primary" size="sm" onClick={saveBrand}>Salvar marca</Button>
-              {brandSaved && <span style={{ fontSize: 12, color: "var(--green)" }}>✓ Salvo</span>}
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Ignorar contatos */}
-      {state.connected && section === "alertas" && (
-        <Card title="🙈 Ignorar contatos">
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-              Nomes/sobrenomes que <b>não</b> devem virar lead nem gerar alerta (ex.: família do dono). Um por linha ou separados por vírgula.
-            </p>
-            <textarea
-              value={excluded}
-              onChange={(e) => setExcluded(e.target.value)}
-              onBlur={() => void patch({ excludedNames: excluded })}
-              placeholder="Erling"
-              rows={2}
-              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-input)", color: "var(--text-primary)", padding: "9px 12px", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
-            />
-          </div>
-        </Card>
-      )}
-
-      {/* Destinatários */}
-      {state.connected && section === "destinatarios" && (
-        <Card title="👥 Destinatários">
-          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <Button variant="secondary" size="sm" onClick={genInvite}>Gerar link de convite</Button>
-          </div>
-          {invite && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, marginBottom: 14 }}>
-              <span style={{ fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{invite}</span>
-              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(invite); setCopied(true); }}>
-                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copiado" : "Copiar"}
-              </Button>
-            </div>
-          )}
-          <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>
-            Envie o link ao responsável. Ele abre, toca em <b>Iniciar</b> e passa a <b>receber os alertas</b> — sem acesso ao painel nem como alterar o bot. O link vale 24h e é de uso único.
-          </p>
-          {state.recipients.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Ninguém conectado ainda.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {state.recipients.map((r) => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg-base)", borderRadius: 8 }}>
-                  <span style={{ fontSize: 12.5, color: "var(--text-primary)" }}>
-                    {r.username ? `@${r.username}` : "Conectado"} <span style={{ color: "var(--text-muted)" }}>· só recebe</span>
-                  </span>
-                  <button type="button" onClick={() => removeRecipient(r.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}><Trash2 size={13} /></button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Alertas */}
-      {state.connected && section === "alertas" && (
-        <Card title="🔔 Alertas">
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {ALERTS.map((a) => (
-              <div key={a.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{a.label}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{a.desc}</div>
-                </div>
-                <Toggle on={state.alerts[a.key]} onClick={() => toggleAlert(a.key)} />
-              </div>
-            ))}
-          </div>
-          <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
-            <div style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>🌙 Não perturbe</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input type="time" value={state.quietStart ?? ""} onChange={(e) => { setState({ ...state, quietStart: e.target.value }); void patch({ quietStart: e.target.value }); }}
-                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
-              <input type="time" value={state.quietEnd ?? ""} onChange={(e) => { setState({ ...state, quietEnd: e.target.value }); void patch({ quietEnd: e.target.value }); }}
-                style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", padding: "6px 10px", fontSize: 13 }} />
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>(fora disso, só alertas críticos)</span>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {state.connected && section === "alertas" && <AlertPreview />}
+      {section === "painel" && <PortalAccessCard clientId={clientId} />}
       </div>
     </div>
   );
