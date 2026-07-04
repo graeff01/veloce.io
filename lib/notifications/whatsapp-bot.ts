@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
+import { sameBrazilNumber } from "@/lib/phone-br";
 
 // Converte o HTML que os builders de alerta emitem (estilo Telegram) para o
 // markdown do WhatsApp. Puro e testável — sem esse passo o dono veria "<b>" cru.
@@ -56,4 +57,44 @@ export async function sendWhatsAppBotMessage(
     if (attempt < 2) await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
   }
   return { ok: false, error: lastErr };
+}
+
+// O inbound veio de um destinatário do bot no WhatsApp (dono)? Devolve o waId REGISTRADO
+// dele (tolerando o 9º dígito BR), ou null. Usado pra: (a) não tratar o dono como lead,
+// (b) saber sob qual waId os alertas foram retidos. Escopado ao cliente (isolamento).
+export async function matchWaBotRecipient(clientId: string, waId: string): Promise<string | null> {
+  const recs = await prisma.clientBotRecipient.findMany({
+    where: { clientId, channel: "whatsapp", active: true },
+    select: { waId: true },
+  });
+  const hit = recs.find((r) => r.waId && sameBrazilNumber(r.waId, waId));
+  return hit?.waId ?? null;
+}
+
+const FLUSH_MAX = 15; // no digest, mostra até N; o resto vira contagem (protege 4096 chars)
+
+// Hold-and-flush: quando o dono reabre a janela (mandou msg), solta os alertas retidos
+// num ÚNICO digest — nada se perde, e é 1 mensagem, não N (protege o quality rating).
+export async function flushHeldAlerts(
+  clientId: string,
+  registeredWaId: string,
+  conn: { phoneNumberId: string; accessToken: string },
+  sendToWaId: string,
+): Promise<number> {
+  const held = await prisma.heldAlert.findMany({
+    where: { clientId, waId: registeredWaId, flushedAt: null },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!held.length) return 0;
+
+  const shown = held.slice(0, FLUSH_MAX);
+  const extra = held.length - shown.length;
+  const header = `📥 <b>Enquanto você esteve fora</b> — ${held.length} alerta(s):`;
+  const body = shown.map((h) => h.text).join("\n———\n");
+  const tail = extra > 0 ? `\n———\n<i>+${extra} alerta(s) mais antigos</i>` : "";
+  const res = await sendWhatsAppBotMessage(conn, sendToWaId, `${header}\n${body}${tail}`);
+  if (!res.ok) return 0; // falhou → NÃO marca (tenta de novo no próximo inbound)
+
+  await prisma.heldAlert.updateMany({ where: { id: { in: held.map((h) => h.id) } }, data: { flushedAt: new Date() } }).catch(() => {});
+  return held.length;
 }
