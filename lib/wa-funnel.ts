@@ -87,7 +87,9 @@ async function semanticStage(text: string | null | undefined): Promise<SignalSta
     const raw = await groqChat(sys, user, 120);
     const j = extractJson<{ stage: string; confidence: number }>(raw);
     if (!j || (j.confidence ?? 0) < 0.7) return null;
-    const allowed: SignalStage[] = ["qualificado", "negociacao", "convertido", "perdido"];
+    // "convertido" é SÓ humano (base do CAPI/receita): o automático nunca marca venda,
+    // mesmo se a LLM afirmar. Avança no máximo até negociacao.
+    const allowed: SignalStage[] = ["qualificado", "negociacao", "perdido"];
     return (allowed as string[]).includes(j.stage) ? (j.stage as SignalStage) : null;
   } catch {
     return null;

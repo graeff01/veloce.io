@@ -49,6 +49,7 @@ export function decideStage(opts: {
   hasOutbound: boolean;
   verdict: FunnelVerdict | null;
   profileStage?: AutoStage | null;
+  suppressAdvance?: boolean; // opener de anúncio (1ª msg-template) → só piso, não qualifica
   threshold?: number;
 }): StageDecision {
   const thr = opts.threshold ?? THRESHOLD;
@@ -60,6 +61,12 @@ export function decideStage(opts: {
   let source: StageDecision["source"] = opts.verdict ? "floor" : "llm_failed";
   // proposed nulo = "sem etapa" (rank -1 efetivo): o piso sempre aplica.
   if (!proposed || stageRank(floor) > stageRank(proposed)) proposed = floor;
+
+  // Opener de anúncio: a 1ª msg é template ("tenho interesse no anúncio do X") — não
+  // qualifica. Aplica só o piso e ignora perfil/LLM (o léxico já fazia via inboundCount).
+  if (opts.suppressAdvance) {
+    return { proposedStage: proposed, source, wouldChange: proposed !== cur, gatedByConf: false, review: false, evidence: null };
+  }
 
   let gatedByConf = false;
   let evidence: string | null = null;
@@ -110,16 +117,23 @@ function lexiconWouldTrigger(window: FunnelWindowMsg[], currentStage: string | n
 
 // Escrita da etapa (autoridade). Só grava se houver avanço real e a guarda já
 // tiver liberado. Preserva funnelEvidence quando não há frase nova. Registra o evento.
+//
+// Optimistic concurrency: grava com WHERE funnelStage = `from` (a etapa que lemos).
+// Se outro escritor concorrente (runFunnelClassify / applyProfileStage / piso) já
+// avançou nesse meio-tempo, o WHERE casa 0 linhas e a nossa escrita (potencialmente
+// mais baixa) é descartada — nunca regride. É o que garante avanço-only sob corrida.
 async function writeStage(connectionId: string, contactId: string, decision: StageDecision, from: string | null): Promise<void> {
   if (!decision.wouldChange || !decision.proposedStage) return;
-  await prismaUnscoped.waConversation.update({
-    where: { contactId },
+  const res = await prismaUnscoped.waConversation.updateMany({
+    where: { contactId, funnelStage: from },
     data: {
       funnelStage: decision.proposedStage,
       ...(decision.evidence ? { funnelEvidence: decision.evidence } : {}),
     },
-  }).catch(() => {});
-  await logWaEvent(connectionId, "funnel.auto", contactId, { from, to: decision.proposedStage, source: decision.source }).catch(() => {});
+  }).catch(() => ({ count: 0 }));
+  if (res.count > 0) {
+    await logWaEvent(connectionId, "funnel.auto", contactId, { from, to: decision.proposedStage, source: decision.source }).catch(() => {});
+  }
 }
 
 // Motor do funil no webhook: classifica com CONTEXTO e, no modo `active`, GRAVA a etapa
@@ -140,10 +154,13 @@ export async function runFunnelClassify(opts: {
     if (conv.funnelStage === "convertido") return;       // terminal de topo
 
     // Exclusão de donos (nameExcluded) — a regra de ouro que o léxico atual NÃO aplica.
-    const [contact, excl, cfg] = await Promise.all([
+    // isAd + contagem de inbound → detecta o opener de anúncio (1ª msg-template).
+    const [contact, excl, cfg, isAd, inboundCount] = await Promise.all([
       prismaUnscoped.waContact.findUnique({ where: { id: contactId }, select: { name: true } }),
       excludedTokens(clientId),
       prismaUnscoped.aiAgentConfig.findFirst({ where: { clientId }, select: { vertical: true } }),
+      prismaUnscoped.waLead.findUnique({ where: { contactId }, select: { contactId: true } }).then((l) => !!l),
+      prismaUnscoped.waMessage.count({ where: { contactId, direction: "in" } }),
     ]);
     if (nameExcluded(contact?.name ?? null, excl)) return;
 
@@ -160,9 +177,10 @@ export async function runFunnelClassify(opts: {
     const vertical = cfg?.vertical ?? null;
     const hasOutbound = direction === "out" || (conv.outboundCount ?? 0) > 0;
     const lexiconTriggered = lexiconWouldTrigger(window, conv.funnelStage, vertical);
+    const suppressAdvance = isAd && direction === "in" && inboundCount <= 1; // opener de anúncio
 
     const verdict = await classifyFunnelLLM({ window, clientId, vertical, currentStage: conv.funnelStage });
-    const decision = decideStage({ currentStage: conv.funnelStage, hasOutbound, verdict });
+    const decision = decideStage({ currentStage: conv.funnelStage, hasOutbound, verdict, suppressAdvance });
 
     // Log de auditoria (sempre — em shadow E active: mantém o histórico comparável).
     await prismaUnscoped.funnelShadow.create({
