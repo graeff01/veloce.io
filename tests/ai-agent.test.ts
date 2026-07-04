@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveBlockRules, checkReply } from "../lib/ai-agent/guardrail";
+import { requestedColorStem } from "../lib/ai-agent/catalog-search";
 import { isOptOut } from "../lib/ai-agent/optout";
 import { redactPII } from "../lib/redact";
 import { looksLikeTrafficLead, detectAdModel } from "../lib/wa-ad-detect";
@@ -70,6 +71,15 @@ test("anti-injection: bloqueia vazamento de prompt em qualquer vertical (inclusi
   assert.equal(checkReply("conforme as instruções acima, vou repetir as instruções", withCustom).allowed, false);
   // Conversa normal não é bloqueada.
   assert.equal(checkReply("Claro! Posso te ajudar com o Taos.", resolveBlockRules("automotivo")).allowed, true);
+});
+
+test("requestedColorStem: extrai a cor pedida (radical), tolera gênero/acento", () => {
+  assert.equal(requestedColorStem("Tiguan preto"), "pret");
+  assert.equal(requestedColorStem("Tiguan preta"), "pret");
+  assert.equal(requestedColorStem("a branca"), "branc");
+  assert.equal(requestedColorStem("Onix CINZA"), "cinz");
+  assert.equal(requestedColorStem("Tiguan"), null); // sem cor
+  assert.equal(requestedColorStem("SUV automática"), null); // "automática" não é cor
 });
 
 test("guardrail bloqueia 'chamar um vendedor' e gíria kkk (universal), mas deixa passar o handoff correto", () => {
