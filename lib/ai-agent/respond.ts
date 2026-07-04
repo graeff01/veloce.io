@@ -12,6 +12,7 @@ import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
+import { matchWaBotRecipient, flushHeldAlerts } from "@/lib/notifications/whatsapp-bot";
 import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
@@ -97,6 +98,14 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   //    (a triadora trabalha de manhã). Só roda com a IA ligada e não pausada.
   if (cfg?.enabled && !cfg.paused && isOperator(cfg, contact.waId)) {
     return handleOperatorCommand({ conn, operatorWaId: contact.waId, operatorContactId: contact.id });
+  }
+
+  // 0b) Destinatário do bot no WhatsApp (dono): NÃO é lead. A mensagem dele reabre a janela
+  //     de 24h — soltamos os alertas retidos em digest e paramos aqui (comandos = Fase 1).
+  const ownerWaId = await matchWaBotRecipient(conn.clientId, contact.waId);
+  if (ownerWaId) {
+    await flushHeldAlerts(conn.clientId, ownerWaId, conn, contact.waId).catch(() => {});
+    return "skipped";
   }
 
   // 1) Gatekeeper: kill-switch global, pause por cliente, status live, fora do horário.

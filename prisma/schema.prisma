@@ -1613,19 +1613,38 @@ model ClientBot {
   updatedAt     DateTime @updatedAt
 }
 
-// Quem recebe os alertas de um cliente (gestor/corretor), no bot dele.
+// Quem recebe os alertas de um cliente (gestor/corretor/dono).
+// channel=telegram usa chatId; channel=whatsapp usa waId (a linha do dono, na WABA da loja).
 model ClientBotRecipient {
   id         String    @id @default(cuid())
   clientId   String
-  chatId     String
+  channel    String    @default("telegram") // telegram | whatsapp
+  chatId     String?   // Telegram (legado)
+  waId       String?   // WhatsApp (número do dono)
   username   String?
-  role       String    @default("corretor") // gestor | corretor
+  role       String    @default("corretor") // gestor | corretor | dono
   active     Boolean   @default(true)
   mutedUntil DateTime? // snooze temporário (/silenciar) — não recebe alertas até aqui
   createdAt  DateTime  @default(now())
 
   @@unique([clientId, chatId])
+  @@unique([clientId, waId])
   @@index([clientId])
+}
+
+// Alerta retido: a janela de 24h do dono estava FECHADA na hora do evento. Fica guardado
+// e é entregue num único digest quando ele reabre a janela (hold-and-flush). Custo-zero.
+model HeldAlert {
+  id        String    @id @default(cuid())
+  clientId  String
+  waId      String    // destinatário (waId registrado do dono)
+  kind      String    // AlertKind
+  text      String    // já no formato dos builders (HTML → convertido no envio)
+  urgent    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  flushedAt DateTime? // quando foi solto no digest (null = pendente)
+
+  @@index([clientId, waId, flushedAt])
 }
 
 // Painel do cliente (camada client-facing, sem login). O token é a credencial

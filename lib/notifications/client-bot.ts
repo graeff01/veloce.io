@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { captureException } from "@/lib/observability";
 import { nowParts } from "@/lib/tz";
+import { isWindowOpen, sendWhatsAppBotMessage } from "@/lib/notifications/whatsapp-bot";
 
 // Bot do Telegram POR CLIENTE (marca branca). Cada cliente tem seu bot (criado no
 // BotFather); os alertas dele saem por esse bot, isolados dos outros clientes.
@@ -195,20 +196,43 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
   if (!bot[kind]) return 0; // alerta desligado para este cliente
   if (!opts.urgent && inQuietHours(bot.quietStart, bot.quietEnd)) return 0;
 
-  let token: string;
-  try { token = decryptSecret(bot.token); } catch (e) { captureException(e, { where: "client-bot.send.decrypt", clientId }); return 0; }
-
   const recipients = await prisma.clientBotRecipient.findMany({
     where: { clientId, active: true, OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }] },
-    select: { chatId: true },
+    select: { channel: true, chatId: true, waId: true },
   });
   if (recipients.length === 0) return 0;
 
   let sent = 0;
-  await Promise.all(recipients.map(async (r) => {
-    const ok = await sendMessage(token, r.chatId, text).catch(() => false);
-    if (ok) sent++;
-  }));
+
+  // WhatsApp (linha da loja → dono): janela aberta = envia agora (grátis); fechada = retém
+  // (HeldAlert) e solta em digest quando ele reabrir. Nunca dispara template pago aqui.
+  const waRecips = recipients.filter((r) => r.channel === "whatsapp" && r.waId);
+  if (waRecips.length) {
+    const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
+    for (const r of waRecips) {
+      // Envia só se a janela estiver aberta E houver linha; senão RETÉM (nada se perde).
+      const open = conn ? await isWindowOpen(conn.id, r.waId!) : false;
+      if (open && conn) {
+        const res = await sendWhatsAppBotMessage(conn, r.waId!, text);
+        if (res.ok) sent++;
+      } else {
+        await prisma.heldAlert.create({ data: { clientId, waId: r.waId!, kind, text, urgent: !!opts.urgent } }).catch(() => {});
+      }
+    }
+  }
+
+  // Telegram (legado — será removido): mantém enquanto houver destinatário nesse canal.
+  const tgRecips = recipients.filter((r) => r.channel !== "whatsapp" && r.chatId);
+  if (tgRecips.length) {
+    try {
+      const token = decryptSecret(bot.token);
+      await Promise.all(tgRecips.map(async (r) => {
+        const ok = await sendMessage(token, r.chatId!, text).catch(() => false);
+        if (ok) sent++;
+      }));
+    } catch (e) { captureException(e, { where: "client-bot.send.decrypt", clientId }); }
+  }
+
   if (sent > 0) await prisma.clientBot.update({ where: { clientId }, data: { lastAlertAt: new Date() } }).catch(() => {});
   return sent;
 }
