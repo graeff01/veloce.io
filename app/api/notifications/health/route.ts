@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { getFailureStats } from "@/lib/notifications/digest";
 import { MAX_ATTEMPTS } from "@/lib/notifications/dispatch";
 import { lastTickAt } from "@/lib/notifications/heartbeat";
-import { telegramAvailable } from "@/lib/notifications/telegram";
 import { pushAvailable } from "@/lib/notifications/web-push";
 
 export const runtime = "nodejs";
@@ -18,12 +17,11 @@ export async function GET() {
   if (error) return error;
 
   const activeUser = { user: { active: true, deletedAt: null } };
-  const [stats, tick, digestR, criticalR, tgLinks, pushSubs] = await Promise.all([
+  const [stats, tick, digestR, criticalR, pushSubs] = await Promise.all([
     getFailureStats(MAX_ATTEMPTS),
     lastTickAt(),
     prisma.notificationPreference.count({ where: { dailyDigest: true, ...activeUser } }),
     prisma.notificationPreference.count({ where: { criticalAlerts: true, ...activeUser } }),
-    prisma.telegramLink.count(),
     prisma.pushSubscription.count(),
   ]);
 
@@ -34,10 +32,10 @@ export async function GET() {
     live,
     lastTickAt: tick,
     secondsSinceTick,
-    channels: { telegram: telegramAvailable(), push: pushAvailable() },
+    channels: { push: pushAvailable() },
     deadMansSwitch: !!process.env.HEARTBEAT_URL,
     recipients: { dailyDigest: digestR, criticalAlerts: criticalR },
-    links: { telegram: tgLinks, push: pushSubs },
+    links: { push: pushSubs },
     failures24h: stats,
     maxAttempts: MAX_ATTEMPTS,
   });

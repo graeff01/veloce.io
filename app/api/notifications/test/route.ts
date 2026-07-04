@@ -1,22 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-helpers";
 import { sendPushToUser } from "@/lib/notifications/web-push";
-import { sendTelegramToUser } from "@/lib/notifications/telegram";
 import { buildDailyDigest } from "@/lib/notifications/digest";
 
-// POST — envia o RESUMO DO DIA real (preview) para o usuário atual (push + telegram).
+// POST — envia o RESUMO DO DIA real (preview) para o usuário atual (web-push).
 export async function POST() {
   const { error, session } = await requireAuth();
   if (error) return error;
   const userId = session!.user.id;
 
   const digest = await buildDailyDigest();
-  const tg = `🧪 <i>teste</i>\n\n${digest.telegram}`;
+  const push = await sendPushToUser(userId, { title: `${digest.title} (teste)`, body: digest.body, url: digest.url }).catch(() => false);
 
-  const [push, telegram] = await Promise.all([
-    sendPushToUser(userId, { title: `${digest.title} (teste)`, body: digest.body, url: digest.url }).catch(() => false),
-    sendTelegramToUser(userId, tg).catch(() => false),
-  ]);
-
-  return NextResponse.json({ push, telegram });
+  return NextResponse.json({ push });
 }
