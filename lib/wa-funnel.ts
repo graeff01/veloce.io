@@ -21,6 +21,12 @@ function currentRank(stage: string | null | undefined): number {
   return RANK[stage] ?? 0;
 }
 
+// Rank de avanço-only, reutilizável (mesma verdade do léxico). "perdido" é lateral
+// (rank 0): não conta como avanço; é tratado à parte por quem chama.
+export function stageRank(stage: string | null | undefined): number {
+  return currentRank(stage);
+}
+
 // Piso a partir de fatos da conversa: respondeu? → Respondido; senão Recebido.
 // Funde com o sinal: a etapa final é a MAIOR entre sinal e piso.
 function mergeFloor(signalStage: string | null, hasOutbound: boolean): string | null {
@@ -81,7 +87,9 @@ async function semanticStage(text: string | null | undefined): Promise<SignalSta
     const raw = await groqChat(sys, user, 120);
     const j = extractJson<{ stage: string; confidence: number }>(raw);
     if (!j || (j.confidence ?? 0) < 0.7) return null;
-    const allowed: SignalStage[] = ["qualificado", "negociacao", "convertido", "perdido"];
+    // "convertido" é SÓ humano (base do CAPI/receita): o automático nunca marca venda,
+    // mesmo se a LLM afirmar. Avança no máximo até negociacao.
+    const allowed: SignalStage[] = ["qualificado", "negociacao", "perdido"];
     return (allowed as string[]).includes(j.stage) ? (j.stage as SignalStage) : null;
   } catch {
     return null;
@@ -205,6 +213,10 @@ export async function applyFunnelFromMessage(opts: {
       await prisma.waConversation.update({ where: { contactId }, data: { funnelStage: floor } });
       conv.funnelStage = floor;
     }
+
+    // Flip (FUNNEL_LLM_MODE=active): a autoridade dos AVANÇOS é a LLM-first
+    // (runFunnelClassify). Aqui o léxico fica só no piso — não avança nem chama Groq.
+    if ((process.env.FUNNEL_LLM_MODE || "").toLowerCase() === "active") return;
 
     // 2) Sinal de avanço — léxico primeiro.
     let candidate = detectStageFromMessage(text, cfg?.vertical, direction);

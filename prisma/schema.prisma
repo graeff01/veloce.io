@@ -1701,3 +1701,38 @@ model PortalSession {
   @@index([email])
 }
 
+// ── Shadow do classificador de funil (LLM lê contexto) ─────────────────────────
+// Log append-only: a cada mensagem elegível, o motor NOVO (LLM-first + gate de
+// confiança) registra a etapa que ATRIBUIRIA, SEM tocar em WaConversation.funnelStage.
+// Serve para comparar, por alguns dias, o motor novo vs. o funil atual antes de ligar
+// de vez (FUNNEL_LLM_MODE=active). Guarda também se o léxico-gatilho teria chamado a
+// LLM, para medir a taxa de miss do próprio gatilho. Nunca no caminho crítico do webhook.
+model FunnelShadow {
+  id               String   @id @default(cuid())
+  connectionId     String
+  contactId        String
+  clientId         String
+  direction        String   // "in" | "out" — direção da mensagem que disparou a avaliação
+  currentStage     String?  // etapa REAL no momento (WaConversation.funnelStage) — baseline
+  proposedStage    String?  // etapa que o motor NOVO atribuiria (após gate + avanço-only)
+  llmStage         String?  // etapa crua da LLM antes do gate (recebido..perdido|nenhum)
+  confidence       Int?     // 0..100 devolvido pela LLM
+  evidence         String?  // frase que justificou a etapa (auditável)
+  signals          Json?    // { interesse, orcamento, intencao_visita }
+  source           String   // "llm" | "floor" | "llm_failed"
+  wouldChange      Boolean  @default(false) // proposedStage != currentStage
+  gatedByConf      Boolean  @default(false) // LLM propôs avanço/perdido mas confidence < threshold → segurou
+  review           Boolean  @default(false) // marcado para revisão humana (segurou por baixa confiança)
+  lexiconTriggered Boolean  @default(false) // o léxico-gatilho teria chamado a LLM aqui? (mede miss do gatilho)
+  latencyMs        Int?
+  tokensIn         Int?
+  tokensOut        Int?
+  costUsd          Float?
+  model            String?
+  createdAt        DateTime @default(now())
+
+  @@index([connectionId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([clientId, wouldChange])
+}
+

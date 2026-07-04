@@ -5,6 +5,7 @@ import {
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { applyFunnelFromMessage } from "@/lib/wa-funnel";
+import { runFunnelClassify } from "@/lib/ai-agent/funnel-shadow";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
@@ -160,6 +161,12 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: outbound ? "out" : "in" })
       .then(() => { if (!outbound) return notifyLeadQuente({ clientId: conn.clientId, contactId: contact.id, contactName: contact.name, waId: customerWaId, text: messageText(m) }); })
       .catch(() => {});
+
+    // Classificador novo (LLM lê contexto). Gate por FUNNEL_LLM_MODE: em `shadow` só
+    // observa e grava o log; em `active` é a AUTORIDADE que grava a etapa. Só no inbound.
+    if (!outbound) {
+      void runFunnelClassify({ connectionId, contactId: contact.id, clientId: conn.clientId, direction: "in" }).catch(() => {});
+    }
 
     // Veloce AI Agent: responde leads recebidos (decide internamente se atua).
     // Enfileira na fila DURÁVEL (AiJob): 1 job por contato, coalescendo rajadas.
