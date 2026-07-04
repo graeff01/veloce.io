@@ -22,6 +22,28 @@ export function catalogTokens(termo: string): string[] {
   return (termo || "").toLowerCase().split(/[^a-z0-9.à-ú]+/i).filter((t) => t.length >= 3 && !STOP.has(t));
 }
 
+const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// Cor pedida no termo → radical p/ casar com o atributo "cor" do item (preto/preta→"pret").
+const COLOR_STEMS: Record<string, string> = {
+  preto: "pret", preta: "pret", branco: "branc", branca: "branc", prata: "prata",
+  vermelho: "vermelh", vermelha: "vermelh", cinza: "cinz", azul: "azul", verde: "verde",
+  amarelo: "amarel", amarela: "amarel", dourado: "dourad", dourada: "dourad",
+  bege: "bege", marrom: "marrom", vinho: "vinho",
+};
+
+// Extrai a cor pedida (radical) do termo, se houver. Puro/testável.
+export function requestedColorStem(termo: string): string | null {
+  for (const w of norm(termo).split(/[^a-z0-9]+/i)) if (COLOR_STEMS[w]) return COLOR_STEMS[w];
+  return null;
+}
+
+function colorMatches(attributes: unknown, stem: string): boolean {
+  const a = attributes as Record<string, unknown> | null;
+  const cor = a && typeof a.cor === "string" ? norm(a.cor) : "";
+  return cor.startsWith(stem);
+}
+
 const SELECT = { take: 6, orderBy: { price: "asc" as const } };
 const FUZZY_MIN = 0.4; // calibrado contra o estoque real (typo "lauching" ~0.58–0.69)
 
@@ -30,10 +52,19 @@ interface Row { id: string; title: string; price: number | null; attributes: unk
 export async function searchCatalog(clientId: string, termo: string) {
   const base = { clientId, available: true };
   const tokens = catalogTokens(termo);
+  const stem = requestedColorStem(termo);
+  // Se o lead pediu uma COR e ela EXISTE entre os matches, devolve só as unidades daquela cor
+  // (determinístico: a IA não tem como negar/confundir). Se a cor não existe, devolve tudo.
+  const applyColor = <T extends { attributes: unknown }>(items: T[]): T[] => {
+    if (!stem) return items;
+    const matched = items.filter((i) => colorMatches(i.attributes, stem));
+    return matched.length ? matched : items;
+  };
 
   if (tokens.length === 0) {
     const t = (termo || "").trim();
-    return prisma.catalogItem.findMany({ where: t ? { ...base, title: { contains: t, mode: "insensitive" } } : base, ...SELECT });
+    const items = await prisma.catalogItem.findMany({ where: t && !stem ? { ...base, title: { contains: t, mode: "insensitive" } } : base, ...SELECT });
+    return applyColor(items);
   }
 
   // 1) Exato: todos os tokens no título (qualquer ordem).
@@ -41,14 +72,15 @@ export async function searchCatalog(clientId: string, termo: string) {
     where: { ...base, AND: tokens.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })) },
     ...SELECT,
   });
-  if (exact.length > 0) return exact;
+  if (exact.length > 0) return applyColor(exact);
 
   // 2) Fuzzy: tolera typo no termo ou no dado (pg_trgm). Ordena por similaridade.
-  return prisma.$queryRaw<Row[]>`
+  const fuzzy = await prisma.$queryRaw<Row[]>`
     SELECT id, title, price, attributes, "imageUrl", url, images
     FROM "CatalogItem"
     WHERE "clientId" = ${clientId} AND available = true
       AND word_similarity(${termo}, title) > ${FUZZY_MIN}
     ORDER BY word_similarity(${termo}, title) DESC
     LIMIT 6`;
+  return applyColor(fuzzy);
 }

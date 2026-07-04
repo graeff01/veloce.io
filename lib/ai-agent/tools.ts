@@ -106,7 +106,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const total = await prisma.catalogItem.count({ where: { clientId: ctx.clientId, available: true } });
         return { result: total === 0 ? "Catálogo ainda não cadastrado. Não invente produtos: ofereça encaminhar para um vendedor." : `Nenhum item para "${termo}". Se o lead deu um orçamento/faixa, chame buscar_estoque com preco_ate/preco_de pra oferecer o mais próximo.`, decision: "respondeu_duvida" };
       }
-      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${fmt(items)}\nSe o lead pedir fotos ou ver por dentro, use enviar_foto (você mesma manda as fotos, não o vendedor).`, decision: "respondeu_duvida" };
+      // Várias unidades do mesmo modelo → resume as cores disponíveis e PROÍBE negar uma
+      // cor que existe (bug real: IA dizia "não temos preto" tendo 2 pretos no estoque).
+      let multi = "";
+      if (items.length > 1) {
+        const cores = [...new Set(items.map((i) => { const a = i.attributes as Record<string, unknown> | null; return a && typeof a.cor === "string" ? a.cor : null; }).filter(Boolean))];
+        if (cores.length > 1) multi = `\nSÃO ${items.length} unidades deste modelo — cores disponíveis: ${cores.join(", ")}. Se o lead pedir uma dessas cores/versões, ela EXISTE: ofereça ESSA unidade e mande a foto DELA. NUNCA diga que não tem uma cor que está nesta lista.`;
+      }
+      return { result: `Itens disponíveis (disponibilidade final confirmada pelo vendedor):\n${fmt(items)}${multi}\nSe o lead pedir fotos ou ver por dentro, use enviar_foto (você mesma manda as fotos, não o vendedor).`, decision: "respondeu_duvida" };
     }
 
     case "atualizar_perfil": {
