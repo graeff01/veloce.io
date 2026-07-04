@@ -3,7 +3,6 @@ import {
   runTokenExpiryAlerts, runMonthlyReports, runFailureAlert,
 } from "@/lib/notifications/run";
 import { gateOnce, recipientsFor, claimDispatch } from "@/lib/notifications/dispatch";
-import { sweepExpiredTelegramMessages } from "@/lib/notifications/telegram";
 import { prisma } from "@/lib/prisma";
 import { nowParts } from "@/lib/tz";
 import { captureException } from "@/lib/observability";
@@ -90,9 +89,6 @@ export async function runDueJobs(): Promise<void> {
 
   // Saúde dos bots de cliente: 1x/dia de manhã, avisa o time se algum quebrou.
   if (morning && (await gateOnce(`gate:clientbot-health:${day}`))) await safe("clientbot-health", runClientBotHealthAudit);
-
-  // Auto-limpeza das mensagens do Telegram com +24h.
-  await safe("sweep", () => sweepExpiredTelegramMessages());
 
   // Poda do histórico de logs (>90 dias): 1x/dia.
   if (await gateOnce(`gate:prune:${day}`)) await safe("prune", pruneOldLogs);

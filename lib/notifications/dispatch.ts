@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/notifications/web-push";
-import { sendTelegramToUser } from "@/lib/notifications/telegram";
 import { captureException } from "@/lib/observability";
 
 // Quantas vezes um envio que falhou pode ser re-tentado nos ticks seguintes
@@ -65,18 +64,16 @@ export interface DispatchPref {
   telegramEnabled: boolean;
 }
 
-// Envia para os canais ativos do usuário (falha de um canal não derruba o outro).
+// Envia para os canais ativos do usuário. Telegram foi removido — só web-push.
+// (telegramText mantido na assinatura por ora; os callers passam, é ignorado.)
 export async function dispatchToUser(
   userId: string,
   push: PushPayload,
-  telegramText: string,
+  _telegramText: string,
   pref: DispatchPref,
 ): Promise<{ push: boolean; telegram: boolean }> {
-  const [pushOk, tgOk] = await Promise.all([
-    pref.pushEnabled ? sendPushToUser(userId, push).catch(() => false) : Promise.resolve(false),
-    pref.telegramEnabled ? sendTelegramToUser(userId, telegramText).catch(() => false) : Promise.resolve(false),
-  ]);
-  return { push: pushOk, telegram: tgOk };
+  const pushOk = pref.pushEnabled ? await sendPushToUser(userId, push).catch(() => false) : false;
+  return { push: pushOk, telegram: false };
 }
 
 // Reivindica + despacha + marca o resultado. Retorna true se entregou em ALGUM

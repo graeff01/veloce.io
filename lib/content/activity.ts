@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendTelegramToUser } from "@/lib/notifications/telegram";
+import { sendPushToUser } from "@/lib/notifications/web-push";
 import type { Role } from "@prisma/client";
 
 type Kind = "comment" | "status" | "art" | "created" | "edit" | "delete";
@@ -23,15 +23,16 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// DM no Telegram para todos os usuários ativos de certos papéis (menos quem agiu).
-// Quem não vinculou o Telegram simplesmente não recebe — sem erro.
+// Push web para todos os usuários ativos de certos papéis (menos quem agiu).
+// Quem não assinou o push simplesmente não recebe — sem erro.
 async function dmRoles(roles: Role[], excludeUserId: string | null, text: string): Promise<void> {
   const users = await prisma.user.findMany({
     where: { role: { in: roles }, active: true, deletedAt: null },
     select: { id: true },
   });
+  const body = text.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
   await Promise.all(
-    users.filter((u) => u.id !== excludeUserId).map((u) => sendTelegramToUser(u.id, text).catch(() => false)),
+    users.filter((u) => u.id !== excludeUserId).map((u) => sendPushToUser(u.id, { title: "Pauta de conteúdo", body, url: "/content" }).catch(() => false)),
   );
 }
 
