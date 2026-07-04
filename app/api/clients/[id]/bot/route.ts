@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   const [bot, recipients] = await Promise.all([
     prisma.clientBot.findUnique({ where: { clientId: id } }),
-    prisma.clientBotRecipient.findMany({ where: { clientId: id, active: true }, orderBy: { createdAt: "asc" }, select: { id: true, username: true, role: true, createdAt: true } }),
+    prisma.clientBotRecipient.findMany({ where: { clientId: id, active: true }, orderBy: { createdAt: "asc" }, select: { id: true, username: true, role: true, channel: true, waId: true, createdAt: true } }),
   ]);
 
   return NextResponse.json({
