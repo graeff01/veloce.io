@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, X, ChevronRight } from "lucide-react";
+import { Sparkles, X, ChevronRight, Send } from "lucide-react";
 
 interface AdvisorItem { icon: string; q: string; a: string; tip?: string }
 interface AdvisorReply { greeting: string; items: AdvisorItem[] }
@@ -17,6 +17,8 @@ export function PortalAdvisor({ token }: { token: string }) {
   const [loading, setLoading] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [nudge, setNudge] = useState(false);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // Cutucada de atenção (permanência) — aparece uma vez, some ao abrir.
@@ -55,6 +57,28 @@ export function PortalAdvisor({ token }: { token: string }) {
 
   function ask(it: AdvisorItem) {
     setMsgs((m) => [...m, { role: "user", text: it.q }, { role: "bot", text: it.a, tip: it.tip }]);
+  }
+
+  // Pergunta LIVRE do dono → IA ancorada nos números reais dele (endpoint POST).
+  async function askFree() {
+    const q = input.trim();
+    if (!q || sending) return;
+    setInput("");
+    setMsgs((m) => [...m, { role: "user", text: q }]);
+    setSending(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/advisor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pergunta: q }),
+      });
+      const d: { answer: string } = await r.json();
+      setMsgs((m) => [...m, { role: "bot", text: d.answer || "Não consegui responder agora. Tenta de novo em instantes." }]);
+    } catch {
+      setMsgs((m) => [...m, { role: "bot", text: "Tive um problema pra responder agora. Tenta de novo em instantes. 🙏" }]);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -113,6 +137,11 @@ export function PortalAdvisor({ token }: { token: string }) {
                 )}
               </div>
             ))}
+            {sending && (
+              <div className="adv-msg" style={{ alignSelf: "flex-start", fontSize: 12.5, color: "var(--p-muted)", padding: "4px 4px", display: "flex", alignItems: "center", gap: 5 }}>
+                <span className="adv-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--p-accent)" }} /> Consultor está digitando…
+              </div>
+            )}
           </div>
 
           {/* Perguntas sugeridas — linhas grandes com ícone (foco visual) */}
@@ -133,6 +162,29 @@ export function PortalAdvisor({ token }: { token: string }) {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Composer — pergunta livre do dono (resposta com IA, ancorada nos dados). */}
+          {data && (
+            <div style={{ borderTop: "1px solid var(--p-border)", padding: "10px 12px", background: "var(--p-surface)", display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askFree(); } }}
+                placeholder="Pergunte qualquer coisa sobre seus números…"
+                disabled={sending}
+                maxLength={280}
+                style={{ flex: 1, fontSize: 13, padding: "10px 13px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", outline: "none" }}
+              />
+              <button
+                onClick={askFree}
+                disabled={sending || !input.trim()}
+                aria-label="Enviar pergunta"
+                style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 12, border: "none", background: input.trim() && !sending ? "var(--p-accent)" : "var(--p-border)", color: "var(--p-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", cursor: input.trim() && !sending ? "pointer" : "default", transition: "background .16s" }}
+              >
+                <Send size={16} />
+              </button>
             </div>
           )}
         </div>
