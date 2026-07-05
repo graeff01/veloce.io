@@ -1719,11 +1719,19 @@ model FunnelShadow {
   confidence       Int?     // 0..100 devolvido pela LLM
   evidence         String?  // frase que justificou a etapa (auditável)
   signals          Json?    // { interesse, orcamento, intencao_visita }
-  source           String   // "llm" | "floor" | "llm_failed"
+  source           String   // "llm" | "profile" | "floor" | "llm_failed"
   wouldChange      Boolean  @default(false) // proposedStage != currentStage
   gatedByConf      Boolean  @default(false) // LLM propôs avanço/perdido mas confidence < threshold → segurou
   review           Boolean  @default(false) // marcado para revisão humana (segurou por baixa confiança)
   lexiconTriggered Boolean  @default(false) // o léxico-gatilho teria chamado a LLM aqui? (mede miss do gatilho)
+  // Temperatura (shadow do motor novo vs. score determinístico atual) — hot|warm|cold.
+  currentTemp      String?  // temperatura armazenada hoje (LeadProfile.temperature) — baseline
+  proposedTemp     String?  // temperatura que o motor novo atribuiria (após gate)
+  llmTemp          String?  // temperatura crua da LLM antes do gate
+  tempConfidence   Int?     // 0..100 da LLM p/ temperatura
+  tempEvidence     String?  // frase que justifica a temperatura
+  tempWouldChange  Boolean  @default(false)
+  tempGatedByConf  Boolean  @default(false)
   latencyMs        Int?
   tokensIn         Int?
   tokensOut        Int?

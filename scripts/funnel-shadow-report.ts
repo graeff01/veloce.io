@@ -98,6 +98,24 @@ async function main() {
   console.log(`  ✔ Avanços ERRADOS evitados: ${avoided.length} — léxico subiria, motor novo segurou/rebaixou com contexto`);
   console.log(`  ✔ Avanços que o léxico PERDIA: ${caught.length} — léxico calou, motor novo avançou com evidência`);
 
+  // ── Temperatura (motor novo vs. score determinístico atual) ───────────────────
+  const withTemp = rows.filter((r) => r.llmTemp);
+  if (withTemp.length) {
+    const tAgree = rows.filter((r) => r.proposedTemp && r.proposedTemp === r.currentTemp).length;
+    const tChange = rows.filter((r) => r.tempWouldChange);
+    const tGated = rows.filter((r) => r.tempGatedByConf).length;
+    const dist = withTemp.reduce((m, r) => { m[r.llmTemp!] = (m[r.llmTemp!] ?? 0) + 1; return m; }, {} as Record<string, number>);
+    const PT: Record<string, string> = { hot: "🔥quente", warm: "🟡morno", cold: "🧊frio" };
+    console.log(`\n── Temperatura (motor novo vs. score atual) ──`);
+    console.log(`  Avaliações com temperatura: ${withTemp.length}`);
+    console.log(`  Distribuição LLM: ${Object.entries(dist).map(([k, v]) => `${PT[k] ?? k}=${v}`).join("  ")}`);
+    console.log(`  Concorda com o score atual: ${tAgree} | Mudaria: ${tChange.length} | Segurados pelo gate: ${tGated}`);
+    for (const r of tChange.slice(0, 12)) {
+      console.log(`   ${PT[r.currentTemp ?? ""] ?? (r.currentTemp ?? "∅")} → ${PT[r.proposedTemp ?? ""] ?? r.proposedTemp} (${r.tempConfidence ?? "—"}%)`);
+      if (r.tempEvidence) console.log(`     └ "${r.tempEvidence}"`);
+    }
+  }
+
   // ── Custo acumulado por dia ───────────────────────────────────────────────────
   const byDay = new Map<string, { n: number; cost: number; tin: number; tout: number }>();
   for (const r of rows) {
