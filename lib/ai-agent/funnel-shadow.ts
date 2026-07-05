@@ -3,7 +3,7 @@ import { detectStageFromMessage, stageRank } from "@/lib/wa-funnel";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { logWaEvent } from "@/lib/wa-events";
 import { costOf } from "@/lib/ai-agent/usage";
-import { funnelStageFor, type AutoStage } from "@/lib/ai-agent/scoring";
+import { funnelStageFor, scoreLead, type AutoStage } from "@/lib/ai-agent/scoring";
 import { classifyFunnelLLM, type FunnelVerdict, type FunnelWindowMsg } from "@/lib/ai-agent/funnel-llm";
 
 // ── Motor-cérebro do funil (LLM-first + gate de confiança) e runner de SHADOW ───
@@ -103,6 +103,39 @@ export function decideStage(opts: {
   };
 }
 
+export interface TempDecision {
+  temperature: string | null;      // hot | warm | cold
+  source: "llm" | "profile" | "none";
+  evidence: string | null;
+  wouldChange: boolean;
+  gatedByConf: boolean;
+}
+
+// Decisão PURA de TEMPERATURA — LLM-first com gate; piso = score determinístico
+// (scoreLead sobre os slots). NÃO é avanço-only (lead pode esfriar). O gate protege
+// contra "esquentar" errado; se a LLM não tem confiança, fica o determinístico/atual.
+export function decideTemperature(opts: {
+  currentTemp: string | null;       // LeadProfile.temperature armazenado
+  profileTemp: string | null;       // scoreLead(profile).temperature (determinístico, fresco)
+  verdict: FunnelVerdict | null;
+  threshold?: number;
+}): TempDecision {
+  const thr = opts.threshold ?? THRESHOLD;
+  // Baseline: o determinístico dos slots; se não há perfil, o que está armazenado.
+  let temperature = opts.profileTemp ?? opts.currentTemp ?? null;
+  let source: TempDecision["source"] = opts.profileTemp ? "profile" : "none";
+  let evidence: string | null = null;
+  let gatedByConf = false;
+
+  const v = opts.verdict;
+  if (v && v.temperatura) {
+    if (v.confiancaTemp >= thr) { temperature = v.temperatura; source = "llm"; evidence = v.evidenciaTemp; }
+    else if (v.temperatura !== temperature) gatedByConf = true; // discordaria, mas sem confiança → segura
+  }
+
+  return { temperature, source, evidence, wouldChange: temperature !== opts.currentTemp, gatedByConf };
+}
+
 // O léxico (regex atual) teria disparado um AVANÇO aqui? Mede o miss do gatilho no shadow.
 function lexiconWouldTrigger(window: FunnelWindowMsg[], currentStage: string | null, vertical?: string | null): boolean {
   for (const m of window) {
@@ -182,6 +215,12 @@ export async function runFunnelClassify(opts: {
     const verdict = await classifyFunnelLLM({ window, clientId, vertical, currentStage: conv.funnelStage });
     const decision = decideStage({ currentStage: conv.funnelStage, hasOutbound, verdict, suppressAdvance });
 
+    // Temperatura (mesma chamada da LLM): piso = score determinístico do perfil.
+    const prof = await prismaUnscoped.leadProfile.findUnique({ where: { contactId } });
+    const currentTemp = prof?.temperature ?? null;
+    const profileTemp = prof ? scoreLead(prof).temperature : null;
+    const temp = decideTemperature({ currentTemp, profileTemp, verdict });
+
     // Log de auditoria (sempre — em shadow E active: mantém o histórico comparável).
     await prismaUnscoped.funnelShadow.create({
       data: {
@@ -197,6 +236,9 @@ export async function runFunnelClassify(opts: {
         gatedByConf: decision.gatedByConf,
         review: decision.review,
         lexiconTriggered,
+        currentTemp, proposedTemp: temp.temperature, llmTemp: verdict?.temperatura ?? null,
+        tempConfidence: verdict?.confiancaTemp ?? null, tempEvidence: temp.evidence,
+        tempWouldChange: temp.wouldChange, tempGatedByConf: temp.gatedByConf,
         latencyMs: verdict?.latencyMs ?? null,
         tokensIn: verdict?.tokensIn ?? null,
         tokensOut: verdict?.tokensOut ?? null,
@@ -205,8 +247,13 @@ export async function runFunnelClassify(opts: {
       },
     }).catch(() => {});
 
-    // Flip: no modo `active`, a autoridade GRAVA a etapa (guardas já aplicadas acima).
-    if (mode === "active") await writeStage(connectionId, contactId, decision, conv.funnelStage ?? null);
+    // Flip: no modo `active`, a autoridade GRAVA etapa E temperatura (guardas já aplicadas).
+    if (mode === "active") {
+      await writeStage(connectionId, contactId, decision, conv.funnelStage ?? null);
+      if (temp.wouldChange && temp.temperature && prof) {
+        await prismaUnscoped.leadProfile.update({ where: { contactId }, data: { temperature: temp.temperature } }).catch(() => {});
+      }
+    }
   } catch {
     /* nunca derruba o webhook */
   }
