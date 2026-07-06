@@ -1,9 +1,35 @@
 import { prismaUnscoped } from "@/lib/prisma";
+import { openaiChat } from "@/lib/openai";
 
 // ── Ficha do lead (handoff pro vendedor) ───────────────────────────────────────
 // Monta um resumo PRONTO pro WhatsApp a partir de tudo que a IA levantou (memória,
-// perfil/score, objeções, veículo de interesse). Determinístico e instantâneo — sem
-// LLM. O qualificador copia e repassa ao vendedor. Genérico p/ qualquer vertical.
+// perfil/score, objeções, veículo de interesse). A base é DETERMINÍSTICA (campos +
+// "como abordar") e nunca depende de LLM; por cima, uma SÍNTESE narrativa opcional
+// (LLM, best-effort) dá o contexto de venda em 1 parágrafo. O qualificador copia e
+// repassa ao vendedor. Genérico p/ qualquer vertical.
+
+const SYNTH_SYSTEM =
+  `Você resume um lead de venda por WhatsApp para o VENDEDOR assumir. ` +
+  `Escreva UM parágrafo curto (2-3 frases), corrido e útil pra venda — o CONTEXTO, não campos soltos. ` +
+  `Ex: "Cliente quer trocar o Onix 2019 dele por algo maior pra família, orçamento até 80 mil, decide até o fim do mês e já olhou outras 2 opções." ` +
+  `Use SÓ fatos que aparecem nos dados; não invente nem suponha. Se houver pouca informação, seja breve e diga só o que se sabe.`;
+
+// Gera a síntese narrativa a partir de perfil + memória + trechos da conversa. Best-effort:
+// sem chave / erro / vazio → "" (a ficha determinística sai igual a antes). Fora do caminho
+// crítico do lead (o handoff já é disparado com void).
+export async function synthesizeNarrative(profileFacts: string, memory: string, history: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) return "";
+  const body = [profileFacts && `PERFIL:\n${profileFacts}`, memory && `RESUMO:\n${memory}`, history && `TRECHOS DA CONVERSA:\n${history}`].filter(Boolean).join("\n\n");
+  if (body.trim().length < 20) return ""; // dados de menos pra valer uma síntese
+  try {
+    const { message } = await openaiChat({
+      model: "gpt-4o-mini", temperature: 0.3, maxTokens: 160,
+      messages: [{ role: "system", content: SYNTH_SYSTEM }, { role: "user", content: body }],
+      meta: { pipeline: "memory" },
+    });
+    return (message.content || "").trim();
+  } catch { return ""; }
+}
 
 const TEMP = { hot: "🔥 QUENTE", warm: "🌤️ MORNO", cold: "❄️ FRIO" } as const;
 const SENT: Record<string, string> = {
@@ -37,11 +63,12 @@ export async function buildFicha(clientId: string, contactId: string): Promise<s
   });
   if (!contact || contact.connection.clientId !== clientId) return null; // isolamento multi-tenant
 
-  const [profile, convo, objections, lead] = await Promise.all([
+  const [profile, convo, objections, lead, recent] = await Promise.all([
     prismaUnscoped.leadProfile.findUnique({ where: { contactId } }),
     prismaUnscoped.waConversation.findUnique({ where: { contactId }, select: { agentMemory: true, funnelStage: true } }),
     prismaUnscoped.leadObjection.findMany({ where: { contactId, resolved: false }, select: { type: true } }),
     prismaUnscoped.waLead.findUnique({ where: { contactId }, select: { adModel: true, adTitle: true } }),
+    prismaUnscoped.waMessage.findMany({ where: { contactId }, orderBy: { timestamp: "desc" }, take: 16, select: { direction: true, text: true } }),
   ]);
 
   const who = contact.displayName?.trim() || contact.name?.trim() || contact.waId;
@@ -65,6 +92,11 @@ export async function buildFicha(clientId: string, contactId: string): Promise<s
   if (profile?.buyingPriority) facts.push(`• O que mais pesa: ${profile.buyingPriority}`);
   if (profile?.decisionStage) facts.push(`• Estágio: ${profile.decisionStage}`);
   if (profile?.lastSentiment) facts.push(`• Clima do lead: ${SENT[profile.lastSentiment] || profile.lastSentiment}`);
+  // Síntese narrativa (LLM, best-effort): contexto de venda em 1 parágrafo, no topo da ficha.
+  const historyText = [...recent].reverse().filter((m) => m.text).map((m) => `${m.direction === "in" ? "Lead" : "Loja"}: ${m.text}`).join("\n").slice(-2500);
+  const narrative = await synthesizeNarrative(facts.join("\n"), convo?.agentMemory ?? "", historyText);
+  if (narrative) { L.push("🧭 Contexto pro vendedor:"); L.push(narrative); L.push(""); }
+
   if (facts.length) { L.push("📋 O que se sabe:"); L.push(...facts); L.push(""); }
 
   if (convo?.agentMemory) { L.push("🧠 Resumo da conversa:"); L.push(convo.agentMemory); L.push(""); }
