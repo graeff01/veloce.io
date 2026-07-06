@@ -67,7 +67,7 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "escalar_humano",
-      description: "Encaminha para um vendedor humano quando o lead pedir algo que você não pode (desconto, financiamento, avaliação de troca) ou quando não houver fonte para responder.",
+      description: "Aciona um vendedor humano DE VERDADE. Use quando o lead QUER FECHAR/negociar (desconto, valor final, 'quero fechar/reservar'), pedir APROVAÇÃO de financiamento ou avaliação de troca em R$, ou INSISTIR num número/condição que você não pode dar. NÃO use para uma dúvida de DADO que você só não tem (spec, item, estepe, consumo): nesse caso responda por texto que confirma com o vendedor, sem handoff.",
       parameters: { type: "object", properties: { motivo: { type: "string" } }, required: ["motivo"] },
     },
   },
