@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { computeOverview, WA_THRESHOLDS } from "@/lib/wa-metrics";
 import { computeCplByModel } from "@/lib/wa-cpl";
-import { computeRealAttribution } from "@/lib/meta-attribution";
+import { computeRealAttribution, computeRevenueAttribution } from "@/lib/meta-attribution";
 import { closeInactiveConversations } from "@/lib/wa-conversation";
 
 // GET — visão geral da operação no período + comparativo com o período anterior
@@ -91,10 +91,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
+  // Receita por campanha (venda confirmada → origem). Campo NOVO no payload —
+  // não altera o contrato existente. metaConn?.id pode ser null (sem Meta): a
+  // função devolve tudo em "não atribuída", sem inventar origem.
+  const revenue = await computeRevenueAttribution(metaConn?.id ?? null, conn.id, start, end);
+
   return NextResponse.json({
     ...overview,
     cpl,
     campaignsWithLeads,
+    revenue,
     previous: {
       leads: prev.leads,
       converted: prev.converted,

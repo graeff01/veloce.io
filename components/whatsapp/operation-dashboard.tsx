@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Loader2, Users, Megaphone, MessageSquare, Target,
   TrendingUp, TrendingDown, BarChart2, CheckCircle2, Send,
-  AlertCircle, Inbox, Sparkles, Clock, Info,
+  AlertCircle, Inbox, Sparkles, Clock, Info, DollarSign,
 } from "lucide-react";
 import { FUNNEL_LABELS } from "@/lib/wa-format";
 
@@ -26,6 +26,12 @@ interface Overview {
   leadsByTag: { name: string; color: string; count: number }[];
   previous: { leads: number; converted: number };
   cpl: { model: string; realLeads: number; spend: number; cplReal: number | null; metaLeads: number; cplMeta: number | null }[];
+  revenue: {
+    investimento: number; totalRevenue: number; attributedSales: number; roasGeral: number | null;
+    porCampanha: { campaignId: string; name: string; status: string; revenue: number; sales: number; spend: number; roas: number | null }[];
+    naoAtribuida: { sales: number; revenue: number };
+    semValor: { sales: number };
+  };
   [key: string]: unknown;
 }
 
@@ -219,6 +225,45 @@ function CplTable({ rows }: { rows: Overview["cpl"] }) {
   );
 }
 
+// ─── Receita por campanha ───────────────────────────────────────────────────────
+function RevenueTable({ rev }: { rev: Overview["revenue"] }) {
+  const cols = "1.6fr 1fr 70px 1fr 70px";
+  return (
+    <div>
+      {/* Totais */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <MiniStat icon={<DollarSign size={14} color="#16A34A" />} label="Receita atribuída" value={fmtBRL(rev.totalRevenue)} sub={`${rev.attributedSales} venda${rev.attributedSales !== 1 ? "s" : ""}`} />
+        <MiniStat icon={<TrendingUp size={14} color="#16A34A" />} label="ROAS geral" value={rev.roasGeral != null ? `${rev.roasGeral.toFixed(1)}x` : "—"} sub={`invest. ${fmtBRL(rev.investimento)}`} />
+        <MiniStat icon={<AlertCircle size={14} color={rev.naoAtribuida.sales ? "#D97706" : "#94A3B8"} />} label="Receita não atribuída" value={fmtBRL(rev.naoAtribuida.revenue)} sub={`${rev.naoAtribuida.sales} venda${rev.naoAtribuida.sales !== 1 ? "s" : ""} sem origem`} attention={rev.naoAtribuida.sales > 0} />
+        <MiniStat icon={<Info size={14} color={rev.semValor.sales ? "#D97706" : "#94A3B8"} />} label="Sem valor informado" value={String(rev.semValor.sales)} sub="venda confirmada, valor pendente" attention={rev.semValor.sales > 0} />
+      </div>
+
+      {/* Tabela por campanha */}
+      {rev.porCampanha.length > 0 ? (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: cols, padding: "0 4px 8px", borderBottom: "1px solid var(--border)", gap: 8 }}>
+            {["Campanha","Receita","Vendas","Gasto","ROAS"].map((h, i) => (
+              <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
+            ))}
+          </div>
+          {rev.porCampanha.map((c, i) => (
+            <div key={c.campaignId} style={{ display: "grid", gridTemplateColumns: cols, padding: "10px 4px", borderBottom: i < rev.porCampanha.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#16A34A", textAlign: "right" }}>{fmtBRL(c.revenue)}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", textAlign: "right" }}>{c.sales}</span>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{fmtBRL(c.spend)}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: c.roas != null ? "#16A34A" : "var(--text-muted)", textAlign: "right" }}>{c.roas != null ? `${c.roas.toFixed(1)}x` : "—"}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0 }}>Nenhuma venda atribuída a campanha ainda no período.</p>
+      )}
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0", fontStyle: "italic" }}>Receita atribuída por ID de anúncio (venda confirmada → anúncio → campanha). Vendas sem origem rastreável entram como &quot;não atribuída&quot; — nunca por adivinhação.</p>
+    </div>
+  );
+}
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 function ValidationRow({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -371,6 +416,13 @@ export function OperationDashboard({ clientId, year, month }: {
       {data.cpl.length > 0 && (
         <Section title="Custo por lead real" subtitle="Gasto Meta × leads que realmente chegaram no WhatsApp">
           <CplTable rows={data.cpl} />
+        </Section>
+      )}
+
+      {/* ── Receita por campanha ── */}
+      {data.revenue && (data.revenue.attributedSales > 0 || data.revenue.naoAtribuida.sales > 0 || data.revenue.semValor.sales > 0) && (
+        <Section title="Receita por campanha" subtitle="Venda confirmada pelo gestor × campanha de origem (atribuição por ID)">
+          <RevenueTable rev={data.revenue} />
         </Section>
       )}
 
