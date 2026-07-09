@@ -1529,7 +1529,93 @@ function LearningSection({ clientId }: { clientId: string }) {
   );
 }
 
-type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
+// ── Preços (editor da tabela determinística de orçamento) ─────────────────────
+interface PriceItem { key: string; label: string; amount: number }
+interface Fee { key: string; label: string; amount?: number; percent?: number }
+interface Rules { base: PriceItem[]; options: PriceItem[]; fees: Fee[] }
+
+function PricingSection({ clientId }: { clientId: string }) {
+  const [currency, setCurrency] = useState("BRL");
+  const [rules, setRules] = useState<Rules>({ base: [], options: [], fees: [] });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/pricing`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrency(d?.currency ?? "BRL");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRules({ base: d?.rules?.base ?? [], options: d?.rules?.options ?? [], fees: d?.rules?.fees ?? [] });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+    });
+  }, [clientId]);
+
+  async function save() {
+    setSaving(true);
+    await fetch(`/api/clients/${clientId}/ai/pricing`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currency, rules }) });
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  const setItems = (g: "base" | "options", items: PriceItem[]) => setRules({ ...rules, [g]: items });
+  const upd = (g: "base" | "options", i: number, patch: Partial<PriceItem>) => setItems(g, rules[g].map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const updFee = (i: number, patch: Partial<Fee>) => setRules({ ...rules, fees: rules.fees.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+
+  const ItemEditor = (g: "base" | "options", titulo: string, hint: string) => (
+    <div style={card}>
+      <label style={label}>{titulo}</label>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px" }}>{hint}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rules[g].map((it, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input style={{ ...input, flex: "1 1 100px" }} value={it.key} onChange={(e) => upd(g, i, { key: e.target.value.replace(/\s+/g, "_").toLowerCase() })} placeholder="chave (ex: modelo_x)" />
+            <input style={{ ...input, flex: "2 1 160px" }} value={it.label} onChange={(e) => upd(g, i, { label: e.target.value })} placeholder="nome (ex: Modelo X)" />
+            <input style={{ ...input, width: 120 }} type="number" value={it.amount} onChange={(e) => upd(g, i, { amount: Number(e.target.value) })} placeholder="R$" />
+            <button onClick={() => setItems(g, rules[g].filter((_, j) => j !== i))} style={{ ...btn(), padding: "6px 9px" }}><Trash2 size={13} /></button>
+          </div>
+        ))}
+        <button onClick={() => setItems(g, [...rules[g], { key: "", label: "", amount: 0 }])} style={{ ...btn(), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Tabela de preços da IA. Ela usa <b>só estas chaves</b> — o valor nunca é inventado. Base é o que o cliente escolhe; opcionais somam; taxas podem ser valor fixo <b>ou</b> % do subtotal.</p>
+      {ItemEditor("base", "Itens base", "O cliente escolhe um (ex: o modelo da churrasqueira).")}
+      {ItemEditor("options", "Opcionais", "Somam ao preço (ex: tampa, acabamento).")}
+      <div style={card}>
+        <label style={label}>Taxas (frete, instalação)</label>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px" }}>Valor fixo (R$) OU percentual (%) do subtotal — preencha um dos dois.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {rules.fees.map((f, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <input style={{ ...input, flex: "1 1 100px" }} value={f.key} onChange={(e) => updFee(i, { key: e.target.value.replace(/\s+/g, "_").toLowerCase() })} placeholder="chave (ex: frete)" />
+              <input style={{ ...input, flex: "2 1 140px" }} value={f.label} onChange={(e) => updFee(i, { label: e.target.value })} placeholder="nome (ex: Frete)" />
+              <input style={{ ...input, width: 100 }} type="number" value={f.amount ?? ""} onChange={(e) => updFee(i, { amount: e.target.value === "" ? undefined : Number(e.target.value), percent: undefined })} placeholder="R$ fixo" />
+              <input style={{ ...input, width: 80 }} type="number" value={f.percent ?? ""} onChange={(e) => updFee(i, { percent: e.target.value === "" ? undefined : Number(e.target.value), amount: undefined })} placeholder="%" />
+              <button onClick={() => setRules({ ...rules, fees: rules.fees.filter((_, j) => j !== i) })} style={{ ...btn(), padding: "6px 9px" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button onClick={() => setRules({ ...rules, fees: [...rules.fees, { key: "", label: "" }] })} style={{ ...btn(), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar taxa</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <button onClick={save} disabled={saving} style={btn(true)}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />} {saved ? "Salvo" : "Salvar tabela"}
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Moeda</span>
+          <input style={{ ...input, width: 70 }} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "precos" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 // Item de navegação da sidebar da IA — com hover e indicador ativo.
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -1563,6 +1649,7 @@ const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: S
   { key: "config", label: "Configuração", icon: <Bot size={15} />, subs: [
     { key: "config", label: "Configuração" },
     { key: "playbook", label: "Playbook" },
+    { key: "precos", label: "Preços" },
     { key: "conhecimento", label: "Conhecimento" },
     { key: "catalogo", label: "Estoque" },
     { key: "prompts", label: "Prompt Lab" },
@@ -1624,6 +1711,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {sub === "impacto" && <ImpactSection clientId={clientId} />}
         {sub === "config" && <ConfigSection clientId={clientId} />}
         {sub === "playbook" && <PlaybookSection clientId={clientId} />}
+        {sub === "precos" && <PricingSection clientId={clientId} />}
         {sub === "aprendizado" && <LearningSection clientId={clientId} />}
         {sub === "console" && <ConsoleSection clientId={clientId} />}
         {sub === "avaliacao" && <EvaluationSection clientId={clientId} />}
