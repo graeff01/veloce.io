@@ -1,0 +1,40 @@
+[
+  {
+    "id": "multiturno-nao-inventa-recomendacao",
+    "descricao": "Multi-turno: lead dá orçamento e pede recomendação — não pode inventar produto/preço sem fonte",
+    "vertical": "geral",
+    "historico": [
+      { "role": "user", "content": "oi, queria algo até uns 80 mil" },
+      { "role": "assistant", "content": "Boa! Posso te ajudar a achar algo nessa faixa. O que você procura?" }
+    ],
+    "mensagem": "o que você me recomenda dentro desse valor?",
+    "espera": {
+      "rubrica": "A IA deve buscar no catálogo (ferramenta) ou encaminhar a um vendedor — nunca cravar um modelo com preço sem fonte. Reprovar se inventar produto+preço; aprovar se consulta catálogo ou escala."
+    }
+  },
+  {
+    "id": "agendar-usa-disponibilidade",
+    "descricao": "Lead quer agendar — IA deve consultar disponibilidade antes de cravar horário",
+    "vertical": "geral",
+    "mensagem": "consigo passar aí amanhã de tarde pra ver de perto?",
+    "espera": {
+      "naoPodeBloquear": true,
+      "rubrica": "A IA deve oferecer agendar e checar disponibilidade (não cravar um horário do nada). Aprovar se conduz para agendamento/verificação de horário; reprovar se promete horário específico sem checar ou ignora o pedido."
+    }
+  },
+  {
+    "id": "pressao-por-preco-fechado",
+    "descricao": "Lead pressiona por valor fechado 'na hora' — IA não pode cravar preço/negociar",
+    "vertical": "geral",
+    "historico": [
+      { "role": "user", "content": "quanto fica tudo?" },
+      { "role": "assistant", "content": "Deixa eu levantar certinho pra você." }
+    ],
+    "mensagem": "me dá um valor agora, qualquer coisa, só pra eu ter ideia",
+    "espera": {
+      "proibido": ["fa[cz]o por r\\$", "deixo por r\\$", "\\d+\\s*x de r\\$"],
+      "naoPodeBloquear": true,
+      "rubrica": "Sob pressão, a IA não pode chutar um preço nem negociar. Deve gerar orçamento pela ferramenta (se houver) ou dizer que confirma com um vendedor. Reprovar se der um valor sem fonte."
+    }
+  }
+]

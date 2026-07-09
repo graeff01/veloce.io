@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { openaiChat, embed, cosine, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
+import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { TOOL_DEFS, executeTool, type ToolCtx } from "./tools";
 import { checkReply, resolveBlockRules } from "./guardrail";
+import { retrieveKnowledge } from "./retrieval";
+import { checkGrounding } from "./grounding";
+import { verifyReply } from "./verify";
 import { budgetedWindow } from "./memory";
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant, hashString } from "./variants";
@@ -336,19 +339,16 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   stages.push({ name: "context", ms: Date.now() - stageStart });
   stageStart = Date.now();
 
-  // RAG: igual nos dois modos (lê o conhecimento real do cliente).
+  // RAG afinado (rerank + MMR): 2 estágios — cosseno recupera um pool, rerank
+  // semântico+lexical e MMR selecionam com diversidade. Melhora acurácia sobre o
+  // cosseno puro, sem chamada extra de modelo. Igual nos dois modos.
   let knowledge = "";
   let contextUsed: unknown = undefined;
   try {
-    const chunks = await prisma.knowledgeChunk.findMany({ where: { clientId: input.clientId }, take: 300 });
+    const { chunks, used } = await retrieveKnowledge(input.clientId, input.inboundText);
     if (chunks.length) {
-      const [q] = await embed([input.inboundText], { clientId: input.clientId, pipeline: "embedding", tenantKey: input.clientId });
-      const ranked = chunks.map((c) => ({ c, s: cosine(q, c.embedding) })).sort((a, b) => b.s - a.s).slice(0, 3).filter((x) => x.s > 0.2);
-      if (ranked.length) {
-        knowledge = ranked.map((r) => `- ${r.c.title ? `${r.c.title}: ` : ""}${r.c.content}`).join("\n");
-        // Rastreabilidade: registra QUAIS trechos embasaram a resposta.
-        contextUsed = { chunks: ranked.map((r) => ({ id: r.c.id, title: r.c.title, score: Number(r.s.toFixed(3)) })) };
-      }
+      knowledge = chunks.map((c) => `- ${c.title ? `${c.title}: ` : ""}${c.content}`).join("\n");
+      contextUsed = { chunks: used };
     }
   } catch { /* conhecimento é opcional */ }
   stages.push({ name: "rag", ms: Date.now() - stageStart });
@@ -415,8 +415,31 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const readyToClose = toolLog.some((t) => t.name === "atualizar_perfil" && (t.args as Record<string, unknown> | null)?.pronto_para_comprar === true);
   if (readyToClose && status === "ok" && decision !== "escalou") decision = "escalou";
 
-  // Guardrail desacoplado por vertical (padrão do segmento ou override do tenant).
   const guardrails: string[] = [];
+
+  // ── F1: anti-alucinação — grounding + verificação ────────────────────────────
+  // Fontes legítimas: resultados de ferramentas + conhecimento (RAG) + a conversa
+  // (inclui o eco do próprio lead, p/ não marcar falso positivo).
+  const convText = [input.inboundText, ...priorMessages.map((m) => (typeof m.content === "string" ? m.content : ""))].join("\n");
+  const sources = [toolLog.map((t) => t.result).join("\n"), knowledge, convText].filter(Boolean).join("\n");
+
+  // Grounding determinístico: preço sem fonte = alucinação. MODO MONITOR por padrão
+  // (só registra em guardrails); só ABSTÉM quando o cliente liga groundingEnforce.
+  if (status === "ok") {
+    const gr = checkGrounding(final, sources);
+    if (!gr.grounded) {
+      guardrails.push(cfg?.groundingEnforce ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
+      if (cfg?.groundingEnforce) { final = fallback; decision = "abster"; }
+    }
+  }
+
+  // Chain-of-verification por LLM (opt-in): confere afirmações factuais contra as fontes.
+  if (status === "ok" && decision !== "abster" && cfg?.verifyReplies) {
+    const v = await verifyReply({ clientId: input.clientId, model, sources, reply: final });
+    if (!v.ok) { guardrails.push("verify:unsupported"); final = fallback; decision = "abster"; }
+  }
+
+  // Guardrail desacoplado por vertical (padrão do segmento ou override do tenant).
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }

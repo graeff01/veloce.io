@@ -12,6 +12,8 @@ const putSchema = z.object({
   vertical: z.string().max(40).optional(),
   blockedTopics: z.array(z.object({ pattern: z.string().max(400), reason: z.string().max(200) })).optional(),
   audioTranscription: z.boolean().optional(),
+  groundingEnforce: z.boolean().optional(),
+  verifyReplies: z.boolean().optional(),
   model: z.string().optional(),
   assistantName: z.string().max(60).nullable().optional(),
   greetingMessage: z.string().max(500).nullable().optional(),

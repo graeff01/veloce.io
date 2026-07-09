@@ -21,6 +21,10 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:studio": "prisma studio",
+    "eval": "tsx scripts/run-evals.ts",
+    "eval:retrieval": "tsx scripts/eval-retrieval.ts",
+    "eval:harvest": "tsx scripts/harvest-goldens.ts",
+    "eval:score": "tsx scripts/score-production.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
