@@ -299,11 +299,15 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   if (status === "ok") {
     const gr = checkGrounding(final, sources);
+    const enforce = cfg?.groundingEnforce ?? false;
     if (gr.priceViolations.length || gr.deadlineWarnings.length) {
-      audit.grounding = { priceViolations: gr.priceViolations, deadlineWarnings: gr.deadlineWarnings };
+      // Registra sempre (rastreabilidade). "enforced" indica se chegou a agir.
+      audit.grounding = { priceViolations: gr.priceViolations, deadlineWarnings: gr.deadlineWarnings, enforced: enforce && !gr.grounded };
     }
-    // Preço sem fonte = alucinação: não arrisca o número, encaminha ao vendedor.
-    if (!gr.grounded) { final = fallback; decision = "abster"; }
+    // Modo MONITOR por padrão: só ABSTÉM quando o cliente liga a fiscalização
+    // (groundingEnforce). Assim o rollout não altera o comportamento ao vivo — o
+    // painel mostra quando abstiria, e você liga a fiscalização após validar.
+    if (!gr.grounded && enforce) { final = fallback; decision = "abster"; }
   }
 
   // ── F1: chain-of-verification por LLM (opt-in por cliente) ───────────────────

@@ -30,6 +30,7 @@ const putSchema = z.object({
   handoffAfter: z.number().int().min(0).max(20).optional(),
   // F1/F2/F3 — recursos avançados (todos opcionais, default off no schema)
   verifyReplies: z.boolean().optional(),
+  groundingEnforce: z.boolean().optional(),
   alwaysOn: z.boolean().optional(),
   quotesEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),

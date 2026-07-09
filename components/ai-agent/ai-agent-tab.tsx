@@ -43,7 +43,7 @@ interface Cfg {
   enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null;
   businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean;
   vertical: string; alwaysOn: boolean; quotesEnabled: boolean; memoryEnabled: boolean; humanize: boolean;
-  visionEnabled: boolean; verifyReplies: boolean; intakeSpec: IntakeField[];
+  visionEnabled: boolean; verifyReplies: boolean; groundingEnforce: boolean; intakeSpec: IntakeField[];
 }
 
 const VERTICALS = [
@@ -67,7 +67,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, vertical: d?.vertical ?? "automotivo", alwaysOn: d?.alwaysOn ?? false, quotesEnabled: d?.quotesEnabled ?? false, memoryEnabled: d?.memoryEnabled ?? false, humanize: d?.humanize ?? false, visionEnabled: d?.visionEnabled ?? false, verifyReplies: d?.verifyReplies ?? false, intakeSpec: Array.isArray(d?.intakeSpec) ? d.intakeSpec : [] });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, vertical: d?.vertical ?? "automotivo", alwaysOn: d?.alwaysOn ?? false, quotesEnabled: d?.quotesEnabled ?? false, memoryEnabled: d?.memoryEnabled ?? false, humanize: d?.humanize ?? false, visionEnabled: d?.visionEnabled ?? false, verifyReplies: d?.verifyReplies ?? false, groundingEnforce: d?.groundingEnforce ?? false, intakeSpec: Array.isArray(d?.intakeSpec) ? d.intakeSpec : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -151,6 +151,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
           <FeatureToggle on={cfg.humanize} onChange={(v) => set({ humanize: v })} title="Naturalidade" hint="Quebra a resposta em mensagens e ajusta o tom pelo sentimento do lead." />
           <FeatureToggle on={cfg.memoryEnabled} onChange={(v) => set({ memoryEnabled: v })} title="Memória de longo prazo" hint="A IA lembra de fatos do lead entre conversas." />
           <FeatureToggle on={cfg.visionEnabled} onChange={(v) => set({ visionEnabled: v })} title="Analisar imagens" hint="Lê fotos que o lead envia (espaço, referência)." />
+          <FeatureToggle on={cfg.groundingEnforce} onChange={(v) => set({ groundingEnforce: v })} title="Fiscalizar preço/prazo (abster se sem fonte)" hint="Se ligado, a IA se recusa a dar preço/prazo que não veio de fonte. Deixe DESLIGADO no início: o painel mostra quando abstiria antes de você ativar." />
           <FeatureToggle on={cfg.verifyReplies} onChange={(v) => set({ verifyReplies: v })} title="Verificação extra (anti-alucinação)" hint="Confere cada resposta contra as fontes antes de enviar. Custa 1 chamada a mais." />
           <FeatureToggle on={cfg.quotesEnabled} onChange={(v) => set({ quotesEnabled: v })} title="Orçamento (coleta + preço + PDF + handoff)" hint="Habilita a IA a coletar dados, gerar orçamento e passar lead quente ao vendedor." />
         </div>

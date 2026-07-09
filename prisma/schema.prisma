@@ -650,6 +650,7 @@ model AiAgentConfig {
   blockedTopics     Json    @default("[]") // override por tenant: [{pattern,reason}] (vazio = padrão do vertical)
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
   verifyReplies   Boolean  @default(false) // F1: chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
+  groundingEnforce Boolean @default(false) // F1: FISCALIZA preço sem fonte (abstém). Off = modo monitor (só registra)
   alwaysOn        Boolean  @default(false) // F2: IA como primeira linha 24/7 (não só fora do horário)
   quotesEnabled   Boolean  @default(false) // F2: expõe as ferramentas de orçamento (coleta/preço/PDF/handoff)
   intakeSpec      Json     @default("[]") // F2: campos que a IA deve coletar [{key,label,required,type,options?}]
