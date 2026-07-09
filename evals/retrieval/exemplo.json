@@ -1,0 +1,12 @@
+[
+  {
+    "id": "exemplo-garantia",
+    "query": "qual é a garantia do produto?",
+    "esperaTermos": ["garantia"]
+  },
+  {
+    "id": "exemplo-entrega",
+    "query": "vocês entregam? qual o prazo?",
+    "esperaTermos": ["entrega", "prazo"]
+  }
+]

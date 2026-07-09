@@ -1088,6 +1088,8 @@ model AiAgentConfig {
   vertical          String  @default("automotivo") // segmento: define regras/guardrail padrão
   blockedTopics     Json    @default("[]") // override por tenant: [{pattern,reason}] (vazio = padrão do vertical)
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
+  groundingEnforce Boolean @default(false) // anti-alucinação: ABSTÉM se preço/prazo sem fonte. Off = monitor (só registra)
+  verifyReplies   Boolean  @default(false) // chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
   model           String   @default("gpt-4o-mini")
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
   greetingMessage String?  // saudação fixa enviada na 1ª mensagem (a loja controla o texto)
@@ -1295,6 +1297,7 @@ model AiInteraction {
   tokensOut  Int      @default(0)
   latencyMs  Int      @default(0)
   status     String   @default("ok") // ok | blocked | error | skipped
+  qualityScore Float?  // nota do juiz LLM em amostra de produção (online eval) 0..1
   createdAt  DateTime @default(now())
 
   @@unique([clientId, idempotencyKey])
