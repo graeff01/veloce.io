@@ -16,6 +16,7 @@ import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
 import { handleWaBotInbound } from "@/lib/notifications/wa-bot-commands";
 import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
+import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
 
@@ -186,11 +187,18 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
   if (mediaType === null && !inboundText.trim()) return "skipped";
 
+  // Vision (opt-in): baixa a imagem do lead p/ o modelo analisar.
+  let inboundImages: string[] | undefined;
+  if (cfg?.visionEnabled && input.payload.type === "image" && input.payload.mediaId) {
+    const uri = await fetchWhatsAppImageDataUri({ accessToken: conn.accessToken }, input.payload.mediaId).catch(() => null);
+    if (uri) inboundImages = [uri];
+  }
+
   // 7) Gera a resposta (orquestrador: prompt + tools + guardrail + RAG + log).
   const out = await runAgent({
     clientId: conn.clientId, connectionId: conn.id,
     contact: { id: contact.id, name: contact.name, waId: contact.waId },
-    inboundText, idempotencyKey: input.idempotencyKey, inboundMediaType: mediaType ?? undefined,
+    inboundText, idempotencyKey: input.idempotencyKey, inboundMediaType: mediaType ?? undefined, inboundImages,
   });
   if (!out.reply) return "skipped"; // limite/desligado — nada a enviar
 

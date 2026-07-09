@@ -113,6 +113,8 @@ model Client {
   waConnection      WaConnection?
   visits            Visit[]
   aiAgentConfig     AiAgentConfig?
+  pricingConfig     PricingConfig?
+  quotes            Quote[]
   visitConfig       VisitConfig?
   catalogItems      CatalogItem[]
   knowledgeChunks   KnowledgeChunk[]
@@ -1090,6 +1092,9 @@ model AiAgentConfig {
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
   groundingEnforce Boolean @default(false) // anti-alucinação: ABSTÉM se preço/prazo sem fonte. Off = monitor (só registra)
   verifyReplies   Boolean  @default(false) // chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
+  quotesEnabled   Boolean  @default(false) // orçamento: expõe as ferramentas de coleta/preço/PDF (produto configurável)
+  visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
+  intakeSpec      Json     @default("[]") // campos que a IA deve coletar p/ o orçamento [{key,label,required,type,options?}]
   model           String   @default("gpt-4o-mini")
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
   greetingMessage String?  // saudação fixa enviada na 1ª mensagem (a loja controla o texto)
@@ -1178,6 +1183,40 @@ model KnowledgeChunk {
 }
 
 // Perfil do lead (memória estruturada + scoring).
+// Precificação por cliente (regras determinísticas). A IA COLETA; o motor CALCULA.
+model PricingConfig {
+  id        String   @id @default(cuid())
+  clientId  String   @unique
+  currency  String   @default("BRL")
+  rules     Json     @default("{}") // { base:[...], options:[...], fees:[...] }
+  updatedAt DateTime @updatedAt
+
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// Orçamento gerado pela IA (fonte única de preço; base do PDF).
+model Quote {
+  id         String   @id @default(cuid())
+  clientId   String
+  contactId  String
+  number     Int      // sequencial por cliente (legível no PDF)
+  items      Json     // linhas do orçamento [{label, qty, unit, amount}]
+  subtotal   Float    @default(0)
+  fees       Float    @default(0)
+  total      Float    @default(0)
+  currency   String   @default("BRL")
+  status     String   @default("draft") // draft | sent | approved | rejected
+  summary    String?
+  intake     Json?    // ficha coletada que gerou o orçamento (rastreabilidade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, contactId])
+  @@index([clientId, status])
+}
+
 model LeadProfile {
   id              String   @id @default(cuid())
   connectionId    String
@@ -1198,6 +1237,7 @@ model LeadProfile {
   temperature     String?  // cold | warm | hot (cache da classificação do score v2)
   lastSentiment   String?  // último sentiment detectado (display no CRM + emotional drift)
   qualified       Boolean  @default(false)
+  data            Json?    // ficha estruturada configurável (intake) p/ orçamento — respostas por campo
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

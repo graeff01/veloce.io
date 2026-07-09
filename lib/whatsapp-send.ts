@@ -85,3 +85,53 @@ export async function sendWhatsAppImage(
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
+
+// Sobe um arquivo (ex: PDF de orçamento) para a Cloud API → mediaId.
+export async function uploadWhatsAppMedia(
+  conn: { phoneNumberId: string; accessToken: string },
+  file: Buffer,
+  filename: string,
+  mime: string,
+): Promise<{ ok: boolean; mediaId?: string; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([new Uint8Array(file)], { type: mime }), filename);
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/media`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form,
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, mediaId: payload?.id };
+}
+
+// Envia um documento (PDF) por upload de Buffer.
+export async function sendWhatsAppDocument(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  doc: { buffer: Buffer; filename: string; mime?: string; caption?: string },
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  const up = await uploadWhatsAppMedia(conn, doc.buffer, doc.filename, doc.mime ?? "application/pdf");
+  if (!up.ok || !up.mediaId) return { ok: false, error: up.error ?? "falha no upload da mídia" };
+
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp", recipient_type: "individual", to: toWaId,
+      type: "document", document: { id: up.mediaId, filename: doc.filename, ...(doc.caption ? { caption: doc.caption } : {}) },
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}

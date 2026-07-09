@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
-import { TOOL_DEFS, executeTool, type ToolCtx } from "./tools";
+import { toolsForConfig, executeTool, type ToolCtx } from "./tools";
+import { buildQuoteGuidance } from "./quote-guidance";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { retrieveKnowledge } from "./retrieval";
 import { checkGrounding } from "./grounding";
@@ -21,6 +22,7 @@ interface RunInput {
   inboundText: string;
   idempotencyKey?: string; // ex: waMessageId — dedupe p/ a fila durável futura
   inboundMediaType?: string; // text|audio|image|document|... (proveniência)
+  inboundImages?: string[]; // vision: imagens do lead como data URI (quando visionEnabled)
 }
 
 interface RunOpts {
@@ -359,17 +361,36 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const { temperature: chatTemp, bucket: tempBucket } = resolveChatTemp(input.contact.id);
   if (tempBucket) promptVariant = promptVariant ? `${promptVariant}::${tempBucket}` : tempBucket;
 
+  // Orçamento (opt-in): orientação de ficha/preço anexada ao prompt.
+  const quoteGuidance = await buildQuoteGuidance(input.clientId, cfg?.quotesEnabled ?? false, cfg?.intakeSpec);
+
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
     { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen) },
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
+    ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
     ...priorMessages,
   ];
+
+  // Vision: anexa a(s) imagem(ns) do lead ao último turno do usuário (multimodal).
+  if (input.inboundImages?.length) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        const txt = typeof messages[i].content === "string" ? (messages[i].content as string) : "";
+        messages[i] = { role: "user", content: [
+          { type: "text", text: txt || "[o lead enviou uma imagem]" },
+          ...input.inboundImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        ] };
+        break;
+      }
+    }
+  }
 
   const ctx: ToolCtx = {
     clientId: input.clientId, connectionId: input.connectionId,
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
+    intakeSpec: cfg?.intakeSpec,
   };
 
   let decision = "respondeu_duvida";
@@ -381,7 +402,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   try {
     for (let i = 0; i < 5; i++) {
-      const { message, usage } = await chatWithRetry({ model, messages, tools: TOOL_DEFS, temperature: chatTemp, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
+      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg), temperature: chatTemp, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
