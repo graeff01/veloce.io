@@ -42,7 +42,7 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; answerMode: string; fallbackMessage: string | null; model: string; audioTranscription: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[]; operatorNumbers: string[] }
+interface Cfg { enabled: boolean; status: string; vertical: string; assistantName: string | null; greetingMessage: string | null; trustHighlights: string | null; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; answerMode: string; fallbackMessage: string | null; model: string; audioTranscription: boolean; visionEnabled: boolean; quotesEnabled: boolean; paused: boolean; pausedReason: string | null; scopeMode: string; humanTakeoverMin: number; dailyUsdCap: number | null; disclosureEnabled: boolean; testMode: boolean; testNumbers: string[]; operatorNumbers: string[] }
 
 const VERTICALS: { key: string; label: string }[] = [
   { key: "automotivo", label: "Automotivo (veículos)" },
@@ -71,7 +71,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], answerMode: d?.answerMode ?? "off_hours", fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [], operatorNumbers: Array.isArray(d?.operatorNumbers) ? d.operatorNumbers : [] });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", vertical: d?.vertical ?? "automotivo", assistantName: d?.assistantName ?? "", greetingMessage: d?.greetingMessage ?? "", trustHighlights: d?.trustHighlights ?? "", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], answerMode: d?.answerMode ?? "off_hours", fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, visionEnabled: d?.visionEnabled ?? false, quotesEnabled: d?.quotesEnabled ?? false, paused: d?.paused ?? false, pausedReason: d?.pausedReason ?? "", scopeMode: d?.scopeMode ?? "all", humanTakeoverMin: d?.humanTakeoverMin ?? 180, dailyUsdCap: d?.dailyUsdCap ?? null, disclosureEnabled: d?.disclosureEnabled ?? true, testMode: d?.testMode ?? false, testNumbers: Array.isArray(d?.testNumbers) ? d.testNumbers : [], operatorNumbers: Array.isArray(d?.operatorNumbers) ? d.operatorNumbers : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -247,6 +247,26 @@ function ConfigSection({ clientId }: { clientId: string }) {
               </div>
               <button onClick={() => set({ audioTranscription: !cfg.audioTranscription })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.audioTranscription ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
                 <span style={{ position: "absolute", top: 3, left: cfg.audioTranscription ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Analisar imagens do lead (vision)</div>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Lê fotos que o lead envia (espaço, referência). Requer modelo com visão.</p>
+              </div>
+              <button onClick={() => set({ visionEnabled: !cfg.visionEnabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.visionEnabled ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: cfg.visionEnabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Orçamento (coleta + preço + PDF)</div>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>A IA coleta specs, gera orçamento e envia PDF. Configure a tabela de preços em Preços.</p>
+              </div>
+              <button onClick={() => set({ quotesEnabled: !cfg.quotesEnabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.quotesEnabled ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: cfg.quotesEnabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
               </button>
             </div>
 

@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { ToolDef } from "@/lib/openai";
 import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
-import { sendWhatsAppImage } from "@/lib/whatsapp-send";
+import { sendWhatsAppImage, sendWhatsAppDocument } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
+import { computeQuote, describeRules, type PricingRules } from "./pricing";
+import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
+import { renderQuotePdf } from "@/lib/quote-pdf";
 
 export interface ToolCtx {
   clientId: string;
@@ -13,7 +17,10 @@ export interface ToolCtx {
   contactName: string | null;
   contactWaId: string;
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
+  intakeSpec?: unknown; // ficha configurável (AiAgentConfig.intakeSpec) p/ orçamento
 }
+
+const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
 
 // O agente NÃO agenda visita: ele atende fora do horário, entende o que o lead quer,
 // qualifica e adianta tudo ao vendedor (que dá sequência no horário comercial).
@@ -72,6 +79,59 @@ export const TOOL_DEFS: ToolDef[] = [
     },
   },
 ];
+
+// ── Ferramentas de ORÇAMENTO (expostas só quando quotesEnabled) ───────────────
+const INTAKE_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "atualizar_ficha",
+    description: "Registra dados estruturados do lead conforme a ficha configurada (modelo, medidas, opcionais, endereço...). Chame ao descobrir cada dado.",
+    parameters: { type: "object", properties: {
+      campos: { type: "object", description: "pares chave:valor conforme a ficha, ex: {\"modelo\":\"X\",\"largura\":200}" },
+    }, required: ["campos"] },
+  },
+};
+
+const QUOTE_TOOLS: ToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "gerar_orcamento",
+      description: "Gera o orçamento a partir dos itens escolhidos. O PREÇO vem SEMPRE desta ferramenta — nunca invente valores. Use exatamente as chaves do catálogo.",
+      parameters: { type: "object", properties: {
+        base: { type: "array", items: { type: "string" }, description: "chaves dos itens-base escolhidos" },
+        opcionais: { type: "array", items: { type: "string" }, description: "chaves dos opcionais" },
+        quantidades: { type: "object", description: "chave:quantidade (opcional; padrão 1)" },
+      }, required: ["base"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_orcamento",
+      description: "Gera o PDF do orçamento e envia ao lead. Use após gerar_orcamento e confirmar com o lead que pode enviar.",
+      parameters: { type: "object", properties: { quoteId: { type: "string", description: "opcional; padrão = último em rascunho" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "aprovar_orcamento",
+      description: "Use SOMENTE quando o lead aprovar o orçamento ou disser que quer comprar. Aciona um vendedor com o contexto. Não use para dúvidas.",
+      parameters: { type: "object", properties: { motivo: { type: "string" }, quoteId: { type: "string" } }, required: ["motivo"] },
+    },
+  },
+];
+
+// Ferramentas efetivas por cliente: base (master) + orçamento/ficha se habilitado.
+export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown } | null): ToolDef[] {
+  const defs = [...TOOL_DEFS];
+  if (cfg?.quotesEnabled) {
+    if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
+    defs.push(...QUOTE_TOOLS);
+  }
+  return defs;
+}
 
 export interface ToolResult { result: string; decision?: string }
 
@@ -206,6 +266,92 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     case "escalar_humano": {
       return { result: "Ok, o vendedor já foi acionado. Diga ao lead, de forma natural, que um VENDEDOR VAI ENTRAR EM CONTATO pra dar sequência — NUNCA diga 'vou chamar um vendedor' (isso soa como se tivesse alguém disponível na hora). Siga o STATUS DA LOJA: se ABERTA, 'o vendedor já vai entrar em contato'; se FECHADA, 'no próximo horário comercial'. NÃO prometa horário exato. Nada de gíria (sem 'kkk').", decision: "escalou" };
+    }
+
+    // ── Orçamento: coleta de ficha ─────────────────────────────────────────────
+    case "atualizar_ficha": {
+      const spec = parseSpec(ctx.intakeSpec);
+      if (!spec.length) return { result: "Nenhuma ficha configurada para este cliente." };
+      const { data, invalidOptions } = sanitizeIntake(spec, (args.campos as Record<string, unknown>) ?? {});
+      if (ctx.mode === "test") return { result: `(teste) Ficha: ${summarizeIntake(spec, data) || "nada válido"}.` };
+      const existing = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      const merged: IntakeData = { ...((existing?.data as IntakeData) ?? {}), ...data };
+      await prisma.leadProfile.upsert({
+        where: { contactId: ctx.contactId },
+        create: { connectionId: ctx.connectionId, contactId: ctx.contactId, data: merged as unknown as Prisma.InputJsonValue },
+        update: { data: merged as unknown as Prisma.InputJsonValue },
+      });
+      const missing = missingRequired(spec, merged);
+      const inval = invalidOptions.length ? ` Valores inválidos (ignorados): ${invalidOptions.join(", ")}.` : "";
+      return { result: missing.length ? `Ficha atualizada. Ainda falta: ${missing.map((f) => f.label).join(", ")}.${inval}` : `Ficha completa.${inval}` };
+    }
+
+    // ── Orçamento: preço determinístico (nunca inventado) ──────────────────────
+    case "gerar_orcamento": {
+      const pc = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId } });
+      if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
+      const rules = pc.rules as unknown as PricingRules;
+      const sel = { base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined };
+      const r = computeQuote(rules, sel);
+      if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
+      const q = r.quote;
+      const summary = q.items.map((i) => i.label).join(", ");
+      if (ctx.mode === "test") return { result: `(teste) Orçamento: ${brl(q.total, pc.currency)} (não gravado). Itens: ${summary}.`, decision: "orcou" };
+      const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
+      const number = (last?.number ?? 0) + 1;
+      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      await prisma.quote.create({ data: {
+        clientId: ctx.clientId, contactId: ctx.contactId, number,
+        items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
+        currency: pc.currency, status: "draft", summary, intake: (prof?.data as Prisma.InputJsonValue) ?? undefined,
+      } });
+      const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
+      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
+    }
+
+    // ── Orçamento: envia o PDF pelo WhatsApp ───────────────────────────────────
+    case "enviar_orcamento": {
+      const quote = args.quoteId
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "draft" }, orderBy: { createdAt: "desc" } });
+      if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
+      if (ctx.mode === "test") return { result: `(teste) Enviaria o PDF do orçamento Nº ${quote.number} (não enviado).`, decision: "orcou" };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
+      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
+      try {
+        const pdf = await renderQuotePdf({
+          clientName: client?.name ?? "Orçamento", number: quote.number, contactName: ctx.contactName,
+          items: quote.items as unknown as { label: string; qty: number; unit: number; amount: number }[],
+          subtotal: quote.subtotal, fees: quote.fees, total: quote.total, currency: quote.currency,
+          summary: quote.summary, generatedAt: new Date().toLocaleDateString("pt-BR"),
+        });
+        const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
+        if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
+        await prisma.quote.update({ where: { id: quote.id }, data: { status: "sent" } });
+        await prisma.waMessage.create({ data: {
+          connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-doc-${Date.now()}`,
+          direction: "out", type: "document", text: `[orçamento Nº ${quote.number}]`, aiGenerated: true, timestamp: new Date(),
+        } }).catch(() => {});
+        return { result: `Orçamento Nº ${quote.number} enviado ao lead em PDF. Confirme o recebimento e tire dúvidas.`, decision: "orcou" };
+      } catch (e) {
+        return { result: `Não consegui gerar/enviar o PDF (${String(e).slice(0, 80)}). Ofereça chamar um vendedor.` };
+      }
+    }
+
+    // ── Orçamento aprovado → aciona vendedor (reusa o escalation da master) ─────
+    case "aprovar_orcamento": {
+      const quote = args.quoteId
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId }, orderBy: { createdAt: "desc" } });
+      if (ctx.mode === "test") return { result: "(teste) Acionaria o vendedor (orçamento aprovado).", decision: "escalou" };
+      const detalhe = quote ? ` Orçamento Nº ${quote.number} — ${brl(quote.total, quote.currency)}.` : "";
+      await createEscalationTask({
+        clientId: ctx.clientId, contactId: ctx.contactId, contactName: ctx.contactName, waId: ctx.contactWaId,
+        reason: `Orçamento aprovado / quer fechar: ${String(args.motivo ?? "")}.${detalhe}`, kind: "handoff",
+      }).catch(() => {});
+      if (quote) await prisma.quote.update({ where: { id: quote.id }, data: { status: "approved" } }).catch(() => {});
+      return { result: "Vendedor acionado com o orçamento aprovado. Diga ao lead que um VENDEDOR VAI ENTRAR EM CONTATO pra fechar. Não prometa horário exato.", decision: "escalou" };
     }
 
     default:

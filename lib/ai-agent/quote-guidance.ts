@@ -1,0 +1,33 @@
+// Orientação de ficha + orçamento anexada ao prompt quando quotesEnabled. Informa
+// os campos a coletar e o CATÁLOGO de preços (chaves válidas), e crava o fluxo — o
+// preço só sai da ferramenta gerar_orcamento. Vazio quando não habilitado.
+import { prisma } from "@/lib/prisma";
+import { parseSpec } from "./intake";
+import { describeRules, type PricingRules } from "./pricing";
+
+export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolean, intakeSpec: unknown): Promise<string> {
+  if (!quotesEnabled) return "";
+  const parts: string[] = ["── ATENDIMENTO COM ORÇAMENTO ──"];
+
+  const spec = parseSpec(intakeSpec);
+  if (spec.length) {
+    const campos = spec.map((f) => `- ${f.key}: ${f.label}${f.required ? " (obrigatório)" : ""}${f.options ? ` [opções: ${f.options.join(", ")}]` : ""}`).join("\n");
+    parts.push(`FICHA A COLETAR (use atualizar_ficha ao descobrir cada dado):\n${campos}`);
+  }
+
+  try {
+    const pc = await prisma.pricingConfig.findUnique({ where: { clientId } });
+    if (pc) {
+      const cat = describeRules(pc.rules as unknown as PricingRules);
+      if (cat) parts.push(`CATÁLOGO DE PREÇOS (use SOMENTE estas chaves em gerar_orcamento):\n${cat}`);
+    }
+  } catch { /* catálogo é opcional */ }
+
+  parts.push(
+    "FLUXO: 1) colete a ficha; 2) com os dados, chame gerar_orcamento usando as chaves EXATAS do catálogo; " +
+    "3) apresente o orçamento e confirme com o lead; 4) se confirmar, use enviar_orcamento (envia o PDF); " +
+    "5) SÓ quando o lead aprovar/quiser comprar, use aprovar_orcamento (aciona o vendedor). " +
+    "NUNCA diga preço, total ou desconto fora do resultado de gerar_orcamento.",
+  );
+  return parts.join("\n\n");
+}

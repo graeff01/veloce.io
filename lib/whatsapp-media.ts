@@ -20,6 +20,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   finally { clearTimeout(t); }
 }
 
+export const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+// Vision: baixa a imagem do lead e devolve como data URI p/ um modelo multimodal.
+// Só chamado quando o cliente habilita visionEnabled. Null em falha.
+export async function fetchWhatsAppImageDataUri(conn: { accessToken: string }, mediaId: string): Promise<string | null> {
+  const dl = await downloadWhatsAppMedia(conn, mediaId, ALLOWED_IMAGE_MIME);
+  if ("error" in dl) return null;
+  return `data:${dl.mime};base64,${dl.bytes.toString("base64")}`;
+}
+
 // Baixa um media do WhatsApp (metadata → URL → bytes), com limites de mime/tamanho e
 // timeouts. Só é chamado para ÁUDIO; imagem/documento nunca são baixados.
 export async function downloadWhatsAppMedia(
