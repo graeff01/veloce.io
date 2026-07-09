@@ -1019,6 +1019,7 @@ model WaConversation {
   @@index([connectionId, funnelStage])
   @@index([connectionId, lastMessageAt])
   @@index([connectionId, firstInboundAt])
+  @@index([connectionId, saleConfirmedAt]) // atribuição de receita: vendas confirmadas por período
 }
 
 // "Fechou?" — pergunta ao gestor quando um lead fica parado em Negociação. Rastreia o
@@ -1035,6 +1036,11 @@ model FunnelCheck {
   askedAt       DateTime?
   reaskAt       DateTime? // quando reperguntar (resposta "ainda negociando")
   answeredAt    DateTime?
+  // Re-pergunta do VALOR da venda (venda confirmada, mas gestor não informou o valor).
+  // Independente de reaskCount/reaskAt, que são do reask de "ainda negociando".
+  valueReaskCount Int       @default(0)  // quantas vezes já re-perguntamos o valor
+  valueReaskAt    DateTime?              // último re-envio da pergunta de valor
+  saleValueGaveUp Boolean   @default(false) // desistimos de perguntar o valor (parou de perguntar)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
