@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/api-helpers";
 import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
@@ -12,6 +13,17 @@ const intakeFieldSchema = z.object({
   type: z.enum(["text", "number", "boolean", "option"]).optional(),
   options: z.array(z.string().max(60)).optional(),
 });
+// Playbook de venda declarativo (por vertical). Null limpa (volta ao padrão automotivo).
+const playbookSchema = z.object({
+  vertical: z.string().max(40).optional(),
+  objetivo: z.string().max(1200).optional(),
+  stages: z.array(z.object({ label: z.string().max(60), goal: z.string().max(400) })).max(12).optional(),
+  qualification: z.object({ criteria: z.array(z.string().max(120)).max(20).optional(), hotWhen: z.string().max(400).optional() }).optional(),
+  objections: z.array(z.object({ objection: z.string().max(200), response: z.string().max(600) })).max(30).optional(),
+  buyingSignals: z.array(z.string().max(160)).max(20).optional(),
+  tactics: z.array(z.string().max(300)).max(20).optional(),
+  limits: z.array(z.string().max(400)).max(20).optional(),
+}).nullable();
 
 const putSchema = z.object({
   enabled: z.boolean().optional(),
@@ -24,6 +36,7 @@ const putSchema = z.object({
   quotesEnabled: z.boolean().optional(),
   visionEnabled: z.boolean().optional(),
   intakeSpec: z.array(intakeFieldSchema).optional(),
+  playbook: playbookSchema.optional(),
   model: z.string().optional(),
   assistantName: z.string().max(60).nullable().optional(),
   greetingMessage: z.string().max(500).nullable().optional(),
@@ -64,7 +77,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const parsed = putSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
-  const d = parsed.data;
+  const { playbook, ...rest } = parsed.data;
+  // Json nullable no Prisma: null explícito precisa de Prisma.JsonNull (limpa o campo).
+  const d = {
+    ...rest,
+    ...(playbook !== undefined ? { playbook: playbook === null ? Prisma.JsonNull : playbook } : {}),
+  };
 
   const cfg = await prisma.aiAgentConfig.upsert({
     where: { clientId: id },
