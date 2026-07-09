@@ -8,6 +8,7 @@ import {
   History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { TabHeader } from "@/components/clients/tab-header";
+import { PLAYBOOK_TEMPLATES, type Playbook } from "@/lib/ai-agent/playbook";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -1351,7 +1352,184 @@ function AnalyticsSection({ clientId }: { clientId: string }) {
 }
 
 // ── Root (navegação interna em sidebar, agrupada por modo de uso) ─────────────
-type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
+// ── Playbook (editor da metodologia de venda como DADO) ───────────────────────
+function StrList({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: "flex", gap: 6 }}>
+          <input style={{ ...input, flex: 1 }} value={it} onChange={(e) => onChange(items.map((x, j) => (j === i ? e.target.value : x)))} placeholder={placeholder} />
+          <button onClick={() => onChange(items.filter((_, j) => j !== i))} style={{ ...btn(), padding: "6px 9px" }}><Trash2 size={13} /></button>
+        </div>
+      ))}
+      <button onClick={() => onChange([...items, ""])} style={{ ...btn(), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar</button>
+    </div>
+  );
+}
+
+function PlaybookSection({ clientId }: { clientId: string }) {
+  const [pb, setPb] = useState<Playbook | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPb(d?.playbook ?? null); setLoading(false);
+    });
+  }, [clientId]);
+
+  async function save(next: Playbook | null) {
+    setSaving(true);
+    await fetch(`/api/clients/${clientId}/ai/config`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playbook: next }) });
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  const p = pb ?? {};
+  const set = (patch: Partial<Playbook>) => setPb({ ...p, ...patch });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Playbook de venda</div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, maxWidth: 620 }}>A metodologia de venda como DADO. Vazio = usa o comportamento padrão do motor. Preenchendo, você molda a IA para o vertical <b>sem tocar no código</b>.</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select value="" onChange={(e) => { const t = PLAYBOOK_TEMPLATES[e.target.value]; if (t) setPb(structuredClone(t)); }} style={{ ...input, width: 190 }}>
+            <option value="">Carregar template…</option>
+            {Object.keys(PLAYBOOK_TEMPLATES).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          {pb && <button onClick={() => { setPb(null); save(null); }} style={btn()}>Limpar (voltar ao padrão)</button>}
+        </div>
+      </div>
+
+      <div style={card}>
+        <label style={label}>Objetivo do atendimento</label>
+        <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} value={p.objetivo ?? ""} onChange={(e) => set({ objetivo: e.target.value })} placeholder="Ex: entender o projeto, gerar orçamento e encaminhar ao vendedor quando aprovar" />
+      </div>
+
+      <div style={card}>
+        <label style={label}>Etapas da conversa</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(p.stages ?? []).map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <input style={{ ...input, flex: "1 1 130px" }} value={s.label} onChange={(e) => set({ stages: (p.stages ?? []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} placeholder="etapa (ex: descoberta)" />
+              <input style={{ ...input, flex: "2 1 220px" }} value={s.goal} onChange={(e) => set({ stages: (p.stages ?? []).map((x, j) => (j === i ? { ...x, goal: e.target.value } : x)) })} placeholder="objetivo da etapa" />
+              <button onClick={() => set({ stages: (p.stages ?? []).filter((_, j) => j !== i) })} style={{ ...btn(), padding: "6px 9px" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button onClick={() => set({ stages: [...(p.stages ?? []), { label: "", goal: "" }] })} style={{ ...btn(), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar etapa</button>
+        </div>
+      </div>
+
+      <div style={card}>
+        <label style={label}>Qualificação — o que coletar</label>
+        <StrList items={p.qualification?.criteria ?? []} onChange={(v) => set({ qualification: { ...p.qualification, criteria: v } })} placeholder="ex: modelo/medidas" />
+        <label style={{ ...label, marginTop: 12 }}>Considere o lead QUENTE quando…</label>
+        <input style={input} value={p.qualification?.hotWhen ?? ""} onChange={(e) => set({ qualification: { ...p.qualification, hotWhen: e.target.value } })} placeholder="ex: aprova o orçamento ou diz que quer comprar" />
+      </div>
+
+      <div style={card}>
+        <label style={label}>Objeções → melhor resposta</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(p.objections ?? []).map((o, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <input style={{ ...input, flex: "1 1 130px" }} value={o.objection} onChange={(e) => set({ objections: (p.objections ?? []).map((x, j) => (j === i ? { ...x, objection: e.target.value } : x)) })} placeholder="objeção (ex: tá caro)" />
+              <input style={{ ...input, flex: "2 1 220px" }} value={o.response} onChange={(e) => set({ objections: (p.objections ?? []).map((x, j) => (j === i ? { ...x, response: e.target.value } : x)) })} placeholder="como responder (sem negociar)" />
+              <button onClick={() => set({ objections: (p.objections ?? []).filter((_, j) => j !== i) })} style={{ ...btn(), padding: "6px 9px" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button onClick={() => set({ objections: [...(p.objections ?? []), { objection: "", response: "" }] })} style={{ ...btn(), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar objeção</button>
+        </div>
+      </div>
+
+      <div style={card}>
+        <label style={label}>Sinais de compra (acionam o vendedor)</label>
+        <StrList items={p.buyingSignals ?? []} onChange={(v) => set({ buyingSignals: v })} placeholder="ex: aprovou o orçamento" />
+      </div>
+      <div style={card}>
+        <label style={label}>Táticas de abordagem</label>
+        <StrList items={p.tactics ?? []} onChange={(v) => set({ tactics: v })} placeholder="ex: confirme as medidas antes de orçar" />
+      </div>
+      <div style={card}>
+        <label style={label}>Limites específicos do vertical (além dos universais)</label>
+        <StrList items={p.limits ?? []} onChange={(v) => set({ limits: v })} placeholder="ex: não prometa prazo de entrega" />
+      </div>
+
+      <div>
+        <button onClick={() => save(pb)} disabled={saving} style={btn(true)}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />} {saved ? "Salvo" : "Salvar Playbook"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Aprendizado (qual abordagem converte — read-only) ─────────────────────────
+interface VariantPerf { variant: string; total: number; won: number; qualified: number; lost: number; open: number; winRate: number; qualifyRate: number }
+interface LearnData { totalConversations: number; days: number; variants: VariantPerf[]; leader: { variant: string; rate: number } | null; note: string }
+
+function LearningSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<LearnData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try { const r = await fetch(`/api/ai-agent/learning?clientId=${clientId}&days=${days}`); const d = await r.json(); if (active) setData(d); }
+      catch { if (active) setData(null); }
+      finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [clientId, days]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  if (!data) return <div style={{ padding: 24, color: "var(--text-muted)" }}>Não foi possível carregar.</div>;
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, maxWidth: 620 }}>Qual <b>abordagem</b> (variante A/B) realmente converte, cruzando com o <b>desfecho real</b> (venda confirmada / funil). {data.totalConversations} conversas em {data.days} dias. Revise e promova as táticas vencedoras no Playbook.</p>
+        <div style={{ display: "flex", gap: 6 }}>{[7, 30, 90].map((d) => <button key={d} onClick={() => { setLoading(true); setDays(d); }} style={btn(days === d)}>{d}d</button>)}</div>
+      </div>
+
+      {data.leader && (
+        <div style={{ ...card, borderColor: "var(--accent)", display: "flex", alignItems: "center", gap: 10 }}>
+          <TrendingUp size={18} color="var(--accent)" />
+          <div><b style={{ color: "var(--text-primary)" }}>Líder: {data.leader.variant}</b> <span style={{ color: "var(--text-muted)", fontSize: 13 }}>— {pct(data.leader.rate)} de qualificação</span></div>
+        </div>
+      )}
+
+      <div style={{ ...card, padding: 0, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
+            {["Abordagem", "Conversas", "Qualif.", "Venda", "won/qual/lost/open"].map((h) => <th key={h} style={{ padding: "10px 14px", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {data.variants.map((v) => (
+              <tr key={v.variant} style={{ borderTop: "1px solid var(--border)" }}>
+                <td style={{ padding: "9px 14px", fontWeight: 600, color: "var(--text-primary)" }}>{v.variant}</td>
+                <td style={{ padding: "9px 14px", fontVariantNumeric: "tabular-nums" }}>{v.total}</td>
+                <td style={{ padding: "9px 14px", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{pct(v.qualifyRate)}</td>
+                <td style={{ padding: "9px 14px", fontVariantNumeric: "tabular-nums" }}>{pct(v.winRate)}</td>
+                <td style={{ padding: "9px 14px", color: "var(--text-muted)" }}>{v.won}/{v.qualified}/{v.lost}/{v.open}</td>
+              </tr>
+            ))}
+            {data.variants.length === 0 && <tr><td colSpan={5} style={{ padding: 22, textAlign: "center", color: "var(--text-muted)" }}>Sem dados na janela.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{data.note}</p>
+    </div>
+  );
+}
+
+type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 // Item de navegação da sidebar da IA — com hover e indicador ativo.
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -1384,6 +1562,7 @@ const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: S
   ] },
   { key: "config", label: "Configuração", icon: <Bot size={15} />, subs: [
     { key: "config", label: "Configuração" },
+    { key: "playbook", label: "Playbook" },
     { key: "conhecimento", label: "Conhecimento" },
     { key: "catalogo", label: "Estoque" },
     { key: "prompts", label: "Prompt Lab" },
@@ -1395,6 +1574,7 @@ const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: S
   ] },
   { key: "monitorar", label: "Monitorar", icon: <Activity size={15} />, subs: [
     { key: "impacto", label: "Impacto" },
+    { key: "aprendizado", label: "Aprendizado" },
     { key: "atividade", label: "Atividade" },
     { key: "analytics", label: "Analytics" },
     { key: "inteligencia", label: "Inteligência" },
@@ -1443,6 +1623,8 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {sub === "overview" && <OverviewSection clientId={clientId} onNavigate={goTo} />}
         {sub === "impacto" && <ImpactSection clientId={clientId} />}
         {sub === "config" && <ConfigSection clientId={clientId} />}
+        {sub === "playbook" && <PlaybookSection clientId={clientId} />}
+        {sub === "aprendizado" && <LearningSection clientId={clientId} />}
         {sub === "console" && <ConsoleSection clientId={clientId} />}
         {sub === "avaliacao" && <EvaluationSection clientId={clientId} />}
         {sub === "catalogo" && <CatalogSection clientId={clientId} />}
