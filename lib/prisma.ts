@@ -23,7 +23,7 @@ if (process.env.NODE_ENV !== "production") global.prisma = base;
 // Modelos cujo acesso DEVE ser escopado por clientId. Operações de leitura/lote
 // sem `where.clientId` lançam erro — impedindo vazamento entre clientes por um
 // filtro esquecido. Queries legitimamente globais usam `prismaUnscoped` (explícito).
-const TENANT_MODELS = new Set(["Visit", "AiInteraction", "CatalogItem", "KnowledgeChunk", "AiAgentConfig", "VisitConfig"]);
+const TENANT_MODELS = new Set(["Visit", "AiInteraction", "CatalogItem", "KnowledgeChunk", "AiAgentConfig", "VisitConfig", "PricingConfig", "Quote", "Handoff", "LeadMemory"]);
 const ENFORCED_OPS = new Set(["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy", "updateMany", "deleteMany"]);
 
 // Acesso direto (sem guard) para casos globais documentados (ex: breaker de gasto).

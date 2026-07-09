@@ -2,8 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { shouldRespond } from "./gatekeeper";
 import { runAgent } from "./orchestrator";
 import { globalSpendExceeded } from "./limits";
+import { claimInbound, markInboundDone, markInboundFailed } from "./inbound-ledger";
+import { splitIntoMessages } from "./humanize";
 import { sendWhatsAppText } from "@/lib/whatsapp-send";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
+import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
 
@@ -26,22 +29,23 @@ async function sendWithRetry(conn: Conn, to: string, text: string) {
 // Chamado pelo webhook (via scheduler) após uma mensagem recebida. Decide (gatekeeper),
 // gera resposta (orquestrador), envia (Cloud API, com retry) e registra a saída.
 // A IA só atua fora do horário, em produção e habilitada. Nunca deixa o lead no vácuo.
-export async function maybeRespondWithAgent(conn: Conn, contact: Contact, msg: IncomingMsg, idempotencyKey?: string): Promise<void> {
+export async function maybeRespondWithAgent(conn: Conn, contact: Contact, msg: IncomingMsg, idempotencyKey?: string, opts?: { skipClaim?: boolean }): Promise<void> {
   try {
     const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: conn.clientId } });
     const gate = shouldRespond(cfg);
     if (!gate.respond) return;
 
-    // Contrato de idempotência: se esta mensagem já foi processada, não reprocessa
-    // (dormente hoje pela serialização; pré-requisito da fila durável do N2).
-    if (idempotencyKey) {
-      const already = await prisma.aiInteraction.findFirst({ where: { clientId: conn.clientId, idempotencyKey }, select: { id: true } });
-      if (already) return;
-    }
-
     if (await globalSpendExceeded()) {
       await logWaEvent(conn.id, "integration.error", contact.id, { message: "agente pausado: teto de gasto diário global atingido" });
       return;
+    }
+
+    // Idempotência DURÁVEL: toma posse da mensagem (sobrevive a reinício). Se já foi
+    // tratada (ou está sendo), não reprocessa. O worker de replay já tomou posse, por
+    // isso pula o claim (skipClaim). Marcamos done/failed ao final.
+    if (idempotencyKey && !opts?.skipClaim) {
+      const claim = await claimInbound(conn.id, contact.id, idempotencyKey, { text: msg.text, type: msg.type, mediaId: msg.mediaId, mime: msg.mime });
+      if (claim === "duplicate") return;
     }
 
     // ── Mídia (multimodal controlado) ──
@@ -64,25 +68,45 @@ export async function maybeRespondWithAgent(conn: Conn, contact: Contact, msg: I
     }
     if (mediaType === null && !inboundText.trim()) return; // texto vazio
 
+    // F3 (vision): baixa a imagem do lead para o modelo analisar (quando habilitado).
+    let inboundImages: string[] | undefined;
+    if (cfg?.visionEnabled && msg.type === "image" && msg.mediaId) {
+      const uri = await fetchWhatsAppImageDataUri(conn, msg.mediaId);
+      if (uri) inboundImages = [uri];
+    }
+
     const out = await runAgent({
       clientId: conn.clientId, connectionId: conn.id,
-      contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText, idempotencyKey, inboundMediaType: mediaType ?? undefined,
+      contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText, idempotencyKey, inboundMediaType: mediaType ?? undefined, inboundImages,
     });
-    if (!out.reply) return; // limite/desligado — nada a enviar
-
-    const sent = await sendWithRetry(conn, contact.waId, out.reply);
-    if (!sent.ok) {
-      await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${sent.error}` });
+    if (!out.reply) { // limite/desligado — nada a enviar, mas a mensagem foi tratada
+      if (idempotencyKey) await markInboundDone(conn.id, idempotencyKey);
       return;
     }
 
-    const ts = new Date();
-    await prisma.waMessage.create({ data: {
-      connectionId: conn.id, contactId: contact.id, waMessageId: sent.waMessageId || `ia-${Date.now()}`,
-      direction: "out", type: "text", text: out.reply, timestamp: ts,
-    } }).catch(() => {});
-    await applyMessageToConversation({ connectionId: conn.id, contactId: contact.id, direction: "out", timestamp: ts });
+    // F3 (naturalidade): quebra a resposta em mensagens curtas quando humanize está
+    // ligado — como uma pessoa digitando. Senão, envia uma única mensagem (comportamento
+    // atual, inalterado para quem não ativou).
+    const parts = cfg?.humanize ? splitIntoMessages(out.reply) : [out.reply];
+    let lastTs = new Date();
+    for (let i = 0; i < parts.length; i++) {
+      const sent = await sendWithRetry(conn, contact.waId, parts[i]);
+      if (!sent.ok) {
+        await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${sent.error}` });
+        if (idempotencyKey) await markInboundFailed(conn.id, idempotencyKey, `envio falhou: ${sent.error}`);
+        return;
+      }
+      lastTs = new Date();
+      await prisma.waMessage.create({ data: {
+        connectionId: conn.id, contactId: contact.id, waMessageId: sent.waMessageId || `ia-${Date.now()}-${i}`,
+        direction: "out", type: "text", text: parts[i], timestamp: lastTs,
+      } }).catch(() => {});
+      if (i < parts.length - 1) await sleep(700); // ritmo humano entre mensagens
+    }
+    await applyMessageToConversation({ connectionId: conn.id, contactId: contact.id, direction: "out", timestamp: lastTs });
+    if (idempotencyKey) await markInboundDone(conn.id, idempotencyKey);
   } catch (e) {
     await logWaEvent(conn.id, "integration.error", contact.id, { message: `agente IA: ${String(e)}` }).catch(() => {});
+    if (idempotencyKey) await markInboundFailed(conn.id, idempotencyKey, String(e));
   }
 }

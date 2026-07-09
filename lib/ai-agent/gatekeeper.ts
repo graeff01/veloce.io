@@ -7,14 +7,18 @@ export function isWithinBusinessHours(windows: Window[], weekday: number, minute
   return (windows ?? []).some((w) => w.weekday === weekday && minutes >= toMin(w.start) && minutes < toMin(w.end));
 }
 
-interface CfgLike { enabled: boolean; status: string; businessHours: unknown; timezone: string }
+interface CfgLike { enabled: boolean; status: string; businessHours: unknown; timezone: string; alwaysOn?: boolean }
 
-// Decide se a IA deve assumir. Atua só: kill-switch global desligado, status "live",
-// habilitada e FORA do horário comercial (no fuso do tenant).
+// Decide se a IA deve assumir. Atua só com: kill-switch global desligado, status
+// "live" e habilitada. Por padrão, só FORA do horário comercial — mas com
+// `alwaysOn` (F2) a IA vira primeira linha 24/7 (responde inclusive no expediente).
 export function shouldRespond(cfg: CfgLike | null): { respond: boolean; reason: string } {
   if (process.env.AI_AGENT_KILL === "1") return { respond: false, reason: "kill-switch global" };
   if (!cfg || !cfg.enabled) return { respond: false, reason: "agente desligado" };
   if (cfg.status !== "live") return { respond: false, reason: `status ${cfg.status} (não está em produção)` };
+
+  // Primeira linha 24/7: ignora o horário comercial (mantém o kill-switch acima).
+  if (cfg.alwaysOn) return { respond: true, reason: "primeira linha 24/7" };
 
   const hours = (cfg.businessHours as Window[]) ?? [];
   if (hours.length === 0) return { respond: false, reason: "horário comercial não configurado" };

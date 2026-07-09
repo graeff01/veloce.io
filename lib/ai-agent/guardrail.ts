@@ -7,26 +7,41 @@ const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 export interface BlockRule { re: RegExp; reason: string }
 export interface GuardrailResult { allowed: boolean; reason?: string }
 
-// Padrão do vertical AUTOMOTIVO (comportamento histórico — inalterado).
-const AUTOMOTIVO: BlockRule[] = [
-  { re: /(desconto de|dou .*desconto|consigo .*(por|a) r\$|deixo .*por r\$|fa[cz]o por r\$|abaixo de r\$|ultimo pre[cz]o)/, reason: "tentou oferecer desconto" },
+// BASE universal — vale para TODO vertical (nenhum atendente pode negociar/prometer
+// fechamento em nome da empresa). Sempre aplicada, inclusive junto de regras custom.
+const BASE: BlockRule[] = [
+  { re: /(garanto que|prometo que|pode fechar comigo|fechamos por|pode confiar que)/, reason: "fez promessa/negociação" },
+  { re: /(dou .*desconto|fa[cz]o por r\$|deixo .*por r\$|abaixo de r\$|ultimo pre[cz]o)/, reason: "tentou oferecer desconto" },
   { re: /(\d+\s*x de r\$|\d+\s*parcelas de|entrada de r\$|parcela.*r\$\s*\d)/, reason: "tentou simular parcelamento" },
+];
+
+// Padrão do vertical AUTOMOTIVO (comportamento histórico — sobre a BASE).
+const AUTOMOTIVO: BlockRule[] = [
+  { re: /(desconto de|consigo .*(por|a) r\$)/, reason: "tentou oferecer desconto" },
   { re: /(financiamento aprovado|credito aprovado|aprovo (seu|o financiamento)|consigo aprovar)/, reason: "tentou aprovar financiamento" },
   { re: /(avalio sua troca em|sua troca vale|dou r\$.*pela.*troca|aceito sua troca por)/, reason: "tentou avaliar troca" },
-  { re: /(garanto que|prometo que|pode fechar comigo|fechamos por)/, reason: "fez promessa/negociação" },
+];
+
+// Padrão de produto/serviço configurável (móveis, esquadrias, instalação...):
+// não comprometer prazo, medida ou viabilidade de instalação sem vendedor.
+const CONFIGURAVEL: BlockRule[] = [
+  { re: /(garanto (a )?entrega|prazo garantido|entrego em \d+|fica pronto em \d+)/, reason: "prometeu prazo de entrega" },
+  { re: /(cabe (certinho|perfeitamente)|com certeza instala|instala[cç][aã]o garantida|serve no seu)/, reason: "garantiu medida/viabilidade de instalação" },
 ];
 
 // Conjuntos padrão por vertical. Novos segmentos entram aqui (sem mexer no motor).
 const DEFAULT_BY_VERTICAL: Record<string, BlockRule[]> = {
   automotivo: AUTOMOTIVO,
+  configuravel: CONFIGURAVEL,
+  geral: [],
 };
 
-// Resolve as regras efetivas: override do tenant (se houver) > padrão do vertical > automotivo.
+// Resolve as regras efetivas: BASE (sempre) + (override do tenant OU padrão do vertical).
 export function resolveBlockRules(vertical: string, custom?: { pattern: string; reason: string }[] | null): BlockRule[] {
-  if (custom && custom.length) {
-    return custom.map((c) => ({ re: new RegExp(norm(c.pattern)), reason: c.reason }));
-  }
-  return DEFAULT_BY_VERTICAL[vertical] ?? AUTOMOTIVO;
+  const extra = custom && custom.length
+    ? custom.map((c) => ({ re: new RegExp(norm(c.pattern)), reason: c.reason }))
+    : (DEFAULT_BY_VERTICAL[vertical] ?? AUTOMOTIVO);
+  return [...BASE, ...extra];
 }
 
 export function checkReply(text: string, rules: BlockRule[]): GuardrailResult {

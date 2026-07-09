@@ -1,7 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import { openaiChat, embed, cosine, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
-import { TOOL_DEFS, executeTool, type ToolCtx } from "./tools";
+import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
+import { retrieveKnowledge } from "./retrieval";
+import { toolsForConfig, executeTool, type ToolCtx } from "./tools";
 import { checkReply, resolveBlockRules } from "./guardrail";
+import { inspectInput, INJECTION_HARDENING } from "./input-guard";
+import { checkGrounding } from "./grounding";
+import { verifyReply } from "./verify";
+import { parseSpec } from "./intake";
+import { describeRules, type PricingRules } from "./pricing";
+import { recallMemories, formatMemories } from "./memory";
+import { detectSentiment, sentimentHint } from "./humanize";
 import { Prisma } from "@prisma/client";
 
 interface RunInput {
@@ -11,6 +19,7 @@ interface RunInput {
   inboundText: string;
   idempotencyKey?: string; // ex: waMessageId — dedupe p/ a fila durável futura
   inboundMediaType?: string; // text|audio|image|document|... (proveniência)
+  inboundImages?: string[]; // F3 (vision): imagens do lead como data URI (quando visionEnabled)
 }
 
 interface RunOpts {
@@ -26,14 +35,15 @@ export interface RunOutput {
 }
 
 // Subconjunto estrutural usado para montar o prompt — AiAgentConfig satisfaz isto.
-interface PromptCfg { language: string; persona: string | null; goals: string | null; rules: string | null; timezone: string }
+interface PromptCfg { language: string; persona: string | null; goals: string | null; rules: string | null; timezone: string; alwaysOn: boolean; visionEnabled: boolean }
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
 const PROMPT_VERSION = "2026-06-08.2";
 const MAX_TURNS = Number(process.env.AI_AGENT_MAX_TURNS || 40);
 const DEFAULT_FALLBACK = "Sobre isso, quem te ajuda melhor é um vendedor — já registrei aqui pra ele te dar os detalhes. 😊";
-const DISCLOSURE = "🤖 Atendimento automático (fora do horário). Posso tirar dúvidas e agendar sua visita — e a qualquer momento chamo um vendedor, tá?";
+const DISCLOSURE_OFFHOURS = "🤖 Atendimento automático (fora do horário). Posso tirar dúvidas e agendar sua visita — e a qualquer momento chamo um vendedor, tá?";
+const DISCLOSURE_ALWAYSON = "🤖 Atendimento automático. Posso tirar suas dúvidas e adiantar tudo por aqui — e a qualquer momento chamo um vendedor, tá?";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -46,11 +56,14 @@ async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; too
   throw lastErr;
 }
 
-const disclose = (text: string, isFirst: boolean) => (isFirst ? `${DISCLOSURE}\n\n${text}` : text);
+const disclose = (text: string, isFirst: boolean, disclosure: string) => (isFirst ? `${disclosure}\n\n${text}` : text);
 
 function buildSystemPrompt(cfg: PromptCfg, perfil: string, knowledge: string): string {
+  const contexto = cfg.alwaysOn
+    ? "atendendo leads pelo WhatsApp como primeira linha de atendimento"
+    : "atendendo leads pelo WhatsApp FORA do horário comercial";
   return [
-    `Você é o atendente virtual de uma loja, atendendo leads pelo WhatsApp FORA do horário comercial. Idioma: ${cfg.language}. Tom: ${cfg.persona || "cordial, objetivo e humano"}.`,
+    `Você é o atendente virtual de uma loja, ${contexto}. Idioma: ${cfg.language}. Tom: ${cfg.persona || "cordial, objetivo e humano"}.`,
     cfg.goals
       ? `OBJETIVO: ${cfg.goals}`
       : `OBJETIVO: entender a necessidade do lead, tirar dúvidas permitidas, qualificar e — quando fizer sentido — agendar uma visita à loja.`,
@@ -62,13 +75,46 @@ function buildSystemPrompt(cfg: PromptCfg, perfil: string, knowledge: string): s
 - Use consultar_disponibilidade antes de oferecer horários; só marque com marcar_visita usando horários livres retornados.
 - Sempre avise que a disponibilidade do produto será confirmada na visita.
 - Registre o que descobrir do lead com atualizar_perfil.
-- MÍDIA: áudios já chegam transcritos (trate como texto normal). Mensagens entre colchetes como "[O lead enviou uma imagem/documento/...]" indicam mídia que você NÃO pode analisar — reconheça que recebeu, NÃO extraia dados nem avalie nada (ex: não estime troca por foto, não leia documentos), e ofereça seguir por texto ou que um vendedor verá no atendimento.
+- MÍDIA: áudios já chegam transcritos (trate como texto normal). ${cfg.visionEnabled
+      ? "IMAGENS enviadas pelo lead você PODE analisar (a imagem vem anexada) — descreva/aproveite o que dá para ver com honestidade, mas NÃO invente o que não está visível nem faça avaliação técnica/valor sem base; na dúvida, ofereça que um vendedor confirme. Documentos entre colchetes você NÃO analisa."
+      : "Mensagens entre colchetes como \"[O lead enviou uma imagem/documento/...]\" indicam mídia que você NÃO pode analisar — reconheça que recebeu, NÃO extraia dados nem avalie nada (ex: não estime troca por foto, não leia documentos), e ofereça seguir por texto ou que um vendedor verá no atendimento."}
 - Mensagens curtas e naturais, como no WhatsApp.`,
     cfg.rules ? `REGRAS DO CLIENTE:\n${cfg.rules}` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     perfil ? `PERFIL DO LEAD: ${perfil}` : "",
     `Agora: ${new Date().toLocaleString("pt-BR", { timeZone: cfg.timezone || "America/Sao_Paulo" })}.`,
   ].filter(Boolean).join("\n\n");
+}
+
+// F2: bloco de orientação de ficha + orçamento (anexado ao system prompt quando
+// habilitado). Informa os campos a coletar e o catálogo de preços (chaves válidas),
+// e crava o fluxo — o preço só sai da ferramenta gerar_orcamento.
+async function buildQuoteGuidance(clientId: string, quotesEnabled: boolean, intakeSpec: unknown): Promise<string> {
+  const parts: string[] = ["\n\n── ATENDIMENTO COM ORÇAMENTO ──"];
+
+  const spec = parseSpec(intakeSpec);
+  if (spec.length) {
+    const campos = spec.map((f) => `- ${f.key}: ${f.label}${f.required ? " (obrigatório)" : ""}${f.options ? ` [opções: ${f.options.join(", ")}]` : ""}`).join("\n");
+    parts.push(`FICHA A COLETAR (use atualizar_ficha ao descobrir cada dado):\n${campos}`);
+  }
+
+  if (quotesEnabled) {
+    try {
+      const pc = await prisma.pricingConfig.findUnique({ where: { clientId } });
+      if (pc) {
+        const cat = describeRules(pc.rules as unknown as PricingRules);
+        if (cat) parts.push(`CATÁLOGO DE PREÇOS (use SOMENTE estas chaves em gerar_orcamento):\n${cat}`);
+      }
+    } catch { /* catálogo é opcional */ }
+    parts.push(
+      "FLUXO: 1) colete a ficha; 2) com os dados, chame gerar_orcamento usando as chaves EXATAS do catálogo; " +
+      "3) apresente o orçamento e confirme com o lead; 4) se ele confirmar, use enviar_orcamento (envia o PDF); " +
+      "5) SÓ quando o lead aprovar/quiser comprar, use aprovar_orcamento (passa a um vendedor). " +
+      "NUNCA diga preço, total ou desconto fora do resultado de gerar_orcamento. Na dúvida sobre valor, gere o orçamento ou escale.",
+    );
+  }
+
+  return parts.join("\n\n");
 }
 
 // Único motor. mode="live": envia/grava/agenda de verdade. mode="test": mesmo prompt,
@@ -84,8 +130,10 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   const handoffAfter = cfg?.handoffAfter ?? 0;
   const promptCfg: PromptCfg = {
     language: cfg?.language ?? "pt-BR", persona: cfg?.persona ?? null, goals: cfg?.goals ?? null,
-    rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo",
+    rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo", alwaysOn: cfg?.alwaysOn ?? false,
+    visionEnabled: cfg?.visionEnabled ?? false,
   };
+  const disclosure = promptCfg.alwaysOn ? DISCLOSURE_ALWAYSON : DISCLOSURE_OFFHOURS;
 
   const log = (fields: { outbound: string | null; decision: string; status: RunOutput["status"]; tokensIn?: number; tokensOut?: number; toolCalls?: unknown[]; contextUsed?: unknown }) =>
     prisma.aiInteraction.create({ data: {
@@ -115,7 +163,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const unresolved = await prisma.aiInteraction.count({ where: { clientId: input.clientId, contactId: input.contact.id, createdAt: { gte: since }, decision: { notIn: ["agendou", "escalou", "limite"] } } });
     if (unresolved >= handoffAfter) {
-      const reply = disclose(fallback, isFirst);
+      const reply = disclose(fallback, isFirst, disclosure);
       await log({ outbound: reply, decision: "escalou", status: "ok" });
       return { reply, status: "ok", decision: "escalou" };
     }
@@ -141,27 +189,74 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     priorMessages = opts.transcript ?? [];
   }
 
-  // RAG: igual nos dois modos (lê o conhecimento real do cliente).
+  // Auditoria da resposta (rastreabilidade): RAG usado, guardrail de entrada,
+  // grounding e verificação. Vai para AiInteraction.contextUsed.
+  const audit: Record<string, unknown> = {};
+
+  // RAG afinado (rerank + MMR): igual nos dois modos (lê o conhecimento real do cliente).
   let knowledge = "";
-  let contextUsed: unknown = undefined;
   try {
-    const chunks = await prisma.knowledgeChunk.findMany({ where: { clientId: input.clientId }, take: 300 });
+    const { chunks, used } = await retrieveKnowledge(input.clientId, input.inboundText);
     if (chunks.length) {
-      const [q] = await embed([input.inboundText]);
-      const ranked = chunks.map((c) => ({ c, s: cosine(q, c.embedding) })).sort((a, b) => b.s - a.s).slice(0, 3).filter((x) => x.s > 0.2);
-      if (ranked.length) {
-        knowledge = ranked.map((r) => `- ${r.c.title ? `${r.c.title}: ` : ""}${r.c.content}`).join("\n");
-        // Rastreabilidade: registra QUAIS trechos embasaram a resposta.
-        contextUsed = { chunks: ranked.map((r) => ({ id: r.c.id, title: r.c.title, score: Number(r.s.toFixed(3)) })) };
-      }
+      knowledge = chunks.map((c) => `- ${c.title ? `${c.title}: ` : ""}${c.content}`).join("\n");
+      // Rastreabilidade: registra QUAIS trechos embasaram a resposta.
+      audit.chunks = used;
     }
   } catch { /* conhecimento é opcional */ }
 
-  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt(promptCfg, perfil, knowledge) }, ...priorMessages];
+  // Guardrail de ENTRADA (pré-LLM): injeção de prompt + PII. Não bloqueia o lead;
+  // reforça a defesa no system prompt e registra o flag (PII mascarada nos logs).
+  const guardIn = inspectInput(input.inboundText);
+  if (guardIn.flags.length) audit.inputGuard = guardIn.flags;
+  let systemPrompt = buildSystemPrompt(promptCfg, perfil, knowledge);
+  if (guardIn.injection) systemPrompt += `\n\n${INJECTION_HARDENING}`;
+
+  // F3: naturalidade — ajusta o tom pelo sentimento do lead e reforça estilo humano.
+  if (cfg?.humanize) {
+    const sent = detectSentiment(input.inboundText);
+    const hint = sentimentHint(sent);
+    systemPrompt += `\n\nESTILO: escreva como no WhatsApp — mensagens curtas e naturais, use contrações (tá, pra, cê), varie as frases (não repita respostas prontas).${hint ? ` ${hint}` : ""}`;
+    if (sent !== "neutro") audit.sentiment = sent;
+  }
+
+  // F3: memória de longo prazo — traz fatos de conversas anteriores (quando habilitado).
+  if (cfg?.memoryEnabled) {
+    try {
+      const mtxt = formatMemories(await recallMemories(input.clientId, input.contact.id, input.inboundText));
+      if (mtxt) { systemPrompt += `\n\n${mtxt}`; audit.memory = true; }
+    } catch { /* memória é opcional */ }
+  }
+
+  // F2: orientação de ficha/orçamento (só quando habilitado) — informa os campos a
+  // coletar, o catálogo de preços (chaves válidas) e o fluxo. Preço só via ferramenta.
+  const intakeSpec = cfg?.intakeSpec;
+  if (cfg?.quotesEnabled || (Array.isArray(intakeSpec) && intakeSpec.length)) {
+    systemPrompt += await buildQuoteGuidance(input.clientId, cfg?.quotesEnabled ?? false, intakeSpec);
+  }
+
+  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...priorMessages];
+
+  // F3 (vision): anexa a(s) imagem(ns) do lead ao último turno do usuário (multimodal).
+  if (input.inboundImages?.length) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        const txt = typeof messages[i].content === "string" ? (messages[i].content as string) : "";
+        messages[i] = { role: "user", content: [
+          { type: "text", text: txt || "[o lead enviou uma imagem]" },
+          ...input.inboundImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        ] };
+        break;
+      }
+    }
+    audit.vision = input.inboundImages.length;
+  }
+
+  const tools = toolsForConfig(cfg);
 
   const ctx: ToolCtx = {
     clientId: input.clientId, connectionId: input.connectionId,
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
+    intakeSpec,
   };
 
   let decision = "respondeu_duvida";
@@ -172,7 +267,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   try {
     for (let i = 0; i < 5; i++) {
-      const { message, usage } = await chatWithRetry({ model, messages, tools: TOOL_DEFS });
+      const { message, usage } = await chatWithRetry({ model, messages, tools });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
@@ -195,13 +290,35 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
 
   if (!final || !final.trim()) { final = fallback; if (decision === "respondeu_duvida") decision = "sem_fonte"; }
 
+  // ── F1: grounding — preço/prazo precisa ter fonte, senão a IA abstém ──────────
+  // Fontes legítimas: resultados de ferramentas + conhecimento (RAG) + a conversa
+  // (inclui o eco do próprio lead, para não marcar falso positivo).
+  const toolText = toolLog.map((t) => t.result).join("\n");
+  const convText = [input.inboundText, ...priorMessages.map((m) => (typeof m.content === "string" ? m.content : ""))].join("\n");
+  const sources = [toolText, knowledge, convText].filter(Boolean).join("\n");
+
+  if (status === "ok") {
+    const gr = checkGrounding(final, sources);
+    if (gr.priceViolations.length || gr.deadlineWarnings.length) {
+      audit.grounding = { priceViolations: gr.priceViolations, deadlineWarnings: gr.deadlineWarnings };
+    }
+    // Preço sem fonte = alucinação: não arrisca o número, encaminha ao vendedor.
+    if (!gr.grounded) { final = fallback; decision = "abster"; }
+  }
+
+  // ── F1: chain-of-verification por LLM (opt-in por cliente) ───────────────────
+  if (status === "ok" && decision !== "abster" && cfg?.verifyReplies) {
+    const v = await verifyReply({ model, sources, reply: final });
+    if (!v.ok) { audit.verify = { unsupported: v.unsupported }; final = fallback; decision = "abster"; }
+  }
+
   // Guardrail desacoplado por vertical (padrão do segmento ou override do tenant).
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; }
 
-  final = disclose(final, isFirst);
+  final = disclose(final, isFirst, disclosure);
 
-  if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed });
+  if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed: Object.keys(audit).length ? audit : undefined });
   return { reply: final, status, decision, toolCalls: toolLog };
 }

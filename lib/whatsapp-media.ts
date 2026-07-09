@@ -13,6 +13,16 @@ export const ALLOWED_MEDIA_MIME = new Set([
   "application/pdf",
 ]);
 
+export const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+// F3 (vision): baixa uma imagem do lead e devolve como data URI, pronta para enviar
+// a um modelo multimodal. Só quando o cliente habilita `visionEnabled`. Null em falha.
+export async function fetchWhatsAppImageDataUri(conn: { accessToken: string }, mediaId: string): Promise<string | null> {
+  const dl = await downloadWhatsAppMedia(conn, mediaId, ALLOWED_IMAGE_MIME);
+  if ("error" in dl) return null;
+  return `data:${dl.mime};base64,${dl.bytes.toString("base64")}`;
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);

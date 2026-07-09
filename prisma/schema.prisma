@@ -109,6 +109,9 @@ model Client {
   catalogItems      CatalogItem[]
   knowledgeChunks   KnowledgeChunk[]
   winningCampaigns  WinningCampaign[]
+  pricingConfig     PricingConfig?
+  quotes            Quote[]
+  handoffs          Handoff[]
 }
 
 model Meeting {
@@ -646,6 +649,13 @@ model AiAgentConfig {
   vertical          String  @default("automotivo") // segmento: define regras/guardrail padrão
   blockedTopics     Json    @default("[]") // override por tenant: [{pattern,reason}] (vazio = padrão do vertical)
   audioTranscription Boolean @default(true) // transcrever áudios do lead (speech→text)
+  verifyReplies   Boolean  @default(false) // F1: chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
+  alwaysOn        Boolean  @default(false) // F2: IA como primeira linha 24/7 (não só fora do horário)
+  quotesEnabled   Boolean  @default(false) // F2: expõe as ferramentas de orçamento (coleta/preço/PDF/handoff)
+  intakeSpec      Json     @default("[]") // F2: campos que a IA deve coletar [{key,label,required,type,options?}]
+  memoryEnabled   Boolean  @default(false) // F3: memória de longo prazo (lembra do lead entre conversas)
+  humanize        Boolean  @default(false) // F3: naturalidade (quebra em mensagens + tom por sentimento)
+  visionEnabled   Boolean  @default(false) // F3: analisa imagens que o lead envia (multimodal)
   model           String   @default("gpt-4o-mini")
   persona         String?  // tom de voz / personalidade
   goals           String?  // objetivos do atendimento
@@ -707,11 +717,84 @@ model LeadProfile {
   wantsFinancing  Boolean?
   score           Int      @default(0)
   qualified       Boolean  @default(false)
+  data            Json?    // F2: ficha estruturada configurável (intake) — respostas por campo
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([connectionId])
+}
+
+// Ledger durável de mensagens recebidas — dedupe/idempotência que sobrevive a
+// reinício (o debounce em memória some quando a instância cai). Base da fila durável:
+// guarda o payload para reprocessar (replay) se o processo cair no meio.
+model AiInboundEvent {
+  id           String    @id @default(cuid())
+  connectionId String
+  contactId    String
+  waMessageId  String
+  payload      Json?     // { text, type, mediaId?, mime? } — para replay pelo worker
+  status       String    @default("received") // received | processing | done | failed
+  attempts     Int       @default(0)
+  error        String?
+  createdAt    DateTime  @default(now())
+  processedAt  DateTime?
+
+  @@unique([connectionId, waMessageId])
+  @@index([status, createdAt])
+}
+
+// F2: configuração de precificação por cliente (regras determinísticas). A IA
+// COLETA; este motor CALCULA. `rules` guarda base/opcionais/frete no formato do
+// motor (lib/ai-agent/pricing.ts). Nunca a LLM define preço.
+model PricingConfig {
+  id        String   @id @default(cuid())
+  clientId  String   @unique
+  currency  String   @default("BRL")
+  rules     Json     @default("{}") // { base:[...], options:[...], fees:[...] }
+  updatedAt DateTime @updatedAt
+
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// F2: orçamento gerado pela IA (fonte única de preço; base do PDF e do handoff).
+model Quote {
+  id         String   @id @default(cuid())
+  clientId   String
+  contactId  String
+  number     Int      // sequencial por cliente (legível no PDF)
+  items      Json     // linhas do orçamento [{label, qty, unit, amount}]
+  subtotal   Float    @default(0)
+  fees       Float    @default(0)
+  total      Float    @default(0)
+  currency   String   @default("BRL")
+  status     String   @default("draft") // draft | sent | approved | rejected
+  summary    String?  // descrição legível do que foi orçado
+  intake     Json?    // ficha coletada que gerou o orçamento (rastreabilidade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, contactId])
+  @@index([clientId, status])
+}
+
+// F2: fila de handoff — lead quente entregue ao vendedor com briefing rico.
+model Handoff {
+  id         String   @id @default(cuid())
+  clientId   String
+  contactId  String
+  reason     String   // ex: orcamento_aprovado | quer_comprar
+  briefing   Json     // ficha + resumo + referência ao orçamento
+  quoteId    String?
+  status     String   @default("pending") // pending | claimed | done
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, status])
 }
 
 // Log de cada turno da IA (auditoria/observabilidade).
@@ -732,11 +815,28 @@ model AiInteraction {
   tokensOut  Int      @default(0)
   latencyMs  Int      @default(0)
   status     String   @default("ok") // ok | blocked | error | skipped
+  qualityScore Float?  // F3: nota do juiz LLM em amostra de produção (online eval)
   createdAt  DateTime @default(now())
 
   @@unique([clientId, idempotencyKey])
   @@index([clientId, createdAt])
   @@index([contactId, createdAt])
+}
+
+// F3: memória de longo prazo por lead — fatos duráveis que persistem entre conversas
+// (episódica/semântica). A IA registra via ferramenta; recall semântico no atendimento.
+model LeadMemory {
+  id             String    @id @default(cuid())
+  clientId       String
+  contactId      String
+  kind           String    @default("fact") // fact | preference | event
+  content        String
+  importance     Int       @default(1) // 1..5 (peso no recall)
+  embedding      Float[]   // recall semântico (cosseno no app)
+  createdAt      DateTime  @default(now())
+  lastRecalledAt DateTime?
+
+  @@index([clientId, contactId])
 }
 
 // Disponibilidade de visitas por cliente (janelas/slot/capacidade) — agendamento seguro.

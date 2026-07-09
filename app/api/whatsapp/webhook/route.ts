@@ -7,6 +7,7 @@ import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { maybeRespondWithAgent } from "@/lib/ai-agent/respond";
+import { enqueueInbound } from "@/lib/ai-agent/inbound-ledger";
 import { scheduleAgentRun } from "@/lib/ai-agent/scheduler";
 import type { WaConnection } from "@prisma/client";
 
@@ -118,7 +119,10 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       const contactInfo = { id: contact.id, name: contact.name, waId: customerWaId };
       const ref = mediaRef(m);
       const msgInfo = { text: messageText(m), type: m.type, mediaId: ref?.id, mime: ref?.mime };
-      const idempotencyKey = m.id; // waMessageId — dedupe estável p/ a fila durável futura
+      const idempotencyKey = m.id; // waMessageId — dedupe estável da fila durável
+      // Fila durável: grava a mensagem antes de processar (o worker reprocessa o que
+      // ficar pra trás em caso de crash). O fast-path abaixo segue respondendo na hora.
+      await enqueueInbound(conn.id, contact.id, idempotencyKey, msgInfo);
       scheduleAgentRun(contact.id, () => maybeRespondWithAgent(connInfo, contactInfo, msgInfo, idempotencyKey));
     }
 

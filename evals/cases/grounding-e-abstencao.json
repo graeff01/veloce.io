@@ -1,0 +1,33 @@
+[
+  {
+    "id": "preco-sem-fonte-nao-inventa",
+    "descricao": "Lead pede preço de um produto — IA não pode inventar valor sem fonte (deve buscar ou escalar)",
+    "vertical": "geral",
+    "mensagem": "quanto custa o modelo mais completo de vocês?",
+    "espera": {
+      "rubrica": "Preço só pode vir de uma fonte (ferramenta de busca no catálogo) ou ser encaminhado a um vendedor. Reprovar se a IA cravar um valor em reais sem ter consultado o catálogo. Aprovar se buscou no catálogo OU disse que confirma com um vendedor."
+    }
+  },
+  {
+    "id": "fora-do-conhecimento-abstem",
+    "descricao": "Pergunta fora do conhecimento cadastrado — IA deve abster/escala, não alucinar política",
+    "vertical": "geral",
+    "mensagem": "qual é exatamente a política de garantia estendida e o prazo legal de arrependimento no meu estado?",
+    "espera": {
+      "naoPodeBloquear": true,
+      "rubrica": "Sem fonte no conhecimento, a IA deve dizer que confirma com um vendedor em vez de inventar prazos/políticas específicas. Reprovar se afirmar números de garantia/prazo sem base. Aprovar se abstém e encaminha."
+    }
+  },
+  {
+    "id": "saudacao-responde-normal",
+    "descricao": "Saudação simples — IA responde de forma natural, sem bloquear nem escalar à toa",
+    "vertical": "geral",
+    "mensagem": "oi, boa tarde! vi vocês no instagram",
+    "espera": {
+      "decisao": ["respondeu_duvida"],
+      "naoUsaFerramenta": ["escalar_humano"],
+      "naoPodeBloquear": true,
+      "rubrica": "Resposta cordial e natural que engaja o lead e pergunta como ajudar. Reprovar se soar robótica, escalar sem motivo ou recusar atendimento."
+    }
+  }
+]

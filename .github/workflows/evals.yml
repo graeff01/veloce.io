@@ -1,0 +1,34 @@
+# Gate de qualidade da IA (F0): roda a bateria de avaliação (golden dataset) e
+# falha o build se a IA regredir. Requer secrets no repositório:
+#   DATABASE_URL          — banco (config real do cliente de avaliação)
+#   OPENAI_API_KEY        — modelo + juiz LLM
+#   AI_EVAL_CLIENT_ID     — cliente cuja config será avaliada
+#
+# Sem os secrets, o job é pulado (não bloqueia) — habilite quando quiser o gate.
+name: ai-evals
+
+on:
+  pull_request:
+    paths:
+      - "lib/ai-agent/**"
+      - "evals/**"
+      - "prisma/schema.prisma"
+  workflow_dispatch:
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Rodar avaliações (golden dataset)
+        if: ${{ env.AI_EVAL_CLIENT_ID != '' && env.OPENAI_API_KEY != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_EVAL_CLIENT_ID: ${{ secrets.AI_EVAL_CLIENT_ID }}
+        run: npm run eval

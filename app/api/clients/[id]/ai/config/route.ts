@@ -5,6 +5,14 @@ import { z } from "zod";
 
 const windowSchema = z.object({ weekday: z.number().int().min(0).max(6), start: z.string(), end: z.string() });
 
+const intakeFieldSchema = z.object({
+  key: z.string().min(1).max(40),
+  label: z.string().min(1).max(80),
+  required: z.boolean().optional(),
+  type: z.enum(["text", "number", "boolean", "option"]).optional(),
+  options: z.array(z.string().max(60)).optional(),
+});
+
 const putSchema = z.object({
   enabled: z.boolean().optional(),
   status: z.enum(["draft", "test", "live"]).optional(),
@@ -20,6 +28,14 @@ const putSchema = z.object({
   language: z.string().optional(),
   fallbackMessage: z.string().max(1000).nullable().optional(),
   handoffAfter: z.number().int().min(0).max(20).optional(),
+  // F1/F2/F3 — recursos avançados (todos opcionais, default off no schema)
+  verifyReplies: z.boolean().optional(),
+  alwaysOn: z.boolean().optional(),
+  quotesEnabled: z.boolean().optional(),
+  memoryEnabled: z.boolean().optional(),
+  humanize: z.boolean().optional(),
+  visionEnabled: z.boolean().optional(),
+  intakeSpec: z.array(intakeFieldSchema).optional(),
 });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

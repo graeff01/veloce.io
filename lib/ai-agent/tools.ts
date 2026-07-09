@@ -3,6 +3,11 @@ import { Prisma } from "@prisma/client";
 import type { ToolDef } from "@/lib/openai";
 import { slotsForDate, isSlotAvailable, DEFAULT_WINDOWS, type VisitCfg, type Window } from "@/lib/visit-availability";
 import { wallToInstant } from "@/lib/tz";
+import { computeQuote, describeRules, type PricingRules } from "./pricing";
+import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
+import { renderQuotePdf } from "@/lib/quote-pdf";
+import { sendWhatsAppDocument } from "@/lib/whatsapp-send";
+import { embed } from "@/lib/openai";
 
 export interface ToolCtx {
   clientId: string;
@@ -11,7 +16,10 @@ export interface ToolCtx {
   contactName: string | null;
   contactWaId: string;
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
+  intakeSpec?: unknown; // F2: ficha configurável (AiAgentConfig.intakeSpec)
 }
+
+const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -61,6 +69,75 @@ export const TOOL_DEFS: ToolDef[] = [
     },
   },
 ];
+
+// ── F2: ferramentas de orçamento (expostas só quando habilitadas na config) ───
+const INTAKE_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "atualizar_ficha",
+    description: "Registra dados estruturados do lead conforme a ficha configurada. Chame ao descobrir qualquer campo pedido (modelo, medidas, opcionais, endereço...).",
+    parameters: { type: "object", properties: {
+      campos: { type: "object", description: "pares chave:valor conforme a ficha, ex: {\"modelo\":\"X\",\"largura\":200}" },
+    }, required: ["campos"] },
+  },
+};
+
+const QUOTE_TOOLS: ToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "gerar_orcamento",
+      description: "Gera o orçamento a partir dos itens escolhidos. O PREÇO vem SEMPRE desta ferramenta — nunca invente valores. Use exatamente as chaves do catálogo retornado.",
+      parameters: { type: "object", properties: {
+        base: { type: "array", items: { type: "string" }, description: "chaves dos itens-base escolhidos" },
+        opcionais: { type: "array", items: { type: "string" }, description: "chaves dos opcionais" },
+        quantidades: { type: "object", description: "chave:quantidade (opcional; padrão 1)" },
+      }, required: ["base"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_orcamento",
+      description: "Gera o PDF do orçamento e envia ao lead pelo WhatsApp. Use após gerar_orcamento e confirmar com o lead que pode enviar.",
+      parameters: { type: "object", properties: { quoteId: { type: "string", description: "opcional; padrão = último orçamento em rascunho" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "aprovar_orcamento",
+      description: "Use SOMENTE quando o lead aprovar o orçamento ou disser claramente que quer comprar. Passa o lead quente a um vendedor com briefing. Não use para dúvidas.",
+      parameters: { type: "object", properties: {
+        motivo: { type: "string", description: "ex: 'aprovou o orçamento Nº 12' ou 'quer fechar'" },
+        quoteId: { type: "string" },
+      }, required: ["motivo"] },
+    },
+  },
+];
+
+// F3: memória de longo prazo.
+const MEMORY_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "registrar_memoria",
+    description: "Guarda um fato DURÁVEL sobre o lead para lembrar em conversas FUTURAS (preferência, algo que já comprou, contexto pessoal relevante). Não registre trivialidades nem o que já está na ficha.",
+    parameters: { type: "object", properties: {
+      conteudo: { type: "string", description: "o fato a lembrar, curto e objetivo" },
+      tipo: { type: "string", enum: ["fact", "preference", "event"] },
+      importancia: { type: "integer", description: "1 (baixa) a 5 (alta)" },
+    }, required: ["conteudo"] },
+  },
+};
+
+// Ferramentas efetivas por cliente: base + ficha + orçamento + memória (conforme a config).
+export function toolsForConfig(cfg: { intakeSpec?: unknown; quotesEnabled?: boolean; memoryEnabled?: boolean } | null): ToolDef[] {
+  const defs = [...TOOL_DEFS];
+  if (cfg?.intakeSpec && Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
+  if (cfg?.quotesEnabled) defs.push(...QUOTE_TOOLS);
+  if (cfg?.memoryEnabled) defs.push(MEMORY_TOOL);
+  return defs;
+}
 
 async function getVisitCfg(clientId: string): Promise<{ cfg: VisitCfg; tz: string }> {
   const c = await prisma.visitConfig.findUnique({ where: { clientId } });
@@ -160,6 +237,119 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     case "escalar_humano": {
       return { result: "Ok. Diga ao lead que um vendedor dará sequência e registre o motivo. Não prometa prazo específico.", decision: "escalou" };
+    }
+
+    // ── F2: coleta estruturada ─────────────────────────────────────────────────
+    case "atualizar_ficha": {
+      const spec = parseSpec(ctx.intakeSpec);
+      if (!spec.length) return { result: "Nenhuma ficha configurada para este cliente." };
+      const { data, invalidOptions } = sanitizeIntake(spec, (args.campos as Record<string, unknown>) ?? {});
+      if (ctx.mode === "test") return { result: `(teste) Ficha: ${summarizeIntake(spec, data) || "nada válido"}.` };
+
+      const existing = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      const merged: IntakeData = { ...((existing?.data as IntakeData) ?? {}), ...data };
+      await prisma.leadProfile.upsert({
+        where: { contactId: ctx.contactId },
+        create: { connectionId: ctx.connectionId, contactId: ctx.contactId, data: merged as unknown as Prisma.InputJsonValue },
+        update: { data: merged as unknown as Prisma.InputJsonValue },
+      });
+      const missing = missingRequired(spec, merged);
+      const inval = invalidOptions.length ? ` Valores inválidos (ignorados): ${invalidOptions.join(", ")}.` : "";
+      return { result: missing.length ? `Ficha atualizada. Ainda falta: ${missing.map((f) => f.label).join(", ")}.${inval}` : `Ficha completa.${inval}` };
+    }
+
+    // ── F2: gerar orçamento (preço determinístico — nunca inventado) ────────────
+    case "gerar_orcamento": {
+      const pc = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId } });
+      if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
+      const rules = pc.rules as unknown as PricingRules;
+      const sel = { base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined };
+      const r = computeQuote(rules, sel);
+      if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
+
+      const q = r.quote;
+      const summary = q.items.map((i) => i.label).join(", ");
+      if (ctx.mode === "test") return { result: `(teste) Orçamento: ${brl(q.total, pc.currency)} (não gravado). Itens: ${summary}.`, decision: "orcou" };
+
+      const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
+      const number = (last?.number ?? 0) + 1;
+      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      await prisma.quote.create({ data: {
+        clientId: ctx.clientId, contactId: ctx.contactId, number,
+        items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
+        currency: pc.currency, status: "draft", summary, intake: (prof?.data as Prisma.InputJsonValue) ?? undefined,
+      } });
+      const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
+      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
+    }
+
+    // ── F2: enviar o PDF do orçamento pelo WhatsApp ────────────────────────────
+    case "enviar_orcamento": {
+      const quote = args.quoteId
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "draft" }, orderBy: { createdAt: "desc" } });
+      if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
+      if (ctx.mode === "test") return { result: `(teste) Enviaria o PDF do orçamento Nº ${quote.number} (não enviado).`, decision: "orcou" };
+
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId } });
+      if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
+      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
+
+      try {
+        const pdf = await renderQuotePdf({
+          clientName: client?.name ?? "Orçamento", number: quote.number, contactName: ctx.contactName,
+          items: quote.items as unknown as { label: string; qty: number; unit: number; amount: number }[],
+          subtotal: quote.subtotal, fees: quote.fees, total: quote.total, currency: quote.currency,
+          summary: quote.summary, generatedAt: new Date().toLocaleDateString("pt-BR"),
+        });
+        const sent = await sendWhatsAppDocument(
+          { phoneNumberId: conn.phoneNumberId, accessToken: conn.accessToken }, ctx.contactWaId,
+          { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` },
+        );
+        if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
+        await prisma.quote.update({ where: { id: quote.id }, data: { status: "sent" } });
+        return { result: `Orçamento Nº ${quote.number} enviado ao lead em PDF. Confirme o recebimento e tire dúvidas.`, decision: "orcou" };
+      } catch (e) {
+        return { result: `Não consegui gerar/enviar o PDF (${String(e).slice(0, 80)}). Ofereça chamar um vendedor.` };
+      }
+    }
+
+    // ── F2: handoff por intenção real (lead quente → vendedor com briefing) ─────
+    case "aprovar_orcamento": {
+      const quote = args.quoteId
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId }, orderBy: { createdAt: "desc" } });
+      if (ctx.mode === "test") return { result: "(teste) Marcaria o lead como quente e criaria o handoff.", decision: "escalou" };
+
+      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      const recent = await prisma.waMessage.findMany({ where: { contactId: ctx.contactId }, orderBy: { timestamp: "desc" }, take: 10, select: { direction: true, text: true } });
+      const resumo = [...recent].reverse().filter((m) => m.text).map((m) => `${m.direction === "in" ? "Lead" : "IA"}: ${m.text}`);
+      const briefing = {
+        motivo: String(args.motivo ?? ""),
+        ficha: (prof?.data as IntakeData) ?? null,
+        orcamento: quote ? { numero: quote.number, total: quote.total, currency: quote.currency } : null,
+        resumo,
+      };
+      await prisma.handoff.create({ data: {
+        clientId: ctx.clientId, contactId: ctx.contactId, reason: String(args.motivo ?? "quer_comprar"),
+        briefing: briefing as unknown as Prisma.InputJsonValue, quoteId: quote?.id ?? null, status: "pending",
+      } });
+      if (quote) await prisma.quote.update({ where: { id: quote.id }, data: { status: "approved" } });
+      if (prof) await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { qualified: true } });
+      return { result: "Lead marcado como QUENTE e enviado a um vendedor com o briefing (ficha + orçamento + resumo). Diga ao lead que um vendedor dará sequência para fechar. Não prometa prazo.", decision: "escalou" };
+    }
+
+    // ── F3: memória de longo prazo ─────────────────────────────────────────────
+    case "registrar_memoria": {
+      const conteudo = String(args.conteudo ?? "").trim();
+      if (!conteudo) return { result: "Nada para registrar." };
+      if (ctx.mode === "test") return { result: `(teste) Memória registraria: "${conteudo}".` };
+      const importancia = Math.min(Math.max(Math.round(Number(args.importancia ?? 2)), 1), 5);
+      const kind = ["fact", "preference", "event"].includes(String(args.tipo)) ? String(args.tipo) : "fact";
+      let embedding: number[] = [];
+      try { const [e] = await embed([conteudo]); embedding = e ?? []; } catch { /* segue sem embedding (recall por importância) */ }
+      await prisma.leadMemory.create({ data: { clientId: ctx.clientId, contactId: ctx.contactId, content: conteudo, kind, importance: importancia, embedding } });
+      return { result: "Memória registrada — vou lembrar disso nas próximas conversas." };
     }
 
     default:

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   CalendarClock, Activity, Check, FlaskConical, Send, RotateCcw,
+  DollarSign, Inbox,
 } from "lucide-react";
 
 // ── Tokens & helpers ──────────────────────────────────────────────────────────
@@ -37,7 +38,19 @@ function WindowsEditor({ value, onChange }: { value: Window[]; onChange: (w: Win
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-interface Cfg { enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null; businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean }
+interface IntakeField { key: string; label: string; required?: boolean; type?: "text" | "number" | "boolean" | "option"; options?: string[] }
+interface Cfg {
+  enabled: boolean; status: string; persona: string | null; goals: string | null; rules: string | null;
+  businessHours: Window[]; fallbackMessage: string | null; model: string; audioTranscription: boolean;
+  vertical: string; alwaysOn: boolean; quotesEnabled: boolean; memoryEnabled: boolean; humanize: boolean;
+  visionEnabled: boolean; verifyReplies: boolean; intakeSpec: IntakeField[];
+}
+
+const VERTICALS = [
+  { key: "automotivo", label: "Automotivo" },
+  { key: "configuravel", label: "Produto configurável" },
+  { key: "geral", label: "Geral" },
+];
 
 const STATUS_OPTS: { key: string; label: string; hint: string }[] = [
   { key: "draft", label: "Rascunho", hint: "configurando — não atende" },
@@ -54,7 +67,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
   useEffect(() => {
     fetch(`/api/clients/${clientId}/ai/config`).then((r) => r.json()).then((d) => {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true });
+      setCfg({ enabled: d?.enabled ?? false, status: d?.status ?? "draft", persona: d?.persona ?? "", goals: d?.goals ?? "", rules: d?.rules ?? "", businessHours: d?.businessHours ?? [], fallbackMessage: d?.fallbackMessage ?? "", model: d?.model ?? "gpt-4o-mini", audioTranscription: d?.audioTranscription ?? true, vertical: d?.vertical ?? "automotivo", alwaysOn: d?.alwaysOn ?? false, quotesEnabled: d?.quotesEnabled ?? false, memoryEnabled: d?.memoryEnabled ?? false, humanize: d?.humanize ?? false, visionEnabled: d?.visionEnabled ?? false, verifyReplies: d?.verifyReplies ?? false, intakeSpec: Array.isArray(d?.intakeSpec) ? d.intakeSpec : [] });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
     });
@@ -124,12 +137,82 @@ function ConfigSection({ clientId }: { clientId: string }) {
         </div>
       </div>
 
+      <div style={card}>
+        <label style={label}>Segmento (vertical) — define os guardrails padrão</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+          {VERTICALS.map((v) => (
+            <button key={v.key} onClick={() => set({ vertical: v.key })} style={btn(cfg.vertical === v.key)}>{v.label}</button>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Recursos avançados</div>
+          <FeatureToggle on={cfg.alwaysOn} onChange={(v) => set({ alwaysOn: v })} title="Primeira linha 24/7" hint="A IA atende o dia todo, não só fora do horário." />
+          <FeatureToggle on={cfg.humanize} onChange={(v) => set({ humanize: v })} title="Naturalidade" hint="Quebra a resposta em mensagens e ajusta o tom pelo sentimento do lead." />
+          <FeatureToggle on={cfg.memoryEnabled} onChange={(v) => set({ memoryEnabled: v })} title="Memória de longo prazo" hint="A IA lembra de fatos do lead entre conversas." />
+          <FeatureToggle on={cfg.visionEnabled} onChange={(v) => set({ visionEnabled: v })} title="Analisar imagens" hint="Lê fotos que o lead envia (espaço, referência)." />
+          <FeatureToggle on={cfg.verifyReplies} onChange={(v) => set({ verifyReplies: v })} title="Verificação extra (anti-alucinação)" hint="Confere cada resposta contra as fontes antes de enviar. Custa 1 chamada a mais." />
+          <FeatureToggle on={cfg.quotesEnabled} onChange={(v) => set({ quotesEnabled: v })} title="Orçamento (coleta + preço + PDF + handoff)" hint="Habilita a IA a coletar dados, gerar orçamento e passar lead quente ao vendedor." />
+        </div>
+
+        {cfg.quotesEnabled && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+            <label style={label}>Ficha a coletar (a IA pergunta esses dados)</label>
+            <IntakeEditor value={cfg.intakeSpec} onChange={(s) => set({ intakeSpec: s })} />
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>A <b>tabela de preços</b> é configurada na aba <b>Preços</b>.</p>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={save} disabled={saving} style={btn(true)}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />} {saved ? "Salvo" : "Salvar configuração"}
         </button>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Motor: {cfg.model}</span>
       </div>
+    </div>
+  );
+}
+
+// Toggle de recurso (linha com título + descrição + switch).
+function FeatureToggle({ on, onChange, title, hint }: { on: boolean; onChange: (v: boolean) => void; title: string; hint: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0" }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{title}</div>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{hint}</p>
+      </div>
+      <button onClick={() => onChange(!on)} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: on ? "var(--green)" : "var(--border)", position: "relative", flexShrink: 0 }}>
+        <span style={{ position: "absolute", top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+      </button>
+    </div>
+  );
+}
+
+// Editor da ficha configurável (lista de campos: chave, rótulo, obrigatório, tipo).
+function IntakeEditor({ value, onChange }: { value: IntakeField[]; onChange: (v: IntakeField[]) => void }) {
+  const upd = (i: number, p: Partial<IntakeField>) => onChange(value.map((f, idx) => (idx === i ? { ...f, ...p } : f)));
+  const add = () => onChange([...value, { key: "", label: "", required: false, type: "text" }]);
+  const del = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {value.map((f, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input style={{ ...input, flex: "1 1 110px", minWidth: 90 }} value={f.key} onChange={(e) => upd(i, { key: e.target.value.replace(/\s+/g, "_").toLowerCase() })} placeholder="chave (ex: modelo)" />
+          <input style={{ ...input, flex: "1 1 140px", minWidth: 110 }} value={f.label} onChange={(e) => upd(i, { label: e.target.value })} placeholder="rótulo (ex: Modelo desejado)" />
+          <select style={{ ...input, width: 110 }} value={f.type ?? "text"} onChange={(e) => upd(i, { type: e.target.value as IntakeField["type"] })}>
+            <option value="text">texto</option>
+            <option value="number">número</option>
+            <option value="boolean">sim/não</option>
+            <option value="option">opções</option>
+          </select>
+          <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+            <input type="checkbox" checked={!!f.required} onChange={(e) => upd(i, { required: e.target.checked })} /> obrig.
+          </label>
+          <button onClick={() => del(i)} style={{ ...btn(false), padding: "6px 8px" }}><Trash2 size={13} /></button>
+        </div>
+      ))}
+      <button onClick={add} style={{ ...btn(false), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar campo</button>
     </div>
   );
 }
@@ -401,13 +484,171 @@ function ConsoleSection({ clientId }: { clientId: string }) {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-type Section = "config" | "console" | "catalogo" | "conhecimento" | "agendamento" | "atividade";
+// ── Preços (F2) ───────────────────────────────────────────────────────────────
+interface PriceItem { key: string; label: string; amount: number }
+interface Fee { key: string; label: string; amount?: number; percent?: number }
+interface Rules { base: PriceItem[]; options: PriceItem[]; fees: Fee[] }
+
+function PricingSection({ clientId }: { clientId: string }) {
+  const [currency, setCurrency] = useState("BRL");
+  const [rules, setRules] = useState<Rules>({ base: [], options: [], fees: [] });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/ai/pricing`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrency(d?.currency ?? "BRL");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRules({ base: d?.rules?.base ?? [], options: d?.rules?.options ?? [], fees: d?.rules?.fees ?? [] });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+    });
+  }, [clientId]);
+
+  async function save() {
+    setSaving(true);
+    await fetch(`/api/clients/${clientId}/ai/pricing`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currency, rules }) });
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  const setItems = (group: "base" | "options", items: PriceItem[]) => setRules({ ...rules, [group]: items });
+  const updItem = (group: "base" | "options", i: number, p: Partial<PriceItem>) => setItems(group, rules[group].map((it, idx) => (idx === i ? { ...it, ...p } : it)));
+  const addItem = (group: "base" | "options") => setItems(group, [...rules[group], { key: "", label: "", amount: 0 }]);
+  const delItem = (group: "base" | "options", i: number) => setItems(group, rules[group].filter((_, idx) => idx !== i));
+
+  const ItemEditor = (group: "base" | "options", titulo: string) => (
+    <div style={card}>
+      <label style={label}>{titulo}</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rules[group].map((it, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <input style={{ ...input, flex: "1 1 100px", minWidth: 80 }} value={it.key} onChange={(e) => updItem(group, i, { key: e.target.value.replace(/\s+/g, "_").toLowerCase() })} placeholder="chave" />
+            <input style={{ ...input, flex: "1 1 150px", minWidth: 110 }} value={it.label} onChange={(e) => updItem(group, i, { label: e.target.value })} placeholder="rótulo" />
+            <input style={{ ...input, width: 120 }} type="number" value={it.amount} onChange={(e) => updItem(group, i, { amount: Number(e.target.value) })} placeholder="valor (R$)" />
+            <button onClick={() => delItem(group, i)} style={{ ...btn(false), padding: "6px 8px" }}><Trash2 size={13} /></button>
+          </div>
+        ))}
+        <button onClick={() => addItem(group)} style={{ ...btn(false), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar</button>
+      </div>
+    </div>
+  );
+
+  const updFee = (i: number, p: Partial<Fee>) => setRules({ ...rules, fees: rules.fees.map((f, idx) => (idx === i ? { ...f, ...p } : f)) });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Tabela de preços da IA. Ela só usa <b>estas chaves</b> — o valor nunca é inventado. Base é o que o cliente escolhe; opcionais somam; taxas podem ser valor fixo ou % do subtotal.</p>
+      {ItemEditor("base", "Itens base (o cliente escolhe um)")}
+      {ItemEditor("options", "Opcionais (somam ao preço)")}
+      <div style={card}>
+        <label style={label}>Taxas (frete, instalação — valor fixo OU %)</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {rules.fees.map((f, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input style={{ ...input, flex: "1 1 100px", minWidth: 80 }} value={f.key} onChange={(e) => updFee(i, { key: e.target.value.replace(/\s+/g, "_").toLowerCase() })} placeholder="chave" />
+              <input style={{ ...input, flex: "1 1 130px", minWidth: 100 }} value={f.label} onChange={(e) => updFee(i, { label: e.target.value })} placeholder="rótulo" />
+              <input style={{ ...input, width: 100 }} type="number" value={f.amount ?? ""} onChange={(e) => updFee(i, { amount: e.target.value === "" ? undefined : Number(e.target.value), percent: undefined })} placeholder="R$ fixo" />
+              <input style={{ ...input, width: 80 }} type="number" value={f.percent ?? ""} onChange={(e) => updFee(i, { percent: e.target.value === "" ? undefined : Number(e.target.value), amount: undefined })} placeholder="%" />
+              <button onClick={() => setRules({ ...rules, fees: rules.fees.filter((_, idx) => idx !== i) })} style={{ ...btn(false), padding: "6px 8px" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button onClick={() => setRules({ ...rules, fees: [...rules.fees, { key: "", label: "" }] })} style={{ ...btn(false), alignSelf: "flex-start" }}><Plus size={13} /> Adicionar taxa</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={save} disabled={saving} style={btn(true)}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />} {saved ? "Salvo" : "Salvar tabela"}
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Moeda</span>
+          <input style={{ ...input, width: 70 }} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Handoffs (F2) ─────────────────────────────────────────────────────────────
+interface HandoffRow {
+  id: string; reason: string; status: string; quoteId: string | null; createdAt: string;
+  briefing: { motivo?: string; ficha?: Record<string, unknown> | null; orcamento?: { numero: number; total: number; currency: string } | null; resumo?: string[] };
+  contact: { name: string | null; displayName: string | null; waId: string } | null;
+}
+
+function HandoffSection({ clientId }: { clientId: string }) {
+  const [rows, setRows] = useState<HandoffRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  function load() {
+    fetch(`/api/clients/${clientId}/ai/handoffs`).then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRows(Array.isArray(d) ? d : []); setLoading(false);
+    });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [clientId]);
+
+  async function setStatus(handoffId: string, status: string) {
+    await fetch(`/api/clients/${clientId}/ai/handoffs`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ handoffId, status }) });
+    load();
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+
+  const pill = (s: string) => {
+    const map: Record<string, [string, string]> = { pending: ["#B45309", "rgba(245,158,11,0.12)"], claimed: ["#2563EB", "rgba(37,99,235,0.12)"], done: ["#16A34A", "rgba(22,163,74,0.12)"] };
+    const [fg, bg] = map[s] ?? ["#6B7280", "rgba(107,114,128,0.12)"];
+    return <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, padding: "2px 8px", borderRadius: 20 }}>{s === "pending" ? "novo" : s === "claimed" ? "em atendimento" : "concluído"}</span>;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Leads <b>quentes</b> que a IA passou para o vendedor — com a ficha, o orçamento e o resumo da conversa.</p>
+      {rows.length === 0 && <div style={{ ...card, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum handoff ainda.</div>}
+      {rows.map((h) => (
+        <div key={h.id} style={card}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+              {h.contact?.displayName ?? h.contact?.name ?? "Lead"} {h.contact?.waId ? <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>· {h.contact.waId}</span> : null}
+            </div>
+            {pill(h.status)}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}><b>Motivo:</b> {h.briefing?.motivo ?? h.reason}</div>
+          {h.briefing?.orcamento && (
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}><b>Orçamento:</b> Nº {h.briefing.orcamento.numero} — {h.briefing.orcamento.total.toLocaleString("pt-BR", { style: "currency", currency: h.briefing.orcamento.currency || "BRL" })}</div>
+          )}
+          {h.briefing?.ficha && Object.keys(h.briefing.ficha).length > 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}><b>Ficha:</b> {Object.entries(h.briefing.ficha).map(([k, v]) => `${k}: ${v}`).join(" · ")}</div>
+          )}
+          {h.briefing?.resumo && h.briefing.resumo.length > 0 && (
+            <details style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+              <summary style={{ cursor: "pointer" }}>Ver resumo da conversa</summary>
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>{h.briefing.resumo.map((l, i) => <span key={i}>{l}</span>)}</div>
+            </details>
+          )}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            {h.status !== "claimed" && <button onClick={() => setStatus(h.id, "claimed")} style={btn(false)}>Assumir</button>}
+            {h.status !== "done" && <button onClick={() => setStatus(h.id, "done")} style={btn(true)}><Check size={13} /> Concluir</button>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type Section = "config" | "precos" | "handoffs" | "console" | "catalogo" | "conhecimento" | "agendamento" | "atividade";
 
 export function AiAgentTab({ clientId }: { clientId: string }) {
   const [section, setSection] = useState<Section>("config");
   const sections: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: "config", label: "Configuração", icon: <Bot size={13} /> },
     { key: "console", label: "Console", icon: <FlaskConical size={13} /> },
+    { key: "precos", label: "Preços", icon: <DollarSign size={13} /> },
+    { key: "handoffs", label: "Handoffs", icon: <Inbox size={13} /> },
     { key: "catalogo", label: "Estoque", icon: <Package size={13} /> },
     { key: "conhecimento", label: "Conhecimento", icon: <BookOpen size={13} /> },
     { key: "agendamento", label: "Agendamento", icon: <CalendarClock size={13} /> },
@@ -424,6 +665,8 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         ))}
       </div>
       {section === "config" && <ConfigSection clientId={clientId} />}
+      {section === "precos" && <PricingSection clientId={clientId} />}
+      {section === "handoffs" && <HandoffSection clientId={clientId} />}
       {section === "console" && <ConsoleSection clientId={clientId} />}
       {section === "catalogo" && <CatalogSection clientId={clientId} />}
       {section === "conhecimento" && <KnowledgeSection clientId={clientId} />}

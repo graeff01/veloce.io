@@ -17,6 +17,7 @@ import {
   Wallet,
   Users,
   UserRound,
+  Bot,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -36,6 +37,7 @@ const bottomNavItems = [
 ];
 
 const adminNavItems = [
+  { href: "/ai-agent", icon: Bot,      label: "IA" },
   { href: "/settings", icon: Settings, label: "Configuracoes" },
 ];
 
