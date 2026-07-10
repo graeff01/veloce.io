@@ -87,6 +87,8 @@ export async function buildFicha(clientId: string, contactId: string): Promise<s
   if (profile?.budget) facts.push(`• Orçamento: ${profile.budget}`);
   if (profile?.hasTradeIn) facts.push(`• Troca: ${profile.tradeInDetail || "sim"}`);
   if (profile?.wantsFinancing) facts.push(`• Financiamento: ${profile.financingDetail || "tem interesse"}`);
+  if (profile?.paymentMethod) facts.push(`• Pagamento: ${profile.paymentMethod}`);
+  if (profile?.downPayment) facts.push(`• Entrada pretendida: ${profile.downPayment}`);
   if (profile?.urgency) facts.push(`• Urgência: ${profile.urgency}`);
   if (profile?.usageContext) facts.push(`• Uso/motivação: ${profile.usageContext}`);
   if (profile?.buyingPriority) facts.push(`• O que mais pesa: ${profile.buyingPriority}`);
@@ -98,6 +100,10 @@ export async function buildFicha(clientId: string, contactId: string): Promise<s
   if (narrative) { L.push("🧭 Contexto pro vendedor:"); L.push(narrative); L.push(""); }
 
   if (facts.length) { L.push("📋 O que se sabe:"); L.push(...facts); L.push(""); }
+
+  // Alerta de qualificação financeira: nenhum sinal (pagamento/entrada/troca/orçamento/financiamento).
+  const hasFinancialSignal = !!(profile?.budget || profile?.paymentMethod || profile?.downPayment || profile?.hasTradeIn || profile?.wantsFinancing != null);
+  if (!hasFinancialSignal) { L.push("⚠️ SEM QUALIFICAÇÃO FINANCEIRA — lead não revelou pagamento/entrada/troca."); L.push(""); }
 
   if (convo?.agentMemory) { L.push("🧠 Resumo da conversa:"); L.push(convo.agentMemory); L.push(""); }
   if (openObj.length) { L.push(`⚠️ Objeções em aberto: ${openObj.join(", ")}`); L.push(""); }

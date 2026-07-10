@@ -5,7 +5,7 @@ import { buildStablePrompt } from "../lib/ai-agent/orchestrator";
 
 const baseCfg = {
   language: "pt-BR", assistantName: "Helena", storeName: "Loja X",
-  persona: null, goals: null, rules: null, timezone: "America/Sao_Paulo",
+  persona: null, goals: null, rules: null, timezone: "America/Sao_Paulo", variantKey: null,
 };
 
 test("parsePlaybook: vazio/ inválido → null; com conteúdo → objeto", () => {
