@@ -284,6 +284,13 @@ model ContentPost {
   type        String    @default("feed")   // feed | carrossel
   copy        String?                       // legenda / copy
   references  String?                       // links / referências do briefing
+  objetivo    String?                       // awareness|engajamento|conversao|prova (validado no app)
+  publicoAlvo String?                       // público-alvo (texto curto)
+  formato     String?                       // spec: feed 4:5, story 9:16, carrossel 6x, reel…
+  cta         String?                       // chamada pra ação
+  tom         String?                       // tom de voz / estilo visual
+  mustHaves   String[]  @default([])         // checklist ✓ — o que a arte precisa ter
+  avoid       String[]  @default([])         // checklist ✗ — o que NÃO fazer
   status      String    @default("pauta")  // pauta|criacao|revisao|aprovado|agendado|publicado
   publishDate DateTime?                     // data de publicação planejada
   artUrl      String?                       // link da arte final (Google Drive) — 100%

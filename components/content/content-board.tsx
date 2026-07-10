@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Modal } from "@/components/ui/modal";
-import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat, Send } from "lucide-react";
+import { Plus, Loader2, Trash2, Check, ExternalLink, Link2, ImageIcon, LayoutGrid, CalendarDays, RefreshCw, ChevronLeft, ChevronRight, Repeat, Send, Copy, Pencil, ClipboardList, X } from "lucide-react";
 
 interface Post {
   id: string; title: string; type: string; copy: string | null; references: string | null;
+  objetivo: string | null; publicoAlvo: string | null; formato: string | null; cta: string | null; tom: string | null; mustHaves: string[]; avoid: string[];
   status: string; publishDate: string | null; artUrl: string | null; previewUrl: string | null; feedback: string | null; notes: string | null; approvedAt: string | null;
 }
 interface Recurrence { id: string; label: string; type: string; weekday: number }
@@ -36,12 +37,36 @@ function ddmm(iso: string | null) {
 }
 const typePill = (type: string): React.CSSProperties => ({ fontSize: 10, fontWeight: 600, color: type === "carrossel" ? "#7C3AED" : "#2563EB", background: type === "carrossel" ? "#7C3AED1A" : "#2563EB1A", padding: "1px 7px", borderRadius: 20 });
 
+const OBJETIVOS: { key: string; label: string }[] = [
+  { key: "awareness",   label: "Awareness" },
+  { key: "engajamento", label: "Engajamento" },
+  { key: "conversao",   label: "Conversão" },
+  { key: "prova",       label: "Prova social" },
+];
+const objetivoLabel = (k: string | null) => OBJETIVOS.find((o) => o.key === k)?.label ?? null;
+
+// Extrai os links da caixa de referências (texto livre) → chips clicáveis com domínio.
+// Sobra de texto (ideias sem URL) é devolvida à parte pra não sumir do briefing.
+function parseRefs(text: string | null): { links: { url: string; domain: string }[]; rest: string } {
+  if (!text) return { links: [], rest: "" };
+  const links: { url: string; domain: string }[] = [];
+  const urls = text.match(/https?:\/\/[^\s,;]+/gi) ?? [];
+  for (const url of urls) {
+    let domain = url;
+    try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* mantém a url */ }
+    links.push({ url, domain });
+  }
+  const rest = urls.reduce((acc, u) => acc.replace(u, ""), text).replace(/[\s,;]+/g, " ").trim();
+  return { links, rest };
+}
+
 export function ContentBoard() {
   const { data: session } = useSession();
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
-  // Designer agora cria pauta e edita o briefing (content:create). Aprovar/apagar = isAdmin.
-  const canBrief = role === "ADMIN" || role === "OPERATIONAL" || role === "DESIGNER";
+  // Só o gestor monta/edita o briefing (content:create). Designer lê o briefing, sobe arte,
+  // comenta e move o card (content:update). Aprovar/apagar = isAdmin.
+  const canBrief = role === "ADMIN" || role === "OPERATIONAL";
 
   const now = new Date();
   const [view, setView] = useState<"board" | "calendar">("board");
@@ -297,6 +322,15 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh 
   const [type, setType] = useState(post?.type ?? "feed");
   const [copy, setCopy] = useState(post?.copy ?? "");
   const [refs, setRefs] = useState(post?.references ?? "");
+  const [objetivo, setObjetivo] = useState(post?.objetivo ?? "");
+  const [publicoAlvo, setPublicoAlvo] = useState(post?.publicoAlvo ?? "");
+  const [formato, setFormato] = useState(post?.formato ?? "");
+  const [cta, setCta] = useState(post?.cta ?? "");
+  const [tom, setTom] = useState(post?.tom ?? "");
+  const [mustHaves, setMustHaves] = useState<string[]>(post?.mustHaves ?? []);
+  const [avoid, setAvoid] = useState<string[]>(post?.avoid ?? []);
+  const [editing, setEditing] = useState(mode === "create"); // create já abre no formulário
+  const [copied, setCopied] = useState(false);
   const [publishDate, setPublishDate] = useState(post?.publishDate ? post.publishDate.slice(0, 10) : "");
   const [artUrl, setArtUrl] = useState(post?.artUrl ?? "");
   const [previewUrl, setPreviewUrl] = useState(post?.previewUrl ?? "");
@@ -320,7 +354,7 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh 
   async function create() {
     if (!title.trim()) { setErr("Título é obrigatório"); return; }
     setBusy(true); setErr("");
-    const r = await fetch("/api/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, type, copy, references: refs, publishDate: publishDate || null }) });
+    const r = await fetch("/api/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, type, copy, references: refs, publishDate: publishDate || null, objetivo: objetivo || null, publicoAlvo, formato, cta, tom, mustHaves, avoid }) });
     setBusy(false);
     if (!r.ok) { setErr("Erro ao criar"); return; }
     onSaved();
@@ -331,8 +365,22 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh 
     if (canBrief) {
       body.title = title; body.type = type; body.copy = copy || null; body.references = refs || null;
       body.publishDate = publishDate || null;
+      body.objetivo = objetivo || null; body.publicoAlvo = publicoAlvo || null; body.formato = formato || null;
+      body.cta = cta || null; body.tom = tom || null; body.mustHaves = mustHaves; body.avoid = avoid;
     }
     if (await patch(body)) onSaved();
+  }
+  // Cancela a edição do briefing: descarta o rascunho e volta pro sheet de leitura.
+  function cancelEdit() {
+    setTitle(post?.title ?? ""); setType(post?.type ?? "feed"); setCopy(post?.copy ?? ""); setRefs(post?.references ?? "");
+    setObjetivo(post?.objetivo ?? ""); setPublicoAlvo(post?.publicoAlvo ?? ""); setFormato(post?.formato ?? "");
+    setCta(post?.cta ?? ""); setTom(post?.tom ?? ""); setMustHaves(post?.mustHaves ?? []); setAvoid(post?.avoid ?? []);
+    setPublishDate(post?.publishDate ? post.publishDate.slice(0, 10) : "");
+    setErr(""); setEditing(false);
+  }
+  async function copyCopy() {
+    if (!copy) return;
+    try { await navigator.clipboard.writeText(copy); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setErr("Não consegui copiar."); }
   }
   async function move(to: string) { if (await patch({ status: to })) onSaved(); }
   async function del() { if (!post || !confirm("Excluir esta pauta?")) return; await fetch(`/api/content/${post.id}`, { method: "DELETE" }); onSaved(); }
@@ -383,31 +431,23 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh 
             👀 Você está vendo a pauta do gestor (só leitura). Edite só o <b>link da arte</b>, fale pela <b>atividade</b> e arraste o card pra mudar de etapa.
           </div>
         )}
-        <div>
-          <label style={label}>Tema do post</label>
-          <input style={field} value={title} onChange={(e) => setTitle(e.target.value)} readOnly={ro} placeholder="Ex: Lei da atração — carrossel educativo" />
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <label style={label}>Formato</label>
-            <select style={field} value={type} onChange={(e) => setType(e.target.value)} disabled={ro}>
-              <option value="feed">Feed</option>
-              <option value="carrossel">Carrossel</option>
-            </select>
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={label}>Data de publicação</label>
-            <input type="date" style={field} value={publishDate} onChange={(e) => setPublishDate(e.target.value)} readOnly={ro} />
-          </div>
-        </div>
-        <div>
-          <label style={label}>Copy / legenda</label>
-          <textarea style={{ ...field, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical" }} value={copy ?? ""} onChange={(e) => setCopy(e.target.value)} readOnly={ro} placeholder="Texto da legenda…" />
-        </div>
-        <div>
-          <label style={label}>Referências</label>
-          <textarea style={{ ...field, height: "auto", minHeight: 44, padding: "8px 10px", resize: "vertical" }} value={refs ?? ""} onChange={(e) => setRefs(e.target.value)} readOnly={ro} placeholder="Links / ideias de referência…" />
-        </div>
+        {editing ? (
+          <BriefingForm
+            mode={mode} title={title} setTitle={setTitle} type={type} setType={setType}
+            objetivo={objetivo} setObjetivo={setObjetivo} formato={formato} setFormato={setFormato}
+            cta={cta} setCta={setCta} publicoAlvo={publicoAlvo} setPublicoAlvo={setPublicoAlvo}
+            tom={tom} setTom={setTom} copy={copy} setCopy={setCopy} refs={refs} setRefs={setRefs}
+            publishDate={publishDate} setPublishDate={setPublishDate}
+            mustHaves={mustHaves} setMustHaves={setMustHaves} avoid={avoid} setAvoid={setAvoid}
+            onCancel={mode === "edit" ? cancelEdit : undefined}
+          />
+        ) : (
+          <BriefingSheet
+            objetivo={objetivo} formato={formato} cta={cta} type={type} publishDate={publishDate}
+            publicoAlvo={publicoAlvo} tom={tom} copy={copy} refs={refs} mustHaves={mustHaves} avoid={avoid}
+            canBrief={canBrief} copied={copied} onCopy={copyCopy} onEdit={() => setEditing(true)}
+          />
+        )}
 
         {mode === "edit" && (
           <>
@@ -506,5 +546,254 @@ function PostModal({ mode, post, canBrief, isAdmin, onClose, onSaved, onRefresh 
         {err && <p style={{ fontSize: 12, color: "var(--red)", background: "var(--red-soft)", padding: "8px 10px", borderRadius: 8 }}>{err}</p>}
       </div>
     </Modal>
+  );
+}
+
+// Input de itens curtos (checklist) — adiciona no Enter, remove no X. Sem textão.
+function TagInput({ items, onChange, placeholder, tone }: { items: string[]; onChange: (v: string[]) => void; placeholder: string; tone: "include" | "avoid" }) {
+  const [draft, setDraft] = useState("");
+  const color = tone === "include" ? "var(--green)" : "var(--red)";
+  const glyph = tone === "include" ? "✓" : "✗";
+  function add() {
+    const v = draft.trim().slice(0, 80);
+    if (!v || items.includes(v) || items.length >= 12) { setDraft(""); return; }
+    onChange([...items, v]); setDraft("");
+  }
+  return (
+    <div>
+      {items.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 8 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", borderRadius: 8, background: "var(--bg-base)", border: "1px solid var(--border)" }}>
+              <span style={{ color, fontWeight: 700, fontSize: 13 }}>{glyph}</span>
+              <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-primary)" }}>{it}</span>
+              <button onClick={() => onChange(items.filter((_, j) => j !== i))} title="Remover" style={{ border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "inline-flex", padding: 2 }}><X size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input style={field} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={placeholder}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} onBlur={add} />
+    </div>
+  );
+}
+
+// Formulário do briefing (modo edição / criação). Mesma ordem do sheet de leitura.
+function BriefingForm(p: {
+  mode: "create" | "edit";
+  title: string; setTitle: (v: string) => void; type: string; setType: (v: string) => void;
+  objetivo: string; setObjetivo: (v: string) => void; formato: string; setFormato: (v: string) => void;
+  cta: string; setCta: (v: string) => void; publicoAlvo: string; setPublicoAlvo: (v: string) => void;
+  tom: string; setTom: (v: string) => void; copy: string; setCopy: (v: string) => void; refs: string; setRefs: (v: string) => void;
+  publishDate: string; setPublishDate: (v: string) => void;
+  mustHaves: string[]; setMustHaves: (v: string[]) => void; avoid: string[]; setAvoid: (v: string[]) => void;
+  onCancel?: () => void;
+}) {
+  const col: React.CSSProperties = { flex: 1, minWidth: 0 };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {p.mode === "edit" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ ...label, marginBottom: 0 }}>Briefing</span>
+          {p.onCancel && <button onClick={p.onCancel} style={{ ...ghostBtn, padding: "5px 10px" }}>Cancelar</button>}
+        </div>
+      )}
+      <div>
+        <label style={label}>Tema do post</label>
+        <input style={field} value={p.title} onChange={(e) => p.setTitle(e.target.value)} placeholder="Ex: Lei da atração — carrossel educativo" />
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={col}>
+          <label style={label}>Objetivo</label>
+          <select style={field} value={p.objetivo} onChange={(e) => p.setObjetivo(e.target.value)}>
+            <option value="">—</option>
+            {OBJETIVOS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
+        <div style={col}>
+          <label style={label}>Tipo</label>
+          <select style={field} value={p.type} onChange={(e) => p.setType(e.target.value)}>
+            <option value="feed">Feed</option>
+            <option value="carrossel">Carrossel</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={col}>
+          <label style={label}>Formato / dimensão</label>
+          <input style={field} value={p.formato} onChange={(e) => p.setFormato(e.target.value)} placeholder="Ex: feed 4:5, carrossel 6x, story 9:16" />
+        </div>
+        <div style={col}>
+          <label style={label}>Data de publicação</label>
+          <input type="date" style={field} value={p.publishDate} onChange={(e) => p.setPublishDate(e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <label style={label}>CTA · chamada pra ação</label>
+        <input style={field} value={p.cta} onChange={(e) => p.setCta(e.target.value)} placeholder="Ex: Chame no direct / Arraste pro lado" />
+      </div>
+      <div>
+        <label style={label}>Público-alvo</label>
+        <input style={field} value={p.publicoAlvo} onChange={(e) => p.setPublicoAlvo(e.target.value)} placeholder="Ex: Mulheres 25-40, desenvolvimento pessoal" />
+      </div>
+      <div>
+        <label style={label}>Tom / estilo</label>
+        <input style={field} value={p.tom} onChange={(e) => p.setTom(e.target.value)} placeholder="Ex: Inspirador, minimalista, tons pastel" />
+      </div>
+      <div>
+        <label style={label}>Copy / legenda</label>
+        <textarea style={{ ...field, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical" }} value={p.copy} onChange={(e) => p.setCopy(e.target.value)} placeholder="Texto da legenda…" />
+      </div>
+      <div>
+        <label style={label}>Referências</label>
+        <textarea style={{ ...field, height: "auto", minHeight: 44, padding: "8px 10px", resize: "vertical" }} value={p.refs} onChange={(e) => p.setRefs(e.target.value)} placeholder="Cole links (um por linha) e/ou ideias de referência…" />
+      </div>
+      <div style={{ display: "flex", gap: 14 }}>
+        <div style={col}>
+          <label style={{ ...label, color: "var(--green)" }}>✓ Incluir</label>
+          <TagInput items={p.mustHaves} onChange={p.setMustHaves} placeholder="Item + Enter" tone="include" />
+        </div>
+        <div style={col}>
+          <label style={{ ...label, color: "var(--red)" }}>✗ Evitar</label>
+          <TagInput items={p.avoid} onChange={p.setAvoid} placeholder="Item + Enter" tone="avoid" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sheet de leitura — documento escaneável. Campo vazio não aparece.
+function BriefingSheet(p: {
+  objetivo: string; formato: string; cta: string; type: string; publishDate: string;
+  publicoAlvo: string; tom: string; copy: string; refs: string; mustHaves: string[]; avoid: string[];
+  canBrief: boolean; copied: boolean; onCopy: () => void; onEdit: () => void;
+}) {
+  const objLabel = objetivoLabel(p.objetivo || null);
+  const chips: { prefix: string; value: string }[] = [];
+  if (objLabel) chips.push({ prefix: "Objetivo", value: objLabel });
+  if (p.formato) chips.push({ prefix: "Formato", value: p.formato });
+  if (p.cta) chips.push({ prefix: "CTA", value: p.cta });
+  const { links, rest } = parseRefs(p.refs || null);
+  const hasChecklist = p.mustHaves.length > 0 || p.avoid.length > 0;
+  const hasRefs = links.length > 0 || rest.length > 0;
+  const briefingEmpty = !objLabel && !p.formato && !p.cta && !p.publicoAlvo && !p.tom && !p.copy && !hasRefs && !hasChecklist;
+
+  const divider = <div style={{ height: 1, background: "var(--border)" }} />;
+  const metaLabel: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--text-muted)", width: 68, flexShrink: 0, paddingTop: 1 };
+  const chipStyle: React.CSSProperties = { display: "inline-flex", flexDirection: "column", gap: 1, padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-elevated)" };
+  const refChip: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, textDecoration: "none" };
+
+  if (briefingEmpty) {
+    return (
+      <div style={{ textAlign: "center", padding: "28px 16px", border: "1px dashed var(--border-strong)", borderRadius: 12 }}>
+        <ClipboardList size={26} style={{ color: "var(--text-muted)", opacity: 0.7 }} />
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 8 }}>Briefing ainda não montado.</p>
+        {p.canBrief && (
+          <button onClick={p.onEdit} style={{ ...ghostBtn, marginTop: 12 }}><Pencil size={13} /> Montar briefing</button>
+        )}
+      </div>
+    );
+  }
+
+  const metaBits: string[] = [p.type === "carrossel" ? "Carrossel" : "Feed"];
+  if (p.publishDate) metaBits.push(`📅 ${ddmm(p.publishDate)}`);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600 }}>{metaBits.join("  ·  ")}</div>
+
+      {chips.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {chips.map((c) => (
+            <div key={c.prefix} style={chipStyle}>
+              <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "var(--text-muted)" }}>{c.prefix}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{c.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(p.publicoAlvo || p.tom) && (
+        <>
+          {divider}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {p.publicoAlvo && <div style={{ display: "flex", gap: 10 }}><span style={metaLabel}>Público</span><span style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{p.publicoAlvo}</span></div>}
+            {p.tom && <div style={{ display: "flex", gap: 10 }}><span style={metaLabel}>Tom</span><span style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{p.tom}</span></div>}
+          </div>
+        </>
+      )}
+
+      {hasChecklist && (
+        <>
+          {divider}
+          <div style={{ display: "flex", gap: 24 }}>
+            {p.mustHaves.length > 0 && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...label, color: "var(--green)", marginBottom: 8 }}>✓ Incluir</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {p.mustHaves.map((it, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                      <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>✓</span>
+                      <span style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5 }}>{it}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {p.avoid.length > 0 && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...label, color: "var(--red)", marginBottom: 8 }}>✗ Evitar</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {p.avoid.map((it, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                      <span style={{ color: "var(--red)", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>✗</span>
+                      <span style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5 }}>{it}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {p.copy && (
+        <>
+          {divider}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ ...label, marginBottom: 0 }}>Legenda</span>
+              <button onClick={p.onCopy} style={{ ...ghostBtn, padding: "4px 9px", fontSize: 11.5, color: p.copied ? "var(--green)" : "var(--text-secondary)" }}>
+                {p.copied ? <><Check size={12} /> Copiado</> : <><Copy size={12} /> Copiar</>}
+              </button>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{p.copy}</div>
+          </div>
+        </>
+      )}
+
+      {hasRefs && (
+        <>
+          {divider}
+          <div>
+            <span style={{ ...label, marginBottom: 0 }}>Referências</span>
+            {links.length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {links.map((l, i) => (
+                  <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={refChip}><Link2 size={12} /> {l.domain}</a>
+                ))}
+              </div>
+            )}
+            {rest && <p style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: links.length ? 8 : 6, lineHeight: 1.5 }}>{rest}</p>}
+          </div>
+        </>
+      )}
+
+      {p.canBrief && (
+        <div>
+          <button onClick={p.onEdit} style={ghostBtn}><Pencil size={13} /> Editar briefing</button>
+        </div>
+      )}
+    </div>
   );
 }

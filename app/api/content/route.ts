@@ -19,12 +19,20 @@ export async function GET() {
   return NextResponse.json(posts);
 }
 
+const briefingItems = z.array(z.string().trim().min(1).max(80)).max(12);
 const createSchema = z.object({
   title: z.string().min(1),
   type: z.enum(["feed", "carrossel"]).optional(),
   copy: z.string().optional().nullable(),
   references: z.string().optional().nullable(),
   publishDate: z.string().optional().nullable(),
+  objetivo: z.enum(["awareness", "engajamento", "conversao", "prova"]).optional().nullable(),
+  publicoAlvo: z.string().optional().nullable(),
+  formato: z.string().optional().nullable(),
+  cta: z.string().optional().nullable(),
+  tom: z.string().optional().nullable(),
+  mustHaves: briefingItems.optional(),
+  avoid: briefingItems.optional(),
 });
 
 // POST /api/content — cria uma pauta (gestor/operacional). Designer não cria.
@@ -43,6 +51,13 @@ export async function POST(req: Request) {
       type: d.type ?? "feed",
       copy: d.copy || null,
       references: d.references || null,
+      objetivo: d.objetivo || null,
+      publicoAlvo: d.publicoAlvo || null,
+      formato: d.formato || null,
+      cta: d.cta || null,
+      tom: d.tom || null,
+      mustHaves: d.mustHaves ?? [],
+      avoid: d.avoid ?? [],
       publishDate: d.publishDate ? parseDueDate(d.publishDate) : null,
       status: "pauta",
       order: count,

@@ -16,11 +16,19 @@ const STAGE_LABEL: Record<string, string> = {
   aprovado: "Aprovado", agendado: "Agendado", publicado: "Publicado",
 };
 
+const briefingItems = z.array(z.string().trim().min(1).max(80)).max(12);
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
   type: z.enum(["feed", "carrossel"]).optional(),
   copy: z.string().optional().nullable(),
   references: z.string().optional().nullable(),
+  objetivo: z.enum(["awareness", "engajamento", "conversao", "prova"]).optional().nullable(),
+  publicoAlvo: z.string().optional().nullable(),
+  formato: z.string().optional().nullable(),
+  cta: z.string().optional().nullable(),
+  tom: z.string().optional().nullable(),
+  mustHaves: briefingItems.optional(),
+  avoid: briefingItems.optional(),
   publishDate: z.string().optional().nullable(),
   status: z.enum(["pauta", "criacao", "revisao", "aprovado", "agendado", "publicado"]).optional(),
   artUrl: z.string().optional().nullable(),
@@ -50,7 +58,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const canApprove = hasPermission(role, "content:approve");
 
   // Guard-rails de papel — nega antes de tocar no banco.
-  const editsBriefing = d.title !== undefined || d.type !== undefined || d.copy !== undefined || d.references !== undefined || d.publishDate !== undefined || d.feedback !== undefined;
+  const editsBriefing = d.title !== undefined || d.type !== undefined || d.copy !== undefined || d.references !== undefined || d.publishDate !== undefined || d.feedback !== undefined || d.objetivo !== undefined || d.publicoAlvo !== undefined || d.formato !== undefined || d.cta !== undefined || d.tom !== undefined || d.mustHaves !== undefined || d.avoid !== undefined;
   if (editsBriefing && !canBrief) return NextResponse.json({ error: "Sem permissão para editar a pauta" }, { status: 403 });
   if (d.status !== undefined && APPROVAL_STATUSES.includes(d.status) && !canApprove) {
     return NextResponse.json({ error: "Só o gestor pode aprovar/agendar/publicar" }, { status: 403 });
@@ -66,6 +74,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (d.type !== undefined) data.type = d.type;
     if (d.copy !== undefined) data.copy = d.copy || null;
     if (d.references !== undefined) data.references = d.references || null;
+    if (d.objetivo !== undefined) data.objetivo = d.objetivo || null;
+    if (d.publicoAlvo !== undefined) data.publicoAlvo = d.publicoAlvo || null;
+    if (d.formato !== undefined) data.formato = d.formato || null;
+    if (d.cta !== undefined) data.cta = d.cta || null;
+    if (d.tom !== undefined) data.tom = d.tom || null;
+    if (d.mustHaves !== undefined) data.mustHaves = d.mustHaves;
+    if (d.avoid !== undefined) data.avoid = d.avoid;
     if (d.publishDate !== undefined) data.publishDate = d.publishDate ? parseDueDate(d.publishDate) : null;
     if (d.feedback !== undefined) data.feedback = d.feedback || null;
   }
@@ -98,6 +113,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (d.type !== undefined && d.type !== post.type) changed.push("tipo");
     if (d.copy !== undefined && (d.copy || null) !== (post.copy || null)) changed.push("copy");
     if (d.references !== undefined && (d.references || null) !== (post.references || null)) changed.push("referências");
+    if (d.objetivo !== undefined && (d.objetivo || null) !== (post.objetivo || null)) changed.push("objetivo");
+    if (d.publicoAlvo !== undefined && (d.publicoAlvo || null) !== (post.publicoAlvo || null)) changed.push("público");
+    if (d.formato !== undefined && (d.formato || null) !== (post.formato || null)) changed.push("formato");
+    if (d.cta !== undefined && (d.cta || null) !== (post.cta || null)) changed.push("CTA");
+    if (d.tom !== undefined && (d.tom || null) !== (post.tom || null)) changed.push("tom");
+    if (d.mustHaves !== undefined && JSON.stringify(d.mustHaves) !== JSON.stringify(post.mustHaves)) changed.push("incluir");
+    if (d.avoid !== undefined && JSON.stringify(d.avoid) !== JSON.stringify(post.avoid)) changed.push("evitar");
     if (d.publishDate !== undefined) {
       const newT = d.publishDate ? parseDueDate(d.publishDate)?.getTime() ?? null : null;
       const oldT = post.publishDate ? post.publishDate.getTime() : null;
