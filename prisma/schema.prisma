@@ -1234,6 +1234,8 @@ model LeadProfile {
   tradeInDetail   String?  // veículo da troca: modelo/ano/km/estado (coletado pela IA p/ adiantar ao vendedor)
   wantsFinancing  Boolean?
   financingDetail String?  // entrada pretendida / prazo / se usa a troca como parte
+  paymentMethod   String?  // forma de pagamento: avista | financiado | indeciso (qualificação financeira)
+  downPayment     String?  // entrada pretendida que o lead informar (texto/faixa, ex: "10 mil")
   urgency         String?  // prazo de compra em texto (ex: "essa semana", "sem pressa")
   visitIntent     Boolean? // demonstrou intenção de ir à loja / ver de perto
   readyToBuy      Boolean? // sinal forte: quer fechar / pediu proposta
