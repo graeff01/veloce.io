@@ -12,6 +12,9 @@ const STUCK_MS = 2 * 24 * 60 * 60 * 1000;  // parado em Negociação por 2 dias 
 const REASK_MS = 2 * 24 * 60 * 60 * 1000;  // "ainda negociando" → repergunta em 2 dias
 const MAX_REASKS = 3;                        // depois disso, para de perguntar
 
+const VALUE_STALE_MS = 24 * 60 * 60 * 1000;  // venda confirmada sem valor por 24h → repergunta o valor
+const MAX_VALUE_REASKS = 2;                   // no máx. 2 re-perguntas do valor, depois desiste
+
 type Conn = { id: string; clientId: string; phoneNumberId: string; accessToken: string };
 type Check = { id: string; contactId: string; recipientWaId: string; reaskCount: number };
 
@@ -164,4 +167,66 @@ export async function handleManagerFunnelReply(args: { conn: Conn; waId: string;
   }
 
   return false; // não era interação do "fechou?" — segue o fluxo normal
+}
+
+// CRON: venda confirmada ("Vendeu") mas o gestor nunca informou o valor. Depois de
+// 24h, repergunta UMA vez o valor (reusa o fluxo awaitingValue existente). Máx. 2
+// tentativas; então desiste (saleValueGaveUp) para não perguntar pra sempre — mas
+// mantém awaitingValue=true, de modo que um valor enviado tarde ainda é capturado.
+export async function scanMissingSaleValues(): Promise<{ asked: number; gaveUp: number }> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - VALUE_STALE_MS);
+
+  // Todas as vendas aguardando valor (awaitingValue só é true no "Vendeu"). Inclui as
+  // já desistidas para contar colisão por conexão (não agravar a desambiguação).
+  const pend = await prisma.funnelCheck.findMany({
+    where: { awaitingValue: true, response: "vendeu" },
+    select: { id: true, connectionId: true, recipientWaId: true, answeredAt: true, valueReaskCount: true, valueReaskAt: true, saleValueGaveUp: true },
+    take: 1000,
+  });
+  if (!pend.length) return { asked: 0, gaveUp: 0 };
+
+  // Quantas perguntas de valor pendentes por conexão (bug conhecido de desambiguação:
+  // o handler casa o valor por awaitingValue+answeredAt). Se >1 na mesma conexão, não
+  // repergunta — só não piora o problema; resolvê-lo está fora do escopo.
+  const pendByConn = new Map<string, number>();
+  for (const c of pend) pendByConn.set(c.connectionId, (pendByConn.get(c.connectionId) ?? 0) + 1);
+
+  const candidates = pend.filter((c) => !c.saleValueGaveUp);
+  const connIds = [...new Set(candidates.map((c) => c.connectionId))];
+  const conns = await prisma.waConnection.findMany({
+    where: { id: { in: connIds } },
+    select: { id: true, clientId: true, phoneNumberId: true, accessToken: true },
+  });
+  const connById = new Map(conns.map((c) => [c.id, c as Conn]));
+
+  let asked = 0, gaveUp = 0;
+  for (const check of candidates) {
+    const conn = connById.get(check.connectionId);
+    if (!conn) continue;
+
+    // Gate 24h: conta a partir do último re-envio ou, na 1ª vez, da confirmação da venda.
+    const anchor = check.valueReaskAt ?? check.answeredAt;
+    if (anchor && anchor > cutoff) continue;
+
+    // Estourou as tentativas → desiste (para de perguntar; mantém awaitingValue).
+    if (check.valueReaskCount >= MAX_VALUE_REASKS) {
+      await prisma.funnelCheck.update({ where: { id: check.id }, data: { saleValueGaveUp: true } }).catch(() => {});
+      gaveUp++;
+      continue;
+    }
+
+    // Não agravar a colisão: só repergunta se esta é a única pendência de valor da conexão.
+    if ((pendByConn.get(check.connectionId) ?? 0) > 1) continue;
+
+    // Hold-and-flush: só envia com a janela do gestor aberta.
+    if (!(await isWindowOpen(conn.id, check.recipientWaId))) continue;
+
+    const r = await sendWhatsAppText(conn, check.recipientWaId, "Ei! Faltou o valor daquela venda que você confirmou. Me manda só o número? (ex: 45000)");
+    if (r.ok) {
+      await prisma.funnelCheck.update({ where: { id: check.id }, data: { valueReaskCount: { increment: 1 }, valueReaskAt: now } }).catch(() => {});
+      asked++;
+    }
+  }
+  return { asked, gaveUp };
 }

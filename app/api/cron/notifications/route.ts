@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCron } from "@/lib/cron-auth";
 import { runDueJobs } from "@/lib/notifications/scheduler-core";
-import { scanStuckNegotiations } from "@/lib/notifications/funnel-check";
+import { scanStuckNegotiations, scanMissingSaleValues } from "@/lib/notifications/funnel-check";
 
 export const runtime = "nodejs";
 
@@ -16,5 +16,7 @@ export async function POST(req: NextRequest) {
   await runDueJobs();
   // Frente 2: pergunta "fechou?" ao gestor (leads parados em Negociação). Best-effort.
   const funnel = await scanStuckNegotiations().catch(() => ({ created: 0, sent: 0 }));
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), funnel });
+  // Re-pergunta do valor da venda (venda confirmada sem valor há 24h). Best-effort.
+  const saleValue = await scanMissingSaleValues().catch(() => ({ asked: 0, gaveUp: 0 }));
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), funnel, saleValue });
 }

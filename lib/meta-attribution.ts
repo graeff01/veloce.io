@@ -196,3 +196,156 @@ export async function computeRealAttribution(
     unmatchedLeads,
   };
 }
+
+// ── Atribuição de RECEITA (venda confirmada → campanha de origem) ────────────
+//
+//   WaConversation.saleValue (saleConfirmedAt != null)  →  contactId
+//        →  WaLead.adId  →  MetaAd  →  MetaCampaign
+//
+// Regra de ouro: atribuição HONESTA. Quando não dá para ligar a venda a uma
+// campanha por ID (sem WaLead, adId null, ou anúncio não sincronizado), a receita
+// vai para o bucket "não atribuída" — NUNCA se inventa origem por nome/heurística.
+// Venda confirmada sem valor informado é contada à parte (não soma receita).
+
+export interface RevenueByCampaign {
+  campaignId: string;
+  name: string;      // display por ID (não usado para casar)
+  status: string;
+  revenue: number;   // soma dos saleValue atribuídos a esta campanha
+  sales: number;     // nº de vendas confirmadas COM valor e cadeia completa
+  spend: number;     // gasto do período nesta campanha (mesma base do CPL)
+  roas: number | null; // revenue / spend (null quando não há gasto)
+}
+
+// Uma venda confirmada no período: contactId + valor (null = sem valor informado).
+export interface RevenueSale {
+  contactId: string;
+  saleValue: number | null;
+}
+
+export interface RevenueAttribution {
+  investimento: number;         // gasto total do período (todos os anúncios)
+  totalRevenue: number;         // receita ATRIBUÍDA (com cadeia e com valor)
+  attributedSales: number;      // nº de vendas atribuídas (com cadeia e valor)
+  roasGeral: number | null;     // totalRevenue / investimento
+  porCampanha: RevenueByCampaign[];
+  naoAtribuida: { sales: number; revenue: number }; // venda com valor, sem cadeia
+  semValor: { sales: number };                       // venda confirmada, saleValue null
+}
+
+// Agregação PURA (testável sem banco): resolve cada venda à campanha usando SOMENTE
+// os mapas recebidos (já escopados por conexão no chamador) e classifica em
+// atribuída / não atribuída / sem valor. Nunca alcança dados fora dos mapas — é o
+// que garante o isolamento por cliente no nível da agregação.
+export function aggregateRevenue(
+  sales: RevenueSale[],
+  adIdByContact: Map<string, string | null>,   // WaLead: contactId → adId (entrada existe só se há WaLead)
+  campaignByAdId: Map<string, string>,          // MetaAd: adId → campaignId
+  spendByCampaign: Map<string, number>,
+  campaignMeta: Map<string, { name: string; status: string }>,
+  investimento: number,
+): RevenueAttribution {
+  const campAgg = new Map<string, { revenue: number; sales: number }>();
+  let totalRevenue = 0, attributedSales = 0;
+  let naoAtribuidaSales = 0, naoAtribuidaRevenue = 0, semValorSales = 0;
+
+  for (const s of sales) {
+    if (s.saleValue == null) { semValorSales++; continue; }        // venda sem valor
+    const adId = adIdByContact.has(s.contactId) ? adIdByContact.get(s.contactId) : undefined;
+    const campaignId = adId != null ? campaignByAdId.get(adId) : undefined;
+    if (campaignId != null) {
+      const agg = campAgg.get(campaignId) ?? { revenue: 0, sales: 0 };
+      agg.revenue += s.saleValue; agg.sales++;
+      campAgg.set(campaignId, agg);
+      totalRevenue += s.saleValue; attributedSales++;
+    } else {
+      naoAtribuidaSales++; naoAtribuidaRevenue += s.saleValue;      // sem cadeia → honesto
+    }
+  }
+
+  const porCampanha: RevenueByCampaign[] = [...campAgg.entries()]
+    .map(([campaignId, v]) => {
+      const spend = spendByCampaign.get(campaignId) ?? 0;
+      return {
+        campaignId,
+        name: campaignMeta.get(campaignId)?.name ?? "Campanha não sincronizada",
+        status: campaignMeta.get(campaignId)?.status ?? "UNKNOWN",
+        revenue: v.revenue,
+        sales: v.sales,
+        spend,
+        roas: spend > 0 ? v.revenue / spend : null,
+      };
+    })
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return {
+    investimento,
+    totalRevenue,
+    attributedSales,
+    roasGeral: investimento > 0 ? totalRevenue / investimento : null,
+    porCampanha,
+    naoAtribuida: { sales: naoAtribuidaSales, revenue: naoAtribuidaRevenue },
+    semValor: { sales: semValorSales },
+  };
+}
+
+// Junção real: vendas confirmadas × cadeia de origem, por período. 100% por ID e
+// escopado por conexão (mesma base do overview). `metaConnectionId` pode ser null
+// (cliente sem Meta conectado) → tudo cai em "não atribuída", sem inventar origem.
+export async function computeRevenueAttribution(
+  metaConnectionId: string | null,
+  waConnectionId: string,
+  start: Date,
+  end: Date,
+): Promise<RevenueAttribution> {
+  // Vendas confirmadas no período (recorte por saleConfirmedAt, como o client-report).
+  const sales = await prisma.waConversation.findMany({
+    where: { connectionId: waConnectionId, saleConfirmedAt: { gte: start, lt: end } },
+    select: { contactId: true, saleValue: true },
+  });
+
+  if (!sales.length) {
+    return {
+      investimento: 0, totalRevenue: 0, attributedSales: 0, roasGeral: null,
+      porCampanha: [], naoAtribuida: { sales: 0, revenue: 0 }, semValor: { sales: 0 },
+    };
+  }
+
+  const contactIds = sales.map((s) => s.contactId);
+
+  const [leads, spendRows, ads, campaigns] = await Promise.all([
+    prisma.waLead.findMany({
+      where: { connectionId: waConnectionId, contactId: { in: contactIds } },
+      select: { contactId: true, adId: true },
+    }),
+    metaConnectionId
+      ? prisma.metaAdInsight.groupBy({
+          by: ["adId"],
+          where: { connectionId: metaConnectionId, date: { gte: start, lt: end } },
+          _sum: { spend: true },
+        })
+      : Promise.resolve([] as { adId: string; _sum: { spend: number | null } }[]),
+    metaConnectionId
+      ? prisma.metaAd.findMany({ where: { connectionId: metaConnectionId }, select: { adId: true, campaignId: true } })
+      : Promise.resolve([] as { adId: string; campaignId: string }[]),
+    metaConnectionId
+      ? prisma.metaCampaign.findMany({ where: { connectionId: metaConnectionId }, select: { campaignId: true, name: true, status: true } })
+      : Promise.resolve([] as { campaignId: string; name: string; status: string }[]),
+  ]);
+
+  const adIdByContact = new Map<string, string | null>(leads.map((l) => [l.contactId, l.adId]));
+  const campaignByAdId = new Map<string, string>(ads.map((a) => [a.adId, a.campaignId]));
+  const campaignMeta = new Map(campaigns.map((c) => [c.campaignId, { name: c.name, status: c.status }]));
+
+  // Gasto por campanha (mesma base do CPL): soma o spend de cada ad na sua campanha.
+  const spendByCampaign = new Map<string, number>();
+  let investimento = 0;
+  for (const r of spendRows) {
+    const spend = r._sum.spend ?? 0;
+    investimento += spend;
+    const campaignId = campaignByAdId.get(r.adId);
+    if (campaignId) spendByCampaign.set(campaignId, (spendByCampaign.get(campaignId) ?? 0) + spend);
+  }
+
+  return aggregateRevenue(sales, adIdByContact, campaignByAdId, spendByCampaign, campaignMeta, investimento);
+}
