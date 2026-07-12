@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, Hand, Undo2 } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
@@ -10,7 +10,7 @@ const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; humanTakenOver?: boolean; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -53,6 +53,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [conv, setConv] = useState<Conv | null>(null);
   const [loadingConv, setLoadingConv] = useState(false);
   const [aiReplying, setAiReplying] = useState(false);
+  const [takingOver, setTakingOver] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -192,6 +193,17 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     } finally { setSending(false); }
   }
 
+  // Assumir/devolver a conversa (takeover explícito). Ação reversível → sem modal.
+  async function takeover(on: boolean) {
+    if (!sel || takingOver) return;
+    setTakingOver(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/${on ? "take-over" : "release"}`, { method: "POST" });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível atualizar a conversa."); return; }
+      setConv((c) => (c ? { ...c, humanTakenOver: on } : c));
+    } finally { setTakingOver(false); }
+  }
+
   const onComposerKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
@@ -317,11 +329,29 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
                 {conv.lead?.adTitle && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>veio do anúncio “{conv.lead.adTitle}”</div>}
               </div>
-              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap" }}>
-                <Sparkles size={14} /> {aiReplying ? "Respondendo…" : "IA responder"}
-              </button>
-              <StageBadge stage={conv.funnelStage} />
+              {conv.humanTakenOver ? (
+                <>
+                  <span title="A IA está pausada porque sua equipe assumiu esta conversa" style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 32, padding: "0 10px", borderRadius: 10, background: "color-mix(in srgb, #1FA855 14%, transparent)", color: "#1FA855", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    <Sparkles size={13} /> {isMobile ? "IA em pausa" : "IA em pausa — sua equipe assumiu"}
+                  </span>
+                  <button onClick={() => takeover(false)} disabled={takingOver} title="Devolver a conversa para a IA responder"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 12.5, fontWeight: 700, cursor: takingOver ? "wait" : "pointer", opacity: takingOver ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                    <Undo2 size={14} /> {isMobile ? "Devolver" : "Devolver pra IA"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => takeover(true)} disabled={takingOver} title="Assumir a conversa: pausa a IA para você responder sem colisão"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 12.5, fontWeight: 700, cursor: takingOver ? "wait" : "pointer", opacity: takingOver ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                    <Hand size={14} /> {isMobile ? "Assumir" : "Assumir conversa"}
+                  </button>
+                  <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                    <Sparkles size={14} /> {aiReplying ? "Respondendo…" : (isMobile ? "IA" : "IA responder")}
+                  </button>
+                </>
+              )}
+              {!isMobile && <StageBadge stage={conv.funnelStage} />}
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
@@ -375,7 +405,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
             {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
             <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
-              {iaPaused && (
+              {iaPaused && !conv.humanTakenOver && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
                   <Sparkles size={12} style={{ color: "var(--p-accent)" }} /> IA em pausa — sua equipe assumiu esta conversa.
                 </div>

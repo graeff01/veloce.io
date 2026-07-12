@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isWithin24h } from "@/lib/wa-window";
+import { isTakenOver } from "@/lib/takeover";
 
 export const runtime = "nodejs";
 
@@ -21,10 +22,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  const [messages, lead, conv] = await Promise.all([
+  const [messages, lead, conv, aiCfg] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true } }),
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true } }),
-    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true } }),
+    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, humanTakeoverAt: true } }),
+    prisma.aiAgentConfig.findUnique({ where: { clientId: portal.clientId }, select: { humanTakeoverMin: true } }),
   ]);
 
   // Imagem do criativo: do referral OU do thumbnail sincronizado da Meta (por adId).
@@ -50,6 +52,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     funnelEvidence: conv?.funnelManual ? null : (conv?.funnelEvidence ?? null),
     windowOpen: isWithin24h(lastInboundAt),
     lastInboundAt,
+    humanTakenOver: isTakenOver(conv?.humanTakeoverAt, aiCfg?.humanTakeoverMin ?? 180),
     items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp, aiGenerated: m.aiGenerated })),
   });
 }
