@@ -19,6 +19,8 @@ import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
+import { isWithin24h } from "@/lib/wa-window";
+import { allowSend } from "@/lib/portal-send-throttle";
 
 export interface JobPayload { text?: string | null; type: string; mediaId?: string; mime?: string }
 export type JobOutcome = "sent" | "skipped" | "error";
@@ -50,12 +52,14 @@ async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string 
   return last;
 }
 
-// Persiste a saída marcando aiGenerated=true (upsert: a marcação vence eventuais echoes).
-async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string, ts: Date) {
+// Persiste a saída (upsert dedup por wamid: a marcação vence eventuais echoes).
+// aiGenerated=true para respostas da IA; a resposta MANUAL de um humano pelo painel
+// passa false — é o que aciona o takeover (respond.ts) e silencia o bot.
+export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string, ts: Date, aiGenerated = true) {
   await prisma.waMessage.upsert({
     where: { connectionId_waMessageId: { connectionId, waMessageId } },
-    create: { connectionId, contactId, waMessageId, direction: "out", type: "text", text, aiGenerated: true, timestamp: ts },
-    update: { aiGenerated: true, text },
+    create: { connectionId, contactId, waMessageId, direction: "out", type: "text", text, aiGenerated, timestamp: ts },
+    update: { aiGenerated, text },
   }).catch(() => {});
   await applyMessageToConversation({ connectionId, contactId, direction: "out", timestamp: ts }).catch(() => {});
 }
@@ -300,6 +304,55 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   void updateRollingMemory(contact.id, conn.clientId).catch(() => {});
   void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
   return { ok, reply };
+}
+
+export interface ManualSendResult {
+  ok: boolean;
+  status?: number; // código HTTP sugerido em caso de recusa
+  error?: string;
+  message?: { id: string; text: string; direction: "out"; type: "text"; timestamp: string; aiGenerated: false };
+}
+
+export const MANUAL_SEND_MAX_LEN = 4096; // limite de texto da Cloud API
+
+// Envio MANUAL de um humano (equipe do cliente) a partir do painel. Espelha o escopo
+// de manualAiReply (contato tem que ser do próprio cliente → isolamento). Persiste com
+// aiGenerated=false: é isso que aciona o takeover e silencia o bot (respond.ts). NÃO
+// tenta template fora da janela de 24h — recusa com motivo claro (template é fora de escopo).
+export async function sendManualMessage(clientId: string, contactId: string, rawText: string): Promise<ManualSendResult> {
+  const text = (rawText || "").trim();
+  if (!text) return { ok: false, status: 400, error: "Escreva uma mensagem." };
+  if (text.length > MANUAL_SEND_MAX_LEN) return { ok: false, status: 400, error: `Mensagem muito longa (máx ${MANUAL_SEND_MAX_LEN} caracteres).` };
+
+  const contact = await prisma.waContact.findUnique({
+    where: { id: contactId },
+    select: { id: true, waId: true, aiOptedOut: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } },
+  });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, status: 404, error: "Conversa não encontrada." };
+  if (contact.aiOptedOut) return { ok: false, status: 403, error: "Este lead pediu para não receber mensagens (opt-out)." };
+  const conn = contact.connection;
+
+  // Janela de 24h (autoritativo no servidor): última mensagem do LEAD.
+  const lastIn = await prisma.waMessage.findFirst({ where: { contactId: contact.id, direction: "in" }, orderBy: { timestamp: "desc" }, select: { timestamp: true } });
+  if (!isWithin24h(lastIn?.timestamp ?? null)) {
+    return { ok: false, status: 409, error: "A janela de 24h fechou — o lead precisa mandar uma mensagem para reabrir a conversa." };
+  }
+
+  // Anti-flood por conversa.
+  if (!allowSend(contact.id)) return { ok: false, status: 429, error: "Muitas mensagens seguidas. Aguarde um instante e tente de novo." };
+
+  const sent = await sendWithRetry(conn, contact.waId, text);
+  if (!sent.ok) return { ok: false, status: 502, error: `Falha no envio: ${sent.error ?? "erro desconhecido"}` };
+
+  const ts = new Date();
+  const wamid = sent.waMessageId || `hum-${Date.now()}`;
+  await storeOutbound(conn.id, contact.id, wamid, text, ts, false);
+  // Devolve o id do registro persistido (dedup do polling é por id).
+  const stored = await prisma.waMessage.findUnique({ where: { connectionId_waMessageId: { connectionId: conn.id, waMessageId: wamid } }, select: { id: true, timestamp: true } });
+  return {
+    ok: true,
+    message: { id: stored?.id ?? wamid, text, direction: "out", type: "text", timestamp: (stored?.timestamp ?? ts).toISOString(), aiGenerated: false },
+  };
 }
 
 // Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem
