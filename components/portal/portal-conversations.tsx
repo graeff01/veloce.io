@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Eye, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
+import { Search, Eye, Sparkles, Send, ArrowLeft } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
@@ -9,8 +9,8 @@ interface Row { contactId: string; name: string; lastText: string | null; lastTy
 const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
-interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; items: Msg[] }
+interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -53,9 +53,23 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [conv, setConv] = useState<Conv | null>(null);
   const [loadingConv, setLoadingConv] = useState(false);
   const [aiReplying, setAiReplying] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
   const nearBottomRef = useRef(true);
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
+
+  // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 760px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
   useEffect(() => {
@@ -71,9 +85,22 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     if (!sel) { setConv(null); return; }
     let alive = true;
     nearBottomRef.current = true; // ao abrir uma conversa, começa no fim
+    setDraft(""); setSendError(null); // compositor limpo por conversa
     const load = (silent: boolean) => {
       if (!silent) setLoadingConv(true);
-      return fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!alive) return; setConv(d); if (!silent) setLoadingConv(false); }).catch(() => { if (alive && !silent) setLoadingConv(false); });
+      return fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+        if (!alive) return;
+        // Reconcilia: preserva bolhas otimistas ainda não confirmadas pelo servidor
+        // (dedup por texto — se a real já chegou no polling, descarta a otimista).
+        setConv((prev) => {
+          if (!d) return silent ? prev : d;
+          if (!prev) return d;
+          const serverOut = new Set(d.items.filter((m: Msg) => m.direction === "out").map((m: Msg) => (m.text || "").trim()));
+          const keptPending = prev.items.filter((m) => m.pending && !serverOut.has((m.text || "").trim()));
+          return { ...d, items: [...d.items, ...keptPending] };
+        });
+        if (!silent) setLoadingConv(false);
+      }).catch(() => { if (alive && !silent) setLoadingConv(false); });
     };
     load(false);
     const iv = setInterval(() => { if (!document.hidden) load(true); }, 7000);
@@ -127,6 +154,56 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     } finally { setAiReplying(false); }
   }
 
+  // Envio MANUAL da equipe (texto livre) pelo painel. Otimista: mostra a bolha na hora e
+  // reconcilia com a mensagem real do servidor (dedup por id no polling). aiGenerated=false
+  // → o backend aciona o takeover e pausa o bot.
+  async function send() {
+    const text = draft.trim();
+    if (!sel || !text || sending || !conv?.windowOpen) return;
+    setSending(true); setSendError(null);
+    const optId = "opt-" + Date.now();
+    const optimistic: Msg = { id: optId, text, direction: "out", type: "text", timestamp: new Date().toISOString(), aiGenerated: false, pending: true };
+    nearBottomRef.current = true;
+    setConv((c) => (c ? { ...c, items: [...c.items, optimistic] } : c));
+    setDraft("");
+    if (taRef.current) taRef.current.style.height = "auto";
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/send`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d?.message) {
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+        setDraft((cur) => cur || text); // devolve o texto pra não perder o que digitou
+        setSendError(d?.error || "Não foi possível enviar a mensagem.");
+        return;
+      }
+      // reconcilia a otimista pela mensagem real (id do banco → polling não duplica)
+      setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === optId ? (d.message as Msg) : m)) } : c));
+    } catch {
+      setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+      setDraft((cur) => cur || text);
+      setSendError("Falha de conexão. Tente de novo.");
+    } finally { setSending(false); }
+  }
+
+  const onComposerKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+  };
+  const onComposerInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value);
+    const el = e.target; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  };
+
+  // IA pausada: a última mensagem de saída foi da EQUIPE (humano) → o bot está em takeover.
+  const iaPaused = (() => {
+    for (let i = (conv?.items.length ?? 0) - 1; i >= 0; i--) {
+      const m = conv!.items[i];
+      if (m.direction === "out") return m.aiGenerated === false;
+    }
+    return false;
+  })();
+
   const waitingCount = (list ?? []).filter(isWaiting).length;
   const tabChip = (k: "all" | "ads" | "waiting", label: string) => {
     const on = tab === k;
@@ -151,8 +228,8 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      {/* Topbar full-width — mantém a identidade do painel */}
-      <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
+      {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
+      <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>Conversas dos leads</div>
       </header>
 
@@ -160,7 +237,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
       <div style={{ width: "100%", height: "100%", display: "flex", minHeight: 0, overflow: "hidden", borderTop: "1px solid var(--p-border)" }}>
       {/* ── Lista (sidebar) ── */}
-      <aside style={{ width: 400, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
+      <aside style={{ width: isMobile ? "100%" : 400, flexShrink: 0, display: isMobile && sel ? "none" : "flex", flexDirection: "column", borderRight: isMobile ? "none" : "1px solid var(--p-border)", background: "var(--p-surface)" }}>
         {/* busca */}
         <div style={{ padding: "8px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 12px", borderRadius: 10, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
@@ -207,7 +284,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       </aside>
 
       {/* ── Chat ── */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "var(--wa-chat)" }}>
+      <main style={{ flex: 1, display: isMobile && !sel ? "none" : "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "var(--wa-chat)" }}>
         {/* marca d'água: logo do cliente (PNG em /public/logopng) */}
         <div style={{ position: "absolute", inset: 0, backgroundImage: `url("/logopng/bv.png")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(48%, 420px)", opacity: 0.06, pointerEvents: "none", zIndex: 0 }} />
         {/* granulado (feTurbulence) — mesmo grão do tema claro */}
@@ -224,7 +301,12 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
         ) : (
           <>
             {/* header do chat */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "8px 12px calc(8px + env(safe-area-inset-top))" : "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
+              {isMobile && (
+                <button onClick={() => setSel(null)} aria-label="Voltar para a lista" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, marginLeft: -6, borderRadius: 10, border: "none", background: "transparent", color: "var(--p-text)", cursor: "pointer", flexShrink: 0 }}>
+                  <ArrowLeft size={22} />
+                </button>
+              )}
               <Avatar name={conv.contact.name} size={40} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
@@ -239,13 +321,13 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
             {conv.funnelEvidence && (
-              <div style={{ padding: "6px 8%", fontSize: 11.5, color: "var(--wa-muted)", borderBottom: "1px solid var(--p-border)", lineHeight: 1.4 }}>
+              <div style={{ padding: isMobile ? "6px 14px" : "6px 8%", fontSize: 11.5, color: "var(--wa-muted)", borderBottom: "1px solid var(--p-border)", lineHeight: 1.4 }}>
                 <span style={{ fontWeight: 700 }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”
               </div>
             )}
 
             {/* mensagens */}
-            <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: "16px 8%" }}>
+            <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 12px" : "16px 8%" }}>
               {/* Card do anúncio que originou o lead (estilo referral CTWA) */}
               {conv.lead && (conv.lead.image || conv.lead.adTitle) && (
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
@@ -273,11 +355,11 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                     const body = (m.text && m.text.trim()) || mediaLabel(m.type) || "[mensagem]";
                     return (
                       <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 4 }}>
-                        <div style={{ maxWidth: "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative",
+                        <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           <span>{body}</span>
-                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{hhmm(m.timestamp)}{mine ? " ✓✓" : ""}</span>
+                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : "Equipe · ") : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
                         </div>
                       </div>
                     );
@@ -286,9 +368,44 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
               ))}
             </div>
 
-            {/* rodapé só-leitura (no lugar do campo de digitar) */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px", background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", color: "var(--wa-muted)", fontSize: 12, flexShrink: 0 }}>
-              <Eye size={13} /> Você acompanha as conversas por aqui — responda pelo WhatsApp da loja ou toque em ✨ IA responder pra IA responder o lead.
+            {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
+            <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
+              {iaPaused && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
+                  <Sparkles size={12} style={{ color: "var(--p-accent)" }} /> IA em pausa — sua equipe assumiu esta conversa.
+                </div>
+              )}
+              {sendError && (
+                <div role="alert" style={{ padding: "6px 10px", marginBottom: 6, fontSize: 12, borderRadius: 8, background: "color-mix(in srgb, #d6453d 12%, transparent)", color: "#d6453d" }}>{sendError}</div>
+              )}
+              {conv.windowOpen ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+                    <textarea
+                      ref={taRef}
+                      value={draft}
+                      onChange={onComposerInput}
+                      onKeyDown={onComposerKey}
+                      disabled={sending}
+                      rows={1}
+                      placeholder="Escreva uma mensagem para o lead…"
+                      style={{ flex: 1, resize: "none", maxHeight: 120, minHeight: 40, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 14, lineHeight: 1.35, outline: "none", fontFamily: "inherit" }}
+                    />
+                    <button onClick={() => void send()} disabled={sending || !draft.trim()} aria-label="Enviar mensagem"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", cursor: sending || !draft.trim() ? "default" : "pointer", opacity: sending || !draft.trim() ? 0.55 : 1 }}>
+                      <Send size={18} />
+                    </button>
+                  </div>
+                  <div style={{ padding: "5px 2px 0", fontSize: 10.5, color: "var(--wa-muted)" }}>
+                    Enter envia · Shift+Enter quebra linha · ao responder, a IA pausa e sua equipe assume.
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "9px 4px", color: "var(--wa-muted)", fontSize: 12, lineHeight: 1.4 }}>
+                  <Eye size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>A janela de 24h fechou — o lead precisa mandar uma mensagem para você poder responder por aqui. Você ainda pode acionar a ✨ IA acima.</span>
+                </div>
+              )}
             </div>
           </>
         )}
