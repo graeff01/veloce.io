@@ -47,19 +47,8 @@ export default async function ConversasPage({ params, searchParams }: { params: 
           background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
           background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
-        /* só PC — no celular mostra recado */
-        .cmobile{display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}
-        .cdesk{display:none}
-        @media(min-width:760px){ .cmobile{display:none} .cdesk{display:flex} }`}</style>
-
-      <div className="cmobile">
-        <div>
-          <div style={{ fontSize: 36 }}>💻</div>
-          <h1 style={{ fontSize: 17, marginTop: 10, color: "var(--p-text)" }}>Disponível no computador</h1>
-          <p style={{ fontSize: 13.5, color: "var(--p-muted)", marginTop: 6, maxWidth: 300, marginLeft: "auto", marginRight: "auto" }}>As conversas dos leads abrem melhor numa tela maior. Abra este link no computador.</p>
-          <a href={`/r/${token}`} style={{ display: "inline-block", marginTop: 16, fontSize: 13, fontWeight: 600, color: "var(--p-accent)", textDecoration: "none" }}>← Voltar ao painel</a>
-        </div>
-      </div>
+        /* conversas abrem no mobile também — a responsividade fica no PortalConversations */
+        .cdesk{display:flex}`}</style>
 
       <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} initialContact={initialContact ?? null} />
     </main>
