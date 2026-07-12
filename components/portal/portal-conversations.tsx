@@ -120,6 +120,11 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
   }, [list]);
 
+  // A aba "Leads de anúncio" só aparece se o cliente REALMENTE tem leads de anúncio
+  // (cliente que só usa a IA não vê um atalho vazio). Se sumir, volta pra "Conversas".
+  const hasAds = adGroups.length > 0;
+  useEffect(() => { if (!hasAds && (tab === "ads")) { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
+
   const items = (list ?? []).filter((c) => {
     if (tab === "ads" && !c.fromAd) return false;
     if (tab === "ads" && adFilter && adLabelOf(c) !== adFilter) return false;
@@ -229,8 +234,8 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
-      <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--p-text)" }}>Conversas dos leads</div>
+      <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
+        <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
       </header>
 
       {/* Viewer preenche toda a área interna (ao lado da sidebar do shell) */}
@@ -239,14 +244,14 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       {/* ── Lista (sidebar) ── */}
       <aside style={{ width: isMobile ? "100%" : 400, flexShrink: 0, display: isMobile && sel ? "none" : "flex", flexDirection: "column", borderRight: isMobile ? "none" : "1px solid var(--p-border)", background: "var(--p-surface)" }}>
         {/* busca */}
-        <div style={{ padding: "8px 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 12px", borderRadius: 10, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
+        <div style={{ padding: isMobile ? "10px 14px" : "8px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: isMobile ? 46 : 38, padding: "0 12px", borderRadius: 12, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
             <Search size={15} style={{ color: "var(--wa-muted)" }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar conversa" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: 13.5 }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar conversa" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
         {/* abas */}
-        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{tabChip("ads", "Leads de anúncio")}</div>
+        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -263,7 +268,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
               const on = sel === c.contactId;
               const waiting = isWaiting(c);
               return (
-                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
+                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -389,7 +394,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                       disabled={sending}
                       rows={1}
                       placeholder="Escreva uma mensagem para o lead…"
-                      style={{ flex: 1, resize: "none", maxHeight: 120, minHeight: 40, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 14, lineHeight: 1.35, outline: "none", fontFamily: "inherit" }}
+                      style={{ flex: 1, resize: "none", maxHeight: 120, minHeight: 40, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: isMobile ? 16 : 14, lineHeight: 1.35, outline: "none", fontFamily: "inherit" }}
                     />
                     <button onClick={() => void send()} disabled={sending || !draft.trim()} aria-label="Enviar mensagem"
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", cursor: sending || !draft.trim() ? "default" : "pointer", opacity: sending || !draft.trim() ? 0.55 : 1 }}>

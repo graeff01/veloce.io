@@ -37,6 +37,8 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
   return (
     <>
       <style>{`.pside{display:none}
+        .padvisor{display:none}
+        @media(min-width:760px){ .padvisor{display:contents} }
         @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain{margin-left:236px} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>
         {/* marca do cliente */}
@@ -66,8 +68,8 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
         </button>
       </aside>
 
-      {/* Consultor Veloce — assistente flutuante em todo o portal */}
-      <PortalAdvisor token={token} />
+      {/* Consultor Veloce — assistente flutuante (escondido no mobile via .padvisor) */}
+      <div className="padvisor"><PortalAdvisor token={token} /></div>
     </>
   );
 }
