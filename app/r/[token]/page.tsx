@@ -122,6 +122,39 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           </div>
         )}
 
+        {/* Receita & Retorno — prova de valor em R$ (dinheiro que voltou vs. investido) */}
+        {data.financials && (data.financials.revenue > 0 || data.financials.spend > 0) && (() => {
+          const f = data.financials;
+          return (
+            <div className="p-panel" style={{ overflow: "hidden" }}>
+              <div className="p-phead"><h2>Receita &amp; retorno</h2><span className="hint">vendas confirmadas neste período</span></div>
+              <div style={{ padding: "18px 18px 6px", display: "flex", gap: 30, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div>
+                  <div className="p-eyebrow">Receita gerada</div>
+                  <div className="tnum" style={{ fontSize: 46, fontWeight: 800, color: "var(--p-good)", letterSpacing: "-0.035em", lineHeight: 0.95, marginTop: 6 }}>{brl(f.revenue)}</div>
+                  <div style={{ marginTop: 8 }}><DeltaChip pct={f.revenueDelta} goodWhenUp /></div>
+                </div>
+                {f.roas != null && (
+                  <div style={{ paddingLeft: 30, borderLeft: "1px solid var(--p-border)" }}>
+                    <div className="p-eyebrow">Retorno sobre o investido</div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
+                      <div className="tnum" style={{ fontSize: 46, fontWeight: 800, color: "var(--p-accent)", letterSpacing: "-0.035em", lineHeight: 0.95 }}>{f.roas}x</div>
+                      <span className="p-pill good" style={{ fontSize: 12.5 }}>cada R$ 1 virou {brl(f.roas)}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 8 }}>investiu {brl(f.spend)} · voltou <b style={{ color: "var(--p-text)" }}>{brl(f.revenue)}</b> em vendas</div>
+                  </div>
+                )}
+              </div>
+              <div className="p-metrics">
+                <div className="p-metric"><div className="k">Vendas fechadas</div><div className="v">{int(f.sales)}</div></div>
+                <div className="p-metric"><div className="k">Ticket médio</div><div className="v">{f.avgTicket != null ? brl(f.avgTicket) : "—"}</div></div>
+                <div className="p-metric"><div className="k">Investimento em mídia</div><div className="v">{brl(f.spend)}</div></div>
+                <div className="p-metric"><div className="k">Retorno</div><div className="v" style={{ color: f.profit != null && f.profit >= 0 ? "var(--p-good)" : undefined }}>{f.profit != null ? brl(f.profit) : "—"}</div>{f.profit != null && <div className="foot">receita − investimento</div>}</div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Métricas + split (velocidade de atendimento · health score) */}
         <div className="p-panel">
           <div className="p-metrics">
