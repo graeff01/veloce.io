@@ -5,7 +5,7 @@ import { Users, Trophy, Clock, DollarSign } from "lucide-react";
 
 interface Row { email: string; name: string; isMe: boolean; newLeads: number; owned: number; waiting: number; qualified: number; converted: number; revenue: number; replies: number; avgFirstResponseSec: number | null }
 interface Team { newLeads: number; owned: number; waiting: number; qualified: number; converted: number; revenue: number; replies: number }
-interface Data { me: string | null; period: string; periodLabel: string; rows: Row[]; team: Team | null; unassigned: number }
+interface Data { me: string | null; isAdmin: boolean; period: string; periodLabel: string; rows: Row[]; team: Team | null; unassigned: number }
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const fmtDur = (s: number | null) => (s == null ? "—" : s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}min` : `${(s / 3600).toFixed(1)}h`);
@@ -68,7 +68,10 @@ export function PortalTeam({ token }: { token: string }) {
             </div>
           )}
 
-          {/* Ranking geral */}
+          {/* Ranking geral — só admin */}
+          {!data?.isAdmin ? (
+            <p style={{ fontSize: 12, color: "var(--p-muted)", lineHeight: 1.5 }}>Você vê apenas os seus números. O ranking da equipe fica disponível para o admin do painel.</p>
+          ) : (
           <div style={{ ...card, padding: 0, overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
               <thead>
@@ -120,6 +123,7 @@ export function PortalTeam({ token }: { token: string }) {
               )}
             </table>
           </div>
+          )}
 
           {!!data?.unassigned && (
             <p style={{ fontSize: 12, color: "var(--p-muted)" }}>⚠️ {data.unassigned} lead(s) aguardando <b>sem dono</b> — o primeiro a responder pelo painel vira o dono.</p>

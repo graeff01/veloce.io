@@ -1737,6 +1737,7 @@ model PortalAccess {
   email        String
   name         String?   // nome do usuário (exibição)
   passwordHash String?   // bcrypt; null = ainda não cadastrou senha
+  role         String    @default("attendant") // "admin" (vê tudo) | "attendant" (só o dele)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
 

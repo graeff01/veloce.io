@@ -5,7 +5,7 @@ import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users } from "lucide-rea
 import { Button } from "@/components/ui/button";
 
 interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; logoUrl: string | null }
-interface PortalUser { id: string; email: string; name: string | null; lastLoginAt: string | null; hasPassword: boolean }
+interface PortalUser { id: string; email: string; name: string | null; role: string; lastLoginAt: string | null; hasPassword: boolean }
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -30,6 +30,11 @@ export function PanelTab({ clientId }: { clientId: string }) {
   async function removeUser(email: string) {
     if (!confirm(`Remover o acesso de ${email}? A sessão dele é derrubada e a vaga fica livre.`)) return;
     await fetch(`/api/clients/${clientId}/portal-access?email=${encodeURIComponent(email)}`, { method: "DELETE" });
+    loadUsers();
+  }
+  async function setRole(email: string, role: string) {
+    const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível mudar o papel."); }
     loadUsers();
   }
 
@@ -143,6 +148,10 @@ export function PanelTab({ clientId }: { clientId: string }) {
                   <div style={{ fontSize: 12.5, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name ? `${u.name} · ` : ""}{u.email}</div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{u.hasPassword ? `último acesso ${fmtDate(u.lastLoginAt)}` : "convidado (ainda sem senha)"}</div>
                 </div>
+                <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
+                  style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
+                  {u.role === "admin" ? "Admin" : "Atendente"}
+                </button>
                 <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
               </div>
             ))}

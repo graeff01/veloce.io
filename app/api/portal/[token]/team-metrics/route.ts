@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { isProtected, getPortalUser, isAdminRole } from "@/lib/portal-auth";
 import { normalizePeriod, periodRanges } from "@/lib/notifications/client-report";
 
 export const runtime = "nodejs";
@@ -14,11 +14,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
 
-  const me = await getPortalSessionEmail(portal.clientId);
+  const user = await getPortalUser(portal.clientId);
+  const me = user?.email ?? null;
+  const isAdmin = isAdminRole(user?.role);
   if (await isProtected(portal.clientId) && !me) return NextResponse.json({ error: "Faça login." }, { status: 401 });
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
-  if (!conn) return NextResponse.json({ me, period: "month", rows: [], team: null, unassigned: 0 });
+  if (!conn) return NextResponse.json({ me, isAdmin, period: "month", rows: [], team: null, unassigned: 0 });
 
   const period = normalizePeriod(new URL(req.url).searchParams.get("p"));
   const { start, end, label } = periodRanges(period);
@@ -71,5 +73,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     qualified: t.qualified + r.qualified, converted: t.converted + r.converted, revenue: t.revenue + r.revenue, replies: t.replies + r.replies,
   }), { newLeads: 0, owned: 0, waiting: 0, qualified: 0, converted: 0, revenue: 0, replies: 0 });
 
-  return NextResponse.json({ me, period, periodLabel: label, rows, team, unassigned });
+  // Atendente só enxerga os PRÓPRIOS números; admin vê o ranking inteiro + totais.
+  if (!isAdmin) {
+    return NextResponse.json({ me, isAdmin, period, periodLabel: label, rows: rows.filter((r) => r.isMe), team: null, unassigned: 0 });
+  }
+  return NextResponse.json({ me, isAdmin, period, periodLabel: label, rows, team, unassigned });
 }

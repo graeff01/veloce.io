@@ -11,9 +11,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, lastLoginAt: true, passwordHash: true } });
-  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
+  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, lastLoginAt: true, passwordHash: true } });
+  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
   return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
+}
+
+// PATCH { email, role } — define o papel (admin | attendant) do usuário.
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { error } = await requireAuth("clients:update");
+  if (error) return error;
+  const body = await req.json().catch(() => ({}));
+  const e = normEmail(body?.email || "");
+  const role = body?.role === "admin" ? "admin" : "attendant";
+  if (!e) return NextResponse.json({ error: "E-mail obrigatório." }, { status: 400 });
+  // Não deixa remover o ÚLTIMO admin do cliente.
+  if (role === "attendant") {
+    const admins = await prisma.portalAccess.count({ where: { clientId: id, role: "admin" } });
+    const isThisAdmin = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId: id, email: e } }, select: { role: true } });
+    if (admins <= 1 && isThisAdmin?.role === "admin") return NextResponse.json({ error: "Precisa haver ao menos 1 admin." }, { status: 400 });
+  }
+  await prisma.portalAccess.updateMany({ where: { clientId: id, email: e }, data: { role } });
+  return NextResponse.json({ ok: true, role });
 }
 
 // DELETE ?email= — remove o usuário (libera a vaga) e derruba as sessões dele.
