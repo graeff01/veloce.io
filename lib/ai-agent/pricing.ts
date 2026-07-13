@@ -14,7 +14,16 @@
 
 export interface PriceItemDef { key: string; label: string; amount: number }
 export interface FeeDef { key: string; label: string; amount?: number; percent?: number }
-export interface PricingRules { base?: PriceItemDef[]; options?: PriceItemDef[]; fees?: FeeDef[] }
+// Frete FIXO por região: a IA coleta o endereço, o motor escolhe a linha (determinístico).
+// aliases cobre variações do nome da cidade/bairro ("Caxias", "Bento Gonçalves", CEP...).
+export interface FreightRegion { region: string; amount: number; aliases?: string[] }
+export interface PricingRules {
+  base?: PriceItemDef[];
+  options?: PriceItemDef[];
+  fees?: FeeDef[];
+  freight?: FreightRegion[];    // frete fixo por região (resolvido pelo endereço)
+  freightDefault?: number;      // fallback quando a região não bate (opcional)
+}
 
 // Seleção feita pela IA (só chaves — nunca valores).
 export interface QuoteSelection {
@@ -76,11 +85,49 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
   return { ok: true, quote: { items, subtotal, fees, total: round2(subtotal + fees) } };
 }
 
+// ── Frete determinístico por região ───────────────────────────────────────────
+// Normaliza texto (minúsculo, sem acento) para casar região no endereço coletado.
+const normText = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+export type FreightResult = { label: string; amount: number } | { unmatched: true } | null;
+
+// Resolve o frete a partir do endereço/cidade do lead. Determinístico: casa a 1ª região
+// cujo nome (ou alias) aparece no endereço. null = frete NÃO configurado (sem linha);
+// unmatched = configurado mas nenhuma região bateu (e sem freightDefault) → o chamador
+// deve pedir a região ou encaminhar (nunca orçar frete errado).
+export function resolveFreight(rules: PricingRules, address: string): FreightResult {
+  const list = rules.freight ?? [];
+  if (!list.length) return null;
+  const a = normText(address);
+  if (a) {
+    for (const f of list) {
+      const names = [f.region, ...(f.aliases ?? [])].map(normText).filter(Boolean);
+      if (names.some((n) => a.includes(n))) return { label: `Frete — ${f.region}`, amount: round2(f.amount) };
+    }
+  }
+  if (rules.freightDefault != null) return { label: "Frete", amount: round2(rules.freightDefault) };
+  return { unmatched: true };
+}
+
+// Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.
+export function appendFeeLine(quote: ComputedQuote, line: { label: string; amount: number }): ComputedQuote {
+  const amount = round2(line.amount);
+  return {
+    items: [...quote.items, { key: "frete", label: line.label, qty: 1, unit: amount, amount }],
+    subtotal: quote.subtotal,
+    fees: round2(quote.fees + amount),
+    total: round2(quote.total + amount),
+  };
+}
+
 // Catálogo legível (para a IA saber quais chaves existem, sem inventar).
 export function describeRules(rules: PricingRules): string {
   const line = (arr: { key: string; label: string; amount?: number; percent?: number }[] | undefined, titulo: string) =>
     arr && arr.length
       ? `${titulo}:\n${arr.map((i) => `  - ${i.key}: ${i.label}${i.amount != null ? ` (R$ ${i.amount})` : i.percent != null ? ` (${i.percent}%)` : ""}`).join("\n")}`
       : "";
-  return [line(rules.base, "BASE (obrigatório escolher)"), line(rules.options, "OPCIONAIS"), line(rules.fees, "TAXAS")].filter(Boolean).join("\n");
+  const freight = rules.freight?.length
+    ? `FRETE POR REGIÃO (automático pelo endereço — NÃO escolher, só garanta que coletou a cidade):\n${rules.freight.map((f) => `  - ${f.region}: R$ ${f.amount}`).join("\n")}`
+    : "";
+  return [line(rules.base, "BASE (obrigatório escolher)"), line(rules.options, "OPCIONAIS"), line(rules.fees, "TAXAS"), freight].filter(Boolean).join("\n");
 }
