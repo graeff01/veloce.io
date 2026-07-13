@@ -9,27 +9,18 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   const { token } = await params;
   const portal = await resolvePortal(token);
   if (!portal) return {};
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
   const name = client?.name || "Painel";
-  const logo = normalizeIcon(client?.logoUrl);
 
-  const md: Metadata = {
+  // apple-touch-icon = logo do cliente servido como imagem real (rota /logo — o logo é
+  // data URI no banco, que iOS/Android não aceitam direto). A rota faz fallback pro
+  // ícone da Veloce se o cliente não tem logo. Favicon do desktop segue a Veloce.
+  return {
     title: name,
     manifest: `/r/${token}/manifest.webmanifest`,
     appleWebApp: { capable: true, title: name, statusBarStyle: "default" },
+    icons: { icon: [{ url: "/favicon.ico" }, { url: "/logo.png", type: "image/png" }], apple: `/r/${token}/logo` },
   };
-  // Só troca o ícone do atalho (apple) pelo do cliente quando ele tem logo; mantém o
-  // favicon do desktop (icon) apontando pra Veloce.
-  if (logo) {
-    md.icons = { icon: [{ url: "/favicon.ico" }, { url: "/logo.png", type: "image/png" }], apple: logo };
-  }
-  return md;
-}
-
-function normalizeIcon(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (/^https?:\/\//.test(url) || url.startsWith("/")) return url;
-  return `/${url}`;
 }
 
 export default function PortalTokenLayout({ children }: { children: React.ReactNode }) {

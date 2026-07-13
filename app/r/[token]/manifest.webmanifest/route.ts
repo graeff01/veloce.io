@@ -10,9 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const portal = await resolvePortal(token);
   if (!portal) return new Response("{}", { status: 404, headers: { "Content-Type": "application/manifest+json" } });
 
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
   const name = client?.name || "Painel";
-  const logo = normalizeIcon(client?.logoUrl);
 
   const manifest = {
     name,
@@ -22,16 +21,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     display: "standalone",
     background_color: "#ffffff",
     theme_color: portal.accentColor || "#111111",
-    icons: [{ src: logo, sizes: "any", type: "image/png", purpose: "any" }],
+    // Ícone = logo do cliente servido como imagem real (a rota /logo decodifica o data
+    // URI; data URI não vale como ícone de manifest). Fallback pro ícone da Veloce.
+    icons: [
+      { src: `/r/${token}/logo`, sizes: "192x192", purpose: "any" },
+      { src: `/r/${token}/logo`, sizes: "512x512", purpose: "any" },
+    ],
   };
   return new Response(JSON.stringify(manifest), {
     headers: { "Content-Type": "application/manifest+json", "Cache-Control": "public, max-age=300" },
   });
-}
-
-// Logo do cliente como ícone; fallback pro ícone da Veloce se o cliente não tem logo.
-function normalizeIcon(url: string | null | undefined): string {
-  if (!url) return "/apple-icon.png";
-  if (/^https?:\/\//.test(url) || url.startsWith("/")) return url;
-  return `/${url}`;
 }

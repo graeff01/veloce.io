@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
@@ -231,6 +231,20 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     );
   };
 
+  // Item da barra flutuante inferior (mobile, estilo WhatsApp): ícone + rótulo, ativo destacado.
+  const bottomItem = (k: "all" | "ads" | "waiting", label: string, icon: React.ReactNode, badge: number) => {
+    const on = tab === k;
+    return (
+      <button key={k} onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "8px 4px", border: "none", cursor: "pointer", borderRadius: 18, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>
+        <span style={{ position: "relative", display: "inline-flex" }}>
+          {icon}
+          {badge > 0 && <span style={{ position: "absolute", top: -6, right: -11, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: "#1FA855", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{badge > 99 ? "99+" : badge}</span>}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: on ? 700 : 600 }}>{label}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
@@ -250,8 +264,8 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar conversa" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
-        {/* abas */}
-        <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>
+        {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
+        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>}
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -261,7 +275,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
         )}
         {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
-        <div style={{ flex: 1, overflowY: "auto" }}>
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: isMobile ? "calc(84px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
             : items.length === 0 ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
@@ -286,12 +300,21 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
               );
             })}
         </div>
+
+        {/* Barra flutuante inferior (mobile) — estilo WhatsApp. Só na lista (some no thread). */}
+        {isMobile && (
+          <nav style={{ position: "fixed", left: 10, right: 10, bottom: "calc(10px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", gap: 4, padding: 6, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 26, boxShadow: "0 6px 28px rgba(0,0,0,.22)" }}>
+            {bottomItem("all", "Conversas", <MessageCircle size={22} />, 0)}
+            {bottomItem("waiting", "Aguardando", <Clock size={22} />, waitingCount)}
+            {hasAds && bottomItem("ads", "Anúncios", <Megaphone size={22} />, 0)}
+          </nav>
+        )}
       </aside>
 
       {/* ── Chat ── */}
       <main style={{ flex: 1, display: isMobile && !sel ? "none" : "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "var(--wa-chat)" }}>
-        {/* marca d'água: logo do cliente (PNG em /public/logopng) */}
-        <div style={{ position: "absolute", inset: 0, backgroundImage: `url("/logopng/bv.png")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(48%, 420px)", opacity: 0.06, pointerEvents: "none", zIndex: 0 }} />
+        {/* marca d'água: logo do PRÓPRIO cliente (via prop logoUrl; some se não tiver) */}
+        {logoUrl && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${logoUrl}")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(48%, 420px)", opacity: 0.06, pointerEvents: "none", zIndex: 0 }} />}
         {/* granulado (feTurbulence) — mesmo grão do tema claro */}
         <div style={{ position: "absolute", inset: 0, opacity: 0.04, pointerEvents: "none", zIndex: 0, mixBlendMode: "multiply",
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")` }} />
