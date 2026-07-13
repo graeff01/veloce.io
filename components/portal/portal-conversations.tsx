@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
 interface Attendant { email: string; name: string }
@@ -71,8 +71,10 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [me, setMe] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [attendants, setAttendants] = useState<Attendant[]>([]);
   const [mineOnly, setMineOnly] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [assigning, setAssigning] = useState(false);
   const [ownerMenu, setOwnerMenu] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -84,6 +86,17 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const recRef = useRef<{ mr: MediaRecorder; chunks: Blob[]; stream: MediaStream; mime: string; timer: ReturnType<typeof setInterval> } | null>(null);
   const nearBottomRef = useRef(true);
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
+
+  // Tema (claro/escuro) — a MESMA chave/atributo do resto do painel, mantendo a cor da
+  // empresa (accent). Deixa o vendedor trocar o tema aqui dentro das conversas (no mobile
+  // a sidebar do painel fica escondida, então este é o único acesso).
+  useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-pt", next);
+    try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
+  }
 
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
   useEffect(() => {
@@ -101,7 +114,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       if (!alive) return;
       const arr = Array.isArray(d) ? d : (d?.conversations ?? []);
       setList(arr);
-      if (d && !Array.isArray(d)) { setMe(d.me ?? null); setAttendants(d.attendants ?? []); }
+      if (d && !Array.isArray(d)) { setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []); }
     }).catch(() => {});
     load();
     const iv = setInterval(() => { if (!document.hidden) load(); }, 12000);
@@ -380,6 +393,10 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
+        <button onClick={toggleTheme} title={theme === "dark" ? "Tema claro" : "Tema escuro"} aria-label="Alternar tema claro/escuro"
+          style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", cursor: "pointer", flexShrink: 0 }}>
+          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
       </header>
 
       {/* Viewer preenche toda a área interna (ao lado da sidebar do shell) */}
@@ -491,17 +508,27 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                     <div onClick={() => setOwnerMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
                     <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Dono do lead</div>
-                      {me && conv.assignedEmail !== me && (
+                      {/* Assumir (você): atendente só pode em lead LIVRE; admin sempre. */}
+                      {me && conv.assignedEmail !== me && (isAdmin || !conv.assignedEmail) && (
                         <button onClick={() => assign(me)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "var(--p-accent)" }}><UserRound size={14} /> Assumir (você)</button>
                       )}
-                      {attendants.filter((a) => a.email !== me).map((a) => (
+                      {/* Transferir para outro atendente — só admin. */}
+                      {isAdmin && attendants.filter((a) => a.email !== me).map((a) => (
                         <button key={a.email} onClick={() => assign(a.email)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, color: "var(--p-text)" }}>
                           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                           {conv.assignedEmail === a.email && <Check size={14} style={{ color: "var(--p-accent)" }} />}
                         </button>
                       ))}
-                      {conv.assignedEmail && (
+                      {/* Remover dono — só admin. */}
+                      {isAdmin && conv.assignedEmail && (
                         <button onClick={() => assign(null)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", marginTop: 2, borderTop: "1px solid var(--p-border)", border: "none", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--wa-muted)" }}>Remover dono</button>
+                      )}
+                      {/* Atendente: sem ação sobre lead de outro (transferir/remover é do admin). */}
+                      {!isAdmin && conv.assignedEmail && conv.assignedEmail !== me && (
+                        <div style={{ padding: "8px", fontSize: 12, color: "var(--wa-muted)", lineHeight: 1.4 }}>Este lead é de <b style={{ color: "var(--p-text)" }}>{conv.assignedName}</b>. Só o admin pode transferir ou remover.</div>
+                      )}
+                      {!isAdmin && conv.assignedEmail === me && (
+                        <div style={{ padding: "8px", fontSize: 12, color: "var(--wa-muted)", lineHeight: 1.4 }}>Você é o dono deste lead.</div>
                       )}
                     </div>
                   </>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { getPortalSessionEmail } from "@/lib/portal-auth";
+import { getPortalUser, isAdminRole } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
 
@@ -21,18 +21,21 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     include: { messages: { orderBy: { timestamp: "desc" }, take: 1, select: { text: true, direction: true, type: true } } },
   });
   const ids = contacts.map((c) => c.id);
-  const [leads, convs, attendants, me] = await Promise.all([
+  const [leads, convs, attendants, user] = await Promise.all([
     prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
-    getPortalSessionEmail(portal.clientId),
+    getPortalUser(portal.clientId),
   ]);
+  const me = user?.email ?? null;
+  const isAdmin = isAdminRole(user?.role);
   const leadBy = new Map(leads.map((l) => [l.contactId, l]));
   const convBy = new Map(convs.map((c) => [c.contactId, c]));
   const nameOf = (email: string | null) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);
 
   return NextResponse.json({
     me,
+    isAdmin,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),
     conversations: contacts.map((c) => {
