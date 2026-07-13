@@ -8,6 +8,7 @@ import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/li
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { AreaChart, Sparkline } from "@/components/portal/portal-charts";
 import { PortalShare } from "@/components/portal/portal-share";
 
 export const runtime = "nodejs";
@@ -133,7 +134,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <div className="k">Leads</div>
               <div className="v">{int(a.leads)}</div>
               <DeltaChip pct={d.leads} goodWhenUp />
-              {data.midia && <div className="foot">{int(data.midia.leads)} de anúncio</div>}
+              {data.series.length > 1 && <div style={{ marginTop: 10 }}><Sparkline points={data.series.map((s) => s.leads)} colorVar="--p-good" /></div>}
             </div>
             <div className="p-metric">
               <div className="k">Custo por lead</div>
@@ -149,26 +150,11 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
           </div>
 
           <div className="p-split">
-            {/* Velocidade de atendimento */}
+            {/* Desempenho · leads por dia (gráfico de área) */}
             <div>
-              <div className="p-eyebrow">Velocidade de atendimento · {a.tempoMedioMin != null ? `${int(a.tempoMedioMin)}min médio` : "sem dados"} · {a.taxaResposta}% respondidos</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 11, marginTop: 14 }}>
-                {(() => {
-                  const rows = [
-                    { label: "Respondido em até 5 min", value: data.responseBuckets.upTo5, c: "var(--p-good)" },
-                    { label: "Entre 5 e 30 min", value: data.responseBuckets.upTo30, c: "#65a30d" },
-                    { label: "Entre 30 e 60 min", value: data.responseBuckets.upTo60, c: "var(--p-warn)" },
-                    { label: "Mais de 1 hora", value: data.responseBuckets.over60, c: "#f97316" },
-                    { label: "Sem resposta", value: data.responseBuckets.sem, c: "var(--p-crit)" },
-                  ];
-                  const max = Math.max(1, ...rows.map((r) => r.value));
-                  return rows.map((r, i) => (
-                    <div key={i}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 12.5 }}><span style={{ color: "var(--p-text)" }}>{r.label}</span><b className="tnum" style={{ color: r.c }}>{r.value}</b></div>
-                      <div className="p-track"><span style={{ width: `${(r.value / max) * 100}%`, background: r.c }} /></div>
-                    </div>
-                  ));
-                })()}
+              <div className="p-eyebrow">Desempenho · leads por dia</div>
+              <div style={{ marginTop: 14 }}>
+                <AreaChart points={data.series.map((s) => s.leads)} height={172} />
               </div>
             </div>
             {/* Health score */}
@@ -189,6 +175,29 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               </div>
               <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 14 }}>{healthHint}</div>
             </div>
+          </div>
+        </div>
+
+        {/* Velocidade de atendimento */}
+        <div className="p-panel">
+          <div className="p-phead"><h2>Velocidade de atendimento</h2><span className="hint">{a.tempoMedioMin != null ? `${int(a.tempoMedioMin)}min médio` : "sem dados"} · {a.taxaResposta}% respondidos</span></div>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 11 }}>
+            {(() => {
+              const rows = [
+                { label: "Respondido em até 5 min", value: data.responseBuckets.upTo5, c: "var(--p-good)" },
+                { label: "Entre 5 e 30 min", value: data.responseBuckets.upTo30, c: "#65a30d" },
+                { label: "Entre 30 e 60 min", value: data.responseBuckets.upTo60, c: "var(--p-warn)" },
+                { label: "Mais de 1 hora", value: data.responseBuckets.over60, c: "#f97316" },
+                { label: "Sem resposta", value: data.responseBuckets.sem, c: "var(--p-crit)" },
+              ];
+              const max = Math.max(1, ...rows.map((r) => r.value));
+              return rows.map((r, i) => (
+                <div key={i}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 12.5 }}><span style={{ color: "var(--p-text)" }}>{r.label}</span><b className="tnum" style={{ color: r.c }}>{r.value}</b></div>
+                  <div className="p-track"><span style={{ width: `${(r.value / max) * 100}%`, background: r.c }} /></div>
+                </div>
+              ));
+            })()}
           </div>
         </div>
 
