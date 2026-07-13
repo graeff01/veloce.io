@@ -138,7 +138,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
                   <div style={{ paddingLeft: 30, borderLeft: "1px solid var(--p-border)" }}>
                     <div className="p-eyebrow">Retorno sobre o investido</div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
-                      <div className="tnum" style={{ fontSize: 46, fontWeight: 800, color: "var(--p-accent)", letterSpacing: "-0.035em", lineHeight: 0.95 }}>{f.roas}x</div>
+                      <div className="tnum" style={{ fontSize: 46, fontWeight: 800, color: "var(--p-accent)", letterSpacing: "-0.035em", lineHeight: 0.95 }}>{f.roas.toLocaleString("pt-BR")}x</div>
                       <span className="p-pill good" style={{ fontSize: 12.5 }}>cada R$ 1 virou {brl(f.roas)}</span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 8 }}>investiu {brl(f.spend)} · voltou <b style={{ color: "var(--p-text)" }}>{brl(f.revenue)}</b> em vendas</div>
