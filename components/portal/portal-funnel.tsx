@@ -27,7 +27,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
 
   if (!data || data.total === 0) {
     return (
-      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "40px 22px" }}>
+      <div style={{ padding: "40px 26px" }}>
         <div style={{ ...card, textAlign: "center", padding: "56px 24px" }}>
           <div style={{ fontSize: 34 }}>🌡️</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>Seu funil aparece aqui</div>
@@ -40,7 +40,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
   const c = data.comparativo;
 
   return (
-    <div style={{ maxWidth: 1320, margin: "0 auto", padding: "28px 22px 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: "22px 26px 60px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>Funil de vendas</h1>
         <p style={{ fontSize: 13.5, color: "var(--p-muted)", marginTop: 2 }}>A jornada dos leads na barra de temperatura: frio → quente. Abra cada etapa abaixo para ver os leads.</p>
