@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientFunnel } from "@/lib/notifications/client-funnel";
-import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
+import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
@@ -43,11 +43,8 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
     <main className="fmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="funil" />
-      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
-        .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
-          background-color:var(--p-bg);
-          background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
-          background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
+      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
+        .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(prefers-reduced-motion:reduce){.heatbar{animation:none!important}}`}</style>
