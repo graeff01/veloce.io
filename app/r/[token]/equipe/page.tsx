@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { redirect } from "next/navigation";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
@@ -24,6 +25,8 @@ export default async function EquipePage({ params }: { params: Promise<{ token: 
       </main>
     );
   }
+
+  if (!(await sectionEnabled(portal.clientId, "equipe"))) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 

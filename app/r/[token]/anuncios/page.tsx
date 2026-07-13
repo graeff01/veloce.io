@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { redirect } from "next/navigation";
 import { getClientAds } from "@/lib/notifications/client-ads";
 import { normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -44,6 +45,8 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
       </main>
     );
   }
+
+  if (!(await sectionEnabled(portal.clientId, "anuncios"))) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 

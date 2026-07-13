@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList } from "lucide-react";
+import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: string[]; logoUrl: string | null }
@@ -43,6 +43,11 @@ export function PanelTab({ clientId }: { clientId: string }) {
   async function setRole(email: string, role: string) {
     const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível mudar o papel."); }
+    loadUsers();
+  }
+  async function resetPassword(email: string) {
+    if (!confirm(`Resetar a senha de ${email}? A sessão dele cai e ele define uma nova senha no próximo acesso (tela "Criar conta", com o mesmo e-mail).`)) return;
+    await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, reset: true }) });
     loadUsers();
   }
 
@@ -185,6 +190,7 @@ export function PanelTab({ clientId }: { clientId: string }) {
                   style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
                   {u.role === "admin" ? "Admin" : "Atendente"}
                 </button>
+                {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
                 <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
               </div>
             ))}

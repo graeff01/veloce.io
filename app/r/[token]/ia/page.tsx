@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { redirect } from "next/navigation";
 import { buildImpact } from "@/lib/ai-agent/impact";
 import { normalizePeriod, recentMonths, periodRanges } from "@/lib/notifications/client-report";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -90,6 +91,8 @@ export default async function IaPage({ params, searchParams }: { params: Promise
       </main>
     );
   }
+
+  if (!(await sectionEnabled(portal.clientId, "ia"))) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 

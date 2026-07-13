@@ -87,6 +87,11 @@ export function PortalGate({ token, brandName, logoUrl }: { token: string; brand
         <p style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 16, textAlign: "center" }}>
           {mode === "login" ? "Ainda não tem acesso? Toque em “Criar conta”." : "Já tem conta? Toque em “Entrar”."}
         </p>
+        {mode === "login" && (
+          <p style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 6, textAlign: "center", opacity: 0.85 }}>
+            Esqueceu a senha? Peça ao admin do painel para resetar seu acesso.
+          </p>
+        )}
       </div>
     </div>
   );
