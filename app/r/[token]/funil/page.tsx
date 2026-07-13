@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { redirect } from "next/navigation";
 import { getClientFunnel } from "@/lib/notifications/client-funnel";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
@@ -25,6 +26,8 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
       </main>
     );
   }
+
+  if (!(await sectionEnabled(portal.clientId, "funil"))) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 

@@ -16,6 +16,12 @@ export function parseSections(csv: string | null | undefined): PortalSection[] {
 
 export interface PortalState { token: string; link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: PortalSection[] }
 
+// Uma seção está habilitada no portal deste cliente? (para gate por URL nas páginas.)
+export async function sectionEnabled(clientId: string, key: PortalSection): Promise<boolean> {
+  const cp = await prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } });
+  return parseSections(cp?.sections).includes(key);
+}
+
 // Garante o portal do cliente (cria token na 1ª vez). Token = capability URL.
 export async function getOrCreatePortal(clientId: string): Promise<PortalState> {
   let portal = await prisma.clientPortal.findUnique({ where: { clientId } });

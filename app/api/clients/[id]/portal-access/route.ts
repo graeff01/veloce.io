@@ -16,15 +16,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
 }
 
-// PATCH { email, role } — define o papel (admin | attendant) do usuário.
+// PATCH { email, role } — define o papel; ou { email, reset:true } — reseta a senha
+// (limpa o hash e derruba as sessões; o usuário cria uma nova senha no próximo acesso).
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:update");
   if (error) return error;
   const body = await req.json().catch(() => ({}));
   const e = normEmail(body?.email || "");
-  const role = body?.role === "admin" ? "admin" : "attendant";
   if (!e) return NextResponse.json({ error: "E-mail obrigatório." }, { status: 400 });
+
+  if (body?.reset === true) {
+    await prisma.portalAccess.updateMany({ where: { clientId: id, email: e }, data: { passwordHash: null, lastLoginAt: null } });
+    await prisma.portalSession.deleteMany({ where: { clientId: id, email: e } });
+    return NextResponse.json({ ok: true, reset: true });
+  }
+
+  const role = body?.role === "admin" ? "admin" : "attendant";
   // Não deixa remover o ÚLTIMO admin do cliente.
   if (role === "attendant") {
     const admins = await prisma.portalAccess.count({ where: { clientId: id, role: "admin" } });
