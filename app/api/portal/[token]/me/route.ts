@@ -15,5 +15,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     isProtected(portal.clientId),
     prisma.clientPortal.findUnique({ where: { clientId: portal.clientId }, select: { sections: true } }),
   ]);
-  return NextResponse.json({ user, requireLogin, sections: parseSections(cp?.sections) });
+  const aiTest = (cp?.sections ?? "").split(",").map((s) => s.trim()).includes("teste");
+  return NextResponse.json({ user, requireLogin, sections: parseSections(cp?.sections), aiTest });
 }

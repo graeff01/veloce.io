@@ -2,19 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" }) {
+export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(null);
   const [sections, setSections] = useState<string[] | null>(null); // null = todas (até carregar)
+  const [aiTest, setAiTest] = useState(false); // aba temporária de teste da IA
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); }).catch(() => {}); }, [token]);
+  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); }).catch(() => {}); }, [token]);
   const on = (k: string) => !sections || sections.includes(k);
   async function logout() {
     await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
@@ -27,7 +28,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe", href: string, label: string, icon: React.ReactNode) => {
+  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste", href: string, label: string, icon: React.ReactNode) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -69,6 +70,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
           {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
           {on("conversas") && item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
           {on("equipe") && item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
+          {aiTest && item("teste", `/r/${token}/testar-ia`, "Testar IA", <FlaskConical size={15} />)}
         </nav>
 
         {/* conta logada (identifica quem está no painel) + sair */}
