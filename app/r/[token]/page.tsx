@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, getSectorBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
@@ -133,6 +135,11 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
       </main>
     );
   }
+
+  // No celular, a entrada do painel vai DIRETO para as conversas (foco em responder
+  // os leads — é a tela nova). Desktop mantém o dashboard de métricas como entrada.
+  const ua = (await headers()).get("user-agent") || "";
+  if (/Mobi|Android|iPhone|iPod|Windows Phone/i.test(ua)) redirect(`/r/${token}/conversas`);
 
   if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
     const c = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });

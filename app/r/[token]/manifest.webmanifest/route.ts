@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const manifest = {
     name,
     short_name: name.slice(0, 12),
-    start_url: `/r/${token}`,
+    start_url: `/r/${token}/conversas`, // atalho abre direto nas mensagens (foco mobile)
     scope: `/r/${token}`,
     display: "standalone",
     background_color: "#ffffff",
