@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check } from "lucide-react";
 
-interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
+interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
+interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
 const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
-interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; items: Msg[] }
+interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -57,6 +58,11 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [me, setMe] = useState<string | null>(null);
+  const [attendants, setAttendants] = useState<Attendant[]>([]);
+  const [mineOnly, setMineOnly] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [ownerMenu, setOwnerMenu] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -79,7 +85,12 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
   useEffect(() => {
     let alive = true;
-    const load = () => fetch(`/api/portal/${token}/conversations`).then((r) => (r.ok ? r.json() : [])).then((d) => { if (alive) setList(Array.isArray(d) ? d : []); }).catch(() => {});
+    const load = () => fetch(`/api/portal/${token}/conversations`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (!alive) return;
+      const arr = Array.isArray(d) ? d : (d?.conversations ?? []);
+      setList(arr);
+      if (d && !Array.isArray(d)) { setMe(d.me ?? null); setAttendants(d.attendants ?? []); }
+    }).catch(() => {});
     load();
     const iv = setInterval(() => { if (!document.hidden) load(); }, 12000);
     return () => { alive = false; clearInterval(iv); };
@@ -131,12 +142,14 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   useEffect(() => { if (!hasAds && (tab === "ads")) { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
 
   const items = (list ?? []).filter((c) => {
+    if (mineOnly && (!me || c.assignedEmail !== me)) return false;
     if (tab === "ads" && !c.fromAd) return false;
     if (tab === "ads" && adFilter && adLabelOf(c) !== adFilter) return false;
     if (tab === "waiting" && !isWaiting(c)) return false;
     if (q.trim() && !c.name.toLowerCase().includes(q.trim().toLowerCase())) return false;
     return true;
   });
+  const myWaiting = (list ?? []).filter((c) => me && c.assignedEmail === me && isWaiting(c)).length;
 
   // agrupa mensagens por dia (divisores estilo WhatsApp)
   const grouped = useMemo(() => {
@@ -195,6 +208,21 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       setDraft((cur) => cur || text);
       setSendError("Falha de conexão. Tente de novo.");
     } finally { setSending(false); }
+  }
+
+  // Assumir/transferir/remover o dono do lead (atribuição).
+  async function assign(email: string | null) {
+    if (!sel || assigning) return;
+    setAssigning(true); setOwnerMenu(false);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/assign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.error || "Não foi possível atualizar o dono."); return; }
+      const ae = d.assignedEmail ?? null;
+      setConv((c) => (c ? { ...c, assignedEmail: ae, assignedName: ae ? (attendants.find((a) => a.email === ae)?.name || ae.split("@")[0]) : null } : c));
+      // reflete na lista sem esperar o polling
+      setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, assignedEmail: ae } : row)) : l));
+    } finally { setAssigning(false); }
   }
 
   // Envio de MÍDIA (imagem/documento/áudio) — otimista + reconcile como o texto.
@@ -354,6 +382,14 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar conversa" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
+        {/* filtro "Meus leads" (só com login + equipe) */}
+        {me && attendants.length > 1 && (
+          <div style={{ padding: "0 14px 8px" }}>
+            <button onClick={() => setMineOnly((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", border: `1px solid ${mineOnly ? "var(--p-accent)" : "var(--p-border)"}`, borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 600, background: mineOnly ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOnly ? "var(--p-accent)" : "var(--p-text)" }}>
+              <UserRound size={13} /> Meus leads {myWaiting > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#1FA855" }}>{myWaiting}</span>}
+            </button>
+          </div>
+        )}
         {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
         {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>}
         {/* filtro por anúncio (só na aba de anúncios) */}
@@ -430,11 +466,40 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
                 {conv.lead?.adTitle && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>veio do anúncio “{conv.lead.adTitle}”</div>}
               </div>
+              {/* Dono do lead (atribuição): assumir / transferir */}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
+                  <button onClick={() => setOwnerMenu((o) => !o)} disabled={assigning} title={assigned ? `Dono: ${conv.assignedName}` : "Sem dono — assumir/atribuir"}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: `1px solid ${assigned ? (mineOwner ? "var(--p-accent)" : "var(--p-border)") : "var(--p-border)"}`, background: mineOwner ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOwner ? "var(--p-accent)" : assigned ? "var(--p-text)" : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assigning ? "wait" : "pointer", whiteSpace: "nowrap", maxWidth: isMobile ? 120 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <UserRound size={14} style={{ flexShrink: 0 }} />{!isMobile && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{assigned ? (mineOwner ? "Você" : conv.assignedName) : "Assumir"}</span>}
+                  </button>
+                ); })()}
+                {ownerMenu && (
+                  <>
+                    <div onClick={() => setOwnerMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Dono do lead</div>
+                      {me && conv.assignedEmail !== me && (
+                        <button onClick={() => assign(me)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "var(--p-accent)" }}><UserRound size={14} /> Assumir (você)</button>
+                      )}
+                      {attendants.filter((a) => a.email !== me).map((a) => (
+                        <button key={a.email} onClick={() => assign(a.email)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, color: "var(--p-text)" }}>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                          {conv.assignedEmail === a.email && <Check size={14} style={{ color: "var(--p-accent)" }} />}
+                        </button>
+                      ))}
+                      {conv.assignedEmail && (
+                        <button onClick={() => assign(null)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "8px", marginTop: 2, borderTop: "1px solid var(--p-border)", border: "none", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--wa-muted)" }}>Remover dono</button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
               <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap" }}>
-                <Sparkles size={14} /> {aiReplying ? "Respondendo…" : "IA responder"}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", flexShrink: 0 }}>
+                <Sparkles size={14} /> {aiReplying ? "…" : isMobile ? "IA" : "IA responder"}
               </button>
-              <StageBadge stage={conv.funnelStage} />
+              {!isMobile && <StageBadge stage={conv.funnelStage} />}
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
@@ -480,7 +545,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           <span>{body}</span>
-                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : "Equipe · ") : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
+                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
                         </div>
                       </div>
                     );

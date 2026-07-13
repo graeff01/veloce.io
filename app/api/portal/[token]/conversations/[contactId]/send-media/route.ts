@@ -14,10 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token, contactId } = await params;
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if (await isProtected(portal.clientId)) {
-    const email = await getPortalSessionEmail(portal.clientId);
-    if (!email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
-  }
+  const email = await getPortalSessionEmail(portal.clientId);
+  if (await isProtected(portal.clientId) && !email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
@@ -27,7 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!KINDS.includes(kind as Kind)) return NextResponse.json({ error: "Tipo de mídia inválido." }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const r = await sendManualMedia(portal.clientId, contactId, kind as Kind, buffer, file.type || "application/octet-stream", file.name || undefined, caption);
+  const r = await sendManualMedia(portal.clientId, contactId, kind as Kind, buffer, file.type || "application/octet-stream", file.name || undefined, caption, email);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
   return NextResponse.json({ ok: true, message: r.message });
 }

@@ -14,13 +14,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
 
-  if (await isProtected(portal.clientId)) {
-    const email = await getPortalSessionEmail(portal.clientId);
-    if (!email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
-  }
+  const email = await getPortalSessionEmail(portal.clientId);
+  if (await isProtected(portal.clientId) && !email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const r = await sendManualMessage(portal.clientId, contactId, typeof body?.text === "string" ? body.text : "");
+  const r = await sendManualMessage(portal.clientId, contactId, typeof body?.text === "string" ? body.text : "", email);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
   return NextResponse.json({ ok: true, message: r.message });
 }

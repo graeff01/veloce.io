@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isWithin24h } from "@/lib/wa-window";
+import { getPortalSessionEmail } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
 
@@ -21,11 +22,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  const [messages, lead, conv] = await Promise.all([
-    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true } }),
+  const [messages, lead, conv, attendants, me] = await Promise.all([
+    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true, sentByEmail: true } }),
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true } }),
-    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true } }),
+    prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, assignedEmail: true } }),
+    prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
+    getPortalSessionEmail(portal.clientId),
   ]);
+  const nameOf = (email: string | null | undefined) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);
 
   // Imagem do criativo: do referral OU do thumbnail sincronizado da Meta (por adId).
   let adImage = lead?.adImageUrl ?? null;
@@ -50,6 +54,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     funnelEvidence: conv?.funnelManual ? null : (conv?.funnelEvidence ?? null),
     windowOpen: isWithin24h(lastInboundAt),
     lastInboundAt,
-    items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp, aiGenerated: m.aiGenerated })),
+    assignedEmail: conv?.assignedEmail ?? null,
+    assignedName: nameOf(conv?.assignedEmail),
+    me,
+    meName: nameOf(me),
+    attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),
+    items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp, aiGenerated: m.aiGenerated, sentByEmail: m.sentByEmail, sentByName: nameOf(m.sentByEmail) })),
   });
 }
