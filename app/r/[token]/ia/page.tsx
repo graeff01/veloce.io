@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { buildImpact } from "@/lib/ai-agent/impact";
 import { normalizePeriod, recentMonths, periodRanges } from "@/lib/notifications/client-report";
-import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
+import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
@@ -26,12 +26,12 @@ function fmtDur(sec: number): string {
   return m ? `${h}h ${m}min` : `${h}h`;
 }
 
-function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
+function Metric({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
-    <div style={card}>
-      <div style={cap}>{label}</div>
-      <div style={{ fontSize: 27, fontWeight: 800, color: accent || "var(--p-text)", lineHeight: 1.05, marginTop: 8, letterSpacing: "-0.02em" }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 7 }}>{sub}</div>}
+    <div className="p-metric">
+      <div className="k">{label}</div>
+      <div className="v" style={accent ? { color: accent } : undefined}>{value}</div>
+      {sub && <div className="foot">{sub}</div>}
     </div>
   );
 }
@@ -115,82 +115,65 @@ export default async function IaPage({ params, searchParams }: { params: Promise
     <main className="imain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="ia" />
-      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
-        .imain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
-          background-color:var(--p-bg);
-          background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
-          background-size:100% 560px, 24px 24px;background-repeat:no-repeat, repeat;background-position:center top, center top;background-attachment:fixed, fixed;}
-        .itopbar{position:sticky;top:0;z-index:10;background:var(--p-surface);border-bottom:1px solid var(--p-border)}
-        .itopbar-in{max-width:1160px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-        .itoggle{display:flex;gap:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:11px;padding:4px;min-width:170px;margin-left:auto}
-        .iwrap{max-width:1160px;margin:0 auto;padding:18px 22px 56px;display:flex;flex-direction:column;gap:14px}
-        .ikpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-        @media(min-width:760px){ .itopbar-in,.iwrap{padding-left:26px;padding-right:26px} .ikpis{grid-template-columns:repeat(4,1fr)} }
-        @keyframes barFill{from{width:0}}
-        @media print{.itopbar{display:none!important}.imain{background:#fff!important}}`}</style>
+      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
+        .imain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
+        @media(min-width:1024px){ .imain{margin-left:236px} }
+        .ptop{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--p-border);background:color-mix(in srgb,var(--p-bg) 82%,transparent);backdrop-filter:saturate(180%) blur(12px)}
+        .ptop h1{font-size:18px;font-weight:700;letter-spacing:-.02em;margin:0}
+        .ptop .sub{color:var(--p-muted);font-size:12.5px}
+        @media print{.ptop{display:none!important}}`}</style>
 
-      <div className="itopbar">
-        <div className="itopbar-in">
-          <PortalPeriod selected={selected} months={months} />
-        </div>
+      <div className="ptop">
+        <div><h1>IA</h1><div className="sub">Atendimento automático · {periodLabel}</div></div>
+        <div style={{ marginLeft: "auto" }}><PortalPeriod selected={selected} months={months} /></div>
       </div>
 
-      <div className="iwrap">
-
-        {/* RESUMO */}
-        <div style={{ ...card, padding: "16px 20px", background: "linear-gradient(120deg, var(--p-accent-soft), var(--p-surface) 62%)", borderColor: "var(--p-accent-soft)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--p-accent)" }} />
-            <span style={{ ...cap, color: "var(--p-accent)" }}>Sua IA de atendimento · {periodLabel}</span>
+      <div className="p-wrap">
+        {summary && (
+          <div className="p-panel">
+            <div className="p-phead"><h2>Sua IA de atendimento</h2><span className="hint">{periodLabel}</span></div>
+            <p style={{ padding: "14px 18px", fontSize: 14.5, lineHeight: 1.55, color: "var(--p-text)", margin: 0 }}>{summary}</p>
           </div>
-          <p style={{ fontSize: 15.5, lineHeight: 1.5, color: "var(--p-text)", marginTop: 9, fontWeight: 500 }}>{summary}</p>
-        </div>
+        )}
 
-        {/* HERÓI · VELOCIDADE */}
-        <div style={{ ...card, borderColor: "var(--p-accent-soft)" }}>
-          <div style={cap}>Velocidade de resposta</div>
-          {rt.aiMedianSec == null ? (
-            <div style={{ fontSize: 13, color: "var(--p-muted)", marginTop: 10 }}>Sem dados ainda — aparece quando a IA começar a atender leads.</div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 28, flexWrap: "wrap", marginTop: 10 }}>
-              <div>
-                <div style={{ fontSize: 11.5, color: "var(--p-muted)", fontWeight: 600 }}>Com a IA</div>
-                <div style={{ fontSize: 40, fontWeight: 900, color: "var(--p-accent)", lineHeight: 1, letterSpacing: "-0.03em" }}>{fmtDur(rt.aiMedianSec)}</div>
-                <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 4 }}>tempo médio de resposta</div>
-              </div>
-              {rt.humanMedianSec != null && (
+        <div className="p-panel">
+          {/* Velocidade (herói) */}
+          <div style={{ padding: 18, borderBottom: "1px solid var(--p-border)" }}>
+            <div className="p-eyebrow">Velocidade de resposta</div>
+            {rt.aiMedianSec == null ? (
+              <div style={{ fontSize: 13, color: "var(--p-muted)", marginTop: 10 }}>Sem dados ainda — aparece quando a IA começar a atender leads.</div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 28, flexWrap: "wrap", marginTop: 12 }}>
                 <div>
-                  <div style={{ fontSize: 11.5, color: "var(--p-muted)", fontWeight: 600 }}>Antes (atendimento manual)</div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--p-muted)", lineHeight: 1.1, textDecoration: "line-through", textDecorationThickness: 1 }}>{fmtDur(rt.humanMedianSec)}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--p-muted)", fontWeight: 600 }}>Com a IA</div>
+                  <div className="tnum" style={{ fontSize: 44, fontWeight: 800, color: "var(--p-accent)", lineHeight: 1, letterSpacing: "-0.03em" }}>{fmtDur(rt.aiMedianSec)}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 4 }}>tempo médio de resposta</div>
                 </div>
-              )}
-              {speedup && speedup > 1 && (
-                <span style={{ fontSize: 14, fontWeight: 800, color: "#16a34a", padding: "6px 14px", borderRadius: 99, background: "var(--p-bg)", marginBottom: 6 }}>≈ {int(speedup)}× mais rápido</span>
-              )}
-            </div>
-          )}
+                {rt.humanMedianSec != null && (
+                  <div>
+                    <div style={{ fontSize: 11.5, color: "var(--p-muted)", fontWeight: 600 }}>Antes (atendimento manual)</div>
+                    <div className="tnum" style={{ fontSize: 24, fontWeight: 700, color: "var(--p-muted)", lineHeight: 1.1, textDecoration: "line-through" }}>{fmtDur(rt.humanMedianSec)}</div>
+                  </div>
+                )}
+                {speedup && speedup > 1 && <span className="p-pill good" style={{ fontSize: 13, marginBottom: 6 }}>≈ {int(speedup)}× mais rápido</span>}
+              </div>
+            )}
+          </div>
+          {/* Métricas */}
+          <div className="p-metrics">
+            <Metric label="Atendidos pela IA" value={int(data.leads.attended)} sub="fora do horário comercial" />
+            <Metric label="Recuperados" value={int(data.recovered)} accent={data.recovered > 0 ? "var(--p-good)" : undefined} sub="reativados antes de esfriar" />
+            <Metric label="Qualificados" value={int(data.leads.qualified)} sub="prontos para sua equipe" />
+            <Metric label="Resumos entregues" value={int(data.fichasEntregues)} sub="fichas prontas pro vendedor" />
+          </div>
         </div>
 
-        {/* KPIs */}
-        <div className="ikpis">
-          <Kpi label="Atendidos pela IA" value={int(data.leads.attended)} sub="fora do horário comercial" />
-          <Kpi label="Recuperados" value={int(data.recovered)} accent={data.recovered > 0 ? "#16a34a" : undefined} sub="reativados antes de esfriar" />
-          <Kpi label="Qualificados" value={int(data.leads.qualified)} sub="prontos para sua equipe" />
-          <Kpi label="Resumos entregues" value={int(data.fichasEntregues)} sub="fichas prontas pro vendedor" />
-        </div>
-
-        {/* QUALIDADE DOS LEADS */}
+        {/* Qualidade dos leads */}
         <QualityBar hot={data.leads.hot} warm={data.leads.warm} cold={data.leads.cold} />
 
-        {/* COMO A IA TRABALHA */}
-        <div style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--p-bg)" }}>
-          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#16a34a", boxShadow: "0 0 0 4px rgba(22,163,74,.15)" }} />
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--p-text)" }}>Como sua IA trabalha</div>
-            <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 1 }}>Ela responde na hora quando sua equipe está fora, qualifica cada lead, reativa quem esfria e entrega o resumo pronto pro vendedor seguir no dia seguinte.</div>
-          </div>
-        </div>
-
+        <p style={{ fontSize: 12, color: "var(--p-muted)", opacity: 0.9, lineHeight: 1.5, padding: "0 2px" }}>
+          <b style={{ color: "var(--p-text)" }}>Como sua IA trabalha</b> — responde na hora quando sua equipe está fora, qualifica cada lead, reativa quem esfria e entrega o resumo pronto pro vendedor no dia seguinte.
+        </p>
       </div>
     </main>
   );
