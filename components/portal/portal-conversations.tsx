@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, Hand, Undo2 } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, Hand, Undo2, Bell, BellOff } from "lucide-react";
+import { unreadCount, newInbound, isUnread } from "@/lib/unread";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
@@ -58,9 +59,19 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // Notificações v1 (in-tab, sobre o polling): som + badge no título + Notification API.
+  const [soundOn, setSoundOn] = useState(true);      // default: som ligado
+  const [notifOn, setNotifOn] = useState(false);     // default: aviso do navegador desligado
+  const [notifOpen, setNotifOpen] = useState(false); // popover do sino
+  const [seenAt, setSeenAt] = useState<Record<string, number>>({}); // contactId → ts da última msg vista
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const nearBottomRef = useRef(true);
+  const pollPrevRef = useRef<Record<string, number> | null>(null); // baseline do último poll
+  const baseTitleRef = useRef<string>("");
+  const audioRef = useRef<AudioContext | null>(null);
+  const seenKey = `vp-seen-${token}`;
+  const notifKey = `vp-notif-${token}`;
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
 
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
@@ -71,6 +82,84 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  // Bipe curto, discreto e sem loop (sintetizado — sem asset binário no repo).
+  const playBlip = () => {
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      const ctx = audioRef.current ?? (audioRef.current = new AC());
+      if (ctx.state === "suspended") void ctx.resume();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = 660;
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); // volume baixo
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.start(t); o.stop(t + 0.2);
+    } catch { /* ignore */ }
+  };
+
+  // Preferências de notificação + "vistas" persistidas no navegador do portal.
+  // (hidrata no cliente pra não quebrar no SSR). notifOn só vale se a permissão segue concedida.
+  useEffect(() => {
+    baseTitleRef.current = (document.title || "Conversas").replace(/^\(\d+\)\s*/, "");
+    try {
+      const p = JSON.parse(localStorage.getItem(notifKey) || "null");
+      if (p && typeof p === "object") {
+        setSoundOn(p.soundOn !== false);
+        setNotifOn(!!p.notifOn && "Notification" in window && Notification.permission === "granted");
+      }
+      const s = JSON.parse(localStorage.getItem(seenKey) || "null");
+      if (s && typeof s === "object") setSeenAt(s);
+    } catch { /* ignore */ }
+    return () => { if (baseTitleRef.current) document.title = baseTitleRef.current; };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { try { localStorage.setItem(notifKey, JSON.stringify({ soundOn, notifOn })); } catch { /* ignore */ } }, [soundOn, notifOn, notifKey]);
+
+  // Marca a conversa aberta como VISTA (zera o não-lida) enquanto a aba está visível.
+  useEffect(() => {
+    if (!sel || document.hidden) return;
+    const row = (list ?? []).find((c) => c.contactId === sel);
+    const ts = row?.lastMessageAt ? Date.parse(row.lastMessageAt) : Date.now();
+    setSeenAt((prev) => {
+      if ((prev[sel] ?? 0) >= ts) return prev;
+      const next = { ...prev, [sel]: ts };
+      try { localStorage.setItem(seenKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [sel, list]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A cada atualização da lista: detecta INBOUND novo → som + (se aba oculta e permitido) Notification.
+  // A 1ª carga só vira baseline (não notifica o histórico). Ignora outbound e a conversa aberta em foco.
+  useEffect(() => {
+    if (!list) return;
+    const curr: Record<string, number> = {};
+    for (const c of list) if (c.lastMessageAt) { const t = Date.parse(c.lastMessageAt); if (!Number.isNaN(t)) curr[c.contactId] = t; }
+    const prev = pollPrevRef.current;
+    pollPrevRef.current = curr;
+    if (prev === null) return; // baseline
+    const fresh = newInbound(prev, list).filter((c) => !(sel === c.contactId && !document.hidden));
+    if (!fresh.length) return;
+    if (soundOn) playBlip();
+    if (notifOn && document.hidden && "Notification" in window && Notification.permission === "granted") {
+      for (const c of fresh.slice(0, 3)) {
+        try {
+          const n = new Notification(c.name || "Novo lead", { body: preview(c.lastText, c.lastType) || "Nova mensagem", tag: c.contactId });
+          n.onclick = () => { window.focus(); setSel(c.contactId); n.close(); };
+        } catch { /* ignore */ }
+      }
+    }
+  }, [list]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Badge no título da aba: "(N) …" com o total de conversas não lidas.
+  useEffect(() => {
+    const base = baseTitleRef.current || "Conversas";
+    const n = unreadCount(list ?? [], seenAt);
+    document.title = n > 0 ? `(${n}) ${base}` : base;
+  }, [list, seenAt]);
 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
   useEffect(() => {
@@ -204,6 +293,16 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     } finally { setTakingOver(false); }
   }
 
+  // Permissão de notificação SÓ por gesto do usuário (clique no sino).
+  async function toggleNotif() {
+    if (notifOn) { setNotifOn(false); return; }
+    if (!("Notification" in window)) { alert("Seu navegador não suporta notificações."); return; }
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm === "granted") setNotifOn(true);
+    else alert("Permissão negada. Habilite as notificações deste site nas configurações do navegador.");
+  }
+
   const onComposerKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
@@ -248,6 +347,33 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
+        {/* Sino: som + aviso do navegador (permissão só por gesto). Preferência no localStorage. */}
+        <div style={{ marginLeft: "auto", position: "relative" }}>
+          <button onClick={() => setNotifOpen((o) => !o)} aria-label="Notificações" title="Notificações"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: 10, border: "1px solid var(--p-border)", background: notifOpen ? "var(--p-accent-soft)" : "var(--p-bg)", color: soundOn || notifOn ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
+            {soundOn || notifOn ? <Bell size={18} /> : <BellOff size={18} />}
+          </button>
+          {notifOpen && (
+            <>
+              <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+              <div style={{ position: "absolute", right: 0, top: 44, zIndex: 41, width: 260, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px 6px" }}>Avisar quando chegar mensagem</div>
+                {[{ label: "Som", on: soundOn, act: () => setSoundOn((v) => !v), hint: "bipe curto e discreto" },
+                  { label: "Aviso do navegador", on: notifOn, act: toggleNotif, hint: "notifica mesmo com a aba em segundo plano" }].map((it) => (
+                  <button key={it.label} onClick={it.act} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8 }}>
+                    <span style={{ position: "relative", width: 36, height: 20, borderRadius: 999, background: it.on ? "var(--p-accent)" : "var(--p-border)", flexShrink: 0, transition: "background .15s" }}>
+                      <span style={{ position: "absolute", top: 2, left: it.on ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--p-text)" }}>{it.label}</span>
+                      <span style={{ display: "block", fontSize: 11, color: "var(--wa-muted)" }}>{it.hint}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </header>
 
       {/* Viewer preenche toda a área interna (ao lado da sidebar do shell) */}
@@ -279,17 +405,19 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             : items.map((c) => {
               const on = sel === c.contactId;
               const waiting = isWaiting(c);
+              const unread = !on && isUnread(c, seenAt); // não-lida (zera ao abrir)
               return (
                 <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                      <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
+                      <span style={{ fontSize: 14.5, fontWeight: waiting || unread ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: unread ? 800 : waiting ? 800 : 400, color: unread ? "var(--p-accent)" : waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ fontSize: 12.5, fontWeight: waiting ? 700 : 400, color: waiting ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
-                      {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} />}
+                      {unread ? <span title="Mensagem não lida" style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--p-accent)", boxShadow: "0 0 0 3px var(--p-accent-soft)", flexShrink: 0 }} />
+                        : waiting ? <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} /> : null}
                       {c.fromAd && <span style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>}
                       <StageBadge stage={c.funnelStage} />
                     </div>
