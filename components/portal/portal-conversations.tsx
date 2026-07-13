@@ -40,6 +40,18 @@ function dayLabel(iso: string) {
   if (d.toDateString() === y.toDateString()) return "ONTEM";
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 }
+// Miniatura de imagem recebida (o lead mandou foto). Fallback pro rótulo se falhar.
+function ThreadImage({ src, caption }: { src: string; caption: string | null }) {
+  const [err, setErr] = useState(false);
+  if (err) return <span>📷 Foto{caption ? ` · ${caption}` : ""}</span>;
+  return (
+    <a href={src} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="Foto do lead" loading="lazy" onError={() => setErr(true)} style={{ maxWidth: 240, width: "100%", borderRadius: 9, display: "block" }} />
+      {caption && caption.trim() && <span style={{ display: "block", marginTop: 5 }}>{caption}</span>}
+    </a>
+  );
+}
 function avatarColor(name: string) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 42% 52%)`; }
 function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
@@ -544,7 +556,9 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
                         <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
-                          <span>{body}</span>
+                          {!mine && m.type === "image" && !m.pending
+                            ? <ThreadImage src={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} caption={m.text} />
+                            : <span>{body}</span>}
                           <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
                         </div>
                       </div>
