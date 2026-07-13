@@ -235,18 +235,19 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const bottomItem = (k: "all" | "ads" | "waiting", label: string, icon: React.ReactNode, badge: number) => {
     const on = tab === k;
     return (
-      <button key={k} onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "8px 4px", border: "none", cursor: "pointer", borderRadius: 18, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>
-        <span style={{ position: "relative", display: "inline-flex" }}>
+      <button key={k} onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 4px", border: "none", cursor: "pointer", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease" }}>
+        <span style={{ position: "relative", display: "inline-flex", opacity: on ? 1 : 0.75 }}>
           {icon}
-          {badge > 0 && <span style={{ position: "absolute", top: -6, right: -11, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: "#1FA855", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{badge > 99 ? "99+" : badge}</span>}
+          {badge > 0 && <span style={{ position: "absolute", top: -5, right: -10, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, background: "#1FA855", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{badge > 99 ? "99+" : badge}</span>}
         </span>
-        <span style={{ fontSize: 11, fontWeight: on ? 700 : 600 }}>{label}</span>
+        <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: "-0.01em" }}>{label}</span>
       </button>
     );
   };
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
+      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
@@ -301,12 +302,12 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             })}
         </div>
 
-        {/* Barra flutuante inferior (mobile) — estilo WhatsApp. Só na lista (some no thread). */}
+        {/* Barra flutuante inferior (mobile) — estilo WhatsApp: vidro fosco, sutil, entra deslizando. Só na lista. */}
         {isMobile && (
-          <nav style={{ position: "fixed", left: 10, right: 10, bottom: "calc(10px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", gap: 4, padding: 6, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 26, boxShadow: "0 6px 28px rgba(0,0,0,.22)" }}>
-            {bottomItem("all", "Conversas", <MessageCircle size={22} />, 0)}
-            {bottomItem("waiting", "Aguardando", <Clock size={22} />, waitingCount)}
-            {hasAds && bottomItem("ads", "Anúncios", <Megaphone size={22} />, 0)}
+          <nav style={{ position: "fixed", left: 16, right: 16, bottom: "calc(12px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", gap: 2, padding: 5, background: "color-mix(in srgb, var(--p-surface) 78%, transparent)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)", border: "1px solid color-mix(in srgb, var(--p-border) 50%, transparent)", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,.10)", animation: "portalBarUp .34s cubic-bezier(.22,1,.36,1) both" }}>
+            {bottomItem("all", "Conversas", <MessageCircle size={20} />, 0)}
+            {bottomItem("waiting", "Aguardando", <Clock size={20} />, waitingCount)}
+            {hasAds && bottomItem("ads", "Anúncios", <Megaphone size={20} />, 0)}
           </nav>
         )}
       </aside>
