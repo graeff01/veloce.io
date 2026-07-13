@@ -10,7 +10,7 @@ import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
 import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
-import { sendWhatsAppText } from "@/lib/whatsapp-send";
+import { sendWhatsAppText, sendWhatsAppMediaById, uploadWhatsAppMedia } from "@/lib/whatsapp-send";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
 import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
 import { handleWaBotInbound } from "@/lib/notifications/wa-bot-commands";
@@ -55,10 +55,10 @@ async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string 
 // Persiste a saída (upsert dedup por wamid: a marcação vence eventuais echoes).
 // aiGenerated=true para respostas da IA; a resposta MANUAL de um humano pelo painel
 // passa false — é o que aciona o takeover (respond.ts) e silencia o bot.
-export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string, ts: Date, aiGenerated = true) {
+export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string | null, ts: Date, aiGenerated = true, type = "text") {
   await prisma.waMessage.upsert({
     where: { connectionId_waMessageId: { connectionId, waMessageId } },
-    create: { connectionId, contactId, waMessageId, direction: "out", type: "text", text, aiGenerated, timestamp: ts },
+    create: { connectionId, contactId, waMessageId, direction: "out", type, text, aiGenerated, timestamp: ts },
     update: { aiGenerated, text },
   }).catch(() => {});
   await applyMessageToConversation({ connectionId, contactId, direction: "out", timestamp: ts }).catch(() => {});
@@ -310,7 +310,7 @@ export interface ManualSendResult {
   ok: boolean;
   status?: number; // código HTTP sugerido em caso de recusa
   error?: string;
-  message?: { id: string; text: string; direction: "out"; type: "text"; timestamp: string; aiGenerated: false };
+  message?: { id: string; text: string | null; direction: "out"; type: string; timestamp: string; aiGenerated: false };
 }
 
 export const MANUAL_SEND_MAX_LEN = 4096; // limite de texto da Cloud API
@@ -352,6 +352,44 @@ export async function sendManualMessage(clientId: string, contactId: string, raw
   return {
     ok: true,
     message: { id: stored?.id ?? wamid, text, direction: "out", type: "text", timestamp: (stored?.timestamp ?? ts).toISOString(), aiGenerated: false },
+  };
+}
+
+export const MANUAL_MEDIA_MAX_BYTES = 16 * 1024 * 1024; // teto seguro (imagem/doc/áudio)
+
+// Envio MANUAL de MÍDIA (imagem/documento/áudio) pela equipe, a partir do painel.
+// Mesmas travas do texto (isolamento, opt-out, janela de 24h, anti-flood). Faz upload
+// na Cloud API e envia por mediaId. Persiste com aiGenerated=false (aciona o takeover).
+export async function sendManualMedia(clientId: string, contactId: string, kind: "image" | "audio" | "document", buffer: Buffer, mime: string, filename?: string, caption?: string): Promise<ManualSendResult> {
+  if (!buffer?.length) return { ok: false, status: 400, error: "Arquivo vazio." };
+  if (buffer.length > MANUAL_MEDIA_MAX_BYTES) return { ok: false, status: 400, error: "Arquivo muito grande (máx 16MB)." };
+
+  const contact = await prisma.waContact.findUnique({
+    where: { id: contactId },
+    select: { id: true, waId: true, aiOptedOut: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } },
+  });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, status: 404, error: "Conversa não encontrada." };
+  if (contact.aiOptedOut) return { ok: false, status: 403, error: "Este lead pediu para não receber mensagens (opt-out)." };
+  const conn = contact.connection;
+
+  const lastIn = await prisma.waMessage.findFirst({ where: { contactId: contact.id, direction: "in" }, orderBy: { timestamp: "desc" }, select: { timestamp: true } });
+  if (!isWithin24h(lastIn?.timestamp ?? null)) return { ok: false, status: 409, error: "A janela de 24h fechou — o lead precisa mandar uma mensagem para reabrir a conversa." };
+  if (!allowSend(contact.id)) return { ok: false, status: 429, error: "Muitas mensagens seguidas. Aguarde um instante e tente de novo." };
+
+  const up = await uploadWhatsAppMedia(conn, buffer, filename || "arquivo", mime);
+  if (!up.ok || !up.mediaId) return { ok: false, status: 502, error: `Falha no upload: ${up.error ?? "erro desconhecido"}` };
+
+  const sent = await sendWhatsAppMediaById(conn, contact.waId, kind, up.mediaId, { filename, caption });
+  if (!sent.ok) return { ok: false, status: 502, error: `Falha no envio: ${sent.error ?? "erro desconhecido"}` };
+
+  const ts = new Date();
+  const wamid = sent.waMessageId || `hum-media-${Date.now()}`;
+  const text = (caption?.trim()) || (kind === "document" ? (filename || null) : null);
+  await storeOutbound(conn.id, contact.id, wamid, text, ts, false, kind);
+  const stored = await prisma.waMessage.findUnique({ where: { connectionId_waMessageId: { connectionId: conn.id, waMessageId: wamid } }, select: { id: true, timestamp: true } });
+  return {
+    ok: true,
+    message: { id: stored?.id ?? wamid, text, direction: "out", type: kind, timestamp: (stored?.timestamp ?? ts).toISOString(), aiGenerated: false },
   };
 }
 

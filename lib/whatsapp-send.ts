@@ -59,6 +59,34 @@ export async function sendWhatsAppInteractiveButtons(
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
 
+// Envia mídia JÁ SUBIDA (mediaId) por tipo. Usado no envio manual do painel (imagem/
+// documento/áudio que a equipe manda ao lead). O upload é feito antes com uploadWhatsAppMedia.
+export async function sendWhatsAppMediaById(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  kind: "image" | "audio" | "document",
+  mediaId: string,
+  opts?: { filename?: string; caption?: string },
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+
+  const media: Record<string, unknown> =
+    kind === "document" ? { id: mediaId, ...(opts?.filename ? { filename: opts.filename } : {}), ...(opts?.caption ? { caption: opts.caption } : {}) }
+    : kind === "image" ? { id: mediaId, ...(opts?.caption ? { caption: opts.caption } : {}) }
+    : { id: mediaId }; // audio não aceita caption
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: toWaId, type: kind, [kind]: media }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}
+
 // Envio de IMAGEM por link (foto do produto). A Cloud API baixa a URL e entrega.
 export async function sendWhatsAppImage(
   conn: { phoneNumberId: string; accessToken: string },
