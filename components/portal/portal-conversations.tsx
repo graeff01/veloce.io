@@ -57,7 +57,9 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
 }
 
-export function PortalConversations({ token, brandName, logoUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; initialContact?: string | null }) {
+export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; chatBgUrl?: string | null; initialContact?: string | null }) {
+  // Marca d'água do chat: imagem própria do cliente (portal-bg) quando houver; senão o logo.
+  const chatWatermark = chatBgUrl || logoUrl;
   const [list, setList] = useState<Row[] | null>(null);
   const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
   const [adFilter, setAdFilter] = useState<string | null>(null);
@@ -469,7 +471,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
       {/* ── Chat ── */}
       <main style={{ flex: 1, display: isMobile && !sel ? "none" : "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "var(--wa-chat)" }}>
         {/* marca d'água: logo do PRÓPRIO cliente (via prop logoUrl; some se não tiver) */}
-        {logoUrl && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${logoUrl}")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(48%, 420px)", opacity: 0.06, pointerEvents: "none", zIndex: 0 }} />}
+        {chatWatermark && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${chatWatermark}")`, backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundSize: "min(48%, 420px)", opacity: 0.06, pointerEvents: "none", zIndex: 0 }} />}
         {/* granulado (feTurbulence) — mesmo grão do tema claro */}
         <div style={{ position: "absolute", inset: 0, opacity: 0.04, pointerEvents: "none", zIndex: 0, mixBlendMode: "multiply",
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")` }} />

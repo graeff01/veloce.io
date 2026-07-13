@@ -1,3 +1,5 @@
+import { existsSync } from "fs";
+import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
@@ -26,7 +28,14 @@ export default async function ConversasPage({ params, searchParams }: { params: 
     );
   }
 
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true, slug: true } });
+
+  // Fundo (marca d'água) das conversas: se existir public/portal-bg/<slug>.png, usa ele
+  // (imagem própria, sem fundo). Senão cai no logo do cliente (comportamento antigo).
+  // Convenção por arquivo → sem campo novo no banco e não altera o logo do perfil.
+  const chatBgUrl = client?.slug && existsSync(join(process.cwd(), "public", "portal-bg", `${client.slug}.png`))
+    ? `/portal-bg/${client.slug}.png`
+    : null;
 
   // Login do painel: conversas exigem sessão se o cliente está protegido.
   if (await isProtected(portal.clientId) && !(await getPortalSessionEmail(portal.clientId))) {
@@ -50,7 +59,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
         /* conversas abrem no mobile também — a responsividade fica no PortalConversations */
         .cdesk{display:flex}`}</style>
 
-      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} initialContact={initialContact ?? null} />
+      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} chatBgUrl={chatBgUrl} initialContact={initialContact ?? null} />
     </main>
   );
 }
