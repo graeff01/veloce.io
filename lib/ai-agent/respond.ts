@@ -55,10 +55,10 @@ async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string 
 // Persiste a saída (upsert dedup por wamid: a marcação vence eventuais echoes).
 // aiGenerated=true para respostas da IA; a resposta MANUAL de um humano pelo painel
 // passa false — é o que aciona o takeover (respond.ts) e silencia o bot.
-export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string | null, ts: Date, aiGenerated = true, type = "text") {
+export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string | null, ts: Date, aiGenerated = true, type = "text", sentByEmail: string | null = null) {
   await prisma.waMessage.upsert({
     where: { connectionId_waMessageId: { connectionId, waMessageId } },
-    create: { connectionId, contactId, waMessageId, direction: "out", type, text, aiGenerated, timestamp: ts },
+    create: { connectionId, contactId, waMessageId, direction: "out", type, text, aiGenerated, timestamp: ts, sentByEmail },
     update: { aiGenerated, text },
   }).catch(() => {});
   await applyMessageToConversation({ connectionId, contactId, direction: "out", timestamp: ts }).catch(() => {});
@@ -315,11 +315,17 @@ export interface ManualSendResult {
 
 export const MANUAL_SEND_MAX_LEN = 4096; // limite de texto da Cloud API
 
+// Primeiro-a-responder vira DONO: só define assignedEmail se ainda estiver vazio (atômico).
+async function assignIfUnowned(contactId: string, email: string | null) {
+  if (!email) return;
+  await prisma.waConversation.updateMany({ where: { contactId, assignedEmail: null }, data: { assignedEmail: email, assignedAt: new Date() } }).catch(() => {});
+}
+
 // Envio MANUAL de um humano (equipe do cliente) a partir do painel. Espelha o escopo
 // de manualAiReply (contato tem que ser do próprio cliente → isolamento). Persiste com
 // aiGenerated=false: é isso que aciona o takeover e silencia o bot (respond.ts). NÃO
 // tenta template fora da janela de 24h — recusa com motivo claro (template é fora de escopo).
-export async function sendManualMessage(clientId: string, contactId: string, rawText: string): Promise<ManualSendResult> {
+export async function sendManualMessage(clientId: string, contactId: string, rawText: string, sentByEmail: string | null = null): Promise<ManualSendResult> {
   const text = (rawText || "").trim();
   if (!text) return { ok: false, status: 400, error: "Escreva uma mensagem." };
   if (text.length > MANUAL_SEND_MAX_LEN) return { ok: false, status: 400, error: `Mensagem muito longa (máx ${MANUAL_SEND_MAX_LEN} caracteres).` };
@@ -346,7 +352,8 @@ export async function sendManualMessage(clientId: string, contactId: string, raw
 
   const ts = new Date();
   const wamid = sent.waMessageId || `hum-${Date.now()}`;
-  await storeOutbound(conn.id, contact.id, wamid, text, ts, false);
+  await storeOutbound(conn.id, contact.id, wamid, text, ts, false, "text", sentByEmail);
+  await assignIfUnowned(contact.id, sentByEmail); // 1ª resposta humana define o dono
   // Devolve o id do registro persistido (dedup do polling é por id).
   const stored = await prisma.waMessage.findUnique({ where: { connectionId_waMessageId: { connectionId: conn.id, waMessageId: wamid } }, select: { id: true, timestamp: true } });
   return {
@@ -360,7 +367,7 @@ export const MANUAL_MEDIA_MAX_BYTES = 16 * 1024 * 1024; // teto seguro (imagem/d
 // Envio MANUAL de MÍDIA (imagem/documento/áudio) pela equipe, a partir do painel.
 // Mesmas travas do texto (isolamento, opt-out, janela de 24h, anti-flood). Faz upload
 // na Cloud API e envia por mediaId. Persiste com aiGenerated=false (aciona o takeover).
-export async function sendManualMedia(clientId: string, contactId: string, kind: "image" | "audio" | "document", buffer: Buffer, mime: string, filename?: string, caption?: string): Promise<ManualSendResult> {
+export async function sendManualMedia(clientId: string, contactId: string, kind: "image" | "audio" | "document", buffer: Buffer, mime: string, filename?: string, caption?: string, sentByEmail: string | null = null): Promise<ManualSendResult> {
   if (!buffer?.length) return { ok: false, status: 400, error: "Arquivo vazio." };
   if (buffer.length > MANUAL_MEDIA_MAX_BYTES) return { ok: false, status: 400, error: "Arquivo muito grande (máx 16MB)." };
 
@@ -385,12 +392,30 @@ export async function sendManualMedia(clientId: string, contactId: string, kind:
   const ts = new Date();
   const wamid = sent.waMessageId || `hum-media-${Date.now()}`;
   const text = (caption?.trim()) || (kind === "document" ? (filename || null) : null);
-  await storeOutbound(conn.id, contact.id, wamid, text, ts, false, kind);
+  await storeOutbound(conn.id, contact.id, wamid, text, ts, false, kind, sentByEmail);
+  await assignIfUnowned(contact.id, sentByEmail);
   const stored = await prisma.waMessage.findUnique({ where: { connectionId_waMessageId: { connectionId: conn.id, waMessageId: wamid } }, select: { id: true, timestamp: true } });
   return {
     ok: true,
     message: { id: stored?.id ?? wamid, text, direction: "out", type: kind, timestamp: (stored?.timestamp ?? ts).toISOString(), aiGenerated: false },
   };
+}
+
+// Define/transfere/remove o DONO do lead. email=null desatribui. Valida que o atendente
+// é um usuário do próprio cliente (PortalAccess). Mesmo isolamento por clientId.
+export async function setAssignment(clientId: string, contactId: string, email: string | null): Promise<{ ok: boolean; status?: number; error?: string; assignedEmail?: string | null }> {
+  const contact = await prisma.waContact.findUnique({ where: { id: contactId }, select: { id: true, connection: { select: { clientId: true } } } });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, status: 404, error: "Conversa não encontrada." };
+
+  let target: string | null = null;
+  if (email) {
+    const e = email.trim().toLowerCase();
+    const u = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: e } }, select: { email: true } });
+    if (!u) return { ok: false, status: 400, error: "Atendente não encontrado." };
+    target = u.email;
+  }
+  await prisma.waConversation.updateMany({ where: { contactId }, data: { assignedEmail: target, assignedAt: target ? new Date() : null } });
+  return { ok: true, assignedEmail: target };
 }
 
 // Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem

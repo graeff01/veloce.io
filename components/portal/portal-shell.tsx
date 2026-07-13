@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" }) {
+export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
   function toggle() {
@@ -19,7 +19,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios", href: string, label: string, icon: React.ReactNode) => {
+  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe", href: string, label: string, icon: React.ReactNode) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -60,6 +60,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
           {item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
           {item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
           {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
+          {item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
         </nav>
 
         {/* tema */}

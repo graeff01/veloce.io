@@ -945,6 +945,7 @@ model WaMessage {
   type          String   // text, image, audio, ...
   text          String?
   aiGenerated   Boolean  @default(false) // saída gerada pela IA (distingue de resposta humana p/ takeover)
+  sentByEmail   String?  // atendente que ENVIOU esta saída pelo painel (autoria; null p/ IA/echo)
   timestamp     DateTime
   deliveredAt   DateTime? // do evento "statuses" (entregue)
   readAt        DateTime? // do evento "statuses" (lido)
@@ -1012,6 +1013,8 @@ model WaConversation {
   fichaSentAt      DateTime? // última entrega da ficha deste lead ao operador (triagem) — evita repetir
   reengagedAt      DateTime? // última cutucada de re-engajamento enviada (1 por silêncio, dentro da janela)
   autoRepliedAt    DateTime? // última tentativa de auto-resposta (lead sem atendimento) — 1 por mensagem
+  assignedEmail    String?   // DONO do lead (atendente). Definido na 1ª resposta humana; reatribuível
+  assignedAt       DateTime? // quando o dono atual assumiu
   inboundCount     Int       @default(0)
   outboundCount    Int       @default(0)
   openedAt         DateTime?
@@ -1027,6 +1030,7 @@ model WaConversation {
   @@index([connectionId, lastMessageAt])
   @@index([connectionId, firstInboundAt])
   @@index([connectionId, saleConfirmedAt]) // atribuição de receita: vendas confirmadas por período
+  @@index([connectionId, assignedEmail])   // métricas por atendente (dono do lead)
 }
 
 // "Fechou?" — pergunta ao gestor quando um lead fica parado em Negociação. Rastreia o
