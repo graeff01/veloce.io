@@ -439,8 +439,11 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
             {conv.funnelEvidence && (
-              <div style={{ padding: isMobile ? "6px 14px" : "6px 8%", fontSize: 11.5, color: "var(--wa-muted)", borderBottom: "1px solid var(--p-border)", lineHeight: 1.4 }}>
-                <span style={{ fontWeight: 700 }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”
+              <div style={{ padding: isMobile ? "8px 12px" : "8px 8%" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "8px 11px", borderRadius: 10, background: "color-mix(in srgb, var(--p-accent) 10%, var(--p-surface))", border: "1px solid color-mix(in srgb, var(--p-accent) 24%, transparent)", fontSize: 11.5, color: "var(--p-text)", lineHeight: 1.45 }}>
+                  <Sparkles size={13} style={{ color: "var(--p-accent)", flexShrink: 0, marginTop: 1 }} />
+                  <span><span style={{ fontWeight: 700, color: "var(--p-accent)" }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”</span>
+                </div>
               </div>
             )}
 
@@ -487,7 +490,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
             </div>
 
             {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
-            <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
+            <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: isMobile ? `10px 12px calc(18px + env(safe-area-inset-bottom))` : `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
               {iaPaused && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
                   <Sparkles size={12} style={{ color: "var(--p-accent)" }} /> IA em pausa — sua equipe assumiu esta conversa.
