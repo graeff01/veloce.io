@@ -126,6 +126,8 @@ export interface ClientDashboard {
   transformation: { baselineLabel: string; tempo: { before: number | null; after: number | null }; taxaResposta: { before: number; after: number }; conversao: { before: number; after: number } } | null;
   // Projeção do próximo mês pelo ritmo atual de vendas. null sem vendas no período.
   projection: { sales: number; revenue: number | null } | null;
+  // Receita & Retorno (prova de valor em R$): vendas confirmadas × investimento de mídia.
+  financials: { revenue: number; sales: number; avgTicket: number | null; spend: number; roas: number | null; profit: number | null; revenueDelta: number | null } | null;
 }
 
 const MONTH_RE = /^(\d{4})-(\d{2})$/;
@@ -349,15 +351,32 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     }
   }
 
+  // Receita & Retorno (R$ que voltou): soma das vendas confirmadas no período + ROAS
+  // vs. o investimento de mídia. É a prova de valor "dinheiro entra × dinheiro sai".
+  const [saleRowsCur, saleRowsPrev] = connIds.length ? await Promise.all([
+    prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, funnelStage: "convertido", saleValue: { not: null }, saleConfirmedAt: { gte: start, lt: end } }, select: { saleValue: true } }),
+    prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, funnelStage: "convertido", saleValue: { not: null }, saleConfirmedAt: { gte: prevStart, lt: prevEnd } }, select: { saleValue: true } }),
+  ]) : [[], []];
+  const revenue = saleRowsCur.reduce((a, s) => a + (s.saleValue ?? 0), 0);
+  const revenuePrev = saleRowsPrev.reduce((a, s) => a + (s.saleValue ?? 0), 0);
+  const salesCount = saleRowsCur.length;
+  const avgTicketNum = salesCount ? revenue / salesCount : null;
+  const financials: ClientDashboard["financials"] = (revenue > 0 || spendCur > 0) ? {
+    revenue: Math.round(revenue),
+    sales: salesCount,
+    avgTicket: avgTicketNum != null ? Math.round(avgTicketNum) : null,
+    spend: Math.round(spendCur),
+    roas: spendCur > 0 ? Math.round((revenue / spendCur) * 10) / 10 : null,
+    profit: spendCur > 0 ? Math.round(revenue - spendCur) : null,
+    revenueDelta: pct(revenue, revenuePrev),
+  } : null;
+
   // Projeção do próximo mês pelo ritmo atual de vendas (convertidos) + ticket médio real.
   let projection: ClientDashboard["projection"] = null;
   if (conversoes > 0) {
     const daysElapsed = Math.max(1, (end.getTime() - start.getTime()) / 86_400_000);
     const projSales = Math.round((conversoes / daysElapsed) * 30);
-    const saleRows = connIds.length ? await prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, funnelStage: "convertido", saleValue: { not: null }, saleConfirmedAt: { gte: start, lt: end } }, select: { saleValue: true } }) : [];
-    const withValue = saleRows.filter((s): s is { saleValue: number } => s.saleValue != null);
-    const avgTicket = withValue.length ? withValue.reduce((a, s) => a + s.saleValue, 0) / withValue.length : null;
-    projection = { sales: projSales, revenue: avgTicket != null ? Math.round(projSales * avgTicket) : null };
+    projection = { sales: projSales, revenue: avgTicketNum != null ? Math.round(projSales * avgTicketNum) : null };
   }
 
   return {
@@ -371,7 +390,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     atendimento,
     termometro: { hot, warm, cold, total: waiting.length },
     midia, bestCampaign, series,
-    transformation, projection,
+    transformation, projection, financials,
   };
 }
 
