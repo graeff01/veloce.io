@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, parseSections } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, getSectorBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
@@ -141,12 +141,16 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const ua = (await headers()).get("user-agent") || "";
   if (/Mobi|Android|iPhone|iPod|Windows Phone/i.test(ua)) redirect(`/r/${token}/conversas`);
 
+  // Se o gestor desligou o "Painel" (dashboard) para este cliente, a entrada vai pras conversas.
+  const cpSections = await prisma.clientPortal.findUnique({ where: { clientId: portal.clientId }, select: { sections: true } });
+  if (!parseSections(cpSections?.sections).includes("painel")) redirect(`/r/${token}/conversas`);
+
   if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    const c = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+    const c = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
     return (
       <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
         <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>
-        <PortalGate token={token} brandName={c?.name || "Painel"} />
+        <PortalGate token={token} brandName={c?.name || "Painel"} logoUrl={c?.logoUrl ?? null} />
       </main>
     );
   }

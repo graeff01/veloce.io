@@ -31,7 +31,7 @@ export default async function EquipePage({ params }: { params: Promise<{ token: 
     return (
       <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
         <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>
-        <PortalGate token={token} brandName={client?.name || "Painel"} />
+        <PortalGate token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} />
       </main>
     );
   }

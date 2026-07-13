@@ -28,12 +28,17 @@ export async function PUT(req: Request, { params }: Params) {
 
   if (body.rotate === true) { await rotatePortalToken(id); }
 
-  const data: { accentColor?: string | null; mode?: string; active?: boolean; requireLogin?: boolean; maxUsers?: number } = {};
+  const data: { accentColor?: string | null; mode?: string; active?: boolean; requireLogin?: boolean; maxUsers?: number; sections?: string } = {};
   if ("accentColor" in body) data.accentColor = (body.accentColor as string)?.trim() || null;
   if (typeof body.mode === "string" && ["light", "dark", "auto"].includes(body.mode)) data.mode = body.mode;
   if (typeof body.active === "boolean") data.active = body.active;
   if (typeof body.requireLogin === "boolean") data.requireLogin = body.requireLogin;
   if (typeof body.maxUsers === "number" && Number.isFinite(body.maxUsers)) data.maxUsers = Math.min(50, Math.max(1, Math.round(body.maxUsers)));
+  if (Array.isArray(body.sections)) {
+    const set = new Set(body.sections.filter((s: unknown): s is string => typeof s === "string"));
+    set.add("conversas"); // conversas é obrigatória
+    data.sections = [...set].join(",");
+  }
   if (Object.keys(data).length > 0) await updatePortal(id, data);
 
   return NextResponse.json(await getOrCreatePortal(id));

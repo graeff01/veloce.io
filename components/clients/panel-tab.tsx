@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users } from "lucide-react";
+import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; logoUrl: string | null }
+interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: string[]; logoUrl: string | null }
+const SECTIONS: { key: string; label: string; hint: string }[] = [
+  { key: "conversas", label: "Conversas", hint: "responder os leads (obrigatória)" },
+  { key: "painel", label: "Painel", hint: "métricas e ROI do cliente" },
+  { key: "equipe", label: "Equipe", hint: "métricas por atendente" },
+  { key: "anuncios", label: "Anúncios", hint: "desempenho dos anúncios" },
+  { key: "ia", label: "IA", hint: "configuração/insights da IA" },
+  { key: "funil", label: "Funil", hint: "etapas dos leads" },
+];
 interface PortalUser { id: string; email: string; name: string | null; role: string; lastLoginAt: string | null; hasPassword: boolean }
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
@@ -113,6 +121,31 @@ export function PanelTab({ clientId }: { clientId: string }) {
           <Button variant="ghost" size="sm" onClick={() => { if (confirm("Gerar um novo link? O link atual deixa de funcionar para todos.")) void savePortal({ rotate: true }); }}>
             <RefreshCw size={12} /> Novo link
           </Button>
+        </div>
+      </Card>
+
+      {/* O que aparece no painel do cliente */}
+      <Card title="O que aparece no painel" icon={<LayoutList size={13} />}>
+        <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>Marque as seções que o cliente vê no menu do painel dele. Conversas é sempre exibida.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+          {SECTIONS.map((s) => {
+            const checked = portal.sections.includes(s.key);
+            const locked = s.key === "conversas";
+            return (
+              <label key={s.key} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "9px 11px", borderRadius: 8, border: `1px solid ${checked ? "color-mix(in srgb, var(--accent) 35%, transparent)" : "var(--border)"}`, background: checked ? "color-mix(in srgb, var(--accent) 7%, transparent)" : "var(--bg-base)", cursor: locked ? "default" : "pointer", opacity: locked ? 0.75 : 1 }}>
+                <input type="checkbox" checked={checked} disabled={locked} style={{ marginTop: 2 }}
+                  onChange={(e) => {
+                    const next = e.target.checked ? [...new Set([...portal.sections, s.key])] : portal.sections.filter((k) => k !== s.key);
+                    setPortal({ ...portal, sections: next });
+                    void savePortal({ sections: next });
+                  }} />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{s.label}</span>
+                  <span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{s.hint}</span>
+                </span>
+              </label>
+            );
+          })}
         </div>
       </Card>
 

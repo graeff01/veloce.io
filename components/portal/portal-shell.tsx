@@ -12,8 +12,10 @@ import { PortalAdvisor } from "@/components/portal/portal-advisor";
 export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(null);
+  const [sections, setSections] = useState<string[] | null>(null); // null = todas (até carregar)
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => setAccount(d?.user ?? null)).catch(() => {}); }, [token]);
+  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); }).catch(() => {}); }, [token]);
+  const on = (k: string) => !sections || sections.includes(k);
   async function logout() {
     await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
     window.location.href = `/r/${token}`;
@@ -61,12 +63,12 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
         {/* navegação */}
         <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", opacity: 0.7 }}>Menu</div>
-          {item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
-          {item("anuncios", `/r/${token}/anuncios`, "Anúncios", <Megaphone size={15} />)}
-          {item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
-          {item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
-          {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
-          {item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
+          {on("painel") && item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
+          {on("anuncios") && item("anuncios", `/r/${token}/anuncios`, "Anúncios", <Megaphone size={15} />)}
+          {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
+          {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
+          {on("conversas") && item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
+          {on("equipe") && item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
         </nav>
 
         {/* conta logada (identifica quem está no painel) + sair */}
