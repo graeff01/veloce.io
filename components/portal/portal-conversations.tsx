@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X } from "lucide-react";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null }
 
@@ -57,8 +57,13 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const recRef = useRef<{ mr: MediaRecorder; chunks: Blob[]; stream: MediaStream; mime: string; timer: ReturnType<typeof setInterval> } | null>(null);
   const nearBottomRef = useRef(true);
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
 
@@ -192,6 +197,90 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     } finally { setSending(false); }
   }
 
+  // Envio de MÍDIA (imagem/documento/áudio) — otimista + reconcile como o texto.
+  async function sendMedia(kind: "image" | "audio" | "document", file: File, caption?: string) {
+    if (!sel || sending || !conv?.windowOpen) return;
+    setSending(true); setSendError(null);
+    const optId = "opt-" + Date.now();
+    const optimistic: Msg = { id: optId, text: caption || (kind === "document" ? file.name : null) || null, direction: "out", type: kind, timestamp: new Date().toISOString(), aiGenerated: false, pending: true };
+    nearBottomRef.current = true;
+    setConv((c) => (c ? { ...c, items: [...c.items, optimistic] } : c));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", kind);
+      if (caption) fd.append("caption", caption);
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/send-media`, { method: "POST", body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d?.message) {
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+        setSendError(d?.error || "Não foi possível enviar o arquivo.");
+        return;
+      }
+      setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === optId ? (d.message as Msg) : m)) } : c));
+    } catch {
+      setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+      setSendError("Falha de conexão ao enviar o arquivo.");
+    } finally { setSending(false); }
+  }
+
+  const onPickFile = (kind: "image" | "document") => (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) void sendMedia(kind, f);
+  };
+
+  // Gravação de áudio (voz) — MediaRecorder. iOS grava em audio/mp4 (aceito pela Cloud API).
+  const pickAudioMime = (): string => {
+    for (const c of ["audio/mp4", "audio/aac", "audio/mpeg", "audio/ogg;codecs=opus"]) {
+      try { if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) return c; } catch { /* ignore */ }
+    }
+    return "";
+  };
+  function cleanupRec() {
+    const r = recRef.current;
+    if (r) { clearInterval(r.timer); r.stream.getTracks().forEach((t) => t.stop()); }
+    recRef.current = null;
+    setRecording(false); setRecSecs(0);
+  }
+  async function startRecording() {
+    if (recording || sending || !sel || !conv?.windowOpen) return;
+    setSendError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickAudioMime();
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks: Blob[] = [];
+      mr.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+      const timer = setInterval(() => setRecSecs((s) => s + 1), 1000);
+      recRef.current = { mr, chunks, stream, mime: mr.mimeType || mime || "audio/mp4", timer };
+      setRecSecs(0); setRecording(true);
+      mr.start();
+    } catch { setSendError("Não consegui acessar o microfone — verifique a permissão."); }
+  }
+  function cancelRecording() {
+    const r = recRef.current;
+    if (r) { try { r.mr.stop(); } catch { /* ignore */ } }
+    cleanupRec();
+  }
+  function stopAndSendRecording() {
+    const r = recRef.current;
+    if (!r) return;
+    const { mr, chunks, mime } = r;
+    mr.onstop = () => {
+      const blob = new Blob(chunks, { type: mime });
+      cleanupRec();
+      if (blob.size > 0) {
+        const base = mime.split(";")[0];
+        const ext = base.includes("mp4") ? "m4a" : base.includes("ogg") ? "ogg" : base.includes("mpeg") ? "mp3" : "m4a";
+        void sendMedia("audio", new File([blob], `audio.${ext}`, { type: base }));
+      }
+    };
+    try { mr.stop(); } catch { cleanupRec(); }
+  }
+  // Encerra o microfone se sair no meio da gravação.
+  useEffect(() => () => { const r = recRef.current; if (r) { clearInterval(r.timer); r.stream.getTracks().forEach((t) => t.stop()); } }, []);
+
   const onComposerKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
@@ -247,7 +336,7 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
@@ -409,25 +498,53 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
               )}
               {conv.windowOpen ? (
                 <>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-                    <textarea
-                      ref={taRef}
-                      value={draft}
-                      onChange={onComposerInput}
-                      onKeyDown={onComposerKey}
+                  <input ref={imgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPickFile("image")} />
+                  <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={onPickFile("document")} />
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+                    {recording ? (
+                      <>
+                        <button onClick={cancelRecording} aria-label="Cancelar gravação" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "#d6453d", cursor: "pointer" }}>
+                          <X size={22} />
+                        </button>
+                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 9, height: 44, padding: "0 14px", borderRadius: 12, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
+                          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#d6453d", animation: "portalRecBlink 1s steps(1) infinite", flexShrink: 0 }} />
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--p-text)", fontVariantNumeric: "tabular-nums" }}>{Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, "0")}</span>
+                          <span style={{ fontSize: 12, color: "var(--wa-muted)", marginLeft: "auto" }}>gravando áudio…</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => docInputRef.current?.click()} disabled={sending} aria-label="Enviar documento" title="Enviar documento" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer" }}>
+                          <Paperclip size={21} />
+                        </button>
+                        <button onClick={() => imgInputRef.current?.click()} disabled={sending} aria-label="Enviar imagem" title="Enviar imagem" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer" }}>
+                          <Camera size={21} />
+                        </button>
+                        <textarea
+                          ref={taRef}
+                          value={draft}
+                          onChange={onComposerInput}
+                          onKeyDown={onComposerKey}
+                          disabled={sending}
+                          rows={1}
+                          placeholder="Mensagem"
+                          style={{ flex: 1, resize: "none", maxHeight: 120, minHeight: 44, padding: "11px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: isMobile ? 16 : 14, lineHeight: 1.35, outline: "none", fontFamily: "inherit" }}
+                        />
+                      </>
+                    )}
+                    <button
+                      onClick={() => { if (recording) stopAndSendRecording(); else if (draft.trim()) void send(); else void startRecording(); }}
                       disabled={sending}
-                      rows={1}
-                      placeholder="Escreva uma mensagem para o lead…"
-                      style={{ flex: 1, resize: "none", maxHeight: 120, minHeight: 40, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: isMobile ? 16 : 14, lineHeight: 1.35, outline: "none", fontFamily: "inherit" }}
-                    />
-                    <button onClick={() => void send()} disabled={sending || !draft.trim()} aria-label="Enviar mensagem"
-                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", cursor: sending || !draft.trim() ? "default" : "pointer", opacity: sending || !draft.trim() ? 0.55 : 1 }}>
-                      <Send size={18} />
+                      aria-label={recording || draft.trim() ? "Enviar" : "Gravar áudio"}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, flexShrink: 0, borderRadius: "50%", border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", cursor: sending ? "default" : "pointer", opacity: sending ? 0.55 : 1 }}>
+                      {recording || draft.trim() ? <Send size={18} /> : <Mic size={20} />}
                     </button>
                   </div>
-                  <div style={{ padding: "5px 2px 0", fontSize: 10.5, color: "var(--wa-muted)" }}>
-                    Enter envia · Shift+Enter quebra linha · ao responder, a IA pausa e sua equipe assume.
-                  </div>
+                  {!isMobile && (
+                    <div style={{ padding: "5px 2px 0", fontSize: 10.5, color: "var(--wa-muted)" }}>
+                      Enter envia · Shift+Enter quebra linha · ao responder, a IA pausa e sua equipe assume.
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "9px 4px", color: "var(--wa-muted)", fontSize: 12, lineHeight: 1.4 }}>
