@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { existsSync } from "fs";
+import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 
@@ -9,17 +11,20 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   const { token } = await params;
   const portal = await resolvePortal(token);
   if (!portal) return {};
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, slug: true } });
   const name = client?.name || "Painel";
 
-  // apple-touch-icon = logo do cliente servido como imagem real (rota /logo — o logo é
-  // data URI no banco, que iOS/Android não aceitam direto). A rota faz fallback pro
-  // ícone da Veloce se o cliente não tem logo. Favicon do desktop segue a Veloce.
+  // Ícone do atalho (iOS apple-touch-icon): arquivo estático próprio do cliente em
+  // public/icone_atalho/<slug>.png quando existir (fixo e confiável). Senão, cai na
+  // rota /logo (que serve o logo do banco). Favicon do desktop segue a Veloce.
+  const appleIcon = client?.slug && existsSync(join(process.cwd(), "public", "icone_atalho", `${client.slug}.png`))
+    ? `/icone_atalho/${client.slug}.png`
+    : `/r/${token}/logo`;
   return {
     title: name,
     manifest: `/r/${token}/manifest.webmanifest`,
     appleWebApp: { capable: true, title: name, statusBarStyle: "default" },
-    icons: { icon: [{ url: "/favicon.ico" }, { url: "/logo.png", type: "image/png" }], apple: `/r/${token}/logo` },
+    icons: { icon: [{ url: "/favicon.ico" }, { url: "/logo.png", type: "image/png" }], apple: appleIcon },
   };
 }
 

@@ -1,7 +1,10 @@
+import { existsSync } from "fs";
+import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // Manifest POR CLIENTE: quando o cliente adiciona o link à tela inicial (Android),
 // o ícone e o nome do atalho são os DELE (logo + marca), não os da Veloce.
@@ -10,8 +13,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const portal = await resolvePortal(token);
   if (!portal) return new Response("{}", { status: 404, headers: { "Content-Type": "application/manifest+json" } });
 
-  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true } });
+  const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, slug: true } });
   const name = client?.name || "Painel";
+
+  // Ícone do atalho: arquivo estático próprio do cliente em public/icone_atalho/<slug>.png
+  // (imagem fixa, confiável — não depende de ler o logo do banco). Fallback pra rota /logo.
+  const staticIcon = client?.slug && existsSync(join(process.cwd(), "public", "icone_atalho", `${client.slug}.png`))
+    ? `/icone_atalho/${client.slug}.png`
+    : null;
+  const icon192 = staticIcon || `/r/${token}/logo?size=192`;
+  const icon512 = staticIcon || `/r/${token}/logo?size=512`;
 
   const manifest = {
     name,
@@ -24,8 +35,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     // Ícone = logo do cliente servido como imagem real (a rota /logo decodifica o data
     // URI; data URI não vale como ícone de manifest). Fallback pro ícone da Veloce.
     icons: [
-      { src: `/r/${token}/logo?size=192`, sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: `/r/${token}/logo?size=512`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: icon192, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" },
     ],
   };
   return new Response(JSON.stringify(manifest), {
