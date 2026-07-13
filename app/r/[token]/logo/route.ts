@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // depende do logoUrl no banco — nunca cachear a resposta
+export const revalidate = 0;
 
 // Serve o logo do PERFIL do cliente como ÍCONE REAL (para o atalho na tela inicial /
 // apple-touch-icon). O logo é salvo como data URI base64 no banco, e iOS/Android NÃO
