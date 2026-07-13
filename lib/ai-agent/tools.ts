@@ -6,7 +6,7 @@ import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { sendWhatsAppImage, sendWhatsAppDocument } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
-import { computeQuote, describeRules, type PricingRules } from "./pricing";
+import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
 import { renderQuotePdf } from "@/lib/quote-pdf";
 
@@ -295,19 +295,38 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const pc = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId } });
       if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
       const rules = pc.rules as unknown as PricingRules;
+
       const sel = { base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined };
+      // Trava 1: sem MODELO (base) não orça.
+      if (!sel.base.length) return { result: "Escolha ao menos um MODELO (base) para orçar. Pergunte ao lead qual modelo ele quer." };
+
+      // Trava 2: campos obrigatórios da ficha (ex.: endereço, modelo) precisam estar coletados.
+      const spec = parseSpec(ctx.intakeSpec);
+      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
+      const ficha = (prof?.data as IntakeData) ?? {};
+      const missing = missingRequired(spec, ficha);
+      if (missing.length) return { result: `Ainda NÃO posso gerar o orçamento — colete antes (use atualizar_ficha): ${missing.map((f) => f.label).join(", ")}.` };
+
       const r = computeQuote(rules, sel);
       if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
-      const q = r.quote;
+      let q = r.quote;
+
+      // Frete determinístico pela REGIÃO do endereço coletado (blob da ficha).
+      if (rules.freight?.length) {
+        const addressBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
+        const fr = resolveFreight(rules, addressBlob);
+        if (fr && "unmatched" in fr) return { result: "Não identifiquei a REGIÃO de entrega para calcular o frete. Confirme a cidade/endereço do lead (use atualizar_ficha) ou, se for fora da área de atendimento, encaminhe a um vendedor." };
+        if (fr) q = appendFeeLine(q, fr);
+      }
+
       const summary = q.items.map((i) => i.label).join(", ");
       if (ctx.mode === "test") return { result: `(teste) Orçamento: ${brl(q.total, pc.currency)} (não gravado). Itens: ${summary}.`, decision: "orcou" };
       const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
-      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
       await prisma.quote.create({ data: {
         clientId: ctx.clientId, contactId: ctx.contactId, number,
         items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
-        currency: pc.currency, status: "draft", summary, intake: (prof?.data as Prisma.InputJsonValue) ?? undefined,
+        currency: pc.currency, status: "draft", summary, intake: (ficha as unknown as Prisma.InputJsonValue) ?? undefined,
       } });
       const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
       return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };

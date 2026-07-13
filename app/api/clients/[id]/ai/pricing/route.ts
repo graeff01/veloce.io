@@ -7,10 +7,14 @@ import { z } from "zod";
 // sai do modelo. Aqui o operador edita base/opcionais/taxas sem tocar no banco.
 const itemSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number() });
 const feeSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number().optional(), percent: z.number().optional() });
+// Frete fixo por região (resolvido pelo endereço coletado). aliases = variações do nome.
+const freightSchema = z.object({ region: z.string().min(1).max(120), amount: z.number(), aliases: z.array(z.string().max(120)).max(20).optional() });
 const rulesSchema = z.object({
   base: z.array(itemSchema).optional(),
   options: z.array(itemSchema).optional(),
   fees: z.array(feeSchema).optional(),
+  freight: z.array(freightSchema).max(200).optional(),
+  freightDefault: z.number().optional(),
 });
 const putSchema = z.object({ currency: z.string().max(8).optional(), rules: rulesSchema });
 
