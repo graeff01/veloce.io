@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageCircle, Copy, Check, Trash2, RefreshCw, Loader2, Plus } from "lucide-react";
+import { MessageCircle, Trash2, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TabHeader } from "@/components/clients/tab-header";
-import { PortalAccessCard } from "@/components/clients/portal-access-card";
 
 interface Recipient { id: string; role: string; channel: string; waId: string | null; createdAt: string }
 interface BotState {
@@ -69,11 +68,10 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-type Section = "destinatarios" | "alertas" | "painel";
+type Section = "destinatarios" | "alertas";
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "destinatarios", label: "Destinatários" },
   { key: "alertas", label: "Alertas" },
-  { key: "painel", label: "Painel" },
 ];
 
 function SubNav({ active, onChange }: { active: Section; onChange: (s: Section) => void }) {
@@ -116,58 +114,14 @@ export function BotTab({ clientId }: { clientId: string }) {
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [excluded, setExcluded] = useState("");
   const [section, setSection] = useState<Section>("destinatarios");
-  const [portal, setPortal] = useState<{ link: string; accentColor: string | null; mode: string; logoUrl: string | null } | null>(null);
-  const [portalCopied, setPortalCopied] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/bot`);
     if (res.ok) { const d = await res.json(); setState(d); setExcluded(d.excludedNames ?? ""); }
   }
 
-  async function loadPortal() {
-    const res = await fetch(`/api/clients/${clientId}/portal`);
-    if (res.ok) setPortal(await res.json());
-  }
-  async function savePortal(body: Record<string, unknown>) {
-    const res = await fetch(`/api/clients/${clientId}/portal`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) setPortal(await res.json());
-  }
-
-  // Extrai a cor "de marca" do logo (média dos pixels, ignorando transparente e quase branco/preto).
-  function colorFromLogo(url: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        try {
-          const s = 40, c = document.createElement("canvas"); c.width = s; c.height = s;
-          const ctx = c.getContext("2d"); if (!ctx) return resolve(null);
-          ctx.drawImage(img, 0, 0, s, s);
-          const d = ctx.getImageData(0, 0, s, s).data;
-          let r = 0, g = 0, b = 0, n = 0;
-          for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3] < 128) continue;
-            const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
-            if ((mx > 240 && mn > 240) || mx < 15) continue;
-            r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
-          }
-          if (!n) return resolve(null);
-          const h = (x: number) => Math.round(x / n).toString(16).padStart(2, "0");
-          resolve(`#${h(r)}${h(g)}${h(b)}`);
-        } catch { resolve(null); }
-      };
-      img.onerror = () => resolve(null);
-      img.src = url;
-    });
-  }
-  async function fromLogo() {
-    if (!portal?.logoUrl) return;
-    const hex = await colorFromLogo(portal.logoUrl);
-    if (!hex) { alert("Não consegui ler a cor do logo automaticamente. Escolha a cor manualmente."); return; }
-    setPortal({ ...portal, accentColor: hex }); void savePortal({ accentColor: hex });
-  }
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { load(); loadPortal(); }, [clientId]);
+  useEffect(() => { load(); }, [clientId]);
 
   async function patch(body: Record<string, unknown>) {
     await fetch(`/api/clients/${clientId}/bot`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -297,50 +251,6 @@ export function BotTab({ clientId }: { clientId: string }) {
       )}
 
       {section === "alertas" && <AlertPreview />}
-
-      {/* Painel do cliente (dashboard sem login) */}
-      {section === "painel" && (
-      <Card title="📊 Painel do cliente">
-        {!portal ? (
-          <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Carregando…</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-              Link <b>sem login</b> com o painel de performance do cliente (marca dele). Envie ou use o comando <b>/painel</b> no WhatsApp.
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{portal.link}</span>
-              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(portal.link); setPortalCopied(true); setTimeout(() => setPortalCopied(false), 2000); }}>
-                {portalCopied ? <Check size={12} /> : <Copy size={12} />} {portalCopied ? "Copiado" : "Copiar"}
-              </Button>
-              <a href={portal.link} target="_blank" rel="noreferrer"><Button variant="secondary" size="sm">Abrir</Button></a>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-secondary)" }}>
-                Cor da marca
-                <input type="color" value={portal.accentColor ?? "#1e66f5"} onChange={(e) => { setPortal({ ...portal, accentColor: e.target.value }); void savePortal({ accentColor: e.target.value }); }}
-                  style={{ width: 36, height: 28, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer" }} />
-              </label>
-              {portal.logoUrl && <Button variant="ghost" size="sm" onClick={fromLogo}>🎨 Gerar do logo</Button>}
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-secondary)" }}>
-                Modo
-                <select value={portal.mode} onChange={(e) => { setPortal({ ...portal, mode: e.target.value }); void savePortal({ mode: e.target.value }); }}
-                  style={{ background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-primary)", padding: "5px 8px", fontSize: 12.5 }}>
-                  <option value="light">Claro</option>
-                  <option value="dark">Escuro</option>
-                  <option value="auto">Auto (segue o aparelho)</option>
-                </select>
-              </label>
-              <Button variant="ghost" size="sm" onClick={() => { if (confirm("Gerar um novo link? O link atual deixa de funcionar.")) void savePortal({ rotate: true }); }}>
-                <RefreshCw size={12} /> Novo link
-              </Button>
-            </div>
-          </div>
-        )}
-      </Card>
-      )}
-
-      {section === "painel" && <PortalAccessCard clientId={clientId} />}
       </div>
     </div>
   );

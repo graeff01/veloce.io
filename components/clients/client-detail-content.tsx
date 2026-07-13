@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Bot, BarChart3, Send, FileText,
+  Columns3, User, Mic, Bot, BarChart3, Send, FileText, MonitorSmartphone,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -22,6 +22,7 @@ import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
 import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
 import { BotTab } from "@/components/clients/bot-tab";
+import { PanelTab } from "@/components/clients/panel-tab";
 import { ReportsTab } from "@/components/clients/reports-tab";
 import { FacebookGlyph, GoogleGlyph, WhatsAppGlyph } from "@/components/clients/brand-glyphs";
 
@@ -139,7 +140,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "ia" | "bot" | "relatorios";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "ia" | "bot" | "painel" | "relatorios";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -164,7 +165,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "ia", "bot"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "ia", "bot", "painel"];
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
 
@@ -190,7 +191,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   }[client.stats.health];
 
   // Operação, Relatórios e Perfil são sempre fixas; o resto depende dos módulos.
-  const CORE_TABS: Tab[] = ["operacao", "relatorios", "perfil"];
+  const CORE_TABS: Tab[] = ["operacao", "relatorios", "perfil", "painel"];
   // brand: cor da marca aplicada ao título + sublinhado (Meta = azul Facebook, Google = azul Google).
   const allTabs: { key: Tab; label: string; icon: React.ReactNode; brand?: string }[] = [
     { key: "operacao",  label: "Operação",  icon: <Columns3 size={13} /> },
@@ -200,6 +201,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "google",    label: "Google",    icon: <GoogleGlyph size={14} />,   brand: "#4285F4" },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
+    { key: "painel",    label: "Painel",    icon: <MonitorSmartphone size={13} /> },
     { key: "relatorios", label: "Relatórios", icon: <FileText size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
@@ -329,6 +331,10 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {activeTab === "bot" && (
         <BotTab clientId={clientId} />
+      )}
+
+      {activeTab === "painel" && (
+        <PanelTab clientId={clientId} />
       )}
 
       {activeTab === "relatorios" && (

@@ -28,10 +28,12 @@ export async function PUT(req: Request, { params }: Params) {
 
   if (body.rotate === true) { await rotatePortalToken(id); }
 
-  const data: { accentColor?: string | null; mode?: string; active?: boolean } = {};
+  const data: { accentColor?: string | null; mode?: string; active?: boolean; requireLogin?: boolean; maxUsers?: number } = {};
   if ("accentColor" in body) data.accentColor = (body.accentColor as string)?.trim() || null;
   if (typeof body.mode === "string" && ["light", "dark", "auto"].includes(body.mode)) data.mode = body.mode;
   if (typeof body.active === "boolean") data.active = body.active;
+  if (typeof body.requireLogin === "boolean") data.requireLogin = body.requireLogin;
+  if (typeof body.maxUsers === "number" && Number.isFinite(body.maxUsers)) data.maxUsers = Math.min(50, Math.max(1, Math.round(body.maxUsers)));
   if (Object.keys(data).length > 0) await updatePortal(id, data);
 
   return NextResponse.json(await getOrCreatePortal(id));

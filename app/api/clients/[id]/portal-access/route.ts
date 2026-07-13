@@ -5,33 +5,18 @@ import { normEmail } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
 
-// GET — e-mails autorizados a acessar o painel deste cliente.
+// GET — usuários do painel deste cliente (login+senha). hasPassword=false = convidado
+// que ainda não definiu senha.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const emails = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true } });
-  return NextResponse.json({ emails });
+  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, lastLoginAt: true, passwordHash: true } });
+  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
+  return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
 }
 
-// POST { email } — autoriza um e-mail.
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const { error } = await requireAuth("clients:update");
-  if (error) return error;
-  const { email } = await req.json().catch(() => ({}));
-  const e = normEmail(email || "");
-  if (!e || !e.includes("@")) return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
-  const row = await prisma.portalAccess.upsert({
-    where: { clientId_email: { clientId: id, email: e } },
-    create: { clientId: id, email: e },
-    update: {},
-    select: { id: true, email: true },
-  });
-  return NextResponse.json({ email: row });
-}
-
-// DELETE ?email= — revoga o acesso (e derruba as sessões desse e-mail).
+// DELETE ?email= — remove o usuário (libera a vaga) e derruba as sessões dele.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { error } = await requireAuth("clients:update");
