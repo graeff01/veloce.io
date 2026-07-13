@@ -21,6 +21,7 @@ import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
 import { isWithin24h } from "@/lib/wa-window";
 import { allowSend } from "@/lib/portal-send-throttle";
+import { isTakenOver } from "@/lib/takeover";
 
 export interface JobPayload { text?: string | null; type: string; mediaId?: string; mime?: string }
 export type JobOutcome = "sent" | "skipped" | "error";
@@ -139,14 +140,19 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     return sent.ok ? "sent" : "error";
   }
 
-  // 3) Takeover humano: se um humano respondeu há pouco, a IA NÃO assume.
+  // 3) Takeover humano: se um humano respondeu há pouco OU assumiu explicitamente
+  //    (botão "Assumir conversa"), a IA NÃO assume. A regra explícita vale mesmo
+  //    ANTES da 1ª mensagem humana — mata a colisão bot×atendente digitando.
   const takeoverMin = cfg?.humanTakeoverMin ?? 180;
   if (takeoverMin > 0) {
+    const since = new Date(Date.now() - takeoverMin * 60_000);
     const human = await prisma.waMessage.findFirst({
-      where: { contactId: contact.id, direction: "out", aiGenerated: false, timestamp: { gte: new Date(Date.now() - takeoverMin * 60_000) } },
+      where: { contactId: contact.id, direction: "out", aiGenerated: false, timestamp: { gte: since } },
       select: { id: true },
     });
-    if (human) return "skipped"; // operador no controle
+    if (human) return "skipped"; // operador no controle (regra por mensagem — inalterada)
+    const convTk = await prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { humanTakeoverAt: true } });
+    if (isTakenOver(convTk?.humanTakeoverAt, takeoverMin)) return "skipped"; // takeover explícito
   }
 
   // 4) Escopo efetivo (a quem responde). No modo "ads_in_hours" varia por horário:
@@ -353,6 +359,26 @@ export async function sendManualMessage(clientId: string, contactId: string, raw
     ok: true,
     message: { id: stored?.id ?? wamid, text, direction: "out", type: "text", timestamp: (stored?.timestamp ?? ts).toISOString(), aiGenerated: false },
   };
+}
+
+// Assume ("Assumir conversa") ou devolve ("Devolver pra IA") a conversa a partir do
+// painel. Mesmo escopo/isolamento do send (contato tem que ser do próprio cliente).
+// on=true → humanTakeoverAt=now (silencia a IA na janela, ANTES da 1ª mensagem);
+// on=false → humanTakeoverAt=null (a IA volta a responder).
+export async function setHumanTakeover(clientId: string, contactId: string, on: boolean): Promise<{ ok: boolean; status?: number; error?: string; humanTakenOver?: boolean }> {
+  const contact = await prisma.waContact.findUnique({
+    where: { id: contactId },
+    select: { id: true, connection: { select: { id: true, clientId: true } } },
+  });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, status: 404, error: "Conversa não encontrada." };
+
+  const at = on ? new Date() : null;
+  await prisma.waConversation.upsert({
+    where: { contactId: contact.id },
+    create: { connectionId: contact.connection.id, contactId: contact.id, humanTakeoverAt: at },
+    update: { humanTakeoverAt: at },
+  });
+  return { ok: true, humanTakenOver: on };
 }
 
 // Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem
