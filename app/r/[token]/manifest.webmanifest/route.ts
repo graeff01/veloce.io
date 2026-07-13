@@ -24,8 +24,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     // Ícone = logo do cliente servido como imagem real (a rota /logo decodifica o data
     // URI; data URI não vale como ícone de manifest). Fallback pro ícone da Veloce.
     icons: [
-      { src: `/r/${token}/logo`, sizes: "192x192", purpose: "any" },
-      { src: `/r/${token}/logo`, sizes: "512x512", purpose: "any" },
+      { src: `/r/${token}/logo?size=192`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/r/${token}/logo?size=512`, sizes: "512x512", type: "image/png", purpose: "any" },
     ],
   };
   return new Response(JSON.stringify(manifest), {
