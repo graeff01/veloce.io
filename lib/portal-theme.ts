@@ -72,11 +72,12 @@ export function themeSwitchCss(accent: string | null, defaultMode: string): stri
 // Sistema de design do portal (classes reutilizáveis): superfície ÚNICA e coesa dividida
 // por linhas finas — sem blocos soltos com fundos diferentes. Referência de CRMs modernos.
 export const PORTAL_UI_CSS = `
-.p-wrap{max-width:1160px;margin:0 auto;padding:22px 26px 64px;display:flex;flex-direction:column;gap:18px}
+.p-wrap{padding:20px 26px 64px;display:flex;flex-direction:column;gap:16px}
 .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 .p-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--p-muted)}
-.p-panel{background:var(--p-surface);border:1px solid var(--p-border);border-radius:14px;box-shadow:0 1px 2px rgba(16,19,28,.04),0 8px 24px rgba(16,19,28,.05);overflow:hidden}
-html[data-pt="dark"] .p-panel{box-shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.32)}
+/* Superfícies abertas: sem borda-caixa em volta; definidas por tom + sombra suave. */
+.p-panel{background:var(--p-surface);border-radius:16px;box-shadow:0 1px 3px rgba(16,19,28,.05),0 16px 36px rgba(16,19,28,.06);overflow:hidden}
+html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.055)}
 .p-phead{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--p-border)}
 .p-phead h2{font-size:13.5px;font-weight:700;margin:0;letter-spacing:-.01em;color:var(--p-text)}
 .p-phead .hint{color:var(--p-muted);opacity:.85;font-size:11.5px;margin-left:auto}
