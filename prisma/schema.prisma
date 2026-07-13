@@ -1723,6 +1723,7 @@ model ClientPortal {
   active       Boolean  @default(true)
   requireLogin Boolean  @default(false) // painel exige login+senha (self-cadastro pelo link fixo)
   maxUsers     Int      @default(3)     // teto de usuários que podem se cadastrar neste painel
+  sections     String?  // seções habilitadas no portal (CSV das chaves); null = todas
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
