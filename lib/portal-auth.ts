@@ -1,43 +1,68 @@
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { validatePassword, validEmail } from "@/lib/portal-password";
 
 export const PORTAL_COOKIE = "vp_session";
 const SESSION_DAYS = 60;
 
 export const normEmail = (e: string): string => (e || "").trim().toLowerCase();
-const hashCode = (code: string): string => crypto.createHash("sha256").update(code).digest("hex");
 
-// Cliente "protegido" = tem ao menos 1 e-mail autorizado. Sem e-mails = painel
-// aberto pelo link (comportamento legado), então nada quebra até a agência cadastrar.
+// Cliente "protegido" = login+senha LIGADO no painel (ClientPortal.requireLogin).
+// Desligado = painel aberto pelo link (legado) — nada quebra até a agência ativar.
 export async function isProtected(clientId: string): Promise<boolean> {
-  return (await prisma.portalAccess.count({ where: { clientId } })) > 0;
-}
-export async function isAuthorized(clientId: string, email: string): Promise<boolean> {
-  const a = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: normEmail(email) } } }).catch(() => null);
-  return !!a;
+  const p = await prisma.clientPortal.findUnique({ where: { clientId }, select: { requireLogin: true } });
+  return !!p?.requireLogin;
 }
 
-export async function createOtp(clientId: string, email: string): Promise<string> {
-  const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 dígitos
-  const e = normEmail(email);
-  await prisma.portalOtp.deleteMany({ where: { clientId, email: e } }); // só um código ativo por vez
-  await prisma.portalOtp.create({ data: { clientId, email: e, codeHash: hashCode(code), expiresAt: new Date(Date.now() + 10 * 60_000) } });
-  return code;
+export async function hashPassword(pw: string): Promise<string> {
+  return bcrypt.hash(pw, 10);
 }
-export async function recentOtpCount(clientId: string, email: string): Promise<number> {
-  return prisma.portalOtp.count({ where: { clientId, email: normEmail(email), createdAt: { gte: new Date(Date.now() - 60 * 60_000) } } });
+export async function verifyPassword(pw: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(pw || "", hash).catch(() => false);
 }
-export async function verifyOtp(clientId: string, email: string, code: string): Promise<boolean> {
+
+export interface AuthResult { ok: boolean; status?: number; error?: string; email?: string }
+
+// Auto-cadastro pelo link fixo (e-mail + senha), limitado por ClientPortal.maxUsers.
+// Um e-mail já convidado (linha sem senha) pode definir a senha mesmo no limite.
+export async function registerUser(clientId: string, email: string, password: string, name?: string): Promise<AuthResult> {
   const e = normEmail(email);
-  const otp = await prisma.portalOtp.findFirst({ where: { clientId, email: e }, orderBy: { createdAt: "desc" } });
-  if (!otp || otp.expiresAt < new Date() || otp.attempts >= 5) return false;
-  if (otp.codeHash !== hashCode((code || "").trim())) {
-    await prisma.portalOtp.update({ where: { id: otp.id }, data: { attempts: { increment: 1 } } }).catch(() => {});
-    return false;
+  if (!validEmail(e)) return { ok: false, status: 400, error: "E-mail inválido." };
+  const pol = validatePassword(password);
+  if (!pol.ok) return { ok: false, status: 400, error: pol.error };
+
+  const portal = await prisma.clientPortal.findUnique({ where: { clientId }, select: { requireLogin: true, maxUsers: true } });
+  if (!portal?.requireLogin) return { ok: false, status: 403, error: "Login não está ativado para este painel." };
+
+  const existing = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: e } }, select: { passwordHash: true } });
+  if (existing?.passwordHash) return { ok: false, status: 409, error: "Esse e-mail já tem conta. Faça login." };
+
+  // Teto: conta só quem já é usuário efetivo (tem senha). Convidado sem senha não ocupa vaga extra.
+  if (!existing) {
+    const registered = await prisma.portalAccess.count({ where: { clientId, passwordHash: { not: null } } });
+    if (registered >= (portal.maxUsers ?? 3)) return { ok: false, status: 403, error: "Este painel atingiu o limite de usuários. Fale com a sua agência." };
   }
-  await prisma.portalOtp.deleteMany({ where: { clientId, email: e } });
-  return true;
+
+  const passwordHash = await hashPassword(password);
+  await prisma.portalAccess.upsert({
+    where: { clientId_email: { clientId, email: e } },
+    create: { clientId, email: e, passwordHash, name: name?.trim() || null },
+    update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}) },
+  });
+  return { ok: true, email: e };
+}
+
+export async function loginUser(clientId: string, email: string, password: string): Promise<AuthResult> {
+  const e = normEmail(email);
+  const u = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: e } }, select: { passwordHash: true } });
+  // Mensagem genérica (não revela se o e-mail existe).
+  if (!u?.passwordHash || !(await verifyPassword(password, u.passwordHash))) {
+    return { ok: false, status: 401, error: "E-mail ou senha incorretos." };
+  }
+  await prisma.portalAccess.update({ where: { clientId_email: { clientId, email: e } }, data: { lastLoginAt: new Date() } }).catch(() => {});
+  return { ok: true, email: e };
 }
 
 export async function createSession(clientId: string, email: string): Promise<string> {
@@ -57,28 +82,8 @@ export async function getPortalSessionEmail(clientId: string): Promise<string | 
   return s.email;
 }
 
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-export async function sendOtpEmail(to: string, code: string, clientName: string): Promise<boolean> {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.PORTAL_EMAIL_FROM || "Veloce <painel@veloce.io>";
-  if (!key) return false;
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from, to: [to], subject: `Seu código de acesso: ${code}`,
-        html: `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:440px;margin:0 auto;padding:24px">
-          <div style="font-size:18px;font-weight:800;margin:0 0 6px">Painel · ${escapeHtml(clientName)}</div>
-          <p style="color:#555;font-size:14px;margin:0 0 18px">Use este código para acessar o painel de performance:</p>
-          <div style="font-size:34px;font-weight:800;letter-spacing:8px;background:#f4f5f7;border-radius:12px;padding:16px;text-align:center;color:#111">${code}</div>
-          <p style="color:#888;font-size:12px;margin-top:18px">Expira em 10 minutos. Se você não pediu, ignore este e-mail.</p>
-        </div>`,
-      }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+// Encerra a sessão (logout): apaga a linha da sessão do cookie atual.
+export async function destroySession(): Promise<void> {
+  const tok = (await cookies()).get(PORTAL_COOKIE)?.value;
+  if (tok) await prisma.portalSession.deleteMany({ where: { sessionToken: tok } }).catch(() => {});
 }

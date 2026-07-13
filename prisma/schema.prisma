@@ -1712,22 +1712,29 @@ model HeldAlert {
 // Painel do cliente (camada client-facing, sem login). O token é a credencial
 // (capability URL /r/<token>): rotativo e revogável. Tema por cliente (marca branca).
 model ClientPortal {
-  clientId    String   @id
-  token       String   @unique
-  accentColor String?  // hex da marca, ex.: "#1E66F5" (deriva a paleta)
-  mode        String   @default("light") // light | dark | auto
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  clientId     String   @id
+  token        String   @unique
+  accentColor  String?  // hex da marca, ex.: "#1E66F5" (deriva a paleta)
+  mode         String   @default("light") // light | dark | auto
+  active       Boolean  @default(true)
+  requireLogin Boolean  @default(false) // painel exige login+senha (self-cadastro pelo link fixo)
+  maxUsers     Int      @default(3)     // teto de usuários que podem se cadastrar neste painel
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
-// ── Login do painel do cliente (OTP por e-mail) ───────────────────────────────
-// E-mails autorizados por cliente. Se um cliente tem >=1, o painel exige login.
+// ── Login do painel do cliente (e-mail + senha, self-cadastro pelo link) ───────
+// Cada linha é um usuário do painel de um cliente. passwordHash=null = convidado que
+// ainda não definiu senha (pré-convite opcional); com senha = usuário efetivo (conta
+// no teto maxUsers). OTP por e-mail foi removido (PortalOtp fica órfão, sem uso).
 model PortalAccess {
-  id        String   @id @default(cuid())
-  clientId  String
-  email     String
-  createdAt DateTime @default(now())
+  id           String    @id @default(cuid())
+  clientId     String
+  email        String
+  name         String?   // nome do usuário (exibição)
+  passwordHash String?   // bcrypt; null = ainda não cadastrou senha
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   @@unique([clientId, email])
   @@index([clientId])
