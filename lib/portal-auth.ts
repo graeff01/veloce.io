@@ -45,11 +45,15 @@ export async function registerUser(clientId: string, email: string, password: st
     if (registered >= (portal.maxUsers ?? 3)) return { ok: false, status: 403, error: "Este painel atingiu o limite de usuários. Fale com a sua agência." };
   }
 
+  // Garante ≥1 admin por cliente: se ainda não há admin efetivo, o 1º vira admin.
+  const hasAdmin = (await prisma.portalAccess.count({ where: { clientId, role: "admin", passwordHash: { not: null } } })) > 0;
+  const role = hasAdmin ? "attendant" : "admin";
+
   const passwordHash = await hashPassword(password);
   await prisma.portalAccess.upsert({
     where: { clientId_email: { clientId, email: e } },
-    create: { clientId, email: e, passwordHash, name: name?.trim() || null },
-    update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}) },
+    create: { clientId, email: e, passwordHash, name: name?.trim() || null, role },
+    update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}), ...(role === "admin" ? { role: "admin" } : {}) },
   });
   return { ok: true, email: e };
 }
@@ -81,6 +85,17 @@ export async function getPortalSessionEmail(clientId: string): Promise<string | 
   await prisma.portalSession.update({ where: { id: s.id }, data: { lastSeenAt: new Date(), expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000) } }).catch(() => {});
   return s.email;
 }
+
+// Usuário logado (e-mail + nome + papel) para ESTE cliente, a partir do cookie.
+export async function getPortalUser(clientId: string): Promise<{ email: string; name: string | null; role: string } | null> {
+  const email = await getPortalSessionEmail(clientId);
+  if (!email) return null;
+  const u = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email } }, select: { email: true, name: true, role: true } });
+  if (!u) return { email, name: null, role: "attendant" };
+  return { email: u.email, name: u.name, role: u.role };
+}
+
+export const isAdminRole = (role: string | null | undefined) => role === "admin";
 
 // Encerra a sessão (logout): apaga a linha da sessão do cookie atual.
 export async function destroySession(): Promise<void> {

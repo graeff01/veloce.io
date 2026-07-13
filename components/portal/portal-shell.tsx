@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
@@ -11,7 +11,13 @@ import { PortalAdvisor } from "@/components/portal/portal-advisor";
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
 export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(null);
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
+  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => setAccount(d?.user ?? null)).catch(() => {}); }, [token]);
+  async function logout() {
+    await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
+    window.location.href = `/r/${token}`;
+  }
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -62,6 +68,22 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
           {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
           {item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
         </nav>
+
+        {/* conta logada (identifica quem está no painel) + sair */}
+        {account && (
+          <div style={{ borderTop: "1px solid var(--p-border)", paddingTop: 10, marginTop: 4, marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "2px 6px 8px" }}>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: "var(--p-accent)", color: "var(--p-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>{(account.name || account.email)[0]?.toUpperCase()}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account.name || account.email.split("@")[0]}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: account.role === "admin" ? "var(--p-accent)" : "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>{account.role === "admin" ? "Admin" : "Atendente"}</div>
+              </div>
+            </div>
+            <button onClick={logout} title="Sair" style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <LogOut size={15} /> Sair
+            </button>
+          </div>
+        )}
 
         {/* tema */}
         <button onClick={toggle} title="Alternar tema" style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
