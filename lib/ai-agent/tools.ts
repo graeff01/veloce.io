@@ -322,13 +322,32 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (ctx.mode === "test") return { result: `(teste) Enviaria o PDF do orçamento Nº ${quote.number} (não enviado).`, decision: "orcou" };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
-      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
+      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true, logoUrl: true, website: true, instagram: true } });
+      const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId }, select: { rules: true } });
+      const rules = (pcfg?.rules ?? {}) as { company?: Record<string, string>; observacoes?: string; validityDays?: number; base?: { key?: string; code?: string }[]; options?: { key?: string; code?: string }[]; fees?: { key?: string; code?: string }[] };
+      // Mapa key→código do catálogo, p/ a coluna CÓDIGO do PDF.
+      const codeByKey = new Map<string, string>();
+      for (const arr of [rules.base, rules.options, rules.fees]) if (Array.isArray(arr)) for (const it of arr) if (it?.key && it?.code) codeByKey.set(it.key, it.code);
+      const items = (quote.items as unknown as { key?: string; label: string; qty: number; unit: number; amount: number }[])
+        .map((it) => ({ code: it.key ? codeByKey.get(it.key) ?? null : null, label: it.label, qty: it.qty, unit: it.unit, amount: it.amount }));
+      const co = rules.company ?? {};
+      const validity = Number(rules.validityDays) > 0 ? Number(rules.validityDays) : null;
+      const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
+      const intake = (quote.intake ?? {}) as Record<string, unknown>;
+      const contactCity = typeof intake.cidade_entrega === "string" ? intake.cidade_entrega : null;
       try {
         const pdf = await renderQuotePdf({
-          clientName: client?.name ?? "Orçamento", number: quote.number, contactName: ctx.contactName,
-          items: quote.items as unknown as { label: string; qty: number; unit: number; amount: number }[],
-          subtotal: quote.subtotal, fees: quote.fees, total: quote.total, currency: quote.currency,
-          summary: quote.summary, generatedAt: new Date().toLocaleDateString("pt-BR"),
+          company: {
+            name: client?.name ?? "Orçamento", logoUrl: client?.logoUrl ?? null,
+            phone: co.phone ?? null, whatsapp: co.whatsapp ?? null,
+            address: co.address ?? null, city: co.city ?? null, cep: co.cep ?? null,
+            email: co.email ?? null, website: co.website ?? client?.website ?? null,
+            facebook: co.facebook ?? null, instagram: co.instagram ?? client?.instagram ?? null,
+          },
+          number: quote.number, contactName: ctx.contactName, contactCity, sellerName: null,
+          items, total: quote.total, currency: quote.currency,
+          observacoes: typeof rules.observacoes === "string" ? rules.observacoes : null,
+          generatedAt: new Date().toLocaleDateString("pt-BR"), validUntil,
         });
         const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
         if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
