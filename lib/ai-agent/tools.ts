@@ -18,6 +18,9 @@ export interface ToolCtx {
   contactWaId: string;
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
   intakeSpec?: unknown; // ficha configurável (AiAgentConfig.intakeSpec) p/ orçamento
+  // Ficha EFÊMERA do modo teste (Console): atualizar_ficha não grava no banco, então
+  // acumula aqui p/ gerar_orcamento enxergar o que foi coletado (gate + frete) na mesma run.
+  testFicha?: IntakeData;
 }
 
 const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
@@ -304,7 +307,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const spec = parseSpec(ctx.intakeSpec);
       if (!spec.length) return { result: "Nenhuma ficha configurada para este cliente." };
       const { data, invalidOptions } = sanitizeIntake(spec, (args.campos as Record<string, unknown>) ?? {});
-      if (ctx.mode === "test") return { result: `(teste) Ficha: ${summarizeIntake(spec, data) || "nada válido"}.` };
+      const invalT = invalidOptions.length ? ` Valores inválidos (ignorados): ${invalidOptions.join(", ")}.` : "";
+      if (ctx.mode === "test") {
+        // Acumula na ficha efêmera (não grava) p/ o gerar_orcamento enxergar o coletado.
+        if (!ctx.testFicha) ctx.testFicha = {};
+        Object.assign(ctx.testFicha, data);
+        const missT = missingRequired(spec, ctx.testFicha);
+        return { result: `(teste) Ficha: ${summarizeIntake(spec, ctx.testFicha) || "nada ainda"}.${invalT}${missT.length ? ` Ainda falta: ${missT.map((f) => f.label).join(", ")}.` : " Ficha COMPLETA — chame gerar_orcamento agora, não reconfirme."}` };
+      }
       const existing = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
       const merged: IntakeData = { ...((existing?.data as IntakeData) ?? {}), ...data };
       await prisma.leadProfile.upsert({
@@ -328,9 +338,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!sel.base.length) return { result: "Escolha ao menos um MODELO (base) para orçar. Pergunte ao lead qual modelo ele quer." };
 
       // Trava 2: campos obrigatórios da ficha (ex.: endereço, modelo) precisam estar coletados.
+      // Em teste a ficha vive só na memória da run (ctx.testFicha) — atualizar_ficha não grava.
       const spec = parseSpec(ctx.intakeSpec);
-      const prof = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
-      const ficha = (prof?.data as IntakeData) ?? {};
+      const ficha: IntakeData = ctx.mode === "test"
+        ? (ctx.testFicha ?? {})
+        : (((await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } }))?.data as IntakeData) ?? {});
       const missing = missingRequired(spec, ficha);
       if (missing.length) return { result: `Ainda NÃO posso gerar o orçamento — colete antes (use atualizar_ficha): ${missing.map((f) => f.label).join(", ")}.` };
 
