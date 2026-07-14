@@ -53,7 +53,7 @@ export interface RunOutput {
 }
 
 // Subconjunto estrutural usado para montar o prompt — AiAgentConfig satisfaz isto.
-interface PromptCfg { language: string; assistantName: string | null; storeName: string | null; persona: string | null; goals: string | null; rules: string | null; timezone: string; playbook: Playbook | null; variantKey: string | null }
+interface PromptCfg { language: string; assistantName: string | null; storeName: string | null; persona: string | null; goals: string | null; rules: string | null; timezone: string; playbook: Playbook | null; variantKey: string | null; customPrompt?: string | null }
 
 // Versão do contrato de prompt/tools/guardrail. Incremente ao mudar o comportamento —
 // permite comparar respostas entre versões (rastreabilidade).
@@ -100,6 +100,10 @@ async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; too
 // prefixo cacheável (prompt caching da OpenAI desconta ~50% dos tokens repetidos).
 // NÃO inclua nada dinâmico aqui (sem timestamp, sem RAG, sem perfil).
 export function buildStablePrompt(cfg: PromptCfg): string {
+  // Prompt COMPLETO por cliente (fonte única): se setado, substitui todo o prompt-base
+  // (não herda o automotivo, persona/goals/rules/playbook). Conhecimento e orçamento
+  // continuam anexados depois, como blocos dinâmicos.
+  if (cfg.customPrompt?.trim()) return cfg.customPrompt.trim();
   // Playbook (dado) substitui as seções de CONDUÇÃO/FAQ automotivas. Sem playbook,
   // o prompt é IDÊNTICO ao atual (retrocompatível por construção).
   const pb = cfg.playbook;
@@ -235,7 +239,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     language: cfg?.language ?? "pt-BR", assistantName: cfg?.assistantName ?? null, storeName,
     persona: cfg?.persona ?? null, goals: cfg?.goals ?? null,
     rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo",
-    playbook: parsePlaybook(cfg?.playbook), variantKey: null,
+    playbook: parsePlaybook(cfg?.playbook), variantKey: null, customPrompt: cfg?.customPrompt ?? null,
   };
   let promptVariant: string | null = null;
 

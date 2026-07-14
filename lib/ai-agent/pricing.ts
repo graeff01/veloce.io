@@ -126,8 +126,10 @@ export function describeRules(rules: PricingRules): string {
     arr && arr.length
       ? `${titulo}:\n${arr.map((i) => `  - ${i.key}: ${i.label}${i.amount != null ? ` (R$ ${i.amount})` : i.percent != null ? ` (${i.percent}%)` : ""}`).join("\n")}`
       : "";
+  // Frete NÃO é escolhido pela IA (é resolvido pela cidade em resolveFreight). Não
+  // listamos as regiões aqui — só a nota — para não inflar o prompt com dezenas de linhas.
   const freight = rules.freight?.length
-    ? `FRETE POR REGIÃO (automático pelo endereço — NÃO escolher, só garanta que coletou a cidade):\n${rules.freight.map((f) => `  - ${f.region}: R$ ${f.amount}`).join("\n")}`
+    ? `FRETE: calculado AUTOMATICAMENTE pela cidade de entrega (${rules.freight.length} regiões atendidas). NÃO escolher frete — só garanta que coletou a cidade.`
     : "";
   return [line(rules.base, "BASE (obrigatório escolher)"), line(rules.options, "OPCIONAIS"), line(rules.fees, "TAXAS"), freight].filter(Boolean).join("\n");
 }
