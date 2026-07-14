@@ -135,7 +135,31 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
   return defs;
 }
 
-export interface ToolResult { result: string; decision?: string }
+// Artefato visual devolvido por uma tool (foto/PDF) — para o Console mostrar como no
+// WhatsApp. NÃO entra no contexto do modelo (só o `result` textual entra).
+export interface ToolArtifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
+
+// Renderiza o PDF do orçamento (mesma apresentação do envio real) como artefato, para o
+// Console exibir no modo teste. Best-effort: falha vira null (não quebra o fluxo).
+async function quotePdfArtifact(clientId: string, q: { items: { label: string; qty: number; unit: number; amount: number }[]; subtotal: number; fees: number; total: number }, currency: string, contactName: string | null, number: number): Promise<ToolArtifact | null> {
+  try {
+    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
+    const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId }, select: { rules: true } });
+    const pres = (pcfg?.rules ?? {}) as { company?: { cnpj?: string | null; address?: string | null; phone?: string | null; site?: string | null }; paymentTerms?: string; deliveryTerms?: string; warranty?: string; notes?: string; validityDays?: number };
+    const validity = Number(pres.validityDays) > 0 ? Number(pres.validityDays) : null;
+    const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
+    const pdf = await renderQuotePdf({
+      clientName: client?.name ?? "Orçamento", logo: client?.logoUrl ?? null, company: pres.company ?? null,
+      number, contactName, items: q.items, subtotal: q.subtotal, fees: q.fees, total: q.total, currency,
+      summary: q.items.map((i) => i.label).join(", "),
+      validUntil, paymentTerms: pres.paymentTerms ?? null, deliveryTerms: pres.deliveryTerms ?? null,
+      warranty: pres.warranty ?? null, notes: pres.notes ?? null,
+      generatedAt: new Date().toLocaleDateString("pt-BR"),
+    });
+    return { kind: "pdf", dataUri: `data:application/pdf;base64,${pdf.toString("base64")}`, filename: `orcamento-${number}.pdf`, caption: `Orçamento Nº ${number}` };
+  } catch { return null; }
+}
 
 export async function executeTool(name: string, args: Record<string, unknown>, ctx: ToolCtx): Promise<ToolResult> {
   // Isolamento multi-tenant: toda query abaixo é escopada por ctx.clientId/contactId.
@@ -246,7 +270,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const qtd = Math.max(1, Math.min(5, Number(args.quantidade) || (interior ? 4 : 1)));
       // Interior: as fotos internas ficam no FINAL da galeria (as externas vêm primeiro).
       const toSend = interior && photos.length > qtd ? photos.slice(-qtd) : photos.slice(0, qtd);
-      if (ctx.mode === "test") return { result: `(teste) Enviaria ${toSend.length} foto(s) de ${item!.title} (não enviado).` };
+      if (ctx.mode === "test") return {
+        result: `${toSend.length} foto(s) de ${item!.title} enviada(s) ao lead. Comente CURTINHO (ex: "te mandei uma foto dela 😊") e PARE — não reenvie.`,
+        artifacts: toSend.map((u) => ({ kind: "image" as const, url: u, caption: item!.title })),
+      };
 
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar a foto." };
@@ -323,7 +350,18 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
       // Modo teste devolve as LINHAS (não só o total): senão o grounding derruba o
       // detalhamento do orçamento no Console (preço de item "sem fonte"). Espelha o live.
-      if (ctx.mode === "test") return { result: `(teste) Orçamento (não gravado):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.`, decision: "orcou" };
+      if (ctx.mode === "test") {
+        // Console: gera o PDF de verdade como artefato (o cliente vê o documento como no
+        // WhatsApp). O número é só ilustrativo (test não grava Quote).
+        const lastN = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
+        const num = (lastN?.number ?? 0) + 1;
+        const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, ctx.contactName, num);
+        return {
+          result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nComente o total, diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
+          decision: "orcou",
+          artifacts: art ? [art] : undefined,
+        };
+      }
       const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
       await prisma.quote.create({ data: {
@@ -336,11 +374,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     // ── Orçamento: envia o PDF pelo WhatsApp ───────────────────────────────────
     case "enviar_orcamento": {
+      // No modo teste o PDF já foi exibido junto do gerar_orcamento (test não grava Quote).
+      if (ctx.mode === "test") return { result: "(teste) O PDF do orçamento já foi enviado ao lead. Confirme que chegou e ofereça seguir pra fechar.", decision: "orcou" };
       const quote = args.quoteId
         ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
         : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "draft" }, orderBy: { createdAt: "desc" } });
       if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
-      if (ctx.mode === "test") return { result: `(teste) Enviaria o PDF do orçamento Nº ${quote.number} (não enviado).`, decision: "orcou" };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
       const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true, logoUrl: true } });
