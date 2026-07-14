@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
       { mode: "test", transcript },
     );
-    return NextResponse.json({ reply: out.reply, decision: out.decision, status: out.status, toolCalls: out.toolCalls ?? [] });
+    return NextResponse.json({ reply: out.reply, decision: out.decision, status: out.status, toolCalls: out.toolCalls ?? [], artifacts: out.artifacts ?? [] });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

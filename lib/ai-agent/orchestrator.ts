@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
-import { toolsForConfig, executeTool, type ToolCtx } from "./tools";
+import { toolsForConfig, executeTool, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { retrieveKnowledge } from "./retrieval";
@@ -46,6 +46,7 @@ export interface RunOutput {
   status: "ok" | "blocked" | "error" | "skipped";
   decision: string;
   toolCalls?: { name: string; args: unknown; result: string; ms?: number }[]; // exposto p/ o console
+  artifacts?: ToolArtifact[]; // foto/PDF gerados pelas tools — o Console renderiza (modo teste)
   promptVersion?: string; // p/ avaliação/A-B
   promptVariant?: string | null;
   model?: string;
@@ -442,6 +443,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let decision = "respondeu_duvida";
   let tokensIn = 0, tokensOut = 0;
   const toolLog: { name: string; args: unknown; result: string; ms?: number }[] = [];
+  const artifacts: ToolArtifact[] = [];
   let final: string | null = null;
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
@@ -458,6 +460,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
           const tcStart = Date.now();
           const r = await executeTool(tc.function.name, args, ctx);
           if (r.decision) decision = r.decision;
+          if (r.artifacts?.length) artifacts.push(...r.artifacts);
           toolLog.push({ name: tc.function.name, args, result: r.result, ms: Date.now() - tcStart });
           messages.push({ role: "tool", tool_call_id: tc.id, content: r.result });
         }
@@ -515,5 +518,5 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   final = withDisclosure(final);
 
   if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed, stages, guardrails, error: errorMsg });
-  return { reply: final, status, decision, toolCalls: toolLog, promptVersion: PROMPT_VERSION, promptVariant, model };
+  return { reply: final, status, decision, toolCalls: toolLog, artifacts, promptVersion: PROMPT_VERSION, promptVariant, model };
 }

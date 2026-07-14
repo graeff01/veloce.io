@@ -479,7 +479,8 @@ function ActivitySection({ clientId }: { clientId: string }) {
 }
 
 // ── Console (dry-run) ─────────────────────────────────────────────────────────
-interface ConsoleMsg { role: "user" | "assistant"; content: string; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
+interface ConsoleArtifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface ConsoleMsg { role: "user" | "assistant"; content: string; artifacts?: ConsoleArtifact[]; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
 
 function ConsoleSection({ clientId }: { clientId: string }) {
   const [msgs, setMsgs] = useState<ConsoleMsg[]>([]);
@@ -498,8 +499,8 @@ function ConsoleSection({ clientId }: { clientId: string }) {
       });
       const d = await res.json();
       setMsgs([...next, d.reply
-        ? { role: "assistant", content: d.reply, meta: { decision: d.decision, status: d.status, toolCalls: d.toolCalls } }
-        : { role: "assistant", content: d.error || "(sem resposta)", meta: { status: "error" } }]);
+        ? { role: "assistant", content: d.reply, artifacts: d.artifacts, meta: { decision: d.decision, status: d.status, toolCalls: d.toolCalls } }
+        : { role: "assistant", content: d.error || "(sem resposta)", artifacts: d.artifacts, meta: { status: "error" } }]);
     } catch {
       setMsgs([...next, { role: "assistant", content: "Erro de rede.", meta: { status: "error" } }]);
     }
@@ -522,6 +523,17 @@ function ConsoleSection({ clientId }: { clientId: string }) {
             <div style={{ padding: "8px 12px", borderRadius: 12, fontSize: 13, whiteSpace: "pre-wrap", background: m.role === "user" ? "var(--accent)" : "var(--bg-base)", color: m.role === "user" ? "#fff" : "var(--text-primary)", border: m.role === "user" ? "none" : "1px solid var(--border)" }}>
               {m.content}
             </div>
+            {m.artifacts?.map((a, j) => (
+              a.kind === "image"
+                ? <a key={j} href={a.url || a.dataUri} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 10, display: "block", border: "1px solid var(--border)" }} />
+                  </a>
+                : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", textDecoration: "none", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, maxWidth: 240 }}>
+                    <span style={{ fontSize: 18 }}>📄</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
+                  </a>
+            ))}
             {m.meta && (m.meta.decision || m.meta.toolCalls?.length) && (
               <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {m.meta.decision && <span style={{ padding: "1px 6px", borderRadius: 999, background: m.meta.status === "blocked" ? "var(--red)" : "var(--accent-soft)", color: m.meta.status === "blocked" ? "#fff" : "var(--accent)" }}>{m.meta.decision}</span>}
