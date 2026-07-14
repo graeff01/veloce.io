@@ -442,6 +442,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     clientId: input.clientId, connectionId: input.connectionId,
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
     intakeSpec: cfg?.intakeSpec,
+    testFicha: mode === "test" ? {} : undefined, // ficha efêmera do Console (acumula entre tools da run)
   };
 
   let decision = "respondeu_duvida";

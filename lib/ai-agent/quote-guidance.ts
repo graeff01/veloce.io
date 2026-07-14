@@ -28,8 +28,9 @@ export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolea
     "(sem eles gerar_orcamento é bloqueado; o endereço define o FRETE); " +
     "2) com os dados, chame gerar_orcamento com as chaves EXATAS do catálogo — NÃO inclua frete, " +
     "ele é calculado automaticamente pela região; " +
-    "3) apresente o orçamento e confirme com o lead; 4) se confirmar, use enviar_orcamento (envia o PDF); " +
-    "5) SÓ quando o lead aprovar/quiser comprar, use aprovar_orcamento (aciona o vendedor). " +
+    "3) chame gerar_orcamento e, LOGO EM SEGUIDA, enviar_orcamento — o PDF vai DIRETO junto do total, " +
+    "sem perguntar se o lead quer receber; o orçamento em PDF É a apresentação; " +
+    "4) SÓ quando o lead aprovar/quiser comprar, use aprovar_orcamento (aciona o vendedor). " +
     "NUNCA diga preço, total, frete ou desconto fora do resultado de gerar_orcamento.",
   );
   return parts.join("\n\n");
