@@ -341,13 +341,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (ctx.mode === "test") return { result: `(teste) Enviaria o PDF do orçamento Nº ${quote.number} (não enviado).`, decision: "orcou" };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
-      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
+      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true, logoUrl: true } });
+      // Dados de apresentação do PDF (logo, empresa, condições) — de Client + PricingConfig.rules.
+      const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId }, select: { rules: true } });
+      const pres = (pcfg?.rules ?? {}) as { company?: { cnpj?: string | null; address?: string | null; phone?: string | null; site?: string | null }; paymentTerms?: string; deliveryTerms?: string; warranty?: string; notes?: string; validityDays?: number };
+      const validity = Number(pres.validityDays) > 0 ? Number(pres.validityDays) : null;
+      const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
       try {
         const pdf = await renderQuotePdf({
-          clientName: client?.name ?? "Orçamento", number: quote.number, contactName: ctx.contactName,
+          clientName: client?.name ?? "Orçamento", logo: client?.logoUrl ?? null, company: pres.company ?? null,
+          number: quote.number, contactName: ctx.contactName,
           items: quote.items as unknown as { label: string; qty: number; unit: number; amount: number }[],
           subtotal: quote.subtotal, fees: quote.fees, total: quote.total, currency: quote.currency,
-          summary: quote.summary, generatedAt: new Date().toLocaleDateString("pt-BR"),
+          summary: quote.summary,
+          validUntil, paymentTerms: pres.paymentTerms ?? null, deliveryTerms: pres.deliveryTerms ?? null,
+          warranty: pres.warranty ?? null, notes: pres.notes ?? null,
+          generatedAt: new Date().toLocaleDateString("pt-BR"),
         });
         const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
         if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
