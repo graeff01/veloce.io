@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled, getPortalShellData } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { getClientFunnel } from "@/lib/notifications/client-funnel";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -30,6 +30,7 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
   if (!(await sectionEnabled(portal.clientId, "funil"))) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
+  const shell = await getPortalShellData(portal.clientId);
 
   if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
     return (
@@ -45,7 +46,7 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
   return (
     <main className="fmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="funil" />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="funil" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}

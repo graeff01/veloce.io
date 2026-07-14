@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { join } from "path";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, getPortalShellData } from "@/lib/notifications/client-portal";
 import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
@@ -29,6 +29,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
   }
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true, slug: true } });
+  const shell = await getPortalShellData(portal.clientId);
 
   // Fundo (marca d'água) das conversas: se existir public/portal-bg/<slug>.png, usa ele
   // (imagem própria, sem fundo). Senão cai no logo do cliente (comportamento antigo).
@@ -50,7 +51,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
   return (
     <main className="cmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="conversas" />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="conversas" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .cmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);

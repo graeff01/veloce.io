@@ -9,13 +9,19 @@ import { PortalAdvisor } from "@/components/portal/portal-advisor";
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" }) {
+export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(null);
-  const [sections, setSections] = useState<string[] | null>(null); // null = todas (até carregar)
-  const [aiTest, setAiTest] = useState(false); // aba temporária de teste da IA
+  // Estado semeado pelo SERVIDOR (props) → 1º paint já vem certo, sem flash ao navegar.
+  // Só cai no fetch client-side se a página não passou os dados (retrocompat).
+  const hasServerData = initialSections !== undefined;
+  const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(initialAccount ?? null);
+  const [sections, setSections] = useState<string[] | null>(initialSections ?? null); // null = todas (até carregar)
+  const [aiTest, setAiTest] = useState(!!initialAiTest); // aba temporária de teste da IA
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); }).catch(() => {}); }, [token]);
+  useEffect(() => {
+    if (hasServerData) return; // servidor já entregou menu/conta — não precisa buscar
+    fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); }).catch(() => {});
+  }, [token, hasServerData]);
   const on = (k: string) => !sections || sections.includes(k);
   async function logout() {
     await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
