@@ -45,6 +45,7 @@ const putSchema = z.object({
   persona: z.string().max(2000).nullable().optional(),
   goals: z.string().max(2000).nullable().optional(),
   rules: z.string().max(6000).nullable().optional(),
+  customPrompt: z.string().max(20000).nullable().optional(),
   businessHours: z.array(windowSchema).optional(),
   answerMode: z.enum(["off_hours", "always", "ads_in_hours"]).optional(),
   timezone: z.string().optional(),
