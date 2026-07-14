@@ -62,6 +62,9 @@ async function wipe(clientId: string) {
     await prisma.waConnection.delete({ where: { clientId } }); // cascade: contatos/mensagens/leads/conversas
   }
   await prisma.metaConnection.deleteMany({ where: { clientId } }); // cascade: campanhas/ads/criativos/insights
+  await prisma.leadObjection.deleteMany({ where: { clientId } });   // sem FK cascade — apaga explícito
+  await prisma.messageAnalysis.deleteMany({ where: { clientId } }); // idem
+  await prisma.knowledgeChunk.deleteMany({ where: { clientId } });  // conhecimento demo importado do site
   await prisma.portalAccess.deleteMany({ where: { clientId, email: { endsWith: `@${DEMO_EMAIL_DOMAIN}` } } });
   await prisma.portalSession.deleteMany({ where: { clientId, email: { endsWith: `@${DEMO_EMAIL_DOMAIN}` } } });
   await prisma.aiAgentConfig.deleteMany({ where: { clientId } });
