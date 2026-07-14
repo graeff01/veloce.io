@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { getPortalUser } from "@/lib/portal-auth";
 
 const APP_URL = (process.env.NEXTAUTH_URL || "https://veloceio-production.up.railway.app").replace(/\/$/, "");
 
@@ -15,6 +16,20 @@ export function parseSections(csv: string | null | undefined): PortalSection[] {
 }
 
 export interface PortalState { token: string; link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: PortalSection[] }
+
+// Dados da CASCA do portal (menu por seção + conta logada + aba de teste da IA),
+// resolvidos no SERVIDOR para o PortalShell já pintar CERTO no 1º render. Antes vinham
+// de um fetch client-side: como o shell re-monta a cada navegação, o menu piscava (com
+// `sections=null` mostrava TODAS, inclusive as que o cliente não tem) e o nome/Sair
+// sumiam até o fetch voltar. Com isto o servidor entrega tudo pronto — sem flash.
+export async function getPortalShellData(clientId: string): Promise<{ sections: PortalSection[]; aiTest: boolean; account: { email: string; name: string | null; role: string } | null }> {
+  const [cp, account] = await Promise.all([
+    prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } }),
+    getPortalUser(clientId),
+  ]);
+  const aiTest = (cp?.sections ?? "").split(",").map((s) => s.trim()).includes("teste");
+  return { sections: parseSections(cp?.sections), aiTest, account };
+}
 
 // Uma seção está habilitada no portal deste cliente? (para gate por URL nas páginas.)
 export async function sectionEnabled(clientId: string, key: PortalSection): Promise<boolean> {

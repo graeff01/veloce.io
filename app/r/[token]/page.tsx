@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, parseSections } from "@/lib/notifications/client-portal";
+import { resolvePortal, parseSections, getPortalShellData } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, getSectorBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -70,6 +70,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   ]);
 
   const brandName = (bot?.brandName || "").trim() || client?.name || "Painel";
+  const shell = await getPortalShellData(portal.clientId);
   const a = data.atendimento;
   const d = data.deltas;
   const sc = data.score;
@@ -94,7 +95,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   return (
     <main className="pmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={brandName} logoUrl={client?.logoUrl ?? null} active="painel" />
+      <PortalShell token={token} brandName={brandName} logoUrl={client?.logoUrl ?? null} active="painel" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .pmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .pmain{margin-left:236px} }

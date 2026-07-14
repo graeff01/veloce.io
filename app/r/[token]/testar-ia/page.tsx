@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { resolvePortal, getPortalShellData } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
@@ -31,6 +31,7 @@ export default async function TestarIaPage({ params }: { params: Promise<{ token
 
   const testOn = (cp?.sections ?? "").split(",").map((s) => s.trim()).includes("teste");
   if (!testOn) redirect(`/r/${token}/conversas`);
+  const shell = await getPortalShellData(portal.clientId);
 
   if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
     return (
@@ -44,7 +45,7 @@ export default async function TestarIaPage({ params }: { params: Promise<{ token
   return (
     <main className="imain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="teste" />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="teste" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .imain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .imain{margin-left:236px} }

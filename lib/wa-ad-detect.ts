@@ -59,3 +59,17 @@ export function looksLikeTrafficLead(text: string | null | undefined): boolean {
   if (!text) return false;
   return TRAFFIC_INTENT_RE.test(text) || MARKETPLACE_RE.test(text);
 }
+
+// Reduz um TÍTULO/headline de anúncio a um termo de busca de MODELO — pra casar no
+// catálogo (o headline vem "sujo", com preço e marketing). Corta no 1º separador
+// (—/-/|) ou fim de frase, remove parênteses, preço (R$…) e a condição "0km", e limita
+// a ~5 palavras. Ex.: "VW Tera 0km — R$ 97.900 (abaixo da tabela)" → "VW Tera".
+export function adSearchTerm(title: string | null | undefined): string {
+  if (!title) return "";
+  let v = title.split(/[!?\n]|\.(?=\s|$)|\s+[-–—|]\s+/)[0]; // 1º trecho (o "." de "1.0" não corta)
+  v = v.replace(/\(.*?\)/g, " ");                  // remove parênteses "(abaixo da tabela)"
+  v = v.replace(/r\$\s*[\d.,]+/gi, " ");           // remove preço solto "R$ 97.900"
+  v = v.replace(/\b(?:0\s?km|zero\s?km|okm)\b/gi, " "); // remove condição "0km"
+  v = v.replace(/\s+/g, " ").trim();
+  return v.split(" ").filter(Boolean).slice(0, 5).join(" ");
+}

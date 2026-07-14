@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { resolvePortal, sectionEnabled, getPortalShellData } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { buildLeadInsights } from "@/lib/ai-agent/insights";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -40,6 +40,7 @@ export default async function ObjecoesPage({ params }: { params: Promise<{ token
 
   if (!(await sectionEnabled(portal.clientId, "objecoes"))) redirect(`/r/${token}/conversas`);
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
+  const shell = await getPortalShellData(portal.clientId);
 
   if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
     return (
@@ -60,7 +61,7 @@ export default async function ObjecoesPage({ params }: { params: Promise<{ token
   return (
     <main className="imain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="objecoes" />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="objecoes" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .imain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .imain{margin-left:236px} }
