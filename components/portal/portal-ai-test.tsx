@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Send, Sparkles, RotateCcw, FlaskConical, User, Info } from "lucide-react";
 
-interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[] }
+interface Artifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
 
 // Cenários agrupados pra o gestor testar rápido como a IA reage — servem a qualquer vertical.
 const SCENARIOS: { label: string; items: string[] }[] = [
@@ -41,9 +42,9 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
       if (!r.ok) { setError(d?.error || "Falha ao gerar a resposta."); return; }
       const reply = (d?.reply ?? "").toString().trim();
       if (!reply || reply.includes("[SKIP]")) {
-        setTurns((t) => [...t, { role: "assistant", content: "— (a IA não responde isso: é caso de vendedor — em produção ela passa pro humano)", decision: d?.decision, tools: d?.tools }]);
+        setTurns((t) => [...t, { role: "assistant", content: "— (a IA não responde isso: é caso de vendedor — em produção ela passa pro humano)", decision: d?.decision, tools: d?.tools, artifacts: d?.artifacts }]);
       } else {
-        setTurns((t) => [...t, { role: "assistant", content: reply, decision: d?.decision, tools: d?.tools }]);
+        setTurns((t) => [...t, { role: "assistant", content: reply, decision: d?.decision, tools: d?.tools, artifacts: d?.artifacts }]);
       }
     } catch {
       setError("Falha de conexão. Tente de novo.");
@@ -147,6 +148,17 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                   >
                     {t.content}
                   </div>
+                  {!mine && t.artifacts?.map((a, j) => (
+                    a.kind === "image"
+                      ? <a key={j} href={a.url || a.dataUri} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6 }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 12, display: "block", border: "1px solid var(--p-border)" }} />
+                        </a>
+                      : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", textDecoration: "none", color: "var(--p-text)", fontSize: 13, fontWeight: 600, maxWidth: 250 }}>
+                          <span style={{ fontSize: 18 }}>📄</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
+                        </a>
+                  ))}
                   {!mine && (t.decision || (t.tools && t.tools.length > 0)) && (
                     <div className="ait-foot">
                       {t.decision && <span className="ait-fx">decisão: <b>{t.decision}</b></span>}

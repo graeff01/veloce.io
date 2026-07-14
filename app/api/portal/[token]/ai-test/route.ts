@@ -56,6 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       decision: out.decision,
       status: out.status,
       tools: (out.toolCalls ?? []).map((t) => t.name),
+      artifacts: out.artifacts ?? [], // foto do modelo + PDF do orçamento (o portal renderiza)
     });
   } catch {
     return NextResponse.json({ error: "Não consegui gerar a resposta agora. Tente de novo." }, { status: 500 });
