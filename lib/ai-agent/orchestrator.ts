@@ -11,7 +11,6 @@ import { budgetedWindow } from "./memory";
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant, hashString } from "./variants";
 import { searchCatalog } from "./catalog-search";
-import { adSearchTerm } from "@/lib/wa-ad-detect";
 import { isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import { redactPII } from "@/lib/redact";
@@ -196,14 +195,10 @@ function applyQualFinVariant(base: string): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, adRef: string, firstNote: string, storeOpen: boolean | null): string {
+function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string, storeOpen: boolean | null): string {
   return [
     firstNote || "",
-    vehicle
-      ? `VEÍCULO DE INTERESSE (o lead entrou por ESTE anúncio):\n${vehicle}\nATENÇÃO: isto é só o carro do anúncio. Se o lead PERGUNTAR ou PEDIR outro modelo (nomear outro carro), responda sobre o carro que ELE pediu — busque com buscar_estoque e mande a foto DESSE (enviar_foto termo="modelo que o lead falou"). NUNCA mande este carro do anúncio no lugar do que o lead pediu.`
-      : adRef
-        ? `ANÚNCIO DE ORIGEM: o lead chegou pelo anúncio do *${adRef}* — abra a conversa JÁ falando desse carro, de forma calorosa e específica. NÃO pergunte "qual veículo você viu": você já sabe. Antes de afirmar ano/km/preço ou mandar foto, confirme com buscar_estoque/enviar_foto (o anúncio pode não estar cadastrado exatamente assim no estoque); se não achar, fale do modelo pelo que você sabe de verdade e diga que confirma os detalhes com o vendedor. Se o lead pedir OUTRO modelo, atenda o que ELE pediu.`
-        : "",
+    vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por ESTE anúncio):\n${vehicle}\nATENÇÃO: isto é só o carro do anúncio. Se o lead PERGUNTAR ou PEDIR outro modelo (nomear outro carro), responda sobre o carro que ELE pediu — busque com buscar_estoque e mande a foto DESSE (enviar_foto termo="modelo que o lead falou"). NUNCA mande este carro do anúncio no lugar do que o lead pediu.` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
     qualif || "",
@@ -270,11 +265,19 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     disclosureText = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
   }
   // Saudação juntada à 1ª resposta com UMA quebra só → vira UM balão (abertura leve:
-  // foto + 1 mensagem, não foto + 3 balões).
-  const withDisclosure = (text: string) => (disclosureText ? `${disclosureText}\n${text}` : text);
+  // foto + 1 mensagem, não foto + 3 balões). Como a saudação fixa já cumprimenta, removemos
+  // um "Oi!/Olá/Bom dia" no INÍCIO da resposta da IA (o modelo às vezes re-cumprimenta,
+  // apesar do prompt pedir pra não) — evita o "Oi" duplicado. Só o 1º cumprimento.
+  const stripLeadGreeting = (t: string): string => {
+    // Cumprimento no início SEGUIDO de separador ou fim (evita cortar "Oitocentos",
+    // "Olha só" etc.). Sem \b: ele falha após acento ("Olá,").
+    const m = t.match(/^\s*(?:oi+|ol[áa]|opa|e a[íi]|bom dia|boa tarde|boa noite)(?:[\s,!.:;…–-]+|$)/i);
+    return m ? t.slice(m[0].length).replace(/^\s+/, "") : t;
+  };
+  const withDisclosure = (text: string) => (disclosureText ? `${disclosureText}\n${stripLeadGreeting(text)}` : text);
   // Evita a IA cumprimentar/apresentar de novo (a saudação já foi prefixada).
   const trust = cfg?.trustHighlights?.trim();
-  let firstNote = (isFirst && disclosureText)
+  const firstNote = (isFirst && disclosureText)
     ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Escolha a ABERTURA conforme o que o lead já trouxe (não siga sempre a mesma sequência):
 - Se ele só sinalizou interesse no anúncio (sem pergunta específica) e há VEÍCULO DE INTERESSE: mande UMA foto dele (enviar_foto, quantidade 1) e, em UMA mensagem curta, adiante ano, km e PREÇO ${trust ? `+ o diferencial de confiança da loja (${trust})` : "+ um diferencial de confiança se houver no CONHECIMENTO"}.
 - Se ele JÁ foi direto numa pergunta (preço, km, disponibilidade, uma cor específica): responda PRIMEIRO exatamente o que ele perguntou, sem repetir a sequência completa; foto e demais dados você complementa depois, se fizer sentido.
@@ -306,8 +309,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let perfil = "";
   let memory = "";
   let qualif = "";
-  let vehicle = "";  // ficha do catálogo (ano/km/foto) — só quando o carro do anúncio está no estoque
-  let adRef = "";    // modelo do anúncio — SEMPRE que o lead veio de anúncio, mesmo sem casar o estoque
+  let vehicle = "";
   let priorMessages: ChatMessage[];
   if (mode === "live") {
     const [profile, convo, variant, lead] = await Promise.all([
@@ -316,12 +318,10 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       resolveVariant(input.clientId, input.contact.id),
       prisma.waLead.findUnique({ where: { contactId: input.contact.id }, select: { adModel: true, adTitle: true } }),
     ]);
-    // Veículo do anúncio: o lead entrou por um anúncio específico. `adRef` = o MODELO
-    // (prioriza o detectado; senão limpa o headline, tirando preço/"0km"/marketing p/
-    // casar melhor no catálogo). Preferimos a ficha do estoque (ano/km/foto), mas mesmo
-    // sem casar mantemos `adRef` — a IA abre falando do carro certo em vez de perguntar.
-    adRef = (lead?.adModel?.trim() || adSearchTerm(lead?.adTitle) || "").trim();
-    const vterm = (adRef || profile?.productInterest?.trim() || "").trim();
+    // Veículo de interesse: o lead entrou por um anúncio específico → carrega a ficha
+    // do item do catálogo p/ a IA já responder ano/km/itens e oferecer foto. Genérico
+    // (produto de interesse). Se o catálogo estiver vazio, nada é injetado (graceful).
+    const vterm = (lead?.adModel || lead?.adTitle || profile?.productInterest || "").trim();
     if (vterm) {
       // Busca robusta (tokens + fuzzy) — casa o modelo do anúncio mesmo com typo/palavras
       // não contíguas no título (ex: "Taos Highline" vs "Taos 1.4 HIGHLINE").
@@ -331,12 +331,6 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
           + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`
           + `${item.imageUrl ? " — tem fotos (use enviar_foto; se pedir mais/interior, mande quantidade 4-5)" : " — sem foto cadastrada"}`;
       }
-    }
-    // Abertura pelo anúncio: já sabemos o carro → a IA abre falando DELE, calorosa e
-    // específica, sem perguntar "qual veículo" — mesmo que a 1ª mensagem seja vaga (um
-    // "oi", um print, um arquivo que ela não abre, como no caso real que motivou isto).
-    if (firstNote && adRef) {
-      firstNote += `\n- VOCÊ JÁ SABE O CARRO: o lead veio pelo anúncio do *${adRef}*. NÃO pergunte "qual veículo você viu" — abra JÁ falando desse carro, mesmo que a mensagem dele seja vaga, um print ou um arquivo.${vehicle ? "" : " Como ele não casou exatamente com o estoque, confirme ano/km/preço com buscar_estoque antes de afirmar; se não achar, fale do modelo pelo que você sabe de verdade e diga que confirma os detalhes com o vendedor."}`;
     }
     // A/B: variante (se houver) sobrescreve o prompt base; registrada p/ comparar métricas.
     if (variant) {
@@ -419,7 +413,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, adRef, firstNote, storeOpen) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen) },
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
     ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
     ...priorMessages,
