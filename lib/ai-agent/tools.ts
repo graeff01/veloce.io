@@ -320,7 +320,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       }
 
       const summary = q.items.map((i) => i.label).join(", ");
-      if (ctx.mode === "test") return { result: `(teste) Orçamento: ${brl(q.total, pc.currency)} (não gravado). Itens: ${summary}.`, decision: "orcou" };
+      const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
+      // Modo teste devolve as LINHAS (não só o total): senão o grounding derruba o
+      // detalhamento do orçamento no Console (preço de item "sem fonte"). Espelha o live.
+      if (ctx.mode === "test") return { result: `(teste) Orçamento (não gravado):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.`, decision: "orcou" };
       const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
       await prisma.quote.create({ data: {
@@ -328,7 +331,6 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
         currency: pc.currency, status: "draft", summary, intake: (ficha as unknown as Prisma.InputJsonValue) ?? undefined,
       } });
-      const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
       return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
     }
 
