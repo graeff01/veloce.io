@@ -72,6 +72,7 @@ model Client {
   primaryContact String?
   website      String?
   instagram    String?
+  googleReviewUrl String?  // link direto de avaliação no Google (usado na página /avaliar)
   city         String?
   status       ClientStatus @default(ACTIVE)
   // Módulos que o cliente roda — controla quais abas aparecem (Operação e Perfil
