@@ -4,17 +4,20 @@
 // exatamente o formato de nota de voz do WhatsApp, sem precisar de ffmpeg.
 // Chave em ELEVENLABS_API_KEY; a voz por cliente vem de AiAgentConfig.voiceId.
 
-const ELEVEN_MODEL = "eleven_multilingual_v2"; // português natural
-const VOICE_SETTINGS = { stability: 0.5, similarity_boost: 0.8, style: 0.18, use_speaker_boost: true };
+const ELEVEN_MODEL = "eleven_flash_v2_5"; // fala natural/conversa (menos "leitura robótica")
+const VOICE_SETTINGS = { stability: 0.3, similarity_boost: 0.85, style: 0.4, use_speaker_boost: true };
 
-// Prepara o texto pra fala: tira emojis e marcadores que a voz leria estranho
-// ("carinha", "🔥"...), colapsa espaços. Mantém a pontuação (vira ritmo/pausa).
+// Prepara o texto pra fala natural (sem pausas robóticas): tira emojis/marcadores, e
+// SUAVIZA pontuação que a voz leria como silêncio longo — reticências viram vírgula e
+// quebras de linha viram espaço (senão a fala fica com buracos "robóticos" entre as frases).
 export function prepForSpeech(text: string): string {
   return text
-    .replace(/\[[^\]]*\]/g, " ")                    // marcadores tipo [foto]
+    .replace(/\[[^\]]*\]/g, " ")                                   // marcadores tipo [foto]
     .replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{27BF}️]/gu, " ") // emojis
+    .replace(/\.{2,}|…/g, ", ")                                    // reticências → vírgula leve
+    .replace(/\s*\n+\s*/g, " ")                                    // quebra de linha → espaço (sem pausa longa)
+    .replace(/\s+([,.!?])/g, "$1")                                 // espaço antes de pontuação
     .replace(/[ \t]+/g, " ")
-    .replace(/\n{2,}/g, "\n")
     .trim();
 }
 

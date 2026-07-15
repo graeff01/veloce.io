@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { runAgent } from "@/lib/ai-agent/orchestrator";
+import { transcribeAudio } from "@/lib/transcribe";
 import type { ChatMessage } from "@/lib/openai";
 
 export const runtime = "nodejs";
@@ -34,7 +35,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!cfg) return NextResponse.json({ error: "A IA ainda não foi configurada para este cliente." }, { status: 400 });
 
   const body = await req.json().catch(() => ({}));
-  const message = String(body?.message ?? "").trim();
+  let message = String(body?.message ?? "").trim();
+  let fromAudio = false;
+
+  // Cliente pode ENVIAR ÁUDIO no teste (valida a IA entendendo/respondendo em voz).
+  // Transcreve (Groq Whisper) e segue pelo mesmo fluxo, marcando a entrada como "audio".
+  if (!message && typeof body?.audio === "string" && body.audio) {
+    const b64 = body.audio.includes(",") ? body.audio.split(",")[1] : body.audio;
+    const bytes = Buffer.from(b64, "base64");
+    if (bytes.length > 8 * 1024 * 1024) return NextResponse.json({ error: "Áudio muito longo. Grave um trecho menor." }, { status: 400 });
+    const t = await transcribeAudio(bytes, String(body?.mime ?? "audio/webm"));
+    if (!t) return NextResponse.json({ error: "Não consegui entender o áudio. Tente falar de novo." }, { status: 400 });
+    message = t.trim(); fromAudio = true;
+  }
+
   if (!message) return NextResponse.json({ error: "Mensagem vazia." }, { status: 400 });
   if (message.length > 2000) return NextResponse.json({ error: "Mensagem muito longa." }, { status: 400 });
 
@@ -48,7 +62,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   try {
     const out = await runAgent(
-      { clientId: portal.clientId, connectionId: "portal-test", contact: { id: "portal-test", name: "Teste", waId: "portal-test" }, inboundText: message },
+      { clientId: portal.clientId, connectionId: "portal-test", contact: { id: "portal-test", name: "Teste", waId: "portal-test" }, inboundText: message, inboundMediaType: fromAudio ? "audio" : undefined },
       { mode: "test", transcript },
     );
     return NextResponse.json({
@@ -57,6 +71,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       status: out.status,
       tools: (out.toolCalls ?? []).map((t) => t.name),
       artifacts: out.artifacts ?? [], // foto do modelo + PDF do orçamento (o portal renderiza)
+      transcription: fromAudio ? message : undefined, // o que a IA entendeu do áudio do cliente
     });
   } catch {
     return NextResponse.json({ error: "Não consegui gerar a resposta agora. Tente de novo." }, { status: 500 });
