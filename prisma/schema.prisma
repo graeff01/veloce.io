@@ -1112,6 +1112,9 @@ model AiAgentConfig {
   verifyReplies   Boolean  @default(false) // chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
   quotesEnabled   Boolean  @default(false) // orçamento: expõe as ferramentas de coleta/preço/PDF (produto configurável)
   visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
+  voiceReplies    Boolean  @default(false) // responde com NOTA DE VOZ (TTS ElevenLabs) além/no lugar do texto
+  voiceId         String?  // id da voz no ElevenLabs (ex.: voz brasileira da assistente)
+  voiceMode       String   @default("on_audio") // quando mandar áudio: on_audio (só quando o lead manda áudio) | always | first
   intakeSpec      Json     @default("[]") // campos que a IA deve coletar p/ o orçamento [{key,label,required,type,options?}]
   playbook        Json?    // playbook de venda declarativo (por vertical). Vazio = comportamento automotivo padrão
   customPrompt    String?  // prompt de sistema COMPLETO por cliente. Se setado, SUBSTITUI o prompt-base (não herda o automotivo) — fonte única. Conhecimento e orçamento continuam anexados.

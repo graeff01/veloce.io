@@ -11,6 +11,7 @@ import { analyzeMessage } from "./intelligence";
 import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText, sendWhatsAppMediaById, uploadWhatsAppMedia } from "@/lib/whatsapp-send";
+import { synthesizeVoice, shouldVoice } from "@/lib/tts";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
 import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
 import { handleWaBotInbound } from "@/lib/notifications/wa-bot-commands";
@@ -210,11 +211,37 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // re-manda foto, e preserva a saudação/nome). Removida quando o job é concluído/apagado.
   await prisma.aiJob.update({ where: { contactId: contact.id }, data: { generatedReply: out.reply } }).catch(() => {});
 
-  // 8) Envia. A IA pode separar a resposta em até 3 bolhas (linha em branco) — cadência
-  //    humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar DEPOIS de já ter enviado
-  //    algo, para sem re-enfileirar (evita duplicar mensagens ao lead).
-  const blocks = splitBlocks(out.reply);
   let sent: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
+
+  // 8a) NOTA DE VOZ (TTS): se a voz está ligada e é a hora certa (voiceMode), manda a resposta
+  //     como áudio (OGG/Opus do ElevenLabs) em vez das bolhas de texto. Falha → cai no texto.
+  let voiceSent = false;
+  if (cfg?.voiceReplies && cfg.voiceId) {
+    let isFirstTurn = false;
+    if (cfg.voiceMode === "first") {
+      const prior = await prisma.waMessage.findFirst({ where: { contactId: contact.id, direction: "out", aiGenerated: true }, select: { id: true } });
+      isFirstTurn = !prior;
+    }
+    if (shouldVoice(cfg.voiceMode, { inboundIsAudio: input.payload.type === "audio", isFirstTurn })) {
+      const audio = await synthesizeVoice(out.reply, cfg.voiceId);
+      if (audio) {
+        const up = await uploadWhatsAppMedia(conn, audio, "voz.ogg", "audio/ogg");
+        if (up.ok && up.mediaId) {
+          const r = await sendWhatsAppMediaById(conn, contact.waId, "audio", up.mediaId, {});
+          if (r.ok) {
+            sent = r; voiceSent = true;
+            // Guarda o TEXTO como transcrição (type=audio) — o painel mostra o que foi dito.
+            await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-voz-${Date.now()}`, out.reply, new Date(), true, "audio");
+          }
+        }
+      }
+    }
+  }
+
+  // 8b) Texto (fallback e caminho padrão). A IA pode separar a resposta em até 3 bolhas
+  //    (linha em branco) — cadência humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar
+  //    DEPOIS de já ter enviado algo, para sem re-enfileirar (evita duplicar mensagens ao lead).
+  const blocks = voiceSent ? [] : splitBlocks(out.reply);
   for (let i = 0; i < blocks.length; i++) {
     const r = await sendWithRetry(conn, contact.waId, blocks[i]);
     if (!r.ok) {
