@@ -1121,6 +1121,7 @@ model AiAgentConfig {
   model           String   @default("gpt-4o-mini")
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
   greetingMessage String?  // saudação fixa enviada na 1ª mensagem (a loja controla o texto)
+  followUpMessage String?  // cutucada de re-engajamento (follow-up) por cliente; vazio = texto neutro
   trustHighlights String?  // diferencial de confiança citado na abertura (ex: "revisados, com garantia de motor e câmbio")
   operatorNumbers String[] @default([]) // números da triagem (operador) que recebem as fichas dos leads
   catalogSourceUrl String? // URL do estoque (ex: página Autocarro) p/ re-sync diário do catálogo

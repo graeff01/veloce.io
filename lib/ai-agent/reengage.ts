@@ -16,15 +16,18 @@ const NUDGE_AFTER_MIN = 40;        // silêncio após a IA responder
 const WINDOW_GUARD_H = 23;         // só dentro da janela de 24h (com folga)
 const MAX_PER_SWEEP = 20;          // teto por varredura
 
-function nudgeText(vehicle: string | null): string {
-  const sobre = vehicle ? `sobre o ${vehicle}` : "sobre o veículo";
-  return `Oi! Ficou alguma dúvida ${sobre}? Posso te adiantar mais detalhes agora, ou já deixo tudo anotado para um vendedor falar com você. 😊`;
+// Texto da cutucada: 1) mensagem custom do cliente (se configurada); 2) senão, menciona o
+// PRODUTO de interesse se conhecido; 3) senão, neutro. NUNCA assume vertical (nada de "veículo").
+function nudgeText(produto: string | null, custom: string | null): string {
+  if (custom && custom.trim()) return custom.trim();
+  const sobre = produto ? ` sobre ${produto}` : "";
+  return `Oi! Ficou alguma dúvida${sobre}? Posso te adiantar mais detalhes agora, ou já deixo tudo anotado para um vendedor falar com você. 😊`;
 }
 
 export async function reengageStalled(): Promise<{ nudged: number }> {
   const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
     where: { enabled: true, paused: false, status: "live" },
-    select: { clientId: true, businessHours: true, timezone: true },
+    select: { clientId: true, businessHours: true, timezone: true, followUpMessage: true },
   });
   const now = Date.now();
   let nudged = 0;
@@ -70,7 +73,7 @@ export async function reengageStalled(): Promise<{ nudged: number }> {
       const lead = await prismaUnscoped.waLead.findUnique({ where: { contactId: c.contactId }, select: { adModel: true, adTitle: true } });
       const vehicle = lead?.adModel || lead?.adTitle || profile.productInterest || null;
 
-      const text = nudgeText(vehicle);
+      const text = nudgeText(vehicle, cfg.followUpMessage);
       const sent = await sendWhatsAppText(conn, contact.waId, text);
       if (!sent.ok) continue;
       await prismaUnscoped.waMessage.create({ data: {
