@@ -152,6 +152,14 @@ type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: num
 interface PresRules {
   company?: { phone?: string | null; whatsapp?: string | null; address?: string | null; city?: string | null; cep?: string | null; email?: string | null; site?: string | null; website?: string | null; facebook?: string | null; instagram?: string | null };
   sellerName?: string | null; observacoes?: string | null; paymentTerms?: string | null; notes?: string | null; validityDays?: number;
+  installments?: number; // parcelas SEM JUROS (ex.: 10) — se setado, mostra "Nx de R$Y" no orçamento
+}
+
+// "10x de R$ 253,00 sem juros" a partir do total — só quando o cliente configurou parcelas.
+function installmentsLabel(total: number, currency: string, n: number | null | undefined): string | null {
+  const parcelas = Number(n) > 1 ? Math.floor(Number(n)) : 0;
+  if (!parcelas || total <= 0) return null;
+  return `${parcelas}x de ${brl(total / parcelas, currency)} sem juros`;
 }
 
 // Monta o QuoteDocData (layout fiel: logo + contatos + Cliente/Vendedor + tabela c/ CÓDIGO +
@@ -173,6 +181,7 @@ async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: 
     number, contactName, contactCity: contactCity ?? null, sellerName: r.sellerName ?? null,
     items: items.map((i) => ({ code: i.code ?? null, label: i.label, qty: i.qty, unit: i.unit, amount: i.amount })),
     total, currency, observacoes: r.observacoes ?? r.paymentTerms ?? r.notes ?? null,
+    installmentsLabel: installmentsLabel(total, currency, r.installments),
     generatedAt: new Date().toLocaleDateString("pt-BR"), validUntil,
   };
 }
@@ -392,6 +401,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         if (fr) q = appendFeeLine(q, fr);
       }
 
+      // Guarda de sanidade: nunca envia orçamento com total inválido (erro de cadastro).
+      if (!q.items.length || q.total <= 0) {
+        return { result: "Orçamento com total inválido (R$ 0 ou vazio) — provável erro no cadastro de preço. NÃO envie valor; peça pro lead aguardar que um vendedor confirma o valor certo." };
+      }
+      // Parcela SEM JUROS (só se o cliente configurou rules.installments) — grounded: a IA
+      // pode falar porque saiu daqui (do motor), não da cabeça dela.
+      const parcela = installmentsLabel(q.total, pc.currency, (pc.rules as { installments?: number })?.installments);
+      const parcelaLinha = parcela ? `\nParcelamento: ${parcela}.` : "";
       const summary = q.items.map((i) => i.label).join(", ");
       const linhas = q.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
       // Modo teste devolve as LINHAS (não só o total): senão o grounding derruba o
@@ -406,7 +423,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const nome = typeof ficha.nome === "string" && ficha.nome.trim() ? ficha.nome.trim() : ctx.contactName;
         const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, nome, num, cidade);
         return {
-          result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nComente o total, diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
+          result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nComente o total (pode mencionar o parcelamento se houver), diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
           decision: "orcou",
           artifacts: art ? [art] : undefined,
         };
@@ -418,7 +435,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
         currency: pc.currency, status: "draft", summary, intake: (ficha as unknown as Prisma.InputJsonValue) ?? undefined,
       } });
-      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
+      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
     }
 
     // ── Orçamento: envia o PDF pelo WhatsApp ───────────────────────────────────
