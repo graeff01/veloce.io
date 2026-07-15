@@ -12,11 +12,11 @@
 //               { "key": "instal",   "label": "Instalação", "percent": 10 }]
 // }
 
-export interface PriceItemDef { key: string; label: string; amount: number }
-export interface FeeDef { key: string; label: string; amount?: number; percent?: number }
+export interface PriceItemDef { key: string; label: string; amount: number; code?: string | null }
+export interface FeeDef { key: string; label: string; amount?: number; percent?: number; code?: string | null }
 // Frete FIXO por região: a IA coleta o endereço, o motor escolhe a linha (determinístico).
 // aliases cobre variações do nome da cidade/bairro ("Caxias", "Bento Gonçalves", CEP...).
-export interface FreightRegion { region: string; amount: number; aliases?: string[] }
+export interface FreightRegion { region: string; amount: number; aliases?: string[]; code?: string | null }
 export interface PricingRules {
   base?: PriceItemDef[];
   options?: PriceItemDef[];
@@ -33,7 +33,7 @@ export interface QuoteSelection {
   quantities?: Record<string, number>;
 }
 
-export interface QuoteLine { key: string; label: string; qty: number; unit: number; amount: number }
+export interface QuoteLine { key: string; label: string; qty: number; unit: number; amount: number; code?: string | null }
 export interface ComputedQuote {
   items: QuoteLine[];
   subtotal: number;
@@ -57,13 +57,13 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
     const def = baseMap.get(k);
     if (!def) { unknownKeys.push(k); continue; }
     const q = qty(k);
-    items.push({ key: def.key, label: def.label, qty: q, unit: def.amount, amount: round2(def.amount * q) });
+    items.push({ key: def.key, code: def.code ?? null, label: def.label, qty: q, unit: def.amount, amount: round2(def.amount * q) });
   }
   for (const k of sel.options ?? []) {
     const def = optMap.get(k);
     if (!def) { unknownKeys.push(k); continue; }
     const q = qty(k);
-    items.push({ key: def.key, label: def.label, qty: q, unit: def.amount, amount: round2(def.amount * q) });
+    items.push({ key: def.key, code: def.code ?? null, label: def.label, qty: q, unit: def.amount, amount: round2(def.amount * q) });
   }
 
   // Chave de fee inválida também é erro (não silenciar).
@@ -79,7 +79,7 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
     const f = feeMap.get(k)!;
     const value = f.amount != null ? f.amount : f.percent != null ? (subtotal * f.percent) / 100 : 0;
     fees = round2(fees + value);
-    items.push({ key: f.key, label: f.label, qty: 1, unit: round2(value), amount: round2(value) });
+    items.push({ key: f.key, code: f.code ?? null, label: f.label, qty: 1, unit: round2(value), amount: round2(value) });
   }
 
   return { ok: true, quote: { items, subtotal, fees, total: round2(subtotal + fees) } };
@@ -89,7 +89,7 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
 // Normaliza texto (minúsculo, sem acento) para casar região no endereço coletado.
 const normText = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-export type FreightResult = { label: string; amount: number } | { unmatched: true } | null;
+export type FreightResult = { label: string; amount: number; code?: string | null } | { unmatched: true } | null;
 
 // Resolve o frete a partir do endereço/cidade do lead. Determinístico: casa a 1ª região
 // cujo nome (ou alias) aparece no endereço. null = frete NÃO configurado (sem linha);
@@ -102,7 +102,7 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
   if (a) {
     for (const f of list) {
       const names = [f.region, ...(f.aliases ?? [])].map(normText).filter(Boolean);
-      if (names.some((n) => a.includes(n))) return { label: `Frete — ${f.region}`, amount: round2(f.amount) };
+      if (names.some((n) => a.includes(n))) return { label: `Frete — ${f.region}`, amount: round2(f.amount), code: f.code ?? null };
     }
   }
   if (rules.freightDefault != null) return { label: "Frete", amount: round2(rules.freightDefault) };
@@ -110,10 +110,10 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
 }
 
 // Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.
-export function appendFeeLine(quote: ComputedQuote, line: { label: string; amount: number }): ComputedQuote {
+export function appendFeeLine(quote: ComputedQuote, line: { label: string; amount: number; code?: string | null }): ComputedQuote {
   const amount = round2(line.amount);
   return {
-    items: [...quote.items, { key: "frete", label: line.label, qty: 1, unit: amount, amount }],
+    items: [...quote.items, { key: "frete", code: line.code ?? null, label: line.label, qty: 1, unit: amount, amount }],
     subtotal: quote.subtotal,
     fees: round2(quote.fees + amount),
     total: round2(quote.total + amount),
