@@ -1014,6 +1014,7 @@ model WaConversation {
   fichaSentAt      DateTime? // última entrega da ficha deste lead ao operador (triagem) — evita repetir
   reengagedAt      DateTime? // última cutucada de re-engajamento enviada (1 por silêncio, dentro da janela)
   autoRepliedAt    DateTime? // última tentativa de auto-resposta (lead sem atendimento) — 1 por mensagem
+  quoteApprovedAt  DateTime? // cliente APROVOU o orçamento (quer fechar) → entra na Fila de Fechamento
   assignedEmail    String?   // DONO do lead (atendente). Definido na 1ª resposta humana; reatribuível
   assignedAt       DateTime? // quando o dono atual assumiu
   inboundCount     Int       @default(0)
