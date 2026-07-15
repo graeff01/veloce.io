@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Send, Sparkles, RotateCcw, FlaskConical, User, Info } from "lucide-react";
+import { Send, Sparkles, RotateCcw, FlaskConical, User } from "lucide-react";
 
 interface Artifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
@@ -88,7 +88,7 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
         .ait-send{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border-radius:12px;border:none;background:var(--p-accent);color:var(--p-on-accent);cursor:pointer;transition:opacity .15s}
         .ait-send:disabled{opacity:.45;cursor:default}
         /* — coluna de apoio — */
-        .ait-rail{display:flex;flex-direction:column;gap:16px}
+        .ait-rail{display:flex;flex-direction:column;gap:16px;position:sticky;top:16px}
         .ait-card{padding:16px 18px}
         .ait-card .ct{display:flex;align-items:center;gap:8px;margin-bottom:8px}
         .ait-card h3{font-size:12.5px;font-weight:700;margin:0;color:var(--p-text);letter-spacing:-.01em}
@@ -100,10 +100,7 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
         .ait-chip{padding:6px 11px;font-size:12px;border-radius:9px;border:1px solid var(--p-border);background:var(--p-bg);color:var(--p-text);cursor:pointer;transition:border-color .15s,color .15s,background .15s;text-align:left}
         .ait-chip:hover:not(:disabled){border-color:var(--p-accent);color:var(--p-accent);background:var(--p-accent-soft)}
         .ait-chip:disabled{opacity:.5;cursor:default}
-        .ait-legend{display:flex;flex-direction:column;gap:11px;margin-top:12px}
-        .ait-lrow{display:flex;gap:9px;font-size:12px;line-height:1.5;color:var(--p-muted);align-items:flex-start}
-        .ait-tag{flex-shrink:0;font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--p-raise);color:var(--p-text);letter-spacing:.03em;text-transform:uppercase;line-height:1;margin-top:1px}
-        @media(max-width:920px){.ait-grid{grid-template-columns:1fr}.ait-chat{height:min(62vh,540px);order:-1}}
+        @media(max-width:920px){.ait-grid{grid-template-columns:1fr}.ait-chat{height:min(62vh,540px);order:-1}.ait-rail{position:static}}
       `}</style>
 
       {/* ── Chat ─────────────────────────────────────────────── */}
@@ -216,15 +213,6 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="p-panel ait-card">
-          <div className="ct"><h3>Como ler as respostas</h3></div>
-          <div className="ait-legend">
-            <div className="ait-lrow"><span className="ait-tag">decisão</span><span>O que a IA decidiu — responder uma dúvida, qualificar o lead ou encaminhar ao vendedor.</span></div>
-            <div className="ait-lrow"><span className="ait-tag">ações</span><span>Ferramentas que ela usou — buscar no estoque, enviar foto, atualizar o perfil.</span></div>
-            <div className="ait-lrow"><Info size={14} style={{ flexShrink: 0, marginTop: 1, color: "var(--p-muted)" }} /><span>Quando o assunto é do vendedor (negociar, aprovar financiamento), em produção ela passa para o humano.</span></div>
-          </div>
         </div>
       </aside>
     </div>
