@@ -8,7 +8,7 @@ import { sendWhatsAppImage, sendWhatsAppDocument } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
-import { renderQuotePdf } from "@/lib/quote-pdf";
+import { renderQuotePdf, type QuoteDocData } from "@/lib/quote-pdf";
 
 export interface ToolCtx {
   clientId: string;
@@ -143,23 +143,43 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
 export interface ToolArtifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
 export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
 
-// Renderiza o PDF do orçamento (mesma apresentação do envio real) como artefato, para o
-// Console exibir no modo teste. Best-effort: falha vira null (não quebra o fluxo).
-async function quotePdfArtifact(clientId: string, q: { items: { label: string; qty: number; unit: number; amount: number }[]; subtotal: number; fees: number; total: number }, currency: string, contactName: string | null, number: number): Promise<ToolArtifact | null> {
+type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
+
+// Dados de apresentação do PDF (empresa/contatos/vendedor/observações) — de Client +
+// PricingConfig.rules. `company` no rules pode trazer os contatos e redes do modelo do cliente.
+interface PresRules {
+  company?: { phone?: string | null; whatsapp?: string | null; address?: string | null; city?: string | null; cep?: string | null; email?: string | null; site?: string | null; website?: string | null; facebook?: string | null; instagram?: string | null };
+  sellerName?: string | null; observacoes?: string | null; paymentTerms?: string | null; notes?: string | null; validityDays?: number;
+}
+
+// Monta o QuoteDocData (layout fiel: logo + contatos + Cliente/Vendedor + tabela c/ CÓDIGO +
+// Total + Observações). Fonte única usada pelo Console (artefato) e pelo envio real.
+async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: number, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<QuoteDocData> {
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
+  const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId }, select: { rules: true } });
+  const r = (pcfg?.rules ?? {}) as PresRules;
+  const c = r.company ?? {};
+  const validity = Number(r.validityDays) > 0 ? Number(r.validityDays) : null;
+  const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
+  return {
+    company: {
+      name: client?.name ?? "Orçamento", logoUrl: client?.logoUrl ?? null,
+      phone: c.phone ?? null, whatsapp: c.whatsapp ?? null, address: c.address ?? null,
+      city: c.city ?? null, cep: c.cep ?? null, email: c.email ?? null,
+      website: c.website ?? c.site ?? null, facebook: c.facebook ?? null, instagram: c.instagram ?? null,
+    },
+    number, contactName, contactCity: contactCity ?? null, sellerName: r.sellerName ?? null,
+    items: items.map((i) => ({ code: i.code ?? null, label: i.label, qty: i.qty, unit: i.unit, amount: i.amount })),
+    total, currency, observacoes: r.observacoes ?? r.paymentTerms ?? r.notes ?? null,
+    generatedAt: new Date().toLocaleDateString("pt-BR"), validUntil,
+  };
+}
+
+// Renderiza o PDF do orçamento como artefato, para o Console exibir no modo teste.
+// Best-effort: falha vira null (não quebra o fluxo).
+async function quotePdfArtifact(clientId: string, q: { items: QuoteLineIn[]; total: number }, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<ToolArtifact | null> {
   try {
-    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
-    const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId }, select: { rules: true } });
-    const pres = (pcfg?.rules ?? {}) as { company?: { cnpj?: string | null; address?: string | null; phone?: string | null; site?: string | null }; paymentTerms?: string; deliveryTerms?: string; warranty?: string; notes?: string; validityDays?: number };
-    const validity = Number(pres.validityDays) > 0 ? Number(pres.validityDays) : null;
-    const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
-    const pdf = await renderQuotePdf({
-      clientName: client?.name ?? "Orçamento", logo: client?.logoUrl ?? null, company: pres.company ?? null,
-      number, contactName, items: q.items, subtotal: q.subtotal, fees: q.fees, total: q.total, currency,
-      summary: q.items.map((i) => i.label).join(", "),
-      validUntil, paymentTerms: pres.paymentTerms ?? null, deliveryTerms: pres.deliveryTerms ?? null,
-      warranty: pres.warranty ?? null, notes: pres.notes ?? null,
-      generatedAt: new Date().toLocaleDateString("pt-BR"),
-    });
+    const pdf = await renderQuotePdf(await buildQuoteDocData(clientId, q.items, q.total, currency, contactName, number, contactCity));
     return { kind: "pdf", dataUri: `data:application/pdf;base64,${pdf.toString("base64")}`, filename: `orcamento-${number}.pdf`, caption: `Orçamento Nº ${number}` };
   } catch { return null; }
 }
@@ -367,7 +387,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         // WhatsApp). O número é só ilustrativo (test não grava Quote).
         const lastN = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
         const num = (lastN?.number ?? 0) + 1;
-        const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, ctx.contactName, num);
+        const cidade = typeof ficha.cidade_entrega === "string" ? ficha.cidade_entrega : null;
+        const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, ctx.contactName, num, cidade);
         return {
           result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nComente o total, diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
           decision: "orcou",
@@ -394,23 +415,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
-      const client = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true, logoUrl: true } });
-      // Dados de apresentação do PDF (logo, empresa, condições) — de Client + PricingConfig.rules.
-      const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId }, select: { rules: true } });
-      const pres = (pcfg?.rules ?? {}) as { company?: { cnpj?: string | null; address?: string | null; phone?: string | null; site?: string | null }; paymentTerms?: string; deliveryTerms?: string; warranty?: string; notes?: string; validityDays?: number };
-      const validity = Number(pres.validityDays) > 0 ? Number(pres.validityDays) : null;
-      const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
+      const fichaCidade = (quote.intake as IntakeData | null)?.cidade_entrega;
       try {
-        const pdf = await renderQuotePdf({
-          clientName: client?.name ?? "Orçamento", logo: client?.logoUrl ?? null, company: pres.company ?? null,
-          number: quote.number, contactName: ctx.contactName,
-          items: quote.items as unknown as { label: string; qty: number; unit: number; amount: number }[],
-          subtotal: quote.subtotal, fees: quote.fees, total: quote.total, currency: quote.currency,
-          summary: quote.summary,
-          validUntil, paymentTerms: pres.paymentTerms ?? null, deliveryTerms: pres.deliveryTerms ?? null,
-          warranty: pres.warranty ?? null, notes: pres.notes ?? null,
-          generatedAt: new Date().toLocaleDateString("pt-BR"),
-        });
+        const pdf = await renderQuotePdf(await buildQuoteDocData(
+          ctx.clientId,
+          quote.items as unknown as QuoteLineIn[],
+          quote.total, quote.currency, ctx.contactName, quote.number,
+          typeof fichaCidade === "string" ? fichaCidade : null,
+        ));
         const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
         if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
         await prisma.quote.update({ where: { id: quote.id }, data: { status: "sent" } });
