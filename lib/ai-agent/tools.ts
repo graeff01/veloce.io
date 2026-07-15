@@ -485,6 +485,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         reason: `Orçamento aprovado / quer fechar: ${String(args.motivo ?? "")}.${detalhe}`, kind: "handoff",
       }).catch(() => {});
       if (quote) await prisma.quote.update({ where: { id: quote.id }, data: { status: "approved" } }).catch(() => {});
+      // Sinal para a FILA DE FECHAMENTO: o lead entra na fila dos vendedores (portal).
+      await prisma.waConversation.update({ where: { contactId: ctx.contactId }, data: { quoteApprovedAt: new Date() } }).catch(() => {});
       return { result: "Vendedor acionado com o orçamento aprovado. Diga ao lead que um VENDEDOR VAI ENTRAR EM CONTATO pra fechar. Não prometa horário exato.", decision: "escalou" };
     }
 
