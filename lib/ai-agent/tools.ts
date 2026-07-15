@@ -402,7 +402,9 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const lastN = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
         const num = (lastN?.number ?? 0) + 1;
         const cidade = typeof ficha.cidade_entrega === "string" ? ficha.cidade_entrega : null;
-        const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, ctx.contactName, num, cidade);
+        // Nome que o cliente informou na conversa (ficha) tem prioridade sobre o nome do contato.
+        const nome = typeof ficha.nome === "string" && ficha.nome.trim() ? ficha.nome.trim() : ctx.contactName;
+        const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, nome, num, cidade);
         return {
           result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.\nComente o total, diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
           decision: "orcou",
@@ -429,12 +431,16 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
-      const fichaCidade = (quote.intake as IntakeData | null)?.cidade_entrega;
+      const fichaIntake = quote.intake as IntakeData | null;
+      const fichaCidade = fichaIntake?.cidade_entrega;
+      const fichaNome = fichaIntake?.nome;
       try {
         const pdf = await renderQuotePdf(await buildQuoteDocData(
           ctx.clientId,
           quote.items as unknown as QuoteLineIn[],
-          quote.total, quote.currency, ctx.contactName, quote.number,
+          quote.total, quote.currency,
+          typeof fichaNome === "string" && fichaNome.trim() ? fichaNome.trim() : ctx.contactName,
+          quote.number,
           typeof fichaCidade === "string" ? fichaCidade : null,
         ));
         const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
