@@ -185,12 +185,15 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
 
           {turns.map((t, i) => {
             const mine = t.role === "user";
+            // Resposta em VOZ: mostra só a nota de voz (esconde o texto) — como no WhatsApp real.
+            const hasAudio = !mine && !!t.artifacts?.some((a) => a.kind === "audio");
             return (
               <div key={i} className="ait-row" style={{ justifyContent: mine ? "flex-end" : "flex-start" }}>
                 <div style={{ maxWidth: "84%" }}>
                   <div className="ait-meta" style={{ justifyContent: mine ? "flex-end" : "flex-start" }}>
                     {mine ? <>Lead <User size={11} /></> : <><Sparkles size={11} style={{ color: "var(--p-accent)" }} /> {name}</>}
                   </div>
+                  {!hasAudio && (
                   <div
                     className="ait-bubble"
                     style={{
@@ -202,6 +205,7 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                   >
                     {t.content}
                   </div>
+                  )}
                   {!mine && t.artifacts?.map((a, j) => (
                     a.kind === "audio"
                       ? <audio key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 250, width: "100%" }} />
