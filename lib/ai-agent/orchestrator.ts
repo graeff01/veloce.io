@@ -14,6 +14,7 @@ import { searchCatalog } from "./catalog-search";
 import { isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import { redactPII } from "@/lib/redact";
+import { synthesizeVoice } from "@/lib/tts";
 import { Prisma } from "@prisma/client";
 
 interface RunInput {
@@ -522,6 +523,14 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   stages.push({ name: "guardrail", ms: Date.now() - stageStart });
 
   final = withDisclosure(final);
+
+  // Nota de voz no CONSOLE/portal (modo teste): se a voz está ligada, sintetiza a resposta
+  // e devolve como artefato de áudio pra o teste TOCAR — assim o cliente OUVE a Bruna.
+  // (No ao vivo, o envio da nota de voz acontece no respond.ts, conforme o voiceMode.)
+  if (mode === "test" && status === "ok" && cfg?.voiceReplies && cfg?.voiceId && final) {
+    const audio = await synthesizeVoice(final, cfg.voiceId);
+    if (audio) artifacts.push({ kind: "audio", dataUri: `data:audio/ogg;base64,${audio.toString("base64")}`, caption: "nota de voz" });
+  }
 
   if (mode === "live") await log({ outbound: final, decision, status, tokensIn, tokensOut, toolCalls: toolLog, contextUsed, stages, guardrails, error: errorMsg });
   return { reply: final, status, decision, toolCalls: toolLog, artifacts, promptVersion: PROMPT_VERSION, promptVariant, model };

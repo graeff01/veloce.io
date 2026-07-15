@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Send, Sparkles, RotateCcw, FlaskConical, User } from "lucide-react";
 
-interface Artifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface Artifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
 
 // Cenários agrupados pra o gestor testar rápido como a IA reage — servem a qualquer vertical.
@@ -146,7 +146,9 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                     {t.content}
                   </div>
                   {!mine && t.artifacts?.map((a, j) => (
-                    a.kind === "image"
+                    a.kind === "audio"
+                      ? <audio key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 250, width: "100%" }} />
+                      : a.kind === "image"
                       ? <a key={j} href={a.url || a.dataUri} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6 }}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 12, display: "block", border: "1px solid var(--p-border)" }} />

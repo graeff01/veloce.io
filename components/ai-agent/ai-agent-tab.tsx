@@ -479,7 +479,7 @@ function ActivitySection({ clientId }: { clientId: string }) {
 }
 
 // ── Console (dry-run) ─────────────────────────────────────────────────────────
-interface ConsoleArtifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface ConsoleArtifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface ConsoleMsg { role: "user" | "assistant"; content: string; artifacts?: ConsoleArtifact[]; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
 
 function ConsoleSection({ clientId }: { clientId: string }) {
@@ -524,7 +524,9 @@ function ConsoleSection({ clientId }: { clientId: string }) {
               {m.content}
             </div>
             {m.artifacts?.map((a, j) => (
-              a.kind === "image"
+              a.kind === "audio"
+                ? <audio key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 240, width: "100%" }} />
+                : a.kind === "image"
                 ? <a key={j} href={a.url || a.dataUri} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6 }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 10, display: "block", border: "1px solid var(--border)" }} />

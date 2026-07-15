@@ -142,7 +142,7 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
 
 // Artefato visual devolvido por uma tool (foto/PDF) — para o Console mostrar como no
 // WhatsApp. NÃO entra no contexto do modelo (só o `result` textual entra).
-export interface ToolArtifact { kind: "image" | "pdf"; url?: string; dataUri?: string; caption?: string; filename?: string }
+export interface ToolArtifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
 export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
 
 type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
