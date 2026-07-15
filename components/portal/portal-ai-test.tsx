@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Send, Sparkles, RotateCcw, FlaskConical, User } from "lucide-react";
+import { Send, Sparkles, RotateCcw, FlaskConical, User, Mic, Square } from "lucide-react";
 
 interface Artifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
@@ -18,8 +18,11 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const name = assistantName || "IA";
 
   useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [turns, loading]);
@@ -49,6 +52,57 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
     } catch {
       setError("Falha de conexão. Tente de novo.");
     } finally { setLoading(false); }
+  }
+
+  // Envia um ÁUDIO gravado: a rota transcreve (Groq) e a IA responde (com voz, se ligada).
+  async function sendAudio(blob: Blob) {
+    if (loading) return;
+    setError(null);
+    const history = turns.map((t) => ({ role: t.role, content: t.content }));
+    setTurns((t) => [...t, { role: "user", content: "🎤 …" }]);
+    setLoading(true);
+    try {
+      const b64: string = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(blob); });
+      const r = await fetch(`/api/portal/${token}/ai-test`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audio: b64, mime: blob.type || "audio/webm", transcript: history }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(d?.error || "Falha ao processar o áudio."); setTurns((t) => t.slice(0, -1)); return; }
+      // Substitui o placeholder pela transcrição (o que a IA entendeu) e adiciona a resposta.
+      const said = (d?.transcription ?? "").toString().trim();
+      setTurns((t) => { const u = t.slice(0, -1); u.push({ role: "user", content: said ? `🎤 ${said}` : "🎤 (áudio)" }); return u; });
+      const reply = (d?.reply ?? "").toString().trim();
+      if (!reply || reply.includes("[SKIP]")) {
+        setTurns((t) => [...t, { role: "assistant", content: "— (a IA não responde isso: é caso de vendedor — em produção ela passa pro humano)", decision: d?.decision, tools: d?.tools, artifacts: d?.artifacts }]);
+      } else {
+        setTurns((t) => [...t, { role: "assistant", content: reply, decision: d?.decision, tools: d?.tools, artifacts: d?.artifacts }]);
+      }
+    } catch {
+      setError("Falha ao enviar o áudio. Tente de novo."); setTurns((t) => t.slice(0, -1));
+    } finally { setLoading(false); }
+  }
+
+  // Grava do microfone (toca uma vez pra começar, outra pra parar e enviar).
+  async function toggleRecord() {
+    if (loading) return;
+    if (recording) { recRef.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        if (blob.size < 1200) { setError("Áudio muito curto — fala um pouquinho mais."); return; }
+        void sendAudio(blob);
+      };
+      recRef.current = mr; mr.start(); setRecording(true); setError(null);
+    } catch {
+      setError("Não consegui acessar o microfone. Permita o acesso no navegador e tente de novo.");
+    }
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } };
@@ -87,6 +141,9 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
         .ait-ta:focus{border-color:var(--p-accent)}
         .ait-send{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border-radius:12px;border:none;background:var(--p-accent);color:var(--p-on-accent);cursor:pointer;transition:opacity .15s}
         .ait-send:disabled{opacity:.45;cursor:default}
+        .ait-mic{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border-radius:12px;border:1px solid var(--p-border);background:var(--p-bg);color:var(--p-muted);cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+        .ait-mic:hover:not(:disabled){color:var(--p-accent);border-color:var(--p-accent)}
+        .ait-mic:disabled{opacity:.45;cursor:default}
         /* — coluna de apoio — */
         .ait-rail{display:flex;flex-direction:column;gap:16px;position:sticky;top:16px}
         .ait-card{padding:16px 18px}
@@ -189,6 +246,9 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
             disabled={loading}
             className="ait-ta"
           />
+          <button type="button" onClick={() => void toggleRecord()} disabled={loading} aria-label={recording ? "Parar e enviar" : "Gravar áudio"} title={recording ? "Parar e enviar" : "Gravar um áudio (testar a IA respondendo em voz)"} className="ait-mic" style={recording ? { background: "var(--p-crit)", color: "#fff", borderColor: "transparent" } : undefined}>
+            {recording ? <Square size={16} /> : <Mic size={18} />}
+          </button>
           <button type="button" onClick={() => void send(draft)} disabled={loading || !draft.trim()} aria-label="Enviar" className="ait-send">
             <Send size={18} />
           </button>
