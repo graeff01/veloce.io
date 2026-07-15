@@ -45,7 +45,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     const ct = cById.get(c.contactId);
     const q = qByContact.get(c.contactId);
     const intake = (q?.intake ?? null) as Record<string, unknown> | null;
-    const city = intake && typeof intake.cidade_entrega === "string" ? intake.cidade_entrega : null;
+    const str = (k: string) => (intake && typeof intake[k] === "string" && (intake[k] as string).trim() ? (intake[k] as string).trim() : null);
+    const city = str("cidade_entrega");
+    // Resumo pro vendedor (deterministico, sem LLM): local de instalação + opcionais.
+    const install = str("local_instalacao");
+    const opcionais = str("opcionais");
+    const resumo = [install && `instalação: ${install}`, opcionais && opcionais.toLowerCase() !== "nenhum" && `opcionais: ${opcionais}`].filter(Boolean).join(" · ") || null;
     return {
       contactId: c.contactId,
       name: ct?.displayName?.trim() || ct?.name?.trim() || ct?.waId || "Lead",
@@ -55,6 +60,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
       total: q?.total ?? null,
       currency: q?.currency ?? "BRL",
       summary: q?.summary ?? null,
+      resumo,
       city,
       ownerEmail: c.assignedEmail,
       ownerName: c.assignedEmail ? ownerName.get(c.assignedEmail) ?? c.assignedEmail : null,

@@ -6,8 +6,11 @@ import { Flame, FileText, MapPin, Bell, BellOff, Check, Loader2 } from "lucide-r
 interface Lead {
   contactId: string; name: string; waId: string | null; approvedAt: string;
   quoteNumber: number | null; total: number | null; currency: string; summary: string | null;
-  city: string | null; ownerEmail: string | null; ownerName: string | null; mine: boolean;
+  resumo: string | null; city: string | null; ownerEmail: string | null; ownerName: string | null; mine: boolean;
 }
+
+const SLA_MIN = 8; // lead esperando mais que isto (sem dono) vira URGENTE + re-alerta
+const waitMin = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60000;
 
 const brl = (v: number | null, cur: string) => v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: cur || "BRL" });
 
@@ -41,6 +44,7 @@ export function PortalFechamento({ token }: { token: string }) {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [notif, setNotif] = useState<"default" | "granted" | "denied">("default");
   const seen = useRef<Set<string>>(new Set());
+  const slaAlerted = useRef<Set<string>>(new Set());
   const first = useRef(true);
 
   useEffect(() => { if (typeof Notification !== "undefined") setNotif(Notification.permission as typeof notif); }, []);
@@ -62,6 +66,16 @@ export function PortalFechamento({ token }: { token: string }) {
             body: `${l.name}${l.total != null ? ` · ${brl(l.total, l.currency)}` : ""}${l.city ? ` · ${l.city}` : ""}`,
             tag: "hot-lead",
           });
+        }
+      }
+      // SLA: lead sem dono esperando além do limite → re-alerta (1x por lead).
+      const estourou = list.filter((l) => !l.ownerEmail && waitMin(l.approvedAt) >= SLA_MIN && !slaAlerted.current.has(l.contactId));
+      estourou.forEach((l) => slaAlerted.current.add(l.contactId));
+      if (!first.current && estourou.length) {
+        beep();
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const l = estourou[0];
+          new Notification("⏰ Lead quente esperando faz tempo!", { body: `${l.name} está há mais de ${SLA_MIN} min sem atendimento. Pegue antes que esfrie.`, tag: "sla-lead" });
         }
       }
       first.current = false;
@@ -116,6 +130,10 @@ export function PortalFechamento({ token }: { token: string }) {
         .fcards{display:flex;flex-direction:column;gap:11px}
         .fcard{border:1px solid var(--p-border);background:var(--p-surface);border-radius:13px;padding:15px 17px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
         .fcard.hot{border-color:color-mix(in srgb,var(--p-accent) 45%,transparent);background:linear-gradient(90deg,var(--p-accent-soft),var(--p-surface) 55%)}
+        .fcard.urg{border-color:var(--p-crit);background:linear-gradient(90deg,var(--p-crit-soft),var(--p-surface) 60%)}
+        .furg{font-size:10.5px;font-weight:700;color:var(--p-crit);background:var(--p-crit-soft);border-radius:6px;padding:1px 7px;vertical-align:1px}
+        .fwants{font-size:13.5px;font-weight:600;color:var(--p-text);margin-top:2px}
+        .fresumo{font-size:12.5px;color:var(--p-muted);margin-top:4px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:7px;padding:5px 9px;display:inline-block}
         .fic{width:40px;height:40px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--p-accent-soft);color:var(--p-accent)}
         .fbody{flex:1;min-width:180px}
         .fname{font-size:15px;font-weight:700;color:var(--p-text)}
@@ -156,13 +174,16 @@ export function PortalFechamento({ token }: { token: string }) {
         <>
           {waiting.length > 0 && <div className="fsectitle">🔥 Esperando um vendedor ({waiting.length})</div>}
           <div className="fcards">
-            {waiting.map((l) => (
-              <div key={l.contactId} className="fcard hot">
+            {waiting.map((l) => {
+              const urgent = waitMin(l.approvedAt) >= SLA_MIN;
+              return (
+              <div key={l.contactId} className={`fcard hot${urgent ? " urg" : ""}`}>
                 <div className="fic"><Flame size={20} /></div>
                 <div className="fbody">
-                  <div className="fname">{l.name}</div>
+                  <div className="fname">{l.name} {urgent && <span className="furg">⏰ urgente</span>}</div>
+                  {l.summary && <div className="fwants">{l.summary}</div>}
+                  {l.resumo && <div className="fresumo">📋 {l.resumo}</div>}
                   <div className="fmeta">
-                    {l.summary && <span><b>{l.summary}</b></span>}
                     {l.city && <span><MapPin size={12} style={{ verticalAlign: -1 }} /> {l.city}</span>}
                     {l.quoteNumber && <span>Orç. Nº {l.quoteNumber}</span>}
                     <span>aprovado {haAgo(l.approvedAt)}</span>
@@ -175,7 +196,7 @@ export function PortalFechamento({ token }: { token: string }) {
                   </button>
                 </div>
               </div>
-            ))}
+            ); })}
           </div>
 
           {mine.length > 0 && <div className="fsectitle">Meus atendimentos ({mine.length})</div>}
@@ -185,8 +206,9 @@ export function PortalFechamento({ token }: { token: string }) {
                 <div className="fic"><FileText size={18} /></div>
                 <div className="fbody">
                   <div className="fname">{l.name}</div>
+                  {l.summary && <div className="fwants">{l.summary}</div>}
+                  {l.resumo && <div className="fresumo">📋 {l.resumo}</div>}
                   <div className="fmeta">
-                    {l.summary && <span><b>{l.summary}</b></span>}
                     {l.city && <span>{l.city}</span>}
                     <span>aprovado {haAgo(l.approvedAt)}</span>
                   </div>
