@@ -30,6 +30,7 @@ export interface QuoteDocData {
   total: number;
   currency: string;
   observacoes?: string | null;
+  installmentsLabel?: string | null; // ex.: "10x de R$ 253,00 sem juros" (só se configurado)
   generatedAt: string;      // "Criado em"
   validUntil?: string | null; // "Válido até"
 }
@@ -83,6 +84,7 @@ const s = StyleSheet.create({
   totalLabel: { paddingVertical: 6, paddingHorizontal: 14, fontFamily: "Helvetica-Bold", fontSize: 10, borderRightWidth: 1, borderRightColor: INK },
   totalValue: { paddingVertical: 6, paddingHorizontal: 14, fontFamily: "Helvetica-Bold", fontSize: 11, width: 110, textAlign: "right" },
 
+  parcela: { textAlign: "right", fontSize: 9, color: MUTED, marginTop: 4 },
   obsBar: { backgroundColor: DARK, color: "#fff", fontSize: 8, fontFamily: "Helvetica-Bold", paddingVertical: 3, paddingHorizontal: 6, marginTop: 16 },
   obsBox: { borderWidth: 1, borderColor: INK, borderTopWidth: 0, padding: 8, minHeight: 42, fontSize: 9 },
 
@@ -173,6 +175,7 @@ export function buildQuoteDoc(d: QuoteDocData) {
             <Text style={s.totalValue}>{brl(d.total, cur)}</Text>
           </View>
         </View>
+        {d.installmentsLabel ? <Text style={s.parcela}>ou {d.installmentsLabel}</Text> : null}
 
         {/* Observações */}
         <Text style={s.obsBar}>Observações:</Text>
