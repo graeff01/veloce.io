@@ -443,6 +443,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
     intakeSpec: cfg?.intakeSpec,
     testFicha: mode === "test" ? {} : undefined, // ficha efêmera do Console (acumula entre tools da run)
+    inboundText: input.inboundText, isFirstTurn: isFirst, // trava anti-reenvio de foto (enviar_foto)
   };
 
   let decision = "respondeu_duvida";

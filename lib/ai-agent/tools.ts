@@ -21,6 +21,8 @@ export interface ToolCtx {
   // Ficha EFÊMERA do modo teste (Console): atualizar_ficha não grava no banco, então
   // acumula aqui p/ gerar_orcamento enxergar o que foi coletado (gate + frete) na mesma run.
   testFicha?: IntakeData;
+  inboundText?: string;   // última mensagem do lead — usado pela trava anti-reenvio de foto
+  isFirstTurn?: boolean;  // 1ª mensagem da conversa (abertura) — libera a foto de entrada
 }
 
 const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
@@ -282,6 +284,18 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         term = (lead?.adModel || lead?.adTitle || "").trim();
       }
       if (!term) return { result: "Não sei qual veículo o lead quer ver. Pergunte qual modelo e tente de novo." };
+      // Anti-reenvio (determinístico, à prova de prompt): só manda foto quando FAZ SENTIDO —
+      // no 1º contato, quando o lead PEDE (foto/ver/por dentro/mais) ou quando ele MENCIONA um
+      // modelo agora. No meio do orçamento a IA às vezes rechama enviar_foto (foto duplicada);
+      // aqui a gente barra, a menos que o lead tenha pedido de fato.
+      const inboundN = (ctx.inboundText ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      const pedeFoto = /foto|imagem|\bver\b|\bvejo\b|mostr|por dentro|interior|de novo|outra|mais/.test(inboundN);
+      const explicitArg = args.interior === true || Number(args.quantidade) > 1;
+      const termToks = term.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+      const mencionaModelo = termToks.some((t) => inboundN.includes(t));
+      if (!ctx.isFirstTurn && !pedeFoto && !explicitArg && !mencionaModelo) {
+        return { result: "A foto desse modelo já apareceu na conversa e o lead NÃO pediu para ver agora — NÃO reenvie imagem. Siga só com o texto/orçamento." };
+      }
       // Busca robusta (tokens + fuzzy) — casa "Taos Highline" mesmo com "1.4" no meio do título.
       const matches = await searchCatalog(ctx.clientId, term);
       const item = (matches.find((i) => i.imageUrl) ?? matches[0]) as (typeof matches)[number] & { images?: string[] } | undefined;
