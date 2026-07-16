@@ -1759,6 +1759,25 @@ model PortalAccess {
   @@index([clientId])
 }
 
+// Inscrição de Web Push do VENDEDOR do portal (clientId+email), separada da do usuário
+// interno (PushSubscription). Alcança o vendedor mesmo com o portal FECHADO — alerta de
+// orçamento pra revisar / lead pra fechar, como o WhatsApp.
+model PortalPushSubscription {
+  id           String   @id @default(cuid())
+  clientId     String
+  email        String   // vendedor (PortalAccess.email)
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  failureCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([clientId, email])
+}
+
 // Código OTP temporário (guardado como hash), enviado por e-mail.
 model PortalOtp {
   id        String   @id @default(cuid())
