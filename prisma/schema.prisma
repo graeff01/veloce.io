@@ -1112,6 +1112,7 @@ model AiAgentConfig {
   groundingEnforce Boolean @default(false) // anti-alucinação: ABSTÉM se preço/prazo sem fonte. Off = monitor (só registra)
   verifyReplies   Boolean  @default(false) // chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
   quotesEnabled   Boolean  @default(false) // orçamento: expõe as ferramentas de coleta/preço/PDF (produto configurável)
+  quoteReviewEnabled Boolean @default(false) // modo revisão: o PDF NÃO vai ao cliente sem um vendedor aprovar na fila (blinda contra orçamento errado)
   visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
   voiceReplies    Boolean  @default(false) // responde com NOTA DE VOZ (TTS ElevenLabs) além/no lugar do texto
   voiceId         String?  // id da voz no ElevenLabs (ex.: voz brasileira da assistente)
@@ -1230,9 +1231,14 @@ model Quote {
   fees       Float    @default(0)
   total      Float    @default(0)
   currency   String   @default("BRL")
-  status     String   @default("draft") // draft | sent | approved | rejected
+  status     String   @default("draft") // draft | pending_review | sent | approved | rejected
   summary    String?
   intake     Json?    // ficha coletada que gerou o orçamento (rastreabilidade)
+  // ── Modo revisão do vendedor (quoteReviewEnabled): o PDF fica retido até um vendedor aprovar ──
+  submittedAt    DateTime? // entrou na fila de revisão (ordena a fila / SLA)
+  reviewedByEmail String?  // vendedor que aprovou/rejeitou (PortalAccess.email)
+  reviewedAt     DateTime? // quando revisou
+  discount       Float?    @default(0) // desconto de fechamento aplicado pelo vendedor ao aprovar
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

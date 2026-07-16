@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "fechamento" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
+export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "revisao" | "fechamento" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   // Estado semeado pelo SERVIDOR (props) → 1º paint já vem certo, sem flash ao navegar.
   // Só cai no fetch client-side se a página não passou os dados (retrocompat).
@@ -18,11 +18,20 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   const [sections, setSections] = useState<string[] | null>(initialSections ?? null); // null = todas (até carregar)
   const [aiTest, setAiTest] = useState(!!initialAiTest); // aba temporária de teste da IA
   const [hotCount, setHotCount] = useState(0); // leads quentes esperando (badge do sino)
+  const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando revisão (badge)
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
   useEffect(() => {
     if (sections && !sections.includes("fechamento")) return; // seção não habilitada → não consulta
     let alive = true;
     const tick = () => fetch(`/api/portal/${token}/hot-leads`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setHotCount(d?.unclaimed ?? 0); }).catch(() => {});
+    tick();
+    const id = setInterval(tick, 20000);
+    return () => { alive = false; clearInterval(id); };
+  }, [token, sections]);
+  useEffect(() => {
+    if (sections && !sections.includes("revisao")) return; // seção não habilitada → não consulta
+    let alive = true;
+    const tick = () => fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setReviewCount(d?.pending ?? 0); }).catch(() => {});
     tick();
     const id = setInterval(tick, 20000);
     return () => { alive = false; clearInterval(id); };
@@ -43,7 +52,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "fechamento" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes", href: string, label: string, icon: React.ReactNode, badge?: number) => {
+  const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes", href: string, label: string, icon: React.ReactNode, badge?: number) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -81,6 +90,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
         <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", opacity: 0.7 }}>Menu</div>
           {on("painel") && item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
+          {on("revisao") && item("revisao", `/r/${token}/revisao`, "Revisão", <ShieldCheck size={15} />, reviewCount)}
           {on("fechamento") && item("fechamento", `/r/${token}/fechamento`, "Fechamento", <Flame size={15} />, hotCount)}
           {on("anuncios") && item("anuncios", `/r/${token}/anuncios`, "Anúncios", <Megaphone size={15} />)}
           {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
