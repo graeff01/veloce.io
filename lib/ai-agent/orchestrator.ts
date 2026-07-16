@@ -201,8 +201,9 @@ function applyQualFinVariant(base: string): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string, storeOpen: boolean | null): string {
+function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string, storeOpen: boolean | null, returning: string): string {
   return [
+    returning || "",
     firstNote || "",
     vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por ESTE anúncio):\n${vehicle}\nATENÇÃO: isto é só o carro do anúncio. Se o lead PERGUNTAR ou PEDIR outro modelo (nomear outro carro), responda sobre o carro que ELE pediu — busque com buscar_estoque e mande a foto DESSE (enviar_foto termo="modelo que o lead falou"). NUNCA mande este carro do anúncio no lugar do que o lead pediu.` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
@@ -316,6 +317,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let memory = "";
   let qualif = "";
   let vehicle = "";
+  let returning = "";
   let priorMessages: ChatMessage[];
   if (mode === "live") {
     const [profile, convo, variant, lead] = await Promise.all([
@@ -381,6 +383,32 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
         ].filter(Boolean).join("; ")
       : "";
     memory = convo?.agentMemory ?? "";
+
+    // LEAD RECORRENTE (opt-in recurringMemory): o mesmo número voltou depois de um tempo →
+    // reconhece e retoma o contexto ("oi de novo, você tinha visto a Tradição"). Só quando
+    // já houve interação da IA E há um HIATO desde a última resposta da loja (reativação).
+    if (cfg?.recurringMemory && !isFirst) {
+      try {
+        const lastOut = await prisma.waMessage.findFirst({
+          where: { contactId: input.contact.id, direction: "out" }, orderBy: { timestamp: "desc" }, select: { timestamp: true },
+        });
+        const gapMs = lastOut ? Date.now() - lastOut.timestamp.getTime() : 0;
+        const RETURNING_GAP = 12 * 3600 * 1000; // 12h de silêncio = "voltou"
+        if (gapMs >= RETURNING_GAP) {
+          const lastQuote = await prisma.quote.findFirst({
+            where: { clientId: input.clientId, contactId: input.contact.id }, orderBy: { createdAt: "desc" },
+            select: { summary: true, total: true, currency: true, createdAt: true },
+          });
+          const ago = (ms: number) => { const d = Math.floor(ms / 86400000); if (d >= 1) return `há ${d} dia${d > 1 ? "s" : ""}`; const h = Math.floor(ms / 3600000); return h >= 1 ? `há ${h}h` : "há pouco"; };
+          const interesse = profile?.productInterest ? `Interesse anterior: ${profile.productInterest}.` : "";
+          const orc = lastQuote?.summary ? `Último orçamento: ${lastQuote.summary}${lastQuote.total ? ` — ${lastQuote.total.toLocaleString("pt-BR", { style: "currency", currency: lastQuote.currency || "BRL" })}` : ""} (${ago(Date.now() - lastQuote.createdAt.getTime())}).` : "";
+          returning = [
+            `LEAD RECORRENTE: este número JÁ conversou com a gente antes (última resposta nossa ${ago(gapMs)}). ${interesse} ${orc}`.trim(),
+            `Cumprimente reconhecendo o retorno de forma NATURAL e calorosa (algo como "Oi de novo! 😊"), retome de onde parou e NÃO recomece do zero nem repita perguntas já respondidas. Se fizer sentido, referencie o que ele já tinha visto/pedido — como um vendedor que LEMBRA do cliente.`,
+          ].join(" ");
+        }
+      } catch { /* best-effort: nunca quebra o turno da IA */ }
+    }
     // Short-term: busca uma janela maior e poda por ORÇAMENTO de tokens (anti-explosão).
     const history = await prisma.waMessage.findMany({
       where: { contactId: input.contact.id }, orderBy: { timestamp: "desc" }, take: 30, select: { direction: true, text: true },
@@ -419,7 +447,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning) },
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
     ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
     ...priorMessages,

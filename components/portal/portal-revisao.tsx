@@ -95,10 +95,14 @@ export function PortalRevisao({ token }: { token: string }) {
   }
 
   async function rejeitar(q: Review) {
-    if (!confirm(`Rejeitar este orçamento e assumir a conversa de ${q.name}? O PDF NÃO será enviado e a IA será pausada nesse contato.`)) return;
+    // Pede o motivo — vira APRENDIZADO ("o que a IA errou") e ainda serve de confirmação.
+    const motivo = window.prompt(`Rejeitar e assumir a conversa de ${q.name}.\n\nO que a IA errou? (ex: "modelo errado", "frete de outra cidade") — opcional, mas ensina a IA a não repetir.`);
+    if (motivo === null) return; // cancelou
     setBusy(q.quoteId);
     try {
-      const r = await fetch(`/api/portal/${token}/quote-reviews/${q.quoteId}/reject`, { method: "POST" });
+      const r = await fetch(`/api/portal/${token}/quote-reviews/${q.quoteId}/reject`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo }),
+      });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j?.ok) { window.location.href = `/r/${token}/conversas?c=${j.contactId || q.contactId}`; return; }
       alert(j?.error || "Não consegui rejeitar. Tente de novo.");
