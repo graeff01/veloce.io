@@ -1113,6 +1113,7 @@ model AiAgentConfig {
   verifyReplies   Boolean  @default(false) // chain-of-verification por LLM antes de enviar (custa 1 chamada extra)
   quotesEnabled   Boolean  @default(false) // orçamento: expõe as ferramentas de coleta/preço/PDF (produto configurável)
   quoteReviewEnabled Boolean @default(false) // modo revisão: o PDF NÃO vai ao cliente sem um vendedor aprovar na fila (blinda contra orçamento errado)
+  recurringMemory Boolean  @default(false) // reconhece o LEAD RECORRENTE (mesmo número que volta) e retoma o contexto ("oi de novo, você tinha visto a Tradição")
   visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
   voiceReplies    Boolean  @default(false) // responde com NOTA DE VOZ (TTS ElevenLabs) além/no lugar do texto
   voiceId         String?  // id da voz no ElevenLabs (ex.: voz brasileira da assistente)
@@ -1246,6 +1247,27 @@ model Quote {
 
   @@index([clientId, contactId])
   @@index([clientId, status])
+}
+
+// Aprendizado: correção registrada quando um VENDEDOR acha que a IA errou (rejeitou um
+// auto-orçamento na revisão, etc). Alimenta o painel "o que a IA errou" → a partir daí a
+// gente ajusta catálogo/frete/prompt. É o ciclo que faz a IA melhorar com o uso.
+model AiCorrection {
+  id              String    @id @default(cuid())
+  clientId        String
+  contactId       String?
+  quoteId         String?
+  kind            String    @default("quote_rejected") // quote_rejected | manual
+  leadWanted      String?   // o que o lead pediu (resumo da ficha)
+  aiProposed      String?   // o que a IA propôs (linhas do orçamento)
+  note            String?   // o que a IA errou (texto do vendedor)
+  reviewerEmail   String?   // quem reportou
+  resolved        Boolean   @default(false)
+  resolvedByEmail String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([clientId, resolved, createdAt])
 }
 
 model LeadProfile {
