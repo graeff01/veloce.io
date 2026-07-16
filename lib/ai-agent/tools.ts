@@ -4,6 +4,7 @@ import type { ToolDef } from "@/lib/openai";
 import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
+import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
 import { sendWhatsAppImage, sendWhatsAppDocument } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
@@ -457,6 +458,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // O PDF só vai ao lead depois que um vendedor aprovar na fila (blinda o preço).
       if (ctx.quoteReview) {
         await prisma.quote.update({ where: { id: quote.id }, data: { status: "pending_review", submittedAt: new Date() } });
+        await pushPortalReview(ctx.clientId, `Orçamento Nº ${quote.number} — ${brl(quote.total, quote.currency)} — aguarda seu aval.`).catch(() => {});
         return {
           result: `Orçamento Nº ${quote.number} enviado para CONFERÊNCIA da equipe (revisão antes do envio). NÃO diga que já mandou o PDF. Diga ao lead, natural, que você está finalizando/conferindo os valores e já envia o orçamento em PDF em instantes — sem prometer horário exato. Depois é só aguardar o lead.`,
           decision: "orcou",
@@ -503,6 +505,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (quote) await prisma.quote.update({ where: { id: quote.id }, data: { status: "approved" } }).catch(() => {});
       // Sinal para a FILA DE FECHAMENTO: o lead entra na fila dos vendedores (portal).
       await prisma.waConversation.update({ where: { contactId: ctx.contactId }, data: { quoteApprovedAt: new Date() } }).catch(() => {});
+      await pushPortalFechamento(ctx.clientId, `${ctx.contactName || "Um lead"} aprovou o orçamento${detalhe} Quer fechar.`).catch(() => {});
       return { result: "Vendedor acionado com o orçamento aprovado. Diga ao lead que um VENDEDOR VAI ENTRAR EM CONTATO pra fechar. Não prometa horário exato.", decision: "escalou" };
     }
 

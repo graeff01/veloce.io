@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
+import { PortalAlerts } from "@/components/portal/portal-alerts";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
@@ -125,6 +126,9 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
 
       {/* Consultor Veloce — assistente flutuante (escondido no mobile via .padvisor) */}
       <div className="padvisor"><PortalAdvisor token={token} /></div>
+
+      {/* Alerta global: som + popup + notificação em QUALQUER página (fila de revisão/fechamento) */}
+      <PortalAlerts token={token} sections={sections} />
     </>
   );
 }
