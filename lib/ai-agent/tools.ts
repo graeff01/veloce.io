@@ -18,6 +18,7 @@ export interface ToolCtx {
   contactWaId: string;
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
   intakeSpec?: unknown; // ficha configurável (AiAgentConfig.intakeSpec) p/ orçamento
+  quoteReview?: boolean; // modo revisão: o PDF NÃO vai ao lead — fica retido p/ um vendedor aprovar na fila
   // Ficha EFÊMERA do modo teste (Console): atualizar_ficha não grava no banco, então
   // acumula aqui p/ gerar_orcamento enxergar o que foi coletado (gate + frete) na mesma run.
   testFicha?: IntakeData;
@@ -145,7 +146,7 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
 export interface ToolArtifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
 export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
 
-type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
+export type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
 
 // Dados de apresentação do PDF (empresa/contatos/vendedor/observações) — de Client +
 // PricingConfig.rules. `company` no rules pode trazer os contatos e redes do modelo do cliente.
@@ -164,7 +165,7 @@ function installmentsLabel(total: number, currency: string, n: number | null | u
 
 // Monta o QuoteDocData (layout fiel: logo + contatos + Cliente/Vendedor + tabela c/ CÓDIGO +
 // Total + Observações). Fonte única usada pelo Console (artefato) e pelo envio real.
-async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: number, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<QuoteDocData> {
+export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: number, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<QuoteDocData> {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
   const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId }, select: { rules: true } });
   const r = (pcfg?.rules ?? {}) as PresRules;
@@ -445,7 +446,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const quote = args.quoteId
         ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
         : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "draft" }, orderBy: { createdAt: "desc" } });
-      if (!quote) return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
+      if (!quote) {
+        // Já pode ter ido pra revisão (não é mais "draft") — não trate como erro nem gere outro.
+        const pend = await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "pending_review" }, orderBy: { createdAt: "desc" } });
+        if (pend) return { result: "O orçamento já está sendo finalizado pela nossa equipe. Tranquilize o lead: você está confirmando tudo e já envia o PDF — não gere outro orçamento.", decision: "orcou" };
+        return { result: "Nenhum orçamento encontrado para enviar. Gere um com gerar_orcamento." };
+      }
+
+      // ── Modo revisão do vendedor: NÃO envia o PDF — coloca na fila de revisão ─────
+      // O PDF só vai ao lead depois que um vendedor aprovar na fila (blinda o preço).
+      if (ctx.quoteReview) {
+        await prisma.quote.update({ where: { id: quote.id }, data: { status: "pending_review", submittedAt: new Date() } });
+        return {
+          result: `Orçamento Nº ${quote.number} enviado para CONFERÊNCIA da equipe (revisão antes do envio). NÃO diga que já mandou o PDF. Diga ao lead, natural, que você está finalizando/conferindo os valores e já envia o orçamento em PDF em instantes — sem prometer horário exato. Depois é só aguardar o lead.`,
+          decision: "orcou",
+        };
+      }
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
       const fichaIntake = quote.intake as IntakeData | null;
