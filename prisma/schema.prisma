@@ -1114,6 +1114,9 @@ model AiAgentConfig {
   quotesEnabled   Boolean  @default(false) // orçamento: expõe as ferramentas de coleta/preço/PDF (produto configurável)
   quoteReviewEnabled Boolean @default(false) // modo revisão: o PDF NÃO vai ao cliente sem um vendedor aprovar na fila (blinda contra orçamento errado)
   recurringMemory Boolean  @default(false) // reconhece o LEAD RECORRENTE (mesmo número que volta) e retoma o contexto ("oi de novo, você tinha visto a Tradição")
+  salesDna        String?  // "DNA de venda" destilado das conversas que FECHARAM (o jeito do melhor vendedor). Injetado no prompt quando salesDnaEnabled.
+  salesDnaEnabled Boolean  @default(false) // aplica o salesDna no atendimento da IA (default off — destila sem aplicar até revisar)
+  salesDnaAt      DateTime? // quando o DNA foi destilado pela última vez (staleness/exibição)
   visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
   voiceReplies    Boolean  @default(false) // responde com NOTA DE VOZ (TTS ElevenLabs) além/no lugar do texto
   voiceId         String?  // id da voz no ElevenLabs (ex.: voz brasileira da assistente)
