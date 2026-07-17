@@ -135,8 +135,9 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
         </button>
       </aside>
 
-      {/* Consultor Veloce — assistente flutuante (escondido no mobile via .padvisor) */}
-      <div className="padvisor"><PortalAdvisor token={token} /></div>
+      {/* Consultor Veloce — assistente flutuante (escondido no mobile via .padvisor).
+          Some na aba Conversas pra não cobrir o botão de enviar mensagem. */}
+      {active !== "conversas" && <div className="padvisor"><PortalAdvisor token={token} /></div>}
 
       {/* Alerta global: som + popup + notificação em QUALQUER página (fila de revisão/fechamento) */}
       <PortalAlerts token={token} sections={sections} />
