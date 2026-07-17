@@ -1482,6 +1482,103 @@ function PlaybookSection({ clientId }: { clientId: string }) {
   );
 }
 
+// ── DNA de Vendas (clonar o melhor vendedor) ──────────────────────────────────
+interface SalesDnaData { salesDna: string | null; salesDnaEnabled: boolean; salesDnaAt: string | null; stats: { conversations: number; vendors: { email: string; wins: number }[]; totalRevenue: number } }
+
+function SalesDnaSection({ clientId }: { clientId: string }) {
+  const [data, setData] = useState<SalesDnaData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dna, setDna] = useState("");
+  const [training, setTraining] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  async function load() {
+    try { const r = await fetch(`/api/clients/${clientId}/ai/sales-dna`); const d = await r.json(); setData(d); setDna(d?.salesDna ?? ""); }
+    catch { setData(null); } finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function train() {
+    setTraining(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/clients/${clientId}/ai/sales-dna`, { method: "POST" });
+      const d = await r.json();
+      if (r.ok) { setDna(d.salesDna ?? ""); setMsg({ tone: "ok", text: `DNA gerado a partir de ${d.conversationsUsed} vendas. Revise abaixo e ligue quando estiver satisfeito.` }); load(); }
+      else setMsg({ tone: "err", text: d.error || "Não foi possível treinar." });
+    } catch { setMsg({ tone: "err", text: "Falha de conexão." }); } finally { setTraining(false); }
+  }
+  async function toggle(enabled: boolean) {
+    setData((p) => p ? { ...p, salesDnaEnabled: enabled } : p);
+    await fetch(`/api/clients/${clientId}/ai/sales-dna`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ salesDnaEnabled: enabled }) }).catch(() => {});
+    load();
+  }
+  async function saveDna() {
+    setSaving(true);
+    await fetch(`/api/clients/${clientId}/ai/sales-dna`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ salesDna: dna }) }).catch(() => {});
+    setSaving(false); setMsg({ tone: "ok", text: "Edições salvas." }); load();
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Loader2 size={20} className="animate-spin" /></div>;
+  const stats = data?.stats ?? { conversations: 0, vendors: [], totalRevenue: 0 };
+  const hasDna = !!(data?.salesDna && data.salesDna.trim());
+  const on = !!data?.salesDnaEnabled;
+  const dirty = dna !== (data?.salesDna ?? "");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 780 }}>
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+        A IA aprende a vender com o <b>melhor vendedor da casa</b>. O sistema estuda as conversas que <b>fecharam ou avançaram</b>, destila o jeito real de conduzir e fechar (abertura, objeções, bordões) e aplica esse método no atendimento. <b>Um chatbot alugado não faz isso.</b>
+      </p>
+
+      {/* Fonte de aprendizado */}
+      <div style={{ ...card, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ width: 40, height: 40, borderRadius: 11, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Brain size={20} /></div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{stats.conversations} conversas de venda para aprender</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
+            {stats.conversations >= 3 ? "Base suficiente para destilar o DNA." : "Precisa de pelo menos 3 conversas fechadas/avançadas para treinar."}
+            {stats.vendors.length > 0 && ` · ${stats.vendors.length} vendedor(es)`}
+          </div>
+        </div>
+        <button onClick={train} disabled={training || stats.conversations < 3} style={{ ...btn(true), opacity: training || stats.conversations < 3 ? 0.6 : 1 }}>
+          {training ? <><Loader2 size={14} className="animate-spin" /> Analisando as vendas…</> : <><Sparkles size={14} /> {hasDna ? "Treinar de novo" : "Treinar IA com as melhores vendas"}</>}
+        </button>
+      </div>
+
+      {msg && <div style={{ ...card, borderColor: msg.tone === "ok" ? "var(--green)" : "var(--red)", color: msg.tone === "ok" ? "var(--green)" : "var(--red)", fontSize: 13, padding: "10px 14px" }}>{msg.text}</div>}
+
+      {hasDna && (
+        <>
+          {/* Liga/desliga a aplicação */}
+          <div style={{ ...card, display: "flex", alignItems: "center", gap: 14, borderColor: on ? "var(--green)" : "var(--border)" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>Aplicar no atendimento</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
+                {on ? "A IA está vendendo com o DNA da casa." : "Destilado, mas ainda NÃO aplicado. Revise o texto abaixo e ligue quando estiver satisfeito."}
+                {data?.salesDnaAt && ` · treinado em ${new Date(data.salesDnaAt).toLocaleDateString("pt-BR")}`}
+              </div>
+            </div>
+            <button onClick={() => toggle(!on)} style={{ ...btn(on), background: on ? "var(--green)" : "var(--bg-surface)", borderColor: on ? "var(--green)" : "var(--border)", color: on ? "#fff" : "var(--text-primary)" }}>
+              <Power size={14} /> {on ? "Ligado" : "Desligado"}
+            </button>
+          </div>
+
+          {/* DNA editável */}
+          <div style={card}>
+            <label style={label}>DNA de venda destilado <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>— revise e ajuste livremente antes de aplicar</span></label>
+            <textarea value={dna} onChange={(e) => setDna(e.target.value)} style={{ ...input, minHeight: 340, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+              {dirty && <button onClick={() => setDna(data?.salesDna ?? "")} style={btn()}><RotateCcw size={14} /> Desfazer</button>}
+              <button onClick={saveDna} disabled={!dirty || saving} style={{ ...btn(true), opacity: !dirty || saving ? 0.6 : 1 }}>{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar edições</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Aprendizado (qual abordagem converte — read-only) ─────────────────────────
 interface VariantPerf { variant: string; total: number; won: number; qualified: number; lost: number; open: number; winRate: number; qualifyRate: number }
 interface LearnData { totalConversations: number; days: number; variants: VariantPerf[]; leader: { variant: string; rate: number } | null; note: string }
@@ -1629,7 +1726,7 @@ function PricingSection({ clientId }: { clientId: string }) {
   );
 }
 
-type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "precos" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
+type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "precos" | "dna" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 // Item de navegação da sidebar da IA — com hover e indicador ativo.
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -1663,6 +1760,7 @@ const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: S
   { key: "config", label: "Configuração", icon: <Bot size={15} />, subs: [
     { key: "config", label: "Configuração" },
     { key: "playbook", label: "Playbook" },
+    { key: "dna", label: "DNA de Vendas" },
     { key: "precos", label: "Preços" },
     { key: "conhecimento", label: "Conhecimento" },
     { key: "catalogo", label: "Estoque" },
@@ -1725,6 +1823,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {sub === "impacto" && <ImpactSection clientId={clientId} />}
         {sub === "config" && <ConfigSection clientId={clientId} />}
         {sub === "playbook" && <PlaybookSection clientId={clientId} />}
+        {sub === "dna" && <SalesDnaSection clientId={clientId} />}
         {sub === "precos" && <PricingSection clientId={clientId} />}
         {sub === "aprendizado" && <LearningSection clientId={clientId} />}
         {sub === "console" && <ConsoleSection clientId={clientId} />}
