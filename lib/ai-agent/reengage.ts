@@ -26,7 +26,7 @@ function nudgeText(produto: string | null, custom: string | null): string {
 
 export async function reengageStalled(): Promise<{ nudged: number }> {
   const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
-    where: { enabled: true, paused: false, status: "live" },
+    where: { enabled: true, paused: false, status: "live", reengageEnabled: true },
     select: { clientId: true, businessHours: true, timezone: true, followUpMessage: true },
   });
   const now = Date.now();
