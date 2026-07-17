@@ -1117,6 +1117,8 @@ model AiAgentConfig {
   salesDna        String?  // "DNA de venda" destilado das conversas que FECHARAM (o jeito do melhor vendedor). Injetado no prompt quando salesDnaEnabled.
   salesDnaEnabled Boolean  @default(false) // aplica o salesDna no atendimento da IA (default off — destila sem aplicar até revisar)
   salesDnaAt      DateTime? // quando o DNA foi destilado pela última vez (staleness/exibição)
+  monthlyLeadLimit Int?     // atendimentos/mês inclusos no plano (ex.: 1600) — alimenta a tela de Consumo do portal
+  excessRatePerLead Float?  // custo por atendimento acima do limite (ex.: 0.50, "só o custo") — transparência no portal
   visionEnabled   Boolean  @default(false) // analisa imagens que o lead envia (multimodal)
   voiceReplies    Boolean  @default(false) // responde com NOTA DE VOZ (TTS ElevenLabs) além/no lugar do texto
   voiceId         String?  // id da voz no ElevenLabs (ex.: voz brasileira da assistente)
