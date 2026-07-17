@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { toolsForConfig, executeTool, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
+import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { retrieveKnowledge } from "./retrieval";
 import { checkGrounding } from "./grounding";
@@ -445,9 +446,13 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const quoteGuidance = await buildQuoteGuidance(input.clientId, cfg?.quotesEnabled ?? false, cfg?.intakeSpec);
 
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
+  // "Clonar o melhor vendedor": DNA de venda destilado do time, injetado quando ligado.
+  const dnaBlock = cfg?.salesDnaEnabled ? salesDnaBlock(cfg.salesDna) : "";
+
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
     { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning) },
+    ...(dnaBlock ? [{ role: "system", content: dnaBlock } as ChatMessage] : []),
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
     ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
     ...priorMessages,
