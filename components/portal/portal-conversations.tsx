@@ -149,12 +149,19 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => { if (alive && !silent) setLoadingConv(false); });
     };
     load(false);
-    // Atualização rápida (3s) + refetch IMEDIATO ao voltar pra aba/janela (feel de WhatsApp Web).
-    const iv = setInterval(() => { if (!document.hidden) load(true); }, 3000);
+    // TEMPO REAL: o servidor EMPURRA (SSE) assim que chega mensagem nova → recarrega na hora.
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/portal/${token}/conversations/${sel}/stream`);
+      es.onmessage = () => { if (alive && !document.hidden) load(true); };
+      // onerror: o EventSource reconecta sozinho; o polling abaixo cobre qualquer buraco.
+    } catch { /* navegador sem SSE → só o polling */ }
+    // Rede de segurança: polling mais lento (8s) + refetch imediato ao voltar pra aba/janela.
+    const iv = setInterval(() => { if (!document.hidden) load(true); }, 8000);
     const onActive = () => { if (!document.hidden) load(true); };
     window.addEventListener("focus", onActive);
     document.addEventListener("visibilitychange", onActive);
-    return () => { alive = false; clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
+    return () => { alive = false; if (es) es.close(); clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
   }, [sel, token]);
 
   // Rola pro fim quando abre a conversa ou chega mensagem nova — mas só se já estava embaixo.
