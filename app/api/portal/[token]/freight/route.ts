@@ -13,7 +13,9 @@ export const dynamic = "force-dynamic";
 const freightSchema = z.object({
   region: z.string().min(1).max(120),
   amount: z.number(),
-  aliases: z.array(z.string().max(120)).max(20).optional(),
+  city: z.string().max(120).optional(),
+  zone: z.string().max(60).optional(),
+  aliases: z.array(z.string().max(120)).max(200).optional(), // bairros/apelidos p/ auto-detecção
   code: z.string().max(12).nullable().optional(),
   assembly: z.enum(["optional", "required"]).optional(),
 });

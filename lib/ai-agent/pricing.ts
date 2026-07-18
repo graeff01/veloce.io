@@ -14,11 +14,15 @@
 
 export interface PriceItemDef { key: string; label: string; amount: number; code?: string | null }
 export interface FeeDef { key: string; label: string; amount?: number; percent?: number; code?: string | null }
-// Frete FIXO por região: a IA coleta o endereço, o motor escolhe a linha (determinístico).
-// aliases cobre variações do nome da cidade/bairro ("Caxias", "Bento Gonçalves", CEP...).
-// code = município IBGE (pinta o mapa no painel). assembly = "required" quando a
-// entrega nessa região SÓ sai com montagem (reflete no rótulo do frete).
-export interface FreightRegion { region: string; amount: number; aliases?: string[]; code?: string | null; assembly?: "optional" | "required" }
+// Frete FIXO por região/zona: a IA coleta o endereço, o motor escolhe a linha
+// (determinístico). Resolução CIDADE-primeiro, depois ZONA (por bairro/apelido):
+//  - city  = município canônico ("Porto Alegre"); agrupa as zonas da mesma cidade.
+//  - zone  = rótulo da zona ("Zona Sul", "Extremo Sul", "Rural", "Central"); vazio = cidade toda.
+//  - aliases = BAIRROS/apelidos que identificam a zona no endereço (auto-detecção),
+//              ex.: ["zona sul","restinga","ipanema"]. É o que deixa a cotação sólida.
+//  - code  = município IBGE (agrupa zonas e pinta o mapa). assembly = "required" quando
+//            a entrega SÓ sai com montagem (reflete no rótulo).
+export interface FreightRegion { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; code?: string | null; assembly?: "optional" | "required" }
 export interface PricingRules {
   base?: PriceItemDef[];
   options?: PriceItemDef[];
@@ -91,27 +95,64 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
 // Normaliza texto (minúsculo, sem acento) para casar região no endereço coletado.
 const normText = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-export type FreightResult = { label: string; amount: number; code?: string | null } | { unmatched: true } | null;
+export type FreightZoneOption = { region: string; zone?: string; amount: number; assembly?: "optional" | "required" };
+export type FreightResult =
+  | { label: string; amount: number; code?: string | null }
+  | { askZone: true; city: string; options: FreightZoneOption[] } // cidade tem várias zonas e nenhuma foi identificada
+  | { unmatched: true }
+  | null;
 
-// Resolve o frete a partir do endereço/cidade do lead. Determinístico: casa a 1ª região
-// cujo nome (ou alias) aparece no endereço. null = frete NÃO configurado (sem linha);
-// unmatched = configurado mas nenhuma região bateu (e sem freightDefault) → o chamador
-// deve pedir a região ou encaminhar (nunca orçar frete errado).
+// Sufixos de zona no fim do nome ("Porto Alegre ZS" → cidade "Porto Alegre").
+const ZONE_SUFFIX_RE = /\s+(?:zona\s+(?:sul|norte|leste|oeste|rural|central)|extremo\s+sul|z[snelro]|central|rural)$/i;
+function baseCityName(f: FreightRegion): string {
+  if (f.city) return f.city;
+  return f.region.replace(ZONE_SUFFIX_RE, "").trim() || f.region;
+}
+// Chave do MUNICÍPIO: código IBGE quando houver (sólido), senão o nome-base normalizado.
+function cityKeyOf(f: FreightRegion): string { return f.code || normText(baseCityName(f)); }
+
+function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null } {
+  const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
+  return { label, amount: round2(f.amount), code: f.code ?? null };
+}
+
+// Resolve o frete a partir do endereço/cidade do lead. Determinístico e CIDADE-primeiro:
+//  1) se um BAIRRO/apelido (alias) aparece no endereço → zona identificada direto;
+//  2) senão, identifica a CIDADE pelo nome-base: 1 zona → usa; VÁRIAS → askZone (a IA
+//     pergunta qual zona), nunca chuta.
+// null = frete não configurado; unmatched = nada bateu (e sem freightDefault) → pedir/encaminhar.
 export function resolveFreight(rules: PricingRules, address: string): FreightResult {
   const list = rules.freight ?? [];
   if (!list.length) return null;
   const a = normText(address);
-  if (a) {
-    for (const f of list) {
-      const names = [f.region, ...(f.aliases ?? [])].map(normText).filter(Boolean);
-      if (names.some((n) => a.includes(n))) {
-        const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
-        return { label, amount: round2(f.amount), code: f.code ?? null };
-      }
+  if (!a) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
+
+  // 1) Bairro/apelido bate → zona identificada (sinal mais forte). Desempata pelo alias
+  //    mais específico (mais longo) que casou, p/ não confundir zonas vizinhas.
+  let bestAlias = "", bestHit: FreightRegion | null = null;
+  for (const f of list) {
+    for (const al of f.aliases ?? []) {
+      const n = normText(al);
+      if (n && n.length > bestAlias.length && a.includes(n)) { bestAlias = n; bestHit = f; }
     }
   }
-  if (rules.freightDefault != null) return { label: "Frete", amount: round2(rules.freightDefault) };
-  return { unmatched: true };
+  if (bestHit) return resolvedLine(bestHit);
+
+  // 2) Sem bairro reconhecido: casa a CIDADE pelo nome-base (o match mais específico ganha).
+  const cityHits = list.filter((f) => { const n = normText(baseCityName(f)); return n && a.includes(n); });
+  if (!cityHits.length) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
+  const target = cityHits.reduce((best, f) => (normText(baseCityName(f)).length > normText(baseCityName(best)).length ? f : best));
+  const key = cityKeyOf(target);
+  const zones = list.filter((f) => cityKeyOf(f) === key);
+  if (zones.length === 1) return resolvedLine(zones[0]);
+
+  // Rótulo da zona digitado ("zona sul", "extremo sul"), ESCOPADO à cidade identificada
+  // (evita "central" de uma cidade colidir com o de outra).
+  const zoneHit = zones.filter((z) => z.zone && a.includes(normText(z.zone)));
+  if (zoneHit.length === 1) return resolvedLine(zoneHit[0]);
+
+  // Várias zonas na cidade e nenhuma identificada → perguntar (não cobrar zona errada).
+  return { askZone: true, city: baseCityName(target), options: zones.map((z) => ({ region: z.region, zone: z.zone, amount: round2(z.amount), assembly: z.assembly })) };
 }
 
 // Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.
