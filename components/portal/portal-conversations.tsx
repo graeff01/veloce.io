@@ -119,8 +119,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       if (d && !Array.isArray(d)) { setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []); }
     }).catch(() => {});
     load();
-    const iv = setInterval(() => { if (!document.hidden) load(); }, 12000);
-    return () => { alive = false; clearInterval(iv); };
+    const iv = setInterval(() => { if (!document.hidden) load(); }, 6000);
+    const onActive = () => { if (!document.hidden) load(); };
+    window.addEventListener("focus", onActive);
+    document.addEventListener("visibilitychange", onActive);
+    return () => { alive = false; clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
   }, [token]);
 
   // Conversa aberta — carrega (com spinner) e AUTO-ATUALIZA em silêncio (novas mensagens).
@@ -146,8 +149,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => { if (alive && !silent) setLoadingConv(false); });
     };
     load(false);
-    const iv = setInterval(() => { if (!document.hidden) load(true); }, 7000);
-    return () => { alive = false; clearInterval(iv); };
+    // Atualização rápida (3s) + refetch IMEDIATO ao voltar pra aba/janela (feel de WhatsApp Web).
+    const iv = setInterval(() => { if (!document.hidden) load(true); }, 3000);
+    const onActive = () => { if (!document.hidden) load(true); };
+    window.addEventListener("focus", onActive);
+    document.addEventListener("visibilitychange", onActive);
+    return () => { alive = false; clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
   }, [sel, token]);
 
   // Rola pro fim quando abre a conversa ou chega mensagem nova — mas só se já estava embaixo.
