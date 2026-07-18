@@ -16,6 +16,20 @@ export function slugify(text: string): string {
     .replace(/-+/g, "-");
 }
 
+/**
+ * Normaliza um nome para casamento robusto (frete por região ↔ município IBGE):
+ * minúsculo, sem acento, sem pontuação, espaços colapsados. "Gravataí " → "gravatai".
+ */
+export function normalizeName(text: string): string {
+  return (text || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 export function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return d.toLocaleDateString("pt-BR", {

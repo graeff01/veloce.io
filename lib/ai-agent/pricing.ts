@@ -16,7 +16,9 @@ export interface PriceItemDef { key: string; label: string; amount: number; code
 export interface FeeDef { key: string; label: string; amount?: number; percent?: number; code?: string | null }
 // Frete FIXO por região: a IA coleta o endereço, o motor escolhe a linha (determinístico).
 // aliases cobre variações do nome da cidade/bairro ("Caxias", "Bento Gonçalves", CEP...).
-export interface FreightRegion { region: string; amount: number; aliases?: string[]; code?: string | null }
+// code = município IBGE (pinta o mapa no painel). assembly = "required" quando a
+// entrega nessa região SÓ sai com montagem (reflete no rótulo do frete).
+export interface FreightRegion { region: string; amount: number; aliases?: string[]; code?: string | null; assembly?: "optional" | "required" }
 export interface PricingRules {
   base?: PriceItemDef[];
   options?: PriceItemDef[];
@@ -102,7 +104,10 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
   if (a) {
     for (const f of list) {
       const names = [f.region, ...(f.aliases ?? [])].map(normText).filter(Boolean);
-      if (names.some((n) => a.includes(n))) return { label: `Frete — ${f.region}`, amount: round2(f.amount), code: f.code ?? null };
+      if (names.some((n) => a.includes(n))) {
+        const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
+        return { label, amount: round2(f.amount), code: f.code ?? null };
+      }
     }
   }
   if (rules.freightDefault != null) return { label: "Frete", amount: round2(rules.freightDefault) };
