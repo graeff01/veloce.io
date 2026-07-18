@@ -396,10 +396,16 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       let q = r.quote;
 
       // Frete determinístico pela REGIÃO do endereço coletado (blob da ficha).
+      // Resolução cidade→zona: bairro conhecido resolve direto; cidade com várias zonas
+      // e nenhuma identificada → a IA pergunta a zona (nunca chuta).
       if (rules.freight?.length) {
         const addressBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
         const fr = resolveFreight(rules, addressBlob);
         if (fr && "unmatched" in fr) return { result: "Não identifiquei a REGIÃO de entrega para calcular o frete. Confirme a cidade/endereço do lead (use atualizar_ficha) ou, se for fora da área de atendimento, encaminhe a um vendedor." };
+        if (fr && "askZone" in fr) {
+          const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
+          return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Pergunte ao lead de qual ZONA ou BAIRRO ele é, registre na ficha (atualizar_ficha) e gere o orçamento de novo — NÃO escolha a zona por conta própria.` };
+        }
         if (fr) q = appendFeeLine(q, fr);
       }
 
