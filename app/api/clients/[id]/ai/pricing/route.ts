@@ -8,7 +8,7 @@ import { z } from "zod";
 const itemSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number() });
 const feeSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number().optional(), percent: z.number().optional() });
 // Frete fixo por região (resolvido pelo endereço coletado). aliases = variações do nome.
-const freightSchema = z.object({ region: z.string().min(1).max(120), amount: z.number(), aliases: z.array(z.string().max(120)).max(20).optional() });
+const freightSchema = z.object({ region: z.string().min(1).max(120), amount: z.number(), aliases: z.array(z.string().max(120)).max(20).optional(), code: z.string().max(12).nullable().optional(), assembly: z.enum(["optional", "required"]).optional() });
 const rulesSchema = z.object({
   base: z.array(itemSchema).optional(),
   options: z.array(itemSchema).optional(),
