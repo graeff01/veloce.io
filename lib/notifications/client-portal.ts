@@ -5,7 +5,7 @@ import { getPortalUser } from "@/lib/portal-auth";
 const APP_URL = (process.env.NEXTAUTH_URL || "https://veloceio-production.up.railway.app").replace(/\/$/, "");
 
 // Seções do portal que dá pra ligar/desligar por cliente (conversas é obrigatória).
-export const PORTAL_SECTIONS = ["painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo", "equipe", "anuncios", "ia", "funil", "objecoes"] as const;
+export const PORTAL_SECTIONS = ["painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo", "frete", "equipe", "anuncios", "ia", "funil", "objecoes"] as const;
 export type PortalSection = (typeof PORTAL_SECTIONS)[number];
 // null (não configurado) = todas ligadas. Conversas sempre entra.
 export function parseSections(csv: string | null | undefined): PortalSection[] {
