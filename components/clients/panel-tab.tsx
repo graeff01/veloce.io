@@ -5,9 +5,16 @@ import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRo
 import { Button } from "@/components/ui/button";
 
 interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: string[]; logoUrl: string | null }
+// Todas as seções gateáveis do portal (client-level e por atendente). Ordem = a do menu.
 const SECTIONS: { key: string; label: string; hint: string }[] = [
   { key: "conversas", label: "Conversas", hint: "responder os leads (obrigatória)" },
   { key: "painel", label: "Painel", hint: "métricas e ROI do cliente" },
+  { key: "revisao", label: "Revisão", hint: "aprovar orçamentos antes de enviar" },
+  { key: "fechamento", label: "Fechamento", hint: "fila de leads quentes p/ fechar" },
+  { key: "aprendizado", label: "Aprendizado", hint: "corrigir a IA a partir das revisões" },
+  { key: "consumo", label: "Consumo", hint: "atendimentos do mês vs. plano" },
+  { key: "frete", label: "Frete", hint: "tabela/mapa de frete por região" },
+  { key: "objecoes", label: "Objeções", hint: "objeções mais comuns dos leads" },
   { key: "equipe", label: "Equipe", hint: "métricas por atendente" },
   { key: "anuncios", label: "Anúncios", hint: "desempenho dos anúncios" },
   { key: "ia", label: "IA", hint: "configuração/insights da IA" },
@@ -189,7 +196,6 @@ export function PanelTab({ clientId }: { clientId: string }) {
               const grantable = SECTIONS.filter((s) => s.key !== "conversas" && portal.sections.includes(s.key));
               // null = herda tudo (usuário antigo): todas as abas do cliente marcadas.
               const granted = new Set(u.sections ?? grantable.map((s) => s.key));
-              const isAttendant = u.role !== "admin";
               const open = openAbas === u.email;
               const grantedCount = grantable.filter((s) => granted.has(s.key)).length;
               return (
@@ -199,12 +205,10 @@ export function PanelTab({ clientId }: { clientId: string }) {
                       <div style={{ fontSize: 12.5, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name ? `${u.name} · ` : ""}{u.email}</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{u.hasPassword ? `último acesso ${fmtDate(u.lastLoginAt)}` : "convidado (ainda sem senha)"}</div>
                     </div>
-                    {isAttendant && (
-                      <button onClick={() => setOpenAbas(open ? null : u.email)} title="Abas que este atendente pode ver"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`, background: open ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: open ? "var(--accent)" : "var(--text-muted)" }}>
-                        <LayoutList size={11} /> Abas {grantable.length ? `${grantedCount}/${grantable.length}` : ""}
-                      </button>
-                    )}
+                    <button onClick={() => setOpenAbas(open ? null : u.email)} title="Abas que este usuário pode ver"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`, background: open ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: open ? "var(--accent)" : "var(--text-muted)" }}>
+                      <LayoutList size={11} /> Abas {grantable.length ? `${grantedCount}/${grantable.length}` : ""}
+                    </button>
                     <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
                       style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
                       {u.role === "admin" ? "Admin" : "Atendente"}
@@ -212,9 +216,9 @@ export function PanelTab({ clientId }: { clientId: string }) {
                     {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
                     <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
                   </div>
-                  {isAttendant && open && (
+                  {open && (
                     <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "color-mix(in srgb, var(--accent) 3%, transparent)" }}>
-                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada. (Admin vê tudo.)</p>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada.{u.role === "admin" ? " Admin, por padrão, vê tudo — desmarque para restringir." : ""}</p>
                       {grantable.length === 0
                         ? <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Este cliente só tem Conversas ligada — ligue mais abas acima para poder liberá-las por atendente.</p>
                         : (

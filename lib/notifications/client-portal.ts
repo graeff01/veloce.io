@@ -40,15 +40,16 @@ export async function sectionEnabled(clientId: string, key: PortalSection): Prom
 }
 
 // Abas que ESTE usuário enxerga = seções do cliente ∩ permissões do usuário.
-// - sem e-mail (não logado) ou admin → todas as seções do cliente (admin vê tudo).
-// - atendente com sections null → herda tudo do cliente (usuários antigos).
-// - atendente com sections definido (inclusive "") → só as marcadas + Conversas.
+// - sem e-mail (não logado) → todas as seções do cliente.
+// - qualquer usuário (inclusive ADMIN) com sections null → herda tudo do cliente (padrão).
+// - usuário com sections definido (inclusive "") → só as marcadas + Conversas.
+// Admin nasce com null (vê tudo por padrão), mas pode ser restringido no painel se quiser.
 export async function effectiveSections(clientId: string, email: string | null): Promise<PortalSection[]> {
   const cp = await prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } });
   const clientSections = parseSections(cp?.sections);
   if (!email) return clientSections;
   const user = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email } }, select: { role: true, sections: true } });
-  if (!user || user.role === "admin" || user.sections == null) return clientSections;
+  if (!user || user.sections == null) return clientSections;
   const granted = new Set(user.sections.split(",").map((s) => s.trim()).filter(Boolean));
   granted.add("conversas"); // obrigatória
   return clientSections.filter((s) => granted.has(s));
