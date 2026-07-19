@@ -1,8 +1,8 @@
 "use client";
 
 // Seção "Frete" do portal do cliente. Ferramenta de cadastro de frete por REGIÃO/ZONA.
-// - Mapa 3D (MapLibre, sem tiles externos) = visão geral: cada município extrudado pela
-//   faixa de preço; clique seleciona a cidade.
+// - Mapa PLANO (MapLibre, sem tiles externos) = visão geral: cada município com frete é
+//   preenchido pela faixa de preço + textura pontilhada; clique seleciona a cidade.
 // - Editor por CIDADE → ZONAS → BAIRROS: cada cidade pode ter várias zonas (Central, Zona
 //   Sul, Extremo Sul, Rural...), cada uma com valor, montagem e os BAIRROS que a
 //   identificam (auto-detecção da IA). Grava o rules.freight — a mesma tabela que a IA usa
@@ -29,7 +29,18 @@ const BANDS = [
 ];
 const NO_FREIGHT = "#c7ccd4";
 const bandColor = (a: number) => BANDS.find((b) => a <= b.max)?.color ?? "#9ca3af";
-const HEIGHT_SCALE = 22;
+
+// Textura pontilhada (tile) que marca as áreas com frete no mapa plano. Pontos claros
+// no tema escuro, escuros no claro. Rodado no browser (init do mapa).
+function makeDotPattern(dark: boolean): ImageData {
+  const s = 10;
+  const c = document.createElement("canvas"); c.width = c.height = s;
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, s, s);
+  ctx.fillStyle = dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.32)";
+  ctx.beginPath(); ctx.arc(s / 2, s / 2, 1.2, 0, Math.PI * 2); ctx.fill();
+  return ctx.getImageData(0, 0, s, s);
+}
 const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`;
 const normalizeName = (t: string) => (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().replace(/\s+/g, " ");
 
@@ -118,7 +129,7 @@ export function PortalFrete({ token }: { token: string }) {
       return { type: "Feature", geometry: f.geometry, properties: {
         code: f.properties.code, name: f.properties.name,
         color: has ? bandColor(amount) : NO_FREIGHT,
-        height: has ? Math.max(amount * HEIGHT_SCALE, 300) : 0,
+        has: has ? 1 : 0,
         required: required ? 1 : 0,
       } };
     });
@@ -141,17 +152,22 @@ export function PortalFrete({ token }: { token: string }) {
       const map = new maplibregl.Map({
         container: mapDiv.current,
         style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": dark ? "#0e1621" : "#eaeef4" } }] },
-        center: [-53.1, -29.7], zoom: 5.6, pitch: 48, bearing: -12, minZoom: 4.2, maxZoom: 13, maxPitch: 75, attributionControl: false,
+        center: [-53.1, -29.7], zoom: 5.7, pitch: 0, bearing: 0, minZoom: 4.2, maxZoom: 13, maxPitch: 0, attributionControl: false,
       });
       mapRef.current = map;
-      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
       popRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "frete-pop" });
       map.on("load", () => {
+        // Textura pontilhada (marca as áreas com frete). Pontos claros no dark, escuros no claro.
+        const dot = makeDotPattern(dark);
+        if (!map.hasImage("dots")) map.addImage("dots", dot, { pixelRatio: 2 });
         map.addSource("munis", { type: "geojson", data: styledGeo });
-        map.addLayer({ id: "munis-3d", type: "fill-extrusion", source: "munis", paint: { "fill-extrusion-color": ["get", "color"], "fill-extrusion-height": ["get", "height"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.92, "fill-extrusion-vertical-gradient": true } });
-        map.addLayer({ id: "munis-req", type: "line", source: "munis", filter: ["==", ["get", "required"], 1], paint: { "line-color": "#111", "line-width": 1.4, "line-dasharray": [1.5, 1.2], "line-opacity": 0.7 } });
-        map.addLayer({ id: "munis-line", type: "line", source: "munis", paint: { "line-color": dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.16)", "line-width": 0.4 } });
-        map.addLayer({ id: "munis-sel", type: "line", source: "munis", filter: ["==", ["get", "code"], ""], paint: { "line-color": dark ? "#fff" : "#111", "line-width": 2.2 } });
+        // Mapa PLANO (sem relevo): preenchimento pela faixa + pontilhado por cima.
+        map.addLayer({ id: "munis-fill", type: "fill", source: "munis", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.9 } });
+        map.addLayer({ id: "munis-dots", type: "fill", source: "munis", filter: ["==", ["get", "has"], 1], paint: { "fill-pattern": "dots" } });
+        map.addLayer({ id: "munis-req", type: "line", source: "munis", filter: ["==", ["get", "required"], 1], paint: { "line-color": dark ? "#fff" : "#111", "line-width": 1.4, "line-dasharray": [1.5, 1.2], "line-opacity": 0.6 } });
+        map.addLayer({ id: "munis-line", type: "line", source: "munis", paint: { "line-color": dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.18)", "line-width": 0.5 } });
+        map.addLayer({ id: "munis-sel", type: "line", source: "munis", filter: ["==", ["get", "code"], ""], paint: { "line-color": dark ? "#fff" : "#111", "line-width": 2.4 } });
         setReady(true);
       });
       const describe = (code: string) => {
@@ -161,9 +177,9 @@ export function PortalFrete({ token }: { token: string }) {
         const lines = idxs.map((i) => { const f = freightRef.current[i]; const z = f.zone || deriveZone(f.region, nm) || "cidade"; return `${z}: <b>${brl(f.amount)}</b>${f.assembly === "required" ? " ⚙" : ""}`; }).join("<br/>");
         return `<strong>${nm}</strong><br/>${lines}`;
       };
-      map.on("mousemove", "munis-3d", (e) => { map.getCanvas().style.cursor = "pointer"; const f = e.features?.[0]; if (f) popRef.current!.setLngLat(e.lngLat).setHTML(describe(String(f.properties!.code))).addTo(map); });
-      map.on("mouseleave", "munis-3d", () => { map.getCanvas().style.cursor = ""; popRef.current!.remove(); });
-      map.on("click", "munis-3d", (e) => { const f = e.features?.[0]; if (f) setSelCode(String(f.properties!.code)); });
+      map.on("mousemove", "munis-fill", (e) => { map.getCanvas().style.cursor = "pointer"; const f = e.features?.[0]; if (f) popRef.current!.setLngLat(e.lngLat).setHTML(describe(String(f.properties!.code))).addTo(map); });
+      map.on("mouseleave", "munis-fill", () => { map.getCanvas().style.cursor = ""; popRef.current!.remove(); });
+      map.on("click", "munis-fill", (e) => { const f = e.features?.[0]; if (f) setSelCode(String(f.properties!.code)); });
     })();
     return () => { disposed = true; mapRef.current?.remove(); mapRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,7 +192,7 @@ export function PortalFrete({ token }: { token: string }) {
   useEffect(() => {
     const map = mapRef.current; if (!map || !ready || !selCode) return;
     const idxs = byCode.get(selCode) ?? []; const c = meta?.centroidByCode.get(selCode);
-    if (idxs.length > 1 && c) map.easeTo({ center: c, zoom: 10.2, pitch: 55, duration: 900 });
+    if (idxs.length > 1 && c) map.easeTo({ center: c, zoom: 10.2, duration: 900 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selCode, ready]);
 
@@ -232,8 +248,8 @@ export function PortalFrete({ token }: { token: string }) {
   const removeAt = (i: number) => mutate(freight.filter((_, j) => j !== i));
   const addZone = () => { if (selCode && cityName) mutate([...freight, { region: cityName, city: cityName, code: selCode, zone: selIdxs.length ? "" : "Central", amount: 0, assembly: "optional", aliases: [] }]); };
 
-  function flyTo(code: string) { const c = meta?.centroidByCode.get(code); if (c) mapRef.current?.easeTo({ center: c, zoom: 9.2, pitch: 55, duration: 900 }); }
-  function resetView() { mapRef.current?.easeTo({ center: [-53.1, -29.7], zoom: 5.6, pitch: 48, bearing: -12, duration: 800 }); }
+  function flyTo(code: string) { const c = meta?.centroidByCode.get(code); if (c) mapRef.current?.easeTo({ center: c, zoom: 9.2, duration: 900 }); }
+  function resetView() { mapRef.current?.easeTo({ center: [-53.1, -29.7], zoom: 5.7, duration: 800 }); }
   function doSearch(text: string) {
     setQ(text);
     if (!text.trim() || !meta) return;
