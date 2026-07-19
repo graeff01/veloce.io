@@ -22,7 +22,10 @@ export interface FeeDef { key: string; label: string; amount?: number; percent?:
 //              ex.: ["zona sul","restinga","ipanema"]. É o que deixa a cotação sólida.
 //  - code  = município IBGE (agrupa zonas e pinta o mapa). assembly = "required" quando
 //            a entrega SÓ sai com montagem (reflete no rótulo).
-export interface FreightRegion { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; code?: string | null; assembly?: "optional" | "required" }
+// neighborhoods = BAIRROS que pertencem à zona (com coordenada p/ o pin no mapa). É o
+// que a IA usa pra identificar a zona pelo endereço (só cadastrado onde há variação).
+export interface FreightNeighborhood { name: string; lat?: number; lng?: number }
+export interface FreightRegion { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; neighborhoods?: FreightNeighborhood[]; code?: string | null; assembly?: "optional" | "required" }
 export interface PricingRules {
   base?: PriceItemDef[];
   options?: PriceItemDef[];
@@ -127,13 +130,14 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
   const a = normText(address);
   if (!a) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
 
-  // 1) Bairro/apelido bate → zona identificada (sinal mais forte). Desempata pelo alias
+  // 1) BAIRRO/apelido bate → zona identificada (sinal mais forte). Desempata pelo termo
   //    mais específico (mais longo) que casou, p/ não confundir zonas vizinhas.
-  let bestAlias = "", bestHit: FreightRegion | null = null;
+  let bestKw = "", bestHit: FreightRegion | null = null;
   for (const f of list) {
-    for (const al of f.aliases ?? []) {
-      const n = normText(al);
-      if (n && n.length > bestAlias.length && a.includes(n)) { bestAlias = n; bestHit = f; }
+    const kws = [...(f.aliases ?? []), ...((f.neighborhoods ?? []).map((n) => n.name))];
+    for (const kw of kws) {
+      const n = normText(kw);
+      if (n && n.length > bestKw.length && a.includes(n)) { bestKw = n; bestHit = f; }
     }
   }
   if (bestHit) return resolvedLine(bestHit);

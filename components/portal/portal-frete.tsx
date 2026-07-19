@@ -10,9 +10,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Truck, Save, Plus, Trash2, MapPin, Search, RotateCcw, X } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Map as MlMap, GeoJSONSource, Popup as MlPopup } from "maplibre-gl";
+import type { Map as MlMap, GeoJSONSource, Popup as MlPopup, Marker as MlMarker } from "maplibre-gl";
+type Maplibre = typeof import("maplibre-gl");
 
-type Freight = { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; code?: string | null; assembly?: "optional" | "required" };
+type Neighborhood = { name: string; lat?: number; lng?: number };
+type Freight = { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; neighborhoods?: Neighborhood[]; code?: string | null; assembly?: "optional" | "required" };
+// Cores distintas por zona (pin + legenda) — só pra diferenciar zonas da MESMA cidade.
+const ZONE_PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#db2777"];
 type GeoFeature = { properties: { code: string; name: string; slug: string; centroid: [number, number] }; geometry: { type: string; coordinates: unknown } };
 type Geo = { type: "FeatureCollection"; features: GeoFeature[] };
 
@@ -59,7 +63,18 @@ export function PortalFrete({ token }: { token: string }) {
   const mapDiv = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const popRef = useRef<MlPopup | null>(null);
+  const mlRef = useRef<Maplibre | null>(null);
+  const markersRef = useRef<MlMarker[]>([]);
   const freightRef = useRef<Freight[]>([]);
+
+  // Geocodifica um bairro (server-side, Nominatim) → {lat,lng} | null.
+  const geocode = async (name: string, city: string): Promise<{ lat: number; lng: number } | null> => {
+    try {
+      const r = await fetch(`/api/portal/${token}/geocode?q=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`, { cache: "no-store" });
+      const d = await r.json();
+      return d?.found ? { lat: d.lat, lng: d.lng } : null;
+    } catch { return null; }
+  };
 
   useEffect(() => {
     fetch(`/api/portal/${token}/freight`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -118,6 +133,7 @@ export function PortalFrete({ token }: { token: string }) {
     let disposed = false;
     (async () => {
       const maplibregl = (await import("maplibre-gl")).default;
+      mlRef.current = maplibregl as unknown as Maplibre;
       if (disposed || !mapDiv.current) return;
       const dark = document.documentElement.getAttribute("data-pt") === "dark";
       const map = new maplibregl.Map({
@@ -154,6 +170,40 @@ export function PortalFrete({ token }: { token: string }) {
   useEffect(() => { const map = mapRef.current; if (map && ready && styledGeo) (map.getSource("munis") as GeoJSONSource | undefined)?.setData(styledGeo); }, [styledGeo, ready]);
   useEffect(() => { const map = mapRef.current; if (map && ready && map.getLayer("munis-sel")) map.setFilter("munis-sel", ["==", ["get", "code"], selCode ?? ""]); }, [selCode, ready]);
 
+  // Ao selecionar cidade com VÁRIAS zonas, aproxima pra ver os pins dos bairros.
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready || !selCode) return;
+    const idxs = byCode.get(selCode) ?? []; const c = meta?.centroidByCode.get(selCode);
+    if (idxs.length > 1 && c) map.easeTo({ center: c, zoom: 10.2, pitch: 55, duration: 900 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selCode, ready]);
+
+  // Pins arrastáveis dos bairros da cidade selecionada (só multi-zona), coloridos por zona.
+  const updateNb = (fi: number, ni: number, patch: Partial<Neighborhood>) =>
+    setFreight((prev) => { if (!prev) return prev; const next = [...prev]; const nbs = [...(next[fi].neighborhoods ?? [])]; nbs[ni] = { ...nbs[ni], ...patch }; next[fi] = { ...next[fi], neighborhoods: nbs }; return next; });
+  useEffect(() => {
+    const map = mapRef.current, ml = mlRef.current; if (!map || !ml || !ready) return;
+    markersRef.current.forEach((m) => m.remove()); markersRef.current = [];
+    if (!selCode || !freight) return;
+    const idxs = byCode.get(selCode) ?? []; if (idxs.length < 2) return;
+    const c = meta?.centroidByCode.get(selCode);
+    idxs.forEach((fi, zi) => {
+      const color = ZONE_PALETTE[zi % ZONE_PALETTE.length];
+      (freight[fi].neighborhoods ?? []).forEach((nb, ni) => {
+        const lng = nb.lng ?? c?.[0], lat = nb.lat ?? c?.[1];
+        if (lng == null || lat == null) return;
+        const located = nb.lat != null && nb.lng != null;
+        const el = document.createElement("div");
+        el.style.cssText = `width:15px;height:15px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);cursor:grab;${located ? "" : "opacity:.55;"}`;
+        el.title = `${nb.name}${located ? "" : " (sem localização — arraste)"}`;
+        const marker = new ml.Marker({ element: el, draggable: true }).setLngLat([lng, lat]).addTo(map);
+        marker.on("dragend", () => { const p = marker.getLngLat(); updateNb(fi, ni, { lat: p.lat, lng: p.lng }); setDirty(true); });
+        markersRef.current.push(marker);
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selCode, freight, ready, byCode]);
+
   if (!freight) return <div style={{ padding: 40, textAlign: "center", color: "var(--p-muted)" }}>Carregando frete…</div>;
 
   const mutate = (next: Freight[]) => { setFreight(next); setDirty(true); };
@@ -167,7 +217,7 @@ export function PortalFrete({ token }: { token: string }) {
         const city = f.city || (code ? meta.nameByCode.get(code) : undefined) || f.region;
         const zone = (f.zone || "").trim();
         const region = zone ? `${city} — ${zone}` : city;
-        return { ...f, code, city, zone: zone || undefined, region, aliases: (f.aliases || []).map((s) => s.trim()).filter(Boolean) };
+        return { ...f, code, city, zone: zone || undefined, region, aliases: (f.aliases || []).map((s) => s.trim()).filter(Boolean), neighborhoods: (f.neighborhoods || []).filter((n) => n.name?.trim()) };
       });
       const res = await fetch(`/api/portal/${token}/freight`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ freight: enriched }) });
       if (res.ok) { setFreight(enriched); setDirty(false); }
@@ -237,21 +287,24 @@ export function PortalFrete({ token }: { token: string }) {
                 <div style={{ fontWeight: 700, fontSize: 16, color: "var(--p-text)" }}>{cityName}</div>
                 <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 10 }}>cód. IBGE {selCode} · {selIdxs.length} {selIdxs.length === 1 ? "zona" : "zonas"} · <button onClick={() => flyTo(selCode)} style={{ border: "none", background: "transparent", color: "var(--p-accent)", cursor: "pointer", padding: 0, fontSize: 11 }}>ver no mapa</button></div>
                 {selIdxs.length === 0 && <div style={{ fontSize: 13, color: "var(--p-muted)", marginBottom: 10 }}>Sem frete cadastrado aqui ainda.</div>}
-                {selIdxs.map((i) => {
+                {selIdxs.length > 1 && <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 4 }}>Cada zona tem sua cor no mapa. Cadastre os bairros de cada uma para a IA reconhecer a zona do cliente.</div>}
+                {selIdxs.map((i, zi) => {
                   const f = freight[i];
+                  const multi = selIdxs.length > 1;
+                  const swatch = multi ? ZONE_PALETTE[zi % ZONE_PALETTE.length] : bandColor(f.amount);
                   return (
                     <div key={i} style={{ borderTop: "1px dashed var(--p-border)", padding: "10px 0" }}>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ width: 12, height: 12, borderRadius: 3, background: bandColor(f.amount), flexShrink: 0 }} />
+                        <span style={{ width: 12, height: 12, borderRadius: multi ? "50% 50% 50% 0" : 3, transform: multi ? "rotate(-45deg)" : "none", background: swatch, flexShrink: 0 }} />
                         <input value={f.zone ?? deriveZone(f.region, cityName!)} onChange={(e) => editAt(i, { zone: e.target.value })} placeholder="zona (ex: Central, Zona Sul)" style={{ ...inp, flex: "1 1 100px", minWidth: 0 }} />
                         <span style={{ fontSize: 12, color: "var(--p-muted)" }}>R$</span>
                         <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 70 }} />
                         <button onClick={() => removeAt(i)} title="Remover zona" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex" }}><Trash2 size={14} /></button>
                       </div>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--p-muted)", marginBottom: 6 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--p-muted)", marginBottom: multi ? 8 : 0 }}>
                         <input type="checkbox" checked={f.assembly === "required"} onChange={(e) => editAt(i, { assembly: e.target.checked ? "required" : "optional" })} /> montagem obrigatória
                       </label>
-                      <Bairros value={f.aliases ?? []} onChange={(v) => editAt(i, { aliases: v })} inp={inp} />
+                      {multi && <Neighborhoods value={f.neighborhoods ?? []} onChange={(v) => editAt(i, { neighborhoods: v })} inp={inp} color={swatch} geocode={(n) => geocode(n, cityName!)} onFly={(nb) => { if (nb.lng != null && nb.lat != null) mapRef.current?.easeTo({ center: [nb.lng, nb.lat], zoom: 12.5, duration: 700 }); }} />}
                     </div>
                   );
                 })}
@@ -287,23 +340,47 @@ export function PortalFrete({ token }: { token: string }) {
   );
 }
 
-// Editor de bairros (chips) — os bairros que identificam a zona p/ a auto-detecção da IA.
-function Bairros({ value, onChange, inp }: { value: string[]; onChange: (v: string[]) => void; inp: React.CSSProperties }) {
+// Editor de BAIRROS de uma zona — geocodifica ao adicionar (pin no mapa) e a IA
+// reconhece a zona do cliente por eles. Bairro sem localização vira pin translúcido
+// no centro da cidade, pra você arrastar até o lugar.
+function Neighborhoods({ value, onChange, inp, color, geocode, onFly }: {
+  value: Neighborhood[]; onChange: (v: Neighborhood[]) => void; inp: React.CSSProperties; color: string;
+  geocode: (name: string) => Promise<{ lat: number; lng: number } | null>; onFly: (nb: Neighborhood) => void;
+}) {
   const [t, setT] = useState("");
-  const add = () => { const parts = t.split(",").map((s) => s.trim()).filter(Boolean); if (parts.length) { onChange([...value, ...parts.filter((p) => !value.includes(p))]); setT(""); } };
+  const [busy, setBusy] = useState(false);
+  async function add() {
+    const parts = t.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    setBusy(true); setT("");
+    const added: Neighborhood[] = [];
+    for (const name of parts) {
+      if (value.some((v) => normalizeName(v.name) === normalizeName(name))) continue;
+      const g = await geocode(name);
+      added.push({ name, ...(g ?? {}) });
+    }
+    if (added.length) onChange([...value, ...added]);
+    setBusy(false);
+  }
   return (
     <div>
-      <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 4 }}>Bairros/apelidos desta zona <span style={{ opacity: 0.7 }}>(a IA reconhece por eles)</span></div>
+      <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 4 }}>Bairros desta zona <span style={{ opacity: 0.7 }}>(a IA reconhece o cliente por eles; viram pin no mapa)</span></div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
-        {value.map((b, k) => (
-          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "var(--p-accent-soft)", color: "var(--p-text)" }}>
-            {b}<X size={11} style={{ cursor: "pointer" }} onClick={() => onChange(value.filter((_, j) => j !== k))} />
-          </span>
-        ))}
+        {value.map((b, k) => {
+          const located = b.lat != null && b.lng != null;
+          return (
+            <span key={k} title={located ? "clique p/ ver no mapa" : "sem localização — arraste o pin no mapa"} onClick={() => located && onFly(b)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "var(--p-accent-soft)", color: "var(--p-text)", cursor: located ? "pointer" : "default", opacity: located ? 1 : 0.7 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: located ? color : "var(--p-muted)" }} />
+              {b.name}<X size={11} style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onChange(value.filter((_, j) => j !== k)); }} />
+            </span>
+          );
+        })}
         {!value.length && <span style={{ fontSize: 11, color: "var(--p-muted)", opacity: 0.7 }}>nenhum ainda</span>}
+        {busy && <span style={{ fontSize: 11, color: "var(--p-muted)" }}>localizando…</span>}
       </div>
       <input value={t} onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} onBlur={add}
-        placeholder="digite um bairro e Enter (ou vários, separados por vírgula)" style={{ ...inp, width: "100%" }} />
+        placeholder="digite um bairro e Enter (ou vários por vírgula)" style={{ ...inp, width: "100%" }} />
     </div>
   );
 }

@@ -15,7 +15,8 @@ const freightSchema = z.object({
   amount: z.number(),
   city: z.string().max(120).optional(),
   zone: z.string().max(60).optional(),
-  aliases: z.array(z.string().max(120)).max(200).optional(), // bairros/apelidos p/ auto-detecção
+  aliases: z.array(z.string().max(120)).max(200).optional(), // apelidos legados
+  neighborhoods: z.array(z.object({ name: z.string().min(1).max(120), lat: z.number().optional(), lng: z.number().optional() })).max(500).optional(),
   code: z.string().max(12).nullable().optional(),
   assembly: z.enum(["optional", "required"]).optional(),
 });

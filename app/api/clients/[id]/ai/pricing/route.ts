@@ -8,7 +8,7 @@ import { z } from "zod";
 const itemSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number() });
 const feeSchema = z.object({ key: z.string().min(1).max(40), label: z.string().min(1).max(120), amount: z.number().optional(), percent: z.number().optional() });
 // Frete fixo por região (resolvido pelo endereço coletado). aliases = variações do nome.
-const freightSchema = z.object({ region: z.string().min(1).max(120), amount: z.number(), city: z.string().max(120).optional(), zone: z.string().max(60).optional(), aliases: z.array(z.string().max(120)).max(200).optional(), code: z.string().max(12).nullable().optional(), assembly: z.enum(["optional", "required"]).optional() });
+const freightSchema = z.object({ region: z.string().min(1).max(120), amount: z.number(), city: z.string().max(120).optional(), zone: z.string().max(60).optional(), aliases: z.array(z.string().max(120)).max(200).optional(), neighborhoods: z.array(z.object({ name: z.string().min(1).max(120), lat: z.number().optional(), lng: z.number().optional() })).max(500).optional(), code: z.string().max(12).nullable().optional(), assembly: z.enum(["optional", "required"]).optional() });
 const rulesSchema = z.object({
   base: z.array(itemSchema).optional(),
   options: z.array(itemSchema).optional(),
