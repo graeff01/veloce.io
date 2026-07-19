@@ -41,6 +41,17 @@ function makeDotPattern(dark: boolean): ImageData {
   ctx.beginPath(); ctx.arc(s / 2, s / 2, 1.2, 0, Math.PI * 2); ctx.fill();
   return ctx.getImageData(0, 0, s, s);
 }
+// Círculo (polígono) de ~R km em torno de um ponto — área pontilhada do bairro no mapa.
+function circlePoly(lng: number, lat: number, km = 1.3, n = 20): number[][] {
+  const pts: number[][] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * Math.PI * 2;
+    const dlat = (km / 111) * Math.sin(t);
+    const dlng = (km / (111 * Math.cos((lat * Math.PI) / 180))) * Math.cos(t);
+    pts.push([lng + dlng, lat + dlat]);
+  }
+  return pts;
+}
 const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`;
 const normalizeName = (t: string) => (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().replace(/\s+/g, " ");
 
@@ -130,6 +141,7 @@ export function PortalFrete({ token }: { token: string }) {
         code: f.properties.code, name: f.properties.name,
         color: has ? bandColor(amount) : NO_FREIGHT,
         has: has ? 1 : 0,
+        multi: (idxs?.length ?? 0) > 1 ? 1 : 0, // município com VÁRIAS zonas → marcação pontilhada
         required: required ? 1 : 0,
       } };
     });
@@ -164,7 +176,13 @@ export function PortalFrete({ token }: { token: string }) {
         map.addSource("munis", { type: "geojson", data: styledGeo });
         // Mapa PLANO (sem relevo): preenchimento pela faixa + pontilhado por cima.
         map.addLayer({ id: "munis-fill", type: "fill", source: "munis", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.9 } });
-        map.addLayer({ id: "munis-dots", type: "fill", source: "munis", filter: ["==", ["get", "has"], 1], paint: { "fill-pattern": "dots" } });
+        // Pontilhado MARCA os municípios com MAIS DE UMA ZONA (dá pra ver quais têm zonas dentro).
+        map.addLayer({ id: "munis-dots", type: "fill", source: "munis", filter: ["==", ["get", "multi"], 1], paint: { "fill-pattern": "dots" } });
+        // Áreas dos BAIRROS (ao clicar numa cidade multi-zona): círculo colorido pela zona + pontilhado.
+        map.addSource("bairros", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "bairros-fill", type: "fill", source: "bairros", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.5 } });
+        map.addLayer({ id: "bairros-dots", type: "fill", source: "bairros", paint: { "fill-pattern": "dots" } });
+        map.addLayer({ id: "bairros-line", type: "line", source: "bairros", paint: { "line-color": ["get", "color"], "line-width": 1 } });
         map.addLayer({ id: "munis-req", type: "line", source: "munis", filter: ["==", ["get", "required"], 1], paint: { "line-color": dark ? "#fff" : "#111", "line-width": 1.4, "line-dasharray": [1.5, 1.2], "line-opacity": 0.6 } });
         map.addLayer({ id: "munis-line", type: "line", source: "munis", paint: { "line-color": dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.18)", "line-width": 0.5 } });
         map.addLayer({ id: "munis-sel", type: "line", source: "munis", filter: ["==", ["get", "code"], ""], paint: { "line-color": dark ? "#fff" : "#111", "line-width": 2.4 } });
@@ -195,6 +213,23 @@ export function PortalFrete({ token }: { token: string }) {
     if (idxs.length > 1 && c) map.easeTo({ center: c, zoom: 10.2, duration: 900 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selCode, ready]);
+
+  // Áreas pontilhadas dos BAIRROS da cidade selecionada (só multi-zona), coloridas por zona.
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready) return;
+    const src = map.getSource("bairros") as GeoJSONSource | undefined; if (!src) return;
+    const feats: GeoJSON.Feature[] = [];
+    const idxs = selCode ? (byCode.get(selCode) ?? []) : [];
+    if (selCode && freight && idxs.length > 1) {
+      idxs.forEach((fi, zi) => {
+        const color = ZONE_PALETTE[zi % ZONE_PALETTE.length];
+        (freight[fi].neighborhoods ?? []).forEach((nb) => {
+          if (nb.lat != null && nb.lng != null) feats.push({ type: "Feature", geometry: { type: "Polygon", coordinates: [circlePoly(nb.lng, nb.lat)] }, properties: { color } });
+        });
+      });
+    }
+    src.setData({ type: "FeatureCollection", features: feats });
+  }, [selCode, freight, ready, byCode]);
 
   // Pins arrastáveis dos bairros da cidade selecionada (só multi-zona), coloridos por zona.
   const updateNb = (fi: number, ni: number, patch: Partial<Neighborhood>) =>
