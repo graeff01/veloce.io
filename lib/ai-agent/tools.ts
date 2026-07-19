@@ -111,6 +111,11 @@ const QUOTE_TOOLS: ToolDef[] = [
         base: { type: "array", items: { type: "string" }, description: "chaves dos itens-base escolhidos" },
         opcionais: { type: "array", items: { type: "string" }, description: "chaves dos opcionais" },
         quantidades: { type: "object", description: "chave:quantidade (opcional; padrão 1)" },
+        montagem: { type: "boolean", description: "inclui entrega + montagem (o motor soma a montagem de cada produto com desconto por quantidade). Frete acima do limite exige montagem." },
+        pagamento: { type: "string", enum: ["dinheiro", "cartao", "pix", "debito"], description: "forma de pagamento (dinheiro dá desconto à vista nos produtos)" },
+        acesso: { type: "object", description: "acesso p/ a montagem: { lances: number (0 = térreo), tipo: 'tradicional'|'caracol', elevador: boolean }", properties: {
+          lances: { type: "number" }, tipo: { type: "string", enum: ["tradicional", "caracol"] }, elevador: { type: "boolean" },
+        } },
       }, required: ["base"] },
     },
   },
@@ -378,7 +383,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
       const rules = pc.rules as unknown as PricingRules;
 
-      const sel = { base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined };
+      const acesso = args.acesso as { lances?: number; tipo?: string; elevador?: boolean } | undefined;
+      const sel = {
+        base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined,
+        montagem: args.montagem === true,
+        cash: args.pagamento === "dinheiro",
+        access: acesso ? { flights: acesso.lances, spiral: acesso.tipo === "caracol", elevator: acesso.elevador === true } : undefined,
+      };
       // Trava 1: sem MODELO (base) não orça.
       if (!sel.base.length) return { result: "Escolha ao menos um MODELO (base) para orçar. Pergunte ao lead qual modelo ele quer." };
 
@@ -406,7 +417,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Pergunte ao lead de qual ZONA ou BAIRRO ele é, registre na ficha (atualizar_ficha) e gere o orçamento de novo — NÃO escolha a zona por conta própria.` };
         }
-        if (fr) q = appendFeeLine(q, fr);
+        if (fr) {
+          // Regra JR: frete acima do limite SÓ sai com entrega + montagem.
+          const thr = rules.policies?.freightAssemblyThreshold;
+          if (thr != null && fr.amount > thr && !sel.montagem) {
+            return { result: `O frete de ${brl(fr.amount, pc.currency)} (acima de R$ ${thr}) SAI SEMPRE com entrega + montagem. Pergunte ao lead se pode incluir a montagem; se ele NÃO quiser, use escalar_humano (passa pro vendedor). Se topar, gere o orçamento de novo com montagem=true.` };
+          }
+          q = appendFeeLine(q, fr);
+        }
       }
 
       // Guarda de sanidade: nunca envia orçamento com total inválido (erro de cadastro).

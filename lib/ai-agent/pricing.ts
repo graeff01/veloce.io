@@ -12,8 +12,18 @@
 //               { "key": "instal",   "label": "Instalação", "percent": 10 }]
 // }
 
-export interface PriceItemDef { key: string; label: string; amount: number; code?: string | null }
+export interface PriceItemDef { key: string; label: string; amount: number; code?: string | null; montagem?: number }
 export interface FeeDef { key: string; label: string; amount?: number; percent?: number; code?: string | null }
+// Políticas de preço configuráveis por cliente (hoje: JR). Todas OPCIONAIS — sem
+// elas, o motor calcula igual antes (Boqueirão etc. não muda).
+export interface PricingPolicies {
+  // Desconto na MONTAGEM por quantidade de itens: % sobre a SOMA das montagens.
+  assemblyDiscount?: { minItems: number; pct: number }[]; // ex: [{minItems:2,pct:10},{minItems:3,pct:13}]
+  // Acréscimo de ACESSO (montagem): escada tradicional por lance, caracol fixo, elevador fixo.
+  access?: { stairPerFlight?: number; spiral?: number; elevator?: number };
+  cashDiscountPct?: number;          // desconto à vista (dinheiro) SÓ nos produtos (base+opcionais)
+  freightAssemblyThreshold?: number; // frete acima disso exige montagem (regra tratada no tools.ts)
+}
 // Frete FIXO por região/zona: a IA coleta o endereço, o motor escolhe a linha
 // (determinístico). Resolução CIDADE-primeiro, depois ZONA (por bairro/apelido):
 //  - city  = município canônico ("Porto Alegre"); agrupa as zonas da mesma cidade.
@@ -32,7 +42,11 @@ export interface PricingRules {
   fees?: FeeDef[];
   freight?: FreightRegion[];    // frete fixo por região (resolvido pelo endereço)
   freightDefault?: number;      // fallback quando a região não bate (opcional)
+  policies?: PricingPolicies;   // montagem/acesso/à vista (opcional; hoje só JR)
 }
+
+// Acesso coletado do lead (ficha) → acréscimo de montagem.
+export interface AccessInfo { flights?: number; spiral?: boolean; elevator?: boolean }
 
 // Seleção feita pela IA (só chaves — nunca valores).
 export interface QuoteSelection {
@@ -40,6 +54,9 @@ export interface QuoteSelection {
   options?: string[];
   fees?: string[]; // se omitido, aplica todas as fees configuradas
   quantities?: Record<string, number>;
+  montagem?: boolean;    // inclui entrega + montagem (soma a montagem de cada produto, com desconto por qtd)
+  access?: AccessInfo;   // acréscimo de acesso (escada/elevador)
+  cash?: boolean;        // pagamento em dinheiro → desconto à vista nos produtos
 }
 
 export interface QuoteLine { key: string; label: string; qty: number; unit: number; amount: number; code?: string | null }
@@ -81,16 +98,49 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
 
   if (unknownKeys.length) return { ok: false, unknownKeys };
 
+  // subtotal = só PRODUTOS (base+opcionais). Montagem/acesso/frete NÃO entram no desconto à vista.
   const subtotal = round2(items.reduce((s, i) => s + i.amount, 0));
+  const pol = rules.policies;
+  const extras: QuoteLine[] = [];
 
-  let fees = 0;
+  // ── MONTAGEM (por produto, com desconto por quantidade de itens) ──────────────
+  if (sel.montagem && pol) {
+    const baseSel = (sel.base ?? []).map((k) => baseMap.get(k)!).filter(Boolean);
+    const gross = baseSel.reduce((s, def) => s + (def.montagem ?? 0) * qty(def.key), 0);
+    const itemCount = baseSel.reduce((s, def) => s + qty(def.key), 0);
+    if (gross > 0) {
+      const tier = [...(pol.assemblyDiscount ?? [])].filter((t) => itemCount >= t.minItems).sort((a, b) => b.minItems - a.minItems)[0];
+      const pct = tier?.pct ?? 0;
+      const amount = round2(gross * (1 - pct / 100));
+      extras.push({ key: "montagem", code: null, label: `Entrega + Montagem${pct ? ` (${pct}% de desconto p/ ${itemCount} itens)` : ""}`, qty: 1, unit: amount, amount });
+    }
+  }
+
+  // ── ACESSO (escada tradicional por lance / caracol fixo / elevador fixo) ──────
+  if (sel.access && pol?.access) {
+    const a = sel.access, ac = pol.access;
+    let val = 0, label = "";
+    if (a.elevator) { val = ac.elevator ?? 0; label = "Acesso (elevador)"; }
+    else if (a.spiral) { val = ac.spiral ?? 0; label = "Acesso (escada caracol)"; }
+    else if (a.flights && a.flights > 0) { val = round2((ac.stairPerFlight ?? 0) * a.flights); label = `Acesso (escada, ${a.flights} ${a.flights === 1 ? "lance" : "lances"})`; }
+    if (val > 0) extras.push({ key: "acesso", code: null, label, qty: 1, unit: val, amount: val });
+  }
+
+  // Fees configuradas (percentual incide sobre os produtos).
   for (const k of feeKeys) {
     const f = feeMap.get(k)!;
     const value = f.amount != null ? f.amount : f.percent != null ? (subtotal * f.percent) / 100 : 0;
-    fees = round2(fees + value);
-    items.push({ key: f.key, code: f.code ?? null, label: f.label, qty: 1, unit: round2(value), amount: round2(value) });
+    extras.push({ key: f.key, code: f.code ?? null, label: f.label, qty: 1, unit: round2(value), amount: round2(value) });
   }
 
+  // ── DESCONTO À VISTA (dinheiro) — SÓ nos produtos ─────────────────────────────
+  if (sel.cash && pol?.cashDiscountPct) {
+    const d = round2(-(subtotal * pol.cashDiscountPct) / 100);
+    if (d < 0) extras.push({ key: "desconto_vista", code: null, label: `Desconto à vista (${pol.cashDiscountPct}%)`, qty: 1, unit: d, amount: d });
+  }
+
+  items.push(...extras);
+  const fees = round2(extras.reduce((s, i) => s + i.amount, 0));
   return { ok: true, quote: { items, subtotal, fees, total: round2(subtotal + fees) } };
 }
 
