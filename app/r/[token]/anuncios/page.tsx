@@ -74,7 +74,7 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
   return (
     <main className="amain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="anuncios" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="anuncios" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .amain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .amain{margin-left:236px} }

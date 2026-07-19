@@ -34,7 +34,7 @@ export default async function RevisaoPage({ params }: { params: Promise<{ token:
   return (
     <main className="fmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="revisao" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
+      <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="revisao" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%);background-repeat:no-repeat;background-position:center top;background-attachment:fixed}`}</style>

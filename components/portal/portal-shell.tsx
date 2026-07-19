@@ -10,7 +10,7 @@ import { PortalAlerts } from "@/components/portal/portal-alerts";
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
+export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest, quotesEnabled: initialQuotesEnabled }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean; quotesEnabled?: boolean }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   // Estado semeado pelo SERVIDOR (props) → 1º paint já vem certo, sem flash ao navegar.
   // Só cai no fetch client-side se a página não passou os dados (retrocompat).
@@ -21,10 +21,8 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   const [hotCount, setHotCount] = useState(0); // leads quentes esperando (badge do sino)
   const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando revisão (badge)
   const [learnCount, setLearnCount] = useState(0); // correções da IA a corrigir (badge)
-  const [quotesEnabled, setQuotesEnabled] = useState(false); // aba Orçamentos: só quando o cliente tem orçamento ligado
+  const [quotesEnabled, setQuotesEnabled] = useState(!!initialQuotesEnabled); // aba Orçamentos: semeada pelo servidor (sem flash)
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  // quotesEnabled vem do /me (independe de o menu ter sido semeado pelo servidor).
-  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => setQuotesEnabled(!!d?.quotesEnabled)).catch(() => {}); }, [token]);
   useEffect(() => {
     if (sections && !sections.includes("fechamento")) return; // seção não habilitada → não consulta
     let alive = true;
@@ -51,7 +49,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   }, [token, sections]);
   useEffect(() => {
     if (hasServerData) return; // servidor já entregou menu/conta — não precisa buscar
-    fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); }).catch(() => {});
+    fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); setQuotesEnabled(!!d?.quotesEnabled); }).catch(() => {});
   }, [token, hasServerData]);
   const on = (k: string) => !sections || sections.includes(k);
   async function logout() {

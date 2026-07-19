@@ -22,15 +22,16 @@ export interface PortalState { token: string; link: string; accentColor: string 
 // de um fetch client-side: como o shell re-monta a cada navegação, o menu piscava (com
 // `sections=null` mostrava TODAS, inclusive as que o cliente não tem) e o nome/Sair
 // sumiam até o fetch voltar. Com isto o servidor entrega tudo pronto — sem flash.
-export async function getPortalShellData(clientId: string): Promise<{ sections: PortalSection[]; aiTest: boolean; account: { email: string; name: string | null; role: string } | null }> {
-  const [cp, account] = await Promise.all([
+export async function getPortalShellData(clientId: string): Promise<{ sections: PortalSection[]; aiTest: boolean; quotesEnabled: boolean; account: { email: string; name: string | null; role: string } | null }> {
+  const [cp, account, ai] = await Promise.all([
     prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } }),
     getPortalUser(clientId),
+    prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { quotesEnabled: true } }),
   ]);
   const aiTest = (cp?.sections ?? "").split(",").map((s) => s.trim()).includes("teste");
-  // Menu já semeado pelo servidor respeitando a permissão POR USUÁRIO.
+  // Menu já semeado pelo servidor respeitando a permissão POR USUÁRIO (sem flash ao navegar).
   const sections = await effectiveSections(clientId, account?.email ?? null);
-  return { sections, aiTest, account };
+  return { sections, aiTest, quotesEnabled: ai?.quotesEnabled ?? false, account };
 }
 
 // Uma seção está habilitada no portal deste cliente? (para gate por URL nas páginas.)

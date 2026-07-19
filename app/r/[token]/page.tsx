@@ -95,7 +95,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   return (
     <main className="pmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
-      <PortalShell token={token} brandName={brandName} logoUrl={client?.logoUrl ?? null} active="painel" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} />
+      <PortalShell token={token} brandName={brandName} logoUrl={client?.logoUrl ?? null} active="painel" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .pmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .pmain{margin-left:236px} }
