@@ -28,13 +28,30 @@ export async function getPortalShellData(clientId: string): Promise<{ sections: 
     getPortalUser(clientId),
   ]);
   const aiTest = (cp?.sections ?? "").split(",").map((s) => s.trim()).includes("teste");
-  return { sections: parseSections(cp?.sections), aiTest, account };
+  // Menu já semeado pelo servidor respeitando a permissão POR USUÁRIO.
+  const sections = await effectiveSections(clientId, account?.email ?? null);
+  return { sections, aiTest, account };
 }
 
 // Uma seção está habilitada no portal deste cliente? (para gate por URL nas páginas.)
 export async function sectionEnabled(clientId: string, key: PortalSection): Promise<boolean> {
   const cp = await prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } });
   return parseSections(cp?.sections).includes(key);
+}
+
+// Abas que ESTE usuário enxerga = seções do cliente ∩ permissões do usuário.
+// - sem e-mail (não logado) ou admin → todas as seções do cliente (admin vê tudo).
+// - atendente com sections null → herda tudo do cliente (usuários antigos).
+// - atendente com sections definido (inclusive "") → só as marcadas + Conversas.
+export async function effectiveSections(clientId: string, email: string | null): Promise<PortalSection[]> {
+  const cp = await prisma.clientPortal.findUnique({ where: { clientId }, select: { sections: true } });
+  const clientSections = parseSections(cp?.sections);
+  if (!email) return clientSections;
+  const user = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email } }, select: { role: true, sections: true } });
+  if (!user || user.role === "admin" || user.sections == null) return clientSections;
+  const granted = new Set(user.sections.split(",").map((s) => s.trim()).filter(Boolean));
+  granted.add("conversas"); // obrigatória
+  return clientSections.filter((s) => granted.has(s));
 }
 
 // Garante o portal do cliente (cria token na 1ª vez). Token = capability URL.

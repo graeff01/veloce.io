@@ -13,7 +13,7 @@ const SECTIONS: { key: string; label: string; hint: string }[] = [
   { key: "ia", label: "IA", hint: "configuração/insights da IA" },
   { key: "funil", label: "Funil", hint: "etapas dos leads" },
 ];
-interface PortalUser { id: string; email: string; name: string | null; role: string; lastLoginAt: string | null; hasPassword: boolean }
+interface PortalUser { id: string; email: string; name: string | null; role: string; sections: string[] | null; lastLoginAt: string | null; hasPassword: boolean }
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -28,6 +28,7 @@ export function PanelTab({ clientId }: { clientId: string }) {
   const [portal, setPortal] = useState<Portal | null>(null);
   const [users, setUsers] = useState<PortalUser[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [openAbas, setOpenAbas] = useState<string | null>(null); // e-mail do atendente com o checklist de abas aberto
 
   async function loadPortal() { const r = await fetch(`/api/clients/${clientId}/portal`); if (r.ok) setPortal(await r.json()); }
   async function loadUsers() { const r = await fetch(`/api/clients/${clientId}/portal-access`); if (r.ok) { const d = await r.json(); setUsers(d.users ?? []); } }
@@ -44,6 +45,10 @@ export function PanelTab({ clientId }: { clientId: string }) {
     const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível mudar o papel."); }
     loadUsers();
+  }
+  async function setUserSections(email: string, keys: string[]) {
+    setUsers((prev) => prev?.map((u) => (u.email === email ? { ...u, sections: keys } : u)) ?? prev); // otimista
+    await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, sections: keys }) });
   }
   async function resetPassword(email: string) {
     if (!confirm(`Resetar a senha de ${email}? A sessão dele cai e ele define uma nova senha no próximo acesso (tela "Criar conta", com o mesmo e-mail).`)) return;
@@ -180,20 +185,60 @@ export function PanelTab({ clientId }: { clientId: string }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {users === null ? <Loader2 size={15} className="animate-spin" style={{ color: "var(--text-muted)" }} />
             : users.length === 0 ? <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Ninguém cadastrado ainda. Envie o link para o cliente criar o acesso.</p>
-            : users.map((u) => (
-              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-base)" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name ? `${u.name} · ` : ""}{u.email}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{u.hasPassword ? `último acesso ${fmtDate(u.lastLoginAt)}` : "convidado (ainda sem senha)"}</div>
+            : users.map((u) => {
+              const grantable = SECTIONS.filter((s) => s.key !== "conversas" && portal.sections.includes(s.key));
+              // null = herda tudo (usuário antigo): todas as abas do cliente marcadas.
+              const granted = new Set(u.sections ?? grantable.map((s) => s.key));
+              const isAttendant = u.role !== "admin";
+              const open = openAbas === u.email;
+              const grantedCount = grantable.filter((s) => granted.has(s.key)).length;
+              return (
+                <div key={u.id} style={{ border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-base)", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name ? `${u.name} · ` : ""}{u.email}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{u.hasPassword ? `último acesso ${fmtDate(u.lastLoginAt)}` : "convidado (ainda sem senha)"}</div>
+                    </div>
+                    {isAttendant && (
+                      <button onClick={() => setOpenAbas(open ? null : u.email)} title="Abas que este atendente pode ver"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`, background: open ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: open ? "var(--accent)" : "var(--text-muted)" }}>
+                        <LayoutList size={11} /> Abas {grantable.length ? `${grantedCount}/${grantable.length}` : ""}
+                      </button>
+                    )}
+                    <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
+                      style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
+                      {u.role === "admin" ? "Admin" : "Atendente"}
+                    </button>
+                    {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
+                    <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
+                  </div>
+                  {isAttendant && open && (
+                    <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "color-mix(in srgb, var(--accent) 3%, transparent)" }}>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada. (Admin vê tudo.)</p>
+                      {grantable.length === 0
+                        ? <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Este cliente só tem Conversas ligada — ligue mais abas acima para poder liberá-las por atendente.</p>
+                        : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 6 }}>
+                            {grantable.map((s) => {
+                              const checked = granted.has(s.key);
+                              return (
+                                <label key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", borderRadius: 7, border: `1px solid ${checked ? "color-mix(in srgb, var(--accent) 35%, transparent)" : "var(--border)"}`, background: checked ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-surface)", cursor: "pointer", fontSize: 12.5, color: "var(--text-primary)" }}>
+                                  <input type="checkbox" checked={checked}
+                                    onChange={(e) => {
+                                      const next = e.target.checked ? grantable.map((g) => g.key).filter((k) => granted.has(k) || k === s.key) : grantable.map((g) => g.key).filter((k) => granted.has(k) && k !== s.key);
+                                      void setUserSections(u.email, next);
+                                    }} />
+                                  {s.label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                    </div>
+                  )}
                 </div>
-                <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
-                  style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
-                  {u.role === "admin" ? "Admin" : "Atendente"}
-                </button>
-                {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
-                <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
-              </div>
-            ))}
+              );
+            })}
         </div>
       </Card>
     </div>

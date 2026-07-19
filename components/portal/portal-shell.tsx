@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck, GraduationCap, Gauge, Truck } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck, GraduationCap, Gauge, Truck, FileText } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 import { PortalAlerts } from "@/components/portal/portal-alerts";
 
@@ -10,7 +10,7 @@ import { PortalAlerts } from "@/components/portal/portal-alerts";
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
+export function PortalShell({ token, brandName, logoUrl, active, sections: initialSections, account: initialAccount, aiTest: initialAiTest }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos"; sections?: string[] | null; account?: { name: string | null; email: string; role: string } | null; aiTest?: boolean }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   // Estado semeado pelo SERVIDOR (props) → 1º paint já vem certo, sem flash ao navegar.
   // Só cai no fetch client-side se a página não passou os dados (retrocompat).
@@ -21,7 +21,10 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   const [hotCount, setHotCount] = useState(0); // leads quentes esperando (badge do sino)
   const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando revisão (badge)
   const [learnCount, setLearnCount] = useState(0); // correções da IA a corrigir (badge)
+  const [quotesEnabled, setQuotesEnabled] = useState(false); // aba Orçamentos: só quando o cliente tem orçamento ligado
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
+  // quotesEnabled vem do /me (independe de o menu ter sido semeado pelo servidor).
+  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => setQuotesEnabled(!!d?.quotesEnabled)).catch(() => {}); }, [token]);
   useEffect(() => {
     if (sections && !sections.includes("fechamento")) return; // seção não habilitada → não consulta
     let alive = true;
@@ -62,7 +65,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes", href: string, label: string, icon: React.ReactNode, badge?: number) => {
+  const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos", href: string, label: string, icon: React.ReactNode, badge?: number) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -83,7 +86,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
       <style>{`.pside{display:none}
         .padvisor{display:none}
         @media(min-width:760px){ .padvisor{display:contents} }
-        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain{margin-left:236px} }`}</style>
+        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain,.qmain{margin-left:236px} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>
         {/* marca do cliente */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, height: 56, padding: "0 6px", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
@@ -106,6 +109,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
           {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
           {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
           {on("conversas") && item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
+          {quotesEnabled && item("orcamentos", `/r/${token}/orcamentos`, "Orçamentos", <FileText size={15} />)}
           {on("aprendizado") && item("aprendizado", `/r/${token}/aprendizado`, "Aprendizado", <GraduationCap size={15} />, learnCount)}
           {on("consumo") && item("consumo", `/r/${token}/consumo`, "Consumo", <Gauge size={15} />)}
           {on("frete") && item("frete", `/r/${token}/frete`, "Frete", <Truck size={15} />)}
