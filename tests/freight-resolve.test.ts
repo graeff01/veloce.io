@@ -10,6 +10,8 @@ const rules: PricingRules = {
     { region: "Porto Alegre — Extremo Sul", city: "Porto Alegre", zone: "Extremo Sul", amount: 300, code: "4314902", assembly: "required" },
     { region: "Canoas", city: "Canoas", amount: 60, code: "4304606" },
     { region: "Gravataí — Rural", city: "Gravataí", zone: "Rural", amount: 310, code: "4309209", aliases: ["morungava"] },
+    { region: "Feliz", city: "Feliz", amount: 400, code: "4308052" },
+    { region: "Alto Feliz", city: "Alto Feliz", amount: 385, code: "4300638" },
   ],
 };
 
@@ -48,4 +50,14 @@ test("montagem obrigatória entra no rótulo", () => {
 
 test("sem frete configurado → null", () => {
   assert.equal(resolveFreight({}, "porto alegre"), null);
+});
+
+test("casamento por PALAVRA — 'Feliz' vs 'Alto Feliz' (o mais específico ganha)", () => {
+  assert.equal(amount(resolveFreight(rules, "entrega em alto feliz")), 385);
+  assert.equal(amount(resolveFreight(rules, "moro em feliz rs")), 400);
+});
+
+test("casamento por PALAVRA — não casa dentro de outra palavra", () => {
+  // "feliz" dentro de "felizmente" NÃO deve casar Feliz; a cidade é Canoas.
+  assert.equal(amount(resolveFreight(rules, "moro felizmente em canoas")), 60);
 });

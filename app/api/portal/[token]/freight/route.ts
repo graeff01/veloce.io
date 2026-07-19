@@ -2,7 +2,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
+
+type FreightRow = { region: string; amount: number };
+// Diff legível (frete = dinheiro): o que foi ADICIONADO, REMOVIDO ou teve PREÇO alterado.
+function freightDiff(before: FreightRow[], after: FreightRow[]) {
+  const key = (f: FreightRow) => (f.region || "").trim().toLowerCase();
+  const b = new Map(before.map((f) => [key(f), f.amount]));
+  const a = new Map(after.map((f) => [key(f), f.amount]));
+  const priceChanges: { region: string; from: number; to: number }[] = [];
+  const added: string[] = [], removed: string[] = [];
+  for (const f of after) { const k = key(f); if (!b.has(k)) added.push(f.region); else if (b.get(k) !== f.amount) priceChanges.push({ region: f.region, from: b.get(k)!, to: f.amount }); }
+  for (const f of before) if (!a.has(key(f))) removed.push(f.region);
+  return { priceChanges, added, removed };
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,10 +65,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ token: s
   const pc = await prisma.pricingConfig.findUnique({ where: { clientId } });
   if (!pc) return NextResponse.json({ error: "Sem tabela de preço configurada." }, { status: 400 });
   const rules = (pc.rules ?? {}) as Record<string, unknown>;
+  const before = (Array.isArray(rules.freight) ? rules.freight : []) as FreightRow[];
   const updated = await prisma.pricingConfig.update({
     where: { clientId },
     data: { rules: { ...rules, freight: parsed.data.freight } as object },
   });
+
+  // Histórico (frete = dinheiro): registra QUEM mudou QUAL preço QUANDO. Best-effort.
+  const diff = freightDiff(before, parsed.data.freight);
+  if (diff.priceChanges.length || diff.added.length || diff.removed.length) {
+    const email = await getPortalSessionEmail(clientId).catch(() => null);
+    await recordAudit({ clientId, action: "freight.update", meta: { by: email ?? "portal", ...diff } });
+  }
+
   const r = (updated.rules ?? {}) as { freight?: unknown };
   return NextResponse.json({ freight: Array.isArray(r.freight) ? r.freight : [] });
 }

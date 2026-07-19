@@ -95,8 +95,12 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
 }
 
 // ── Frete determinístico por região ───────────────────────────────────────────
-// Normaliza texto (minúsculo, sem acento) para casar região no endereço coletado.
-const normText = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+// Normaliza texto (minúsculo, sem acento, pontuação→espaço, espaços colapsados) para
+// casar região no endereço coletado.
+const normText = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+// Casamento por PALAVRA (não substring cru): evita falso-positivo como "sul" dentro de
+// "insulina" ou "feliz" dentro de "felizmente". needle e haystack já normalizados.
+const wordHit = (haystack: string, needle: string) => !!needle && (" " + haystack + " ").includes(" " + needle + " ");
 
 export type FreightZoneOption = { region: string; zone?: string; amount: number; assembly?: "optional" | "required" };
 export type FreightResult =
@@ -137,13 +141,13 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
     const kws = [...(f.aliases ?? []), ...((f.neighborhoods ?? []).map((n) => n.name))];
     for (const kw of kws) {
       const n = normText(kw);
-      if (n && n.length > bestKw.length && a.includes(n)) { bestKw = n; bestHit = f; }
+      if (n && n.length > bestKw.length && wordHit(a, n)) { bestKw = n; bestHit = f; }
     }
   }
   if (bestHit) return resolvedLine(bestHit);
 
   // 2) Sem bairro reconhecido: casa a CIDADE pelo nome-base (o match mais específico ganha).
-  const cityHits = list.filter((f) => { const n = normText(baseCityName(f)); return n && a.includes(n); });
+  const cityHits = list.filter((f) => wordHit(a, normText(baseCityName(f))));
   if (!cityHits.length) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
   const target = cityHits.reduce((best, f) => (normText(baseCityName(f)).length > normText(baseCityName(best)).length ? f : best));
   const key = cityKeyOf(target);
@@ -152,7 +156,7 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
 
   // Rótulo da zona digitado ("zona sul", "extremo sul"), ESCOPADO à cidade identificada
   // (evita "central" de uma cidade colidir com o de outra).
-  const zoneHit = zones.filter((z) => z.zone && a.includes(normText(z.zone)));
+  const zoneHit = zones.filter((z) => z.zone && wordHit(a, normText(z.zone)));
   if (zoneHit.length === 1) return resolvedLine(zoneHit[0]);
 
   // Várias zonas na cidade e nenhuma identificada → perguntar (não cobrar zona errada).
@@ -178,8 +182,23 @@ export function describeRules(rules: PricingRules): string {
       : "";
   // Frete NÃO é escolhido pela IA (é resolvido pela cidade em resolveFreight). Não
   // listamos as regiões aqui — só a nota — para não inflar o prompt com dezenas de linhas.
-  const freight = rules.freight?.length
-    ? `FRETE: calculado AUTOMATICAMENTE pela cidade de entrega (${rules.freight.length} regiões atendidas). NÃO escolher frete — só garanta que coletou a cidade.`
-    : "";
+  const freight = rules.freight?.length ? describeFreightNote(rules.freight) : "";
   return [line(rules.base, "BASE (obrigatório escolher)"), line(rules.options, "OPCIONAIS"), line(rules.fees, "TAXAS"), freight].filter(Boolean).join("\n");
+}
+
+// Nota de frete p/ o prompt: instrui a IA a coletar a cidade e, NAS cidades com várias
+// zonas, PERGUNTAR o bairro/região antes de orçar (é o que faz a auto-detecção render).
+export function describeFreightNote(freight: FreightRegion[]): string {
+  const byCity = new Map<string, Set<string>>();
+  for (const f of freight) {
+    const c = f.city || baseCityName(f);
+    const set = byCity.get(c) ?? new Set<string>();
+    set.add(f.zone || "");
+    byCity.set(c, set);
+  }
+  const multi = [...byCity.entries()].filter(([, zs]) => zs.size > 1).map(([c]) => c);
+  const base = `FRETE: calculado AUTOMATICAMENTE pela cidade de entrega (${freight.length} regiões atendidas). NÃO escolha o frete — só garanta que coletou a cidade.`;
+  if (!multi.length) return base;
+  const ex = multi.slice(0, 10).join(", ");
+  return `${base}\nATENÇÃO — estas cidades têm ZONAS com fretes diferentes: ${ex}${multi.length > 10 ? ` (e +${multi.length - 10})` : ""}. Se o lead for de uma delas, PERGUNTE o bairro/região dele (ex.: "Você é de Porto Alegre? De qual bairro/região?") e registre na ficha ANTES de orçar — assim o frete sai certo.`;
 }
