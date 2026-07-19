@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Edit2, Activity, Loader2, Upload, Trash2,
-  Columns3, User, Mic, Bot, BarChart3, Send, FileText, MonitorSmartphone, Truck,
+  Columns3, User, Mic, Bot, BarChart3, Send, FileText, MonitorSmartphone,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -22,7 +22,6 @@ import { AiAgentTab } from "@/components/ai-agent/ai-agent-tab";
 import { AdsTab } from "@/components/clients/ads-tab";
 import { GoogleAdsTab } from "@/components/clients/google-ads-tab";
 import { BotTab } from "@/components/clients/bot-tab";
-import { FreightTab } from "@/components/clients/freight-tab";
 import { PanelTab } from "@/components/clients/panel-tab";
 import { ReportsTab } from "@/components/clients/reports-tab";
 import { FacebookGlyph, GoogleGlyph, WhatsAppGlyph } from "@/components/clients/brand-glyphs";
@@ -141,7 +140,7 @@ function timeAgo(date: string) {
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "ia" | "bot" | "painel" | "relatorios" | "frete";
+type Tab = "operacao" | "perfil" | "reunioes" | "leads" | "anuncios" | "google" | "ia" | "bot" | "painel" | "relatorios";
 
 // ── Root component ────────────────────────────────────────────────────────────
 
@@ -151,14 +150,11 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   const [loading,    setLoading]    = useState(true);
   const [tab,        setTab]        = useState<Tab>("operacao");
   const [editOpen,   setEditOpen]   = useState(false);
-  const [freightOn,  setFreightOn]  = useState(false); // aba Frete só quando há frete por região cadastrado
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}`);
     if (res.ok) setClient(await res.json());
     setLoading(false);
-    // Gate da aba Frete: aparece quando o cliente tem rules.freight configurado.
-    fetch(`/api/clients/${clientId}/ai/pricing`).then((r) => (r.ok ? r.json() : null)).then((pc) => setFreightOn(!!(pc?.rules?.freight?.length))).catch(() => {});
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
@@ -168,7 +164,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   // notificações, ex.: "Responder →" abre a aba WhatsApp).
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "ia", "bot", "painel", "frete"];
+    const valid: Tab[] = ["operacao", "perfil", "reunioes", "leads", "anuncios", "google", "ia", "bot", "painel"];
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (t && (valid as string[]).includes(t)) setTab(t as Tab);
   }, []);
@@ -205,16 +201,13 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "google",    label: "Google",    icon: <GoogleGlyph size={14} />,   brand: "#4285F4" },
     { key: "ia",        label: "IA",        icon: <Bot size={13} /> },
     { key: "bot",       label: "BOT",       icon: <Send size={13} /> },
-    { key: "frete",     label: "Frete",     icon: <Truck size={13} /> },
     { key: "painel",    label: "Painel",    icon: <MonitorSmartphone size={13} /> },
     { key: "relatorios", label: "Relatórios", icon: <FileText size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
-  const tabs = allTabs.filter((t) => {
-    if (t.key === "frete") return freightOn; // gated por ter frete por região cadastrado
-    if (CORE_TABS.includes(t.key)) return true;
-    return client.modules ? client.modules.includes(t.key) : true;
-  });
+  const tabs = client.modules
+    ? allTabs.filter((t) => CORE_TABS.includes(t.key) || client.modules!.includes(t.key))
+    : allTabs;
   // Se a aba ativa não está visível (módulo desligado / deep-link), cai na Operação.
   const activeTab: Tab = tabs.some((t) => t.key === tab) ? tab : "operacao";
 
@@ -338,10 +331,6 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
 
       {activeTab === "bot" && (
         <BotTab clientId={clientId} />
-      )}
-
-      {activeTab === "frete" && (
-        <FreightTab clientId={clientId} />
       )}
 
       {activeTab === "painel" && (

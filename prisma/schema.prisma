@@ -1876,3 +1876,12 @@ model FunnelShadow {
   @@index([clientId, wouldChange])
 }
 
+
+// Cache de geocode de BAIRROS (frete por zona) — evita re-geocodificar o mesmo bairro
+// entre clientes e poupa o Nominatim (1 req/s, sem SLA). key = normalizado "bairro|cidade".
+model GeocodeCache {
+  key       String   @id
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+}
