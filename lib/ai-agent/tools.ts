@@ -153,7 +153,7 @@ const LOCATION_TOOL: ToolDef = {
   type: "function",
   function: {
     name: "pedir_localizacao",
-    description: "Pede a LOCALIZAÇÃO do cliente pelo botão nativo do WhatsApp. Use SOMENTE quando a cidade de entrega tem VÁRIAS ZONAS com fretes diferentes e você ainda não sabe a zona/bairro — a localização resolve a zona sozinha. NÃO use em cidade de zona única. Se o cliente preferir, ele pode responder o endereço por texto.",
+    description: "Envia o BOTÃO nativo de localização do WhatsApp — o cliente compartilha em 1 TOQUE (ideal p/ público mais velho). Use SOMENTE quando a cidade de entrega tem VÁRIAS ZONAS com fretes diferentes e você ainda não sabe a zona/bairro. CHAME a ferramenta DIRETO: não descreva o passo a passo de anexar localização, não peça permissão ('quer que eu peça?'). NÃO use em cidade de zona única. O cliente também pode responder o bairro por texto.",
     parameters: { type: "object", properties: {
       cidade: { type: "string", description: "cidade de entrega já identificada (só p/ personalizar a mensagem)" },
     } },
