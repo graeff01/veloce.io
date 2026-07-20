@@ -135,6 +135,7 @@ const QUOTE_TOOLS: ToolDef[] = [
         acesso: { type: "object", description: "acesso p/ a montagem: { lances: number (0 = térreo), tipo: 'tradicional'|'caracol', elevador: boolean }", properties: {
           lances: { type: "number" }, tipo: { type: "string", enum: ["tradicional", "caracol"] }, elevador: { type: "boolean" },
         } },
+        retirada: { type: "boolean", description: "true se o cliente vai RETIRAR na fábrica (sem frete). Nesse caso NÃO cobra frete e não precisa de endereço." },
       }, required: ["base"] },
     },
   },
@@ -515,18 +516,25 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const missing = missingRequired(spec, ficha);
       if (missing.length) return { result: `Ainda NÃO posso gerar o orçamento — colete antes (use atualizar_ficha): ${missing.map((f) => f.label).join(", ")}.` };
 
+      const retirada = args.retirada === true;
       const r = computeQuote(rules, sel);
       if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
       let q = r.quote;
       let notaExtra = ""; // avisos p/ a IA (ex.: montagem obrigatória já incluída)
 
-      // Frete determinístico pela REGIÃO do endereço coletado (blob da ficha).
-      // Resolução cidade→zona: bairro conhecido resolve direto; cidade com várias zonas
-      // e nenhuma identificada → a IA pergunta a zona (nunca chuta).
-      if (rules.freight?.length) {
+      // RETIRADA na fábrica → SEM frete (o vendedor vê que é retirada e dá sequência).
+      if (retirada) notaExtra += " RETIRADA na fábrica — orçamento SEM frete. Ao fechar, o vendedor combina o dia da retirada.";
+      // Frete determinístico pela REGIÃO do endereço coletado (blob da ficha). Só quando
+      // NÃO é retirada. Resolução cidade→zona: bairro conhecido resolve direto; cidade
+      // com várias zonas e nenhuma identificada → a IA pergunta a zona (nunca chuta).
+      if (!retirada && rules.freight?.length) {
         const addressBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
         const fr = resolveFreight(rules, addressBlob);
-        if (fr && "unmatched" in fr) return { result: "Não identifiquei a REGIÃO de entrega para calcular o frete. Confirme a cidade/endereço do lead (use atualizar_ficha) ou, se for fora da área de atendimento, encaminhe a um vendedor." };
+        if (fr && "unmatched" in fr) {
+          const temEndereco = addressBlob.trim().length > 0;
+          if (temEndereco) return { result: "A cidade do lead NÃO está na nossa área de entrega/montagem própria. Envie ESTA mensagem (mantendo o conteúdo): \"Para a sua localidade enviamos via transportadora ou podes retirar direto conosco com frete particular, reboque/camionete. Para realizar a cotação com a transportadora irei precisar de alguns dados: Nome completo, CPF, CEP com endereço da entrega\". Colete Nome/CPF/CEP (atualizar_ficha) e use aprovar_orcamento p/ o vendedor cotar a transportadora. NÃO invente valor de transportadora." };
+          return { result: "Ainda não sei a cidade de entrega. Pergunte a cidade do lead (atualizar_ficha) e gere de novo." };
+        }
         if (fr && "askZone" in fr) {
           const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
