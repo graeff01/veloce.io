@@ -44,6 +44,7 @@ export interface WaIncomingMessage {
   document?: WaMediaRef;
   video?: WaMediaRef;
   sticker?: WaMediaRef;
+  location?: { latitude?: number; longitude?: number; name?: string; address?: string };
   referral?: WaReferral;
   // Resposta de reply button (interactive) ou de botão de template (button).
   interactive?: { type?: string; button_reply?: { id?: string; title?: string }; list_reply?: { id?: string; title?: string } };
@@ -88,6 +89,7 @@ export function messageText(m: WaIncomingMessage): string | null {
     case "document": return m.document?.caption || "[O lead enviou um documento]";
     case "video": return m.video?.caption || "[O lead enviou um vídeo]";
     case "sticker": return "[O lead enviou uma figurinha]";
+    case "location": return "[O cliente compartilhou a localização]";
     case "audio": return "[O lead enviou um áudio]";
     default: return `[O lead enviou um(a) ${m.type}]`;
   }

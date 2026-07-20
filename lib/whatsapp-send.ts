@@ -138,6 +138,34 @@ export async function sendWhatsAppVideo(
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
 
+// Pede a LOCALIZAÇÃO do cliente com o botão nativo do WhatsApp ("Enviar localização").
+// A resposta volta como uma mensagem type:"location" (lat/lng) no webhook. Só funciona
+// dentro da janela de 24h (o cliente acabou de escrever, então ok).
+export async function sendWhatsAppLocationRequest(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  body: string,
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toWaId,
+      type: "interactive",
+      interactive: { type: "location_request_message", body: { text: body }, action: { name: "send_location" } },
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}
+
 // Sobe um arquivo (ex: PDF de orçamento) para a Cloud API → mediaId.
 export async function uploadWhatsAppMedia(
   conn: { phoneNumberId: string; accessToken: string },

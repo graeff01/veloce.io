@@ -1885,5 +1885,6 @@ model GeocodeCache {
   key       String   @id
   lat       Float
   lng       Float
+  label     String?  // geocoding REVERSO (coordenada→endereço): JSON {city,suburb} cacheado
   createdAt DateTime @default(now())
 }
