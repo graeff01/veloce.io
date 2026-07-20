@@ -5,7 +5,7 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppImage, sendWhatsAppDocument } from "@/lib/whatsapp-send";
+import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
@@ -138,18 +138,28 @@ const QUOTE_TOOLS: ToolDef[] = [
 ];
 
 // Ferramentas efetivas por cliente: base (master) + orçamento/ficha se habilitado.
-export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown } | null): ToolDef[] {
+const VIDEO_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "enviar_video",
+    description: "Envia o VÍDEO de apresentação da empresa ao lead. Use no PRIMEIRO contato (cliente novo), antes de mostrar o catálogo — como a vendedora faz. Use uma vez só.",
+    parameters: { type: "object", properties: {} },
+  },
+};
+
+export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null } | null): ToolDef[] {
   const defs = [...TOOL_DEFS];
   if (cfg?.quotesEnabled) {
     if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
     defs.push(...QUOTE_TOOLS);
   }
+  if (cfg?.presentationVideoUrl) defs.push(VIDEO_TOOL);
   return defs;
 }
 
 // Artefato visual devolvido por uma tool (foto/PDF) — para o Console mostrar como no
 // WhatsApp. NÃO entra no contexto do modelo (só o `result` textual entra).
-export interface ToolArtifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
+export interface ToolArtifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
 export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
 
 export type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
@@ -346,6 +356,26 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         ? `Se o lead pedir MAIS fotos ou ver POR DENTRO/interior, chame enviar_foto de novo com quantidade 5 (a loja tem mais fotos deste carro) — você mesma manda, NÃO diga que o vendedor envia.`
         : `Já enviou as fotos que a loja tem deste carro; se pedir ainda mais, diga que o vendedor pode enviar outras.`;
       return { result: `${okCount} foto(s) de ${item!.title} enviada(s). Comente CURTINHO (ex: "te mandei umas fotos dele 😊") e PARE — NÃO emende pergunta tipo "quer saber mais algum detalhe?"; deixe o lead ver e reagir. ${maisFotos} Não reenvie as MESMAS fotos sem o lead pedir.` };
+    }
+
+    // ── Vídeo de apresentação (1º contato) ─────────────────────────────────────
+    case "enviar_video": {
+      const vcfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { presentationVideoUrl: true } });
+      const url = vcfg?.presentationVideoUrl?.trim();
+      if (!url) return { result: "Sem vídeo de apresentação configurado — siga a conversa normalmente." };
+      if (ctx.mode === "test") return {
+        result: "Vídeo de apresentação enviado ao lead. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho pra você conhecer a gente 😊') e siga.",
+        artifacts: [{ kind: "video", url, caption: "Apresentação" }],
+      };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível para enviar o vídeo." };
+      const sent = await sendWhatsAppVideo(conn, ctx.contactWaId, url);
+      if (!sent.ok) return { result: `Não consegui enviar o vídeo (${sent.error}); siga a conversa por texto.` };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-vid-${Date.now()}`,
+        direction: "out", type: "video", text: "[vídeo de apresentação]", aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: "Vídeo de apresentação enviado. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho 😊') e siga pro catálogo/pergunta." };
     }
 
     case "escalar_humano": {

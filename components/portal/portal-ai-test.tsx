@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Send, Sparkles, RotateCcw, FlaskConical, User, Mic, Square } from "lucide-react";
 
-interface Artifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface Artifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
 
 // Cenários agrupados pra o gestor testar rápido como a IA reage — servem a qualquer vertical.
@@ -214,6 +214,8 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 12, display: "block", border: "1px solid var(--p-border)" }} />
                         </a>
+                      : a.kind === "video"
+                      ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 250, width: "100%", borderRadius: 12, border: "1px solid var(--p-border)" }} />
                       : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", textDecoration: "none", color: "var(--p-text)", fontSize: 13, fontWeight: 600, maxWidth: 250 }}>
                           <span style={{ fontSize: 18 }}>📄</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
