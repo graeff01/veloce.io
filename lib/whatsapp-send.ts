@@ -138,6 +138,33 @@ export async function sendWhatsAppVideo(
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
 
+// Marca a mensagem recebida como LIDA (✓✓ azul) e, opcionalmente, mostra "digitando…" ao
+// lead enquanto o agente prepara a resposta — dá um toque humano/atencioso. Best-effort:
+// o typing_indicator é recurso novo da Cloud API; se algo falhar, é ignorado (não afeta o
+// atendimento). O "digitando…" some ao enviar a resposta (ou após ~25s).
+export async function sendWhatsAppReadReceipt(
+  conn: { phoneNumberId: string; accessToken: string },
+  messageId: string,
+  opts?: { typing?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido." }; }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+      ...(opts?.typing ? { typing_indicator: { type: "text" } } : {}),
+    }),
+  });
+  if (!res.ok) { const p = await res.json().catch(() => ({})); return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` }; }
+  return { ok: true };
+}
+
 // Pede a LOCALIZAÇÃO do cliente com o botão nativo do WhatsApp ("Enviar localização").
 // A resposta volta como uma mensagem type:"location" (lat/lng) no webhook. Só funciona
 // dentro da janela de 24h (o cliente acabou de escrever, então ok).

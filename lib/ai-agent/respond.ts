@@ -10,7 +10,7 @@ import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
 import { extractQualification } from "./qualify-extract";
 import { evaluateResponse } from "./evaluation";
-import { sendWhatsAppText, sendWhatsAppMediaById, uploadWhatsAppMedia } from "@/lib/whatsapp-send";
+import { sendWhatsAppText, sendWhatsAppMediaById, uploadWhatsAppMedia, sendWhatsAppReadReceipt } from "@/lib/whatsapp-send";
 import { synthesizeVoice, shouldVoice } from "@/lib/tts";
 import { isOperator, handleOperatorCommand, handoffToOperators } from "./operator";
 import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
@@ -172,6 +172,10 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     await logWaEvent(conn.id, "integration.error", contact.id, { message: "agente pausado: teto de gasto diário do cliente atingido" }).catch(() => {});
     return "skipped";
   }
+
+  // Passou nas travas → vamos responder. Marca a última mensagem como LIDA e mostra
+  // "digitando…" ao lead enquanto geramos a resposta (toque humano). Best-effort.
+  if (input.idempotencyKey) void sendWhatsAppReadReceipt(conn, input.idempotencyKey, { typing: true }).catch(() => {});
 
   // 6) Mídia: áudio é transcrito (segue como texto); imagem/doc viram marcador.
   let inboundText = input.payload.text ?? "";
