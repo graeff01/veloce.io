@@ -1,10 +1,12 @@
 import { decryptSecret } from "@/lib/crypto";
 
 // Envio de texto pela Cloud API. Usado SOMENTE pelo agente (controlado e logado).
+// opts.replyTo = message_id do lead que estamos RESPONDENDO (cita a mensagem — "threading").
 export async function sendWhatsAppText(
   conn: { phoneNumberId: string; accessToken: string },
   toWaId: string,
   text: string,
+  opts?: { replyTo?: string },
 ): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
   let token: string;
   try { token = decryptSecret(conn.accessToken); }
@@ -19,11 +21,39 @@ export async function sendWhatsAppText(
       to: toWaId,
       type: "text",
       text: { preview_url: false, body: text },
+      ...(opts?.replyTo ? { context: { message_id: opts.replyTo } } : {}),
     }),
   });
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}
+
+// Reage a uma mensagem do lead com um emoji (❤️👍🔥…) — micro-toque humano. emoji vazio
+// REMOVE a reação. messageId = a mensagem do lead que será reagida.
+export async function sendWhatsAppReaction(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ ok: boolean; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido." }; }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toWaId,
+      type: "reaction",
+      reaction: { message_id: messageId, emoji },
+    }),
+  });
+  if (!res.ok) { const p = await res.json().catch(() => ({})); return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` }; }
+  return { ok: true };
 }
 
 // Envio de mensagem INTERATIVA com reply buttons (até 3). SÓ funciona dentro da janela

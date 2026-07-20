@@ -43,10 +43,10 @@ function splitBlocks(text: string): string[] {
   return parts.length <= 1 ? [text.trim()] : parts.slice(0, 3);
 }
 
-async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string }, to: string, text: string) {
+async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string }, to: string, text: string, replyTo?: string) {
   let last: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
   for (let a = 0; a < 2; a++) {
-    last = await sendWhatsAppText(conn, to, text);
+    last = await sendWhatsAppText(conn, to, text, replyTo ? { replyTo } : undefined);
     if (last.ok) return last;
     await sleep(600 * (a + 1));
   }
@@ -246,8 +246,11 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   //    (linha em branco) — cadência humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar
   //    DEPOIS de já ter enviado algo, para sem re-enfileirar (evita duplicar mensagens ao lead).
   const blocks = voiceSent ? [] : splitBlocks(out.reply);
+  // Threading: cita a mensagem do lead SÓ na 1ª bolha e SÓ quando ele fez uma PERGUNTA
+  // (passa atenção sem parecer robótico — não cita toda mensagem). Só p/ texto do lead.
+  const quoteId = (mediaType === null && inboundText.includes("?") && input.idempotencyKey) ? input.idempotencyKey : undefined;
   for (let i = 0; i < blocks.length; i++) {
-    const r = await sendWithRetry(conn, contact.waId, blocks[i]);
+    const r = await sendWithRetry(conn, contact.waId, blocks[i], i === 0 ? quoteId : undefined);
     if (!r.ok) {
       await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${r.error}` }).catch(() => {});
       if (i === 0) return "error";
