@@ -5,7 +5,7 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest } from "@/lib/whatsapp-send";
+import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
@@ -85,6 +85,16 @@ export const TOOL_DEFS: ToolDef[] = [
       name: "escalar_humano",
       description: "Aciona um vendedor humano DE VERDADE. Use quando o lead QUER FECHAR/negociar (desconto, valor final, 'quero fechar/reservar'), pedir APROVAÇÃO de financiamento ou avaliação de troca em R$, ou INSISTIR num número/condição que você não pode dar. NÃO use para uma dúvida de DADO que você só não tem (spec, item, estepe, consumo): nesse caso responda por texto que confirma com o vendedor, sem handoff.",
       parameters: { type: "object", properties: { motivo: { type: "string" } }, required: ["motivo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reagir",
+      description: "Reage à ÚLTIMA mensagem do lead com um emoji (como uma pessoa dá um ❤️/👍 no WhatsApp). Use com PARCIMÔNIA e só quando for natural: o lead demonstrou empolgação ('amei!', 'ficou linda'), concordou/fechou ('fechado!', 'pode ser'), agradeceu, ou mandou uma foto legal. NÃO reaja a toda mensagem, nem a perguntas ou reclamações. Na maioria das vezes NÃO reaja.",
+      parameters: { type: "object", properties: {
+        emoji: { type: "string", enum: ["❤️", "👍", "🔥", "😊", "👏", "🙏"], description: "emoji que combina com o momento" },
+      }, required: ["emoji"] },
     },
   },
 ];
@@ -407,6 +417,19 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         direction: "out", type: "interactive", text: "[pedido de localização]", aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
       return { result: "Pedido de localização enviado. AGUARDE o cliente compartilhar (ou mandar o endereço por texto). Quando vier, você recebe o bairro/cidade — aí é só gerar o orçamento. NÃO repita o pedido; não escolha a zona por conta própria." };
+    }
+
+    case "reagir": {
+      const emoji = typeof (args as { emoji?: string }).emoji === "string" ? (args as { emoji?: string }).emoji! : "";
+      if (!emoji) return { result: "Sem emoji — siga a conversa normalmente." };
+      if (ctx.mode === "test") return { result: `(reagiu com ${emoji} na mensagem do lead) Siga a conversa normalmente — não comente a reação.` };
+      // Reage à última mensagem RECEBIDA do lead.
+      const lastIn = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { waMessageId: true } });
+      if (!lastIn?.waMessageId) return { result: "Não há mensagem recente do lead para reagir — siga normalmente." };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível — siga a conversa normalmente." };
+      await sendWhatsAppReaction(conn, ctx.contactWaId, lastIn.waMessageId, emoji).catch(() => {});
+      return { result: `Reagiu com ${emoji}. NÃO comente a reação nem repita o emoji no texto — siga a conversa com naturalidade (ou nem responda, se já estava tudo dito).` };
     }
 
     case "escalar_humano": {
