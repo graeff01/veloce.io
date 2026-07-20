@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Send, Sparkles, RotateCcw, FlaskConical, User, Mic, Square } from "lucide-react";
+import { Send, Sparkles, RotateCcw, FlaskConical, User, Mic, Square, MapPin } from "lucide-react";
 
-interface Artifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface Artifact { kind: "image" | "pdf" | "audio" | "video" | "location_request"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface Turn { role: "user" | "assistant"; content: string; decision?: string | null; tools?: string[]; artifacts?: Artifact[] }
 
 // Cenários agrupados pra o gestor testar rápido como a IA reage — servem a qualquer vertical.
@@ -19,6 +19,7 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
+  const [locShare, setLocShare] = useState<{ turn: number; value: string } | null>(null); // simula compartilhar localização
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -103,6 +104,15 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
     } catch {
       setError("Não consegui acessar o microfone. Permita o acesso no navegador e tente de novo.");
     }
+  }
+
+  // Simula o cliente COMPARTILHANDO a localização: manda o bairro/cidade como se tivesse
+  // vindo do GPS — exercita a resolução de zona igual ao WhatsApp real.
+  function doShare() {
+    const v = locShare?.value.trim();
+    if (!v) return;
+    setLocShare(null);
+    void send(`📍 Localização compartilhada: ${v}`);
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } };
@@ -216,6 +226,24 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                         </a>
                       : a.kind === "video"
                       ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 250, width: "100%", borderRadius: 12, border: "1px solid var(--p-border)" }} />
+                      : a.kind === "location_request"
+                      ? <div key={j} style={{ marginTop: 6 }}>
+                          {locShare?.turn === i ? (
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", maxWidth: 300 }}>
+                              <input autoFocus value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doShare(); } }}
+                                placeholder="bairro, cidade (ex: Restinga, Porto Alegre)"
+                                style={{ flex: "1 1 170px", minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 13, outline: "none" }} />
+                              <button type="button" onClick={doShare} disabled={!locShare.value.trim() || loading}
+                                style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 13, fontWeight: 600, cursor: locShare.value.trim() ? "pointer" : "default", opacity: locShare.value.trim() ? 1 : 0.5 }}>Enviar</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => setLocShare({ turn: i, value: "" })} disabled={loading}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 13px", borderRadius: 12, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                              <MapPin size={15} /> Compartilhar localização
+                            </button>
+                          )}
+                        </div>
                       : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", textDecoration: "none", color: "var(--p-text)", fontSize: 13, fontWeight: 600, maxWidth: 250 }}>
                           <span style={{ fontSize: 18 }}>📄</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>

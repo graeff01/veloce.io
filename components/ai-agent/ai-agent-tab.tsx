@@ -5,7 +5,7 @@ import {
   Bot, Loader2, Plus, Trash2, Save, Power, BookOpen, Package,
   Activity, Check, FlaskConical, Send, RotateCcw,
   Pause, ShieldAlert, Brain, LayoutDashboard, ArrowRight, ClipboardCheck, DollarSign,
-  History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap, ChevronDown, ChevronRight,
+  History, Target, FileText, ScrollText, LineChart, Sparkles, TrendingUp, Zap, ChevronDown, ChevronRight, MapPin,
 } from "lucide-react";
 import { TabHeader } from "@/components/clients/tab-header";
 import { PLAYBOOK_TEMPLATES, type Playbook } from "@/lib/ai-agent/playbook";
@@ -479,16 +479,17 @@ function ActivitySection({ clientId }: { clientId: string }) {
 }
 
 // ── Console (dry-run) ─────────────────────────────────────────────────────────
-interface ConsoleArtifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface ConsoleArtifact { kind: "image" | "pdf" | "audio" | "video" | "location_request"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface ConsoleMsg { role: "user" | "assistant"; content: string; artifacts?: ConsoleArtifact[]; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
 
 function ConsoleSection({ clientId }: { clientId: string }) {
   const [msgs, setMsgs] = useState<ConsoleMsg[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [locShare, setLocShare] = useState<{ turn: number; value: string } | null>(null);
 
-  async function send() {
-    const t = text.trim();
+  async function send(override?: string) {
+    const t = (typeof override === "string" ? override : text).trim();
     if (!t || loading) return;
     const next: ConsoleMsg[] = [...msgs, { role: "user", content: t }];
     setMsgs(next); setText(""); setLoading(true);
@@ -505,6 +506,14 @@ function ConsoleSection({ clientId }: { clientId: string }) {
       setMsgs([...next, { role: "assistant", content: "Erro de rede.", meta: { status: "error" } }]);
     }
     setLoading(false);
+  }
+
+  // Simula o cliente COMPARTILHANDO a localização (manda o bairro/cidade como se fosse do GPS).
+  function doShare() {
+    const v = locShare?.value.trim();
+    if (!v) return;
+    setLocShare(null);
+    void send(`📍 Localização compartilhada: ${v}`);
   }
 
   return (
@@ -533,6 +542,21 @@ function ConsoleSection({ clientId }: { clientId: string }) {
                   </a>
                 : a.kind === "video"
                 ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 240, width: "100%", borderRadius: 10, border: "1px solid var(--border)" }} />
+                : a.kind === "location_request"
+                ? <div key={j} style={{ marginTop: 6 }}>
+                    {locShare?.turn === i ? (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", maxWidth: 300 }}>
+                        <input autoFocus value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doShare(); } }}
+                          placeholder="bairro, cidade (ex: Restinga, Porto Alegre)" style={{ ...input, flex: "1 1 170px", minWidth: 0 }} />
+                        <button onClick={doShare} disabled={!locShare.value.trim() || loading} style={btn(true)}>Enviar</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setLocShare({ turn: i, value: "" })} disabled={loading} style={{ ...btn(), display: "inline-flex", alignItems: "center", gap: 6, borderColor: "var(--accent)", color: "var(--accent)" }}>
+                        <MapPin size={14} /> Compartilhar localização
+                      </button>
+                    )}
+                  </div>
                 : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", textDecoration: "none", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, maxWidth: 240 }}>
                     <span style={{ fontSize: 18 }}>📄</span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
@@ -551,7 +575,7 @@ function ConsoleSection({ clientId }: { clientId: string }) {
 
       <div style={{ display: "flex", gap: 8 }}>
         <input style={{ ...input, flex: 1 }} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Ex: oi, vi o anúncio do Taos, ainda tem?" />
-        <button onClick={send} disabled={loading} style={btn(true)}><Send size={14} /> Enviar</button>
+        <button onClick={() => send()} disabled={loading} style={btn(true)}><Send size={14} /> Enviar</button>
       </div>
     </div>
   );

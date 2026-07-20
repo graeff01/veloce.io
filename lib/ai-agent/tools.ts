@@ -172,7 +172,7 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
 
 // Artefato visual devolvido por uma tool (foto/PDF) — para o Console mostrar como no
 // WhatsApp. NÃO entra no contexto do modelo (só o `result` textual entra).
-export interface ToolArtifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
+export interface ToolArtifact { kind: "image" | "pdf" | "audio" | "video" | "location_request"; url?: string; dataUri?: string; caption?: string; filename?: string }
 export interface ToolResult { result: string; decision?: string; artifacts?: ToolArtifact[] }
 
 export type QuoteLineIn = { code?: string | null; label: string; qty: number; unit: number; amount: number };
@@ -395,7 +395,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const cidade = typeof (args as { cidade?: string }).cidade === "string" ? (args as { cidade?: string }).cidade!.trim() : "";
       const body = `Pra calcular o frete certinho da sua região${cidade ? ` em ${cidade}` : ""}, toca no botão abaixo e compartilha sua localização 📍\n\nSe preferir, é só me mandar seu bairro/endereço por escrito 😊`;
       if (ctx.mode === "test") return {
-        result: "Pedido de localização enviado ao lead (no WhatsApp aparece o botão 'Enviar localização'). No Console não dá pra compartilhar GPS — pra testar a zona, digite o BAIRRO como o cliente faria. Se o cliente preferir texto, aceite o endereço normalmente.",
+        result: "Pedido de localização enviado ao lead (no WhatsApp aparece o botão 'Enviar localização'). Aguarde ele compartilhar a localização (ou mandar o endereço por texto) e então gere o orçamento — não escolha a zona por conta própria.",
+        artifacts: [{ kind: "location_request", caption: body }],
       };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível — peça a cidade/bairro por texto." };
