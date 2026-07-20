@@ -2,19 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, LogOut } from "lucide-react";
+import { Sun, Moon, LayoutDashboard, MessageCircle, Filter, Sparkles, Megaphone, Users, FileText, LogOut } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 
 // Réplica enxuta do sistema pro cliente: sidebar com o MESMO design do sistema
 // interno, nas cores do cliente, só com Painel/Conversas + toggle de tema. Só PC
 // (>=1024px); no celular fica escondida e o conteúdo segue como antes.
 // A sidebar acompanha o tema (clara no claro, escura no escuro) via var(--p-*).
-export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" }) {
+export function PortalShell({ token, brandName, logoUrl, active }: { token: string; brandName: string; logoUrl: string | null; active: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "orcamentos" }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [account, setAccount] = useState<{ name: string | null; email: string; role: string } | null>(null);
   const [sections, setSections] = useState<string[] | null>(null); // null = todas (até carregar)
+  const [quotesEnabled, setQuotesEnabled] = useState(false); // aba Orçamentos: só quando o cliente tem orçamento ligado
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); }).catch(() => {}); }, [token]);
+  useEffect(() => { fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setQuotesEnabled(!!d?.quotesEnabled); }).catch(() => {}); }, [token]);
   const on = (k: string) => !sections || sections.includes(k);
   async function logout() {
     await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
@@ -27,7 +28,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe", href: string, label: string, icon: React.ReactNode) => {
+  const item = (key: "painel" | "conversas" | "funil" | "ia" | "anuncios" | "equipe" | "orcamentos", href: string, label: string, icon: React.ReactNode) => {
     const on = active === key;
     return (
       <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
@@ -47,7 +48,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
       <style>{`.pside{display:none}
         .padvisor{display:none}
         @media(min-width:760px){ .padvisor{display:contents} }
-        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain{margin-left:236px} }`}</style>
+        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain,.qmain{margin-left:236px} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>
         {/* marca do cliente */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, height: 56, padding: "0 6px", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
@@ -68,6 +69,7 @@ export function PortalShell({ token, brandName, logoUrl, active }: { token: stri
           {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
           {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
           {on("conversas") && item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={15} />)}
+          {quotesEnabled && item("orcamentos", `/r/${token}/orcamentos`, "Orçamentos", <FileText size={15} />)}
           {on("equipe") && item("equipe", `/r/${token}/equipe`, "Equipe", <Users size={15} />)}
         </nav>
 

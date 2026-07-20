@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, parseSections } from "@/lib/notifications/client-portal";
-import { getPortalUser, isProtected } from "@/lib/portal-auth";
+import { resolvePortal, effectiveSections } from "@/lib/notifications/client-portal";
+import { getPortalUser, getPortalSessionEmail, isProtected } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
 
@@ -10,10 +10,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  const [user, requireLogin, cp] = await Promise.all([
+  const email = await getPortalSessionEmail(portal.clientId);
+  const [user, requireLogin, sections, ai] = await Promise.all([
     getPortalUser(portal.clientId),
     isProtected(portal.clientId),
-    prisma.clientPortal.findUnique({ where: { clientId: portal.clientId }, select: { sections: true } }),
+    effectiveSections(portal.clientId, email),
+    prisma.aiAgentConfig.findUnique({ where: { clientId: portal.clientId }, select: { quotesEnabled: true } }),
   ]);
-  return NextResponse.json({ user, requireLogin, sections: parseSections(cp?.sections) });
+  return NextResponse.json({ user, requireLogin, sections, quotesEnabled: ai?.quotesEnabled ?? false });
 }

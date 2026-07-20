@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { resolvePortal, effectiveSections } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { buildImpact } from "@/lib/ai-agent/impact";
 import { normalizePeriod, recentMonths, periodRanges } from "@/lib/notifications/client-report";
@@ -92,11 +92,12 @@ export default async function IaPage({ params, searchParams }: { params: Promise
     );
   }
 
-  if (!(await sectionEnabled(portal.clientId, "ia"))) redirect(`/r/${token}/conversas`);
+  const sessionEmail = await getPortalSessionEmail(portal.clientId);
+  if (!(await effectiveSections(portal.clientId, sessionEmail)).includes("ia")) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
+  if ((await isProtected(portal.clientId)) && !sessionEmail) {
     return (
       <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
         <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>

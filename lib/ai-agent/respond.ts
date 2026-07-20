@@ -20,6 +20,7 @@ import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { logWaEvent } from "@/lib/wa-events";
 import { isWithin24h } from "@/lib/wa-window";
+import { isTakenOver } from "@/lib/takeover";
 import { allowSend } from "@/lib/portal-send-throttle";
 
 export interface JobPayload { text?: string | null; type: string; mediaId?: string; mime?: string }
@@ -139,14 +140,17 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     return sent.ok ? "sent" : "error";
   }
 
-  // 3) Takeover humano: se um humano respondeu há pouco, a IA NÃO assume.
+  // 3) Takeover humano: se um humano respondeu há pouco OU pausou a IA explicitamente
+  //    (botão "Assumir"), a IA NÃO assume. A regra explícita vale ANTES da 1ª mensagem.
   const takeoverMin = cfg?.humanTakeoverMin ?? 180;
   if (takeoverMin > 0) {
     const human = await prisma.waMessage.findFirst({
       where: { contactId: contact.id, direction: "out", aiGenerated: false, timestamp: { gte: new Date(Date.now() - takeoverMin * 60_000) } },
       select: { id: true },
     });
-    if (human) return "skipped"; // operador no controle
+    if (human) return "skipped"; // operador no controle (regra por mensagem)
+    const convTk = await prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { humanTakeoverAt: true } });
+    if (isTakenOver(convTk?.humanTakeoverAt, takeoverMin)) return "skipped"; // takeover explícito
   }
 
   // 4) Escopo efetivo (a quem responde). No modo "ads_in_hours" varia por horário:
@@ -416,6 +420,19 @@ export async function setAssignment(clientId: string, contactId: string, email: 
   }
   await prisma.waConversation.updateMany({ where: { contactId }, data: { assignedEmail: target, assignedAt: target ? new Date() : null } });
   return { ok: true, assignedEmail: target };
+}
+
+// Pausa ("Assumir") ou retoma ("Devolver pra IA") a IA nesta conversa. on=true silencia
+// a IA na janela (antes mesmo da 1ª mensagem). Mesmo isolamento por clientId.
+export async function setHumanTakeover(clientId: string, contactId: string, on: boolean): Promise<{ ok: boolean; status?: number; error?: string; humanTakenOver?: boolean }> {
+  const contact = await prisma.waContact.findUnique({ where: { id: contactId }, select: { id: true, connection: { select: { id: true, clientId: true } } } });
+  if (!contact || contact.connection.clientId !== clientId) return { ok: false, status: 404, error: "Conversa não encontrada." };
+  await prisma.waConversation.upsert({
+    where: { contactId: contact.id },
+    create: { connectionId: contact.connection.id, contactId: contact.id, humanTakeoverAt: on ? new Date() : null },
+    update: { humanTakeoverAt: on ? new Date() : null },
+  });
+  return { ok: true, humanTakenOver: on };
 }
 
 // Auto-resposta de lead SEM ATENDIMENTO (em horário comercial): se o lead ficou X min sem

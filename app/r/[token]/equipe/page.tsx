@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, sectionEnabled } from "@/lib/notifications/client-portal";
+import { resolvePortal, effectiveSections } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
@@ -26,11 +26,12 @@ export default async function EquipePage({ params }: { params: Promise<{ token: 
     );
   }
 
-  if (!(await sectionEnabled(portal.clientId, "equipe"))) redirect(`/r/${token}/conversas`);
+  const sessionEmail = await getPortalSessionEmail(portal.clientId);
+  if (!(await effectiveSections(portal.clientId, sessionEmail)).includes("equipe")) redirect(`/r/${token}/conversas`);
 
   const client = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
 
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
+  if ((await isProtected(portal.clientId)) && !sessionEmail) {
     return (
       <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
         <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}`}</style>

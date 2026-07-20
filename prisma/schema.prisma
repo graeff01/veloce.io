@@ -1015,6 +1015,7 @@ model WaConversation {
   autoRepliedAt    DateTime? // última tentativa de auto-resposta (lead sem atendimento) — 1 por mensagem
   assignedEmail    String?   // DONO do lead (atendente). Definido na 1ª resposta humana; reatribuível
   assignedAt       DateTime? // quando o dono atual assumiu
+  humanTakeoverAt  DateTime? // atendente PAUSOU a IA explicitamente (botão) — silencia o bot na janela
   inboundCount     Int       @default(0)
   outboundCount    Int       @default(0)
   openedAt         DateTime?
@@ -1739,6 +1740,7 @@ model PortalAccess {
   name         String?   // nome do usuário (exibição)
   passwordHash String?   // bcrypt; null = ainda não cadastrou senha
   role         String    @default("attendant") // "admin" (vê tudo) | "attendant" (só o dele)
+  sections     String?   // CSV de abas que o atendente PODE ver (ex: "painel,funil"). null = herda tudo do cliente (usuários antigos); "" = só Conversas. Admin ignora (vê tudo).
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
 

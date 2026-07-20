@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal, parseSections } from "@/lib/notifications/client-portal";
+import { resolvePortal, effectiveSections } from "@/lib/notifications/client-portal";
 import { getClientDashboard, getBenchmark, getSectorBenchmark, normalizePeriod, recentMonths } from "@/lib/notifications/client-report";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
@@ -47,11 +47,12 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
   const ua = (await headers()).get("user-agent") || "";
   if (/Mobi|Android|iPhone|iPod|Windows Phone/i.test(ua)) redirect(`/r/${token}/conversas`);
 
-  // Se o gestor desligou o "Painel" (dashboard) para este cliente, a entrada vai pras conversas.
-  const cpSections = await prisma.clientPortal.findUnique({ where: { clientId: portal.clientId }, select: { sections: true } });
-  if (!parseSections(cpSections?.sections).includes("painel")) redirect(`/r/${token}/conversas`);
+  // Se o "Painel" (dashboard) está desligado pro cliente OU este usuário não tem
+  // acesso à aba, a entrada vai pras conversas.
+  const sessionEmail = await getPortalSessionEmail(portal.clientId);
+  if (!(await effectiveSections(portal.clientId, sessionEmail)).includes("painel")) redirect(`/r/${token}/conversas`);
 
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
+  if ((await isProtected(portal.clientId)) && !sessionEmail) {
     const c = await prisma.client.findUnique({ where: { id: portal.clientId }, select: { name: true, logoUrl: true } });
     return (
       <main style={{ minHeight: "100dvh", background: "var(--p-bg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>

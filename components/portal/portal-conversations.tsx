@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Bell, BellOff, Pause, Play } from "lucide-react";
+import { unreadCount, newInbound, isUnread } from "@/lib/unread";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
 interface Attendant { email: string; name: string }
@@ -11,7 +12,7 @@ const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; humanTakenOver?: boolean; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -77,6 +78,17 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
   const [ownerMenu, setOwnerMenu] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
+  const [takingOver, setTakingOver] = useState(false);
+  // Notificações in-tab (badge no título + som + Notification), sobre o polling.
+  const [soundOn, setSoundOn] = useState(true);
+  const [notifOn, setNotifOn] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [seenAt, setSeenAt] = useState<Record<string, number>>({});
+  const pollPrevRef = useRef<Record<string, number> | null>(null);
+  const baseTitleRef = useRef<string>("");
+  const audioRef = useRef<AudioContext | null>(null);
+  const seenKey = `vp-seen-${token}`;
+  const notifKey = `vp-notif-${token}`;
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +105,92 @@ export function PortalConversations({ token, brandName, logoUrl, initialContact 
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  // Bipe curto e discreto (sintetizado — sem asset binário).
+  const playBlip = () => {
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      const ctx = audioRef.current ?? (audioRef.current = new AC());
+      if (ctx.state === "suspended") void ctx.resume();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = 660; o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.start(t); o.stop(t + 0.2);
+    } catch { /* ignore */ }
+  };
+
+  // Preferências de notificação + "vistas" (localStorage do portal). Hidrata no cliente.
+  useEffect(() => {
+    baseTitleRef.current = (document.title || "Conversas").replace(/^\(\d+\)\s*/, "");
+    try {
+      const p = JSON.parse(localStorage.getItem(notifKey) || "null");
+      if (p && typeof p === "object") { setSoundOn(p.soundOn !== false); setNotifOn(!!p.notifOn && "Notification" in window && Notification.permission === "granted"); }
+      const s = JSON.parse(localStorage.getItem(seenKey) || "null");
+      if (s && typeof s === "object") setSeenAt(s);
+    } catch { /* ignore */ }
+    return () => { if (baseTitleRef.current) document.title = baseTitleRef.current; };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(notifKey, JSON.stringify({ soundOn, notifOn })); } catch { /* ignore */ } }, [soundOn, notifOn, notifKey]);
+
+  // Marca a conversa aberta como VISTA (zera não-lida) enquanto a aba está visível.
+  useEffect(() => {
+    if (!sel || document.hidden) return;
+    const row = (list ?? []).find((c) => c.contactId === sel);
+    const ts = row?.lastMessageAt ? Date.parse(row.lastMessageAt) : Date.now();
+    setSeenAt((prev) => {
+      if ((prev[sel] ?? 0) >= ts) return prev;
+      const next = { ...prev, [sel]: ts };
+      try { localStorage.setItem(seenKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [sel, list]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A cada poll: detecta INBOUND novo → som + (aba oculta e permitido) Notification.
+  useEffect(() => {
+    if (!list) return;
+    const curr: Record<string, number> = {};
+    for (const c of list) if (c.lastMessageAt) { const t = Date.parse(c.lastMessageAt); if (!Number.isNaN(t)) curr[c.contactId] = t; }
+    const prev = pollPrevRef.current;
+    pollPrevRef.current = curr;
+    if (prev === null) return; // baseline (1ª carga não notifica)
+    const fresh = newInbound(prev, list).filter((c) => !(sel === c.contactId && !document.hidden));
+    if (!fresh.length) return;
+    if (soundOn) playBlip();
+    if (notifOn && document.hidden && "Notification" in window && Notification.permission === "granted") {
+      for (const c of fresh.slice(0, 3)) {
+        try { const n = new Notification(c.name || "Novo lead", { body: preview(c.lastText, c.lastType) || "Nova mensagem", tag: c.contactId }); n.onclick = () => { window.focus(); setSel(c.contactId); n.close(); }; } catch { /* ignore */ }
+      }
+    }
+  }, [list]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Badge no título: "(N) …" com o total de não lidas.
+  useEffect(() => {
+    const base = baseTitleRef.current || "Conversas";
+    const n = unreadCount(list ?? [], seenAt);
+    document.title = n > 0 ? `(${n}) ${base}` : base;
+  }, [list, seenAt]);
+
+  async function toggleNotif() {
+    if (notifOn) { setNotifOn(false); return; }
+    if (!("Notification" in window)) { alert("Seu navegador não suporta notificações."); return; }
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm === "granted") setNotifOn(true);
+    else alert("Permissão negada. Habilite as notificações deste site no navegador.");
+  }
+
+  // Assumir (pausar IA) / Devolver (retomar IA) — takeover explícito.
+  async function takeover(on: boolean) {
+    if (!sel || takingOver) return;
+    setTakingOver(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/${on ? "take-over" : "release"}`, { method: "POST" });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível atualizar."); return; }
+      setConv((c) => (c ? { ...c, humanTakenOver: on } : c));
+    } finally { setTakingOver(false); }
+  }
 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
   useEffect(() => {

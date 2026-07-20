@@ -36,7 +36,7 @@ export async function registerUser(clientId: string, email: string, password: st
   const portal = await prisma.clientPortal.findUnique({ where: { clientId }, select: { requireLogin: true, maxUsers: true } });
   if (!portal?.requireLogin) return { ok: false, status: 403, error: "Login não está ativado para este painel." };
 
-  const existing = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: e } }, select: { passwordHash: true } });
+  const existing = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email: e } }, select: { passwordHash: true, sections: true } });
   if (existing?.passwordHash) return { ok: false, status: 409, error: "Esse e-mail já tem conta. Faça login." };
 
   // Teto: conta só quem já é usuário efetivo (tem senha). Convidado sem senha não ocupa vaga extra.
@@ -49,11 +49,14 @@ export async function registerUser(clientId: string, email: string, password: st
   const hasAdmin = (await prisma.portalAccess.count({ where: { clientId, role: "admin", passwordHash: { not: null } } })) > 0;
   const role = hasAdmin ? "attendant" : "admin";
 
+  // Vendedor novo nasce só com Conversas (sections=""); admin vê tudo (null).
+  // Não mexe em sections já configurado (admin pode ter pré-definido antes do cadastro).
+  const initSections = role === "attendant" && existing?.sections == null ? "" : undefined;
   const passwordHash = await hashPassword(password);
   await prisma.portalAccess.upsert({
     where: { clientId_email: { clientId, email: e } },
-    create: { clientId, email: e, passwordHash, name: name?.trim() || null, role },
-    update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}), ...(role === "admin" ? { role: "admin" } : {}) },
+    create: { clientId, email: e, passwordHash, name: name?.trim() || null, role, sections: role === "attendant" ? "" : null },
+    update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}), ...(role === "admin" ? { role: "admin" } : {}), ...(initSections !== undefined ? { sections: initSections } : {}) },
   });
   return { ok: true, email: e };
 }

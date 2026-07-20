@@ -11,8 +11,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, lastLoginAt: true, passwordHash: true } });
-  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
+  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, sections: true, lastLoginAt: true, passwordHash: true } });
+  // sections: null = herda tudo do cliente; senão CSV das abas liberadas (sem Conversas, que é sempre).
+  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, sections: u.sections == null ? null : u.sections.split(",").map((s) => s.trim()).filter(Boolean), lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
   return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
 }
 
@@ -30,6 +31,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     await prisma.portalAccess.updateMany({ where: { clientId: id, email: e }, data: { passwordHash: null, lastLoginAt: null } });
     await prisma.portalSession.deleteMany({ where: { clientId: id, email: e } });
     return NextResponse.json({ ok: true, reset: true });
+  }
+
+  // { email, sections: string[] } — abas que este atendente pode ver (Conversas é sempre; admin ignora).
+  if (Array.isArray(body?.sections)) {
+    const keys = [...new Set((body.sections as unknown[]).map((s) => String(s).trim()).filter((s) => s && s !== "conversas"))];
+    await prisma.portalAccess.updateMany({ where: { clientId: id, email: e }, data: { sections: keys.join(",") } });
+    return NextResponse.json({ ok: true, sections: keys });
   }
 
   const role = body?.role === "admin" ? "admin" : "attendant";
