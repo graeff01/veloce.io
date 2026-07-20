@@ -180,13 +180,23 @@ const LOCATION_TOOL: ToolDef = {
   },
 };
 
-export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null } | null): ToolDef[] {
+const OPTIONS_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "enviar_opcionais",
+    description: "Envia a IMAGEM com os acessórios/opcionais (ex.: da Gourmet). Use quando o cliente pedir pra ver os opcionais/acessórios ou quando você for apresentar os opcionais de um modelo que tem essa imagem — a imagem mostra melhor que listar por texto. Uma vez por assunto.",
+    parameters: { type: "object", properties: {} },
+  },
+};
+
+export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null; optionsImageUrl?: string | null } | null): ToolDef[] {
   const defs = [...TOOL_DEFS];
   if (cfg?.quotesEnabled) {
     if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
     defs.push(...QUOTE_TOOLS, LOCATION_TOOL);
   }
   if (cfg?.presentationVideoUrl) defs.push(VIDEO_TOOL);
+  if (cfg?.optionsImageUrl) defs.push(OPTIONS_TOOL);
   return defs;
 }
 
@@ -460,6 +470,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         direction: "out", type: "location", text: `[localização da loja: ${addr}]`, aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
       return { result: "Localização da loja enviada no mapa. Comente curtinho (ex: 'te mandei nossa localização 📍, é só tocar pra abrir no mapa') e siga." };
+    }
+
+    case "enviar_opcionais": {
+      const ocfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { optionsImageUrl: true } });
+      const url = ocfg?.optionsImageUrl?.trim();
+      if (!url) return { result: "Sem imagem de opcionais configurada — descreva os opcionais por texto." };
+      if (ctx.mode === "test") return { result: "Imagem dos opcionais enviada ao lead. Comente CURTINHO (ex: 'te mandei a imagem com os acessórios 😊') e siga.", artifacts: [{ kind: "image", url, caption: "Opcionais" }] };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível para enviar a imagem." };
+      const sent = await sendWhatsAppImage(conn, ctx.contactWaId, url, "Acessórios");
+      if (!sent.ok) return { result: `Não consegui enviar a imagem (${sent.error}); descreva os opcionais por texto.` };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-opc-${Date.now()}`,
+        direction: "out", type: "image", text: "[imagem dos opcionais]", aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: "Imagem dos opcionais enviada. Comente CURTINHO (ex: 'te mandei a imagem com os acessórios 😊') e siga." };
     }
 
     case "escalar_humano": {
