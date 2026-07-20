@@ -112,7 +112,7 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
       const tier = [...(pol.assemblyDiscount ?? [])].filter((t) => itemCount >= t.minItems).sort((a, b) => b.minItems - a.minItems)[0];
       const pct = tier?.pct ?? 0;
       const amount = round2(gross * (1 - pct / 100));
-      extras.push({ key: "montagem", code: null, label: `Entrega + Montagem${pct ? ` (${pct}% de desconto p/ ${itemCount} itens)` : ""}`, qty: 1, unit: amount, amount });
+      extras.push({ key: "montagem", code: null, label: `Montagem${pct ? ` (${pct}% de desconto p/ ${itemCount} itens)` : ""}`, qty: 1, unit: amount, amount });
     }
   }
 
@@ -154,7 +154,7 @@ export const wordHit = (haystack: string, needle: string) => !!needle && (" " + 
 
 export type FreightZoneOption = { region: string; zone?: string; amount: number; assembly?: "optional" | "required" };
 export type FreightResult =
-  | { label: string; amount: number; code?: string | null }
+  | { label: string; amount: number; code?: string | null; assembly?: "optional" | "required" }
   | { askZone: true; city: string; options: FreightZoneOption[] } // cidade tem várias zonas e nenhuma foi identificada
   | { unmatched: true }
   | null;
@@ -168,9 +168,9 @@ export function baseCityName(f: FreightRegion): string {
 // Chave do MUNICÍPIO: código IBGE quando houver (sólido), senão o nome-base normalizado.
 export function cityKeyOf(f: FreightRegion): string { return f.code || normText(baseCityName(f)); }
 
-function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null } {
+function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required" } {
   const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
-  return { label, amount: round2(f.amount), code: f.code ?? null };
+  return { label, amount: round2(f.amount), code: f.code ?? null, assembly: f.assembly };
 }
 
 // Resolve o frete a partir do endereço/cidade do lead. Determinístico e CIDADE-primeiro:
@@ -283,7 +283,12 @@ export function describeFreightNote(freight: FreightRegion[]): string {
   }
   const multi = [...byCity.entries()].filter(([, zs]) => zs.size > 1).map(([c]) => c);
   const base = `FRETE: calculado AUTOMATICAMENTE pela cidade de entrega (${freight.length} regiões atendidas). NÃO escolha o frete — só garanta que coletou a cidade.`;
-  if (!multi.length) return base;
+  // Se ALGUMA região tem montagem obrigatória, a montagem entra sozinha lá — a IA não pergunta.
+  const temObrig = freight.some((f) => f.assembly === "required");
+  const montNote = temObrig
+    ? `\nMONTAGEM: NÃO pergunte "quer montagem?" antes de saber a região de entrega. Em várias regiões a montagem é OBRIGATÓRIA e já entra sozinha no orçamento (a ferramenta cuida disso) — nessas, NUNCA pergunte se quer montagem; se precisar comentar, diga que a entrega já vai com a montagem inclusa. A montagem só é uma ESCOLHA do lead nas regiões em que não é obrigatória.`
+    : "";
+  if (!multi.length) return base + montNote;
   const ex = multi.slice(0, 10).join(", ");
-  return `${base}\nATENÇÃO — estas cidades têm ZONAS com fretes diferentes: ${ex}${multi.length > 10 ? ` (e +${multi.length - 10})` : ""}. Se o lead for de UMA DELAS e você ainda não sabe a zona: CHAME a ferramenta pedir_localizacao NA HORA — ela envia o botão nativo de localização, que o cliente compartilha em 1 TOQUE (ideal p/ público mais velho). É PROIBIDO explicar como anexar a localização manualmente ("toque no clipe/+", "escolha Localização") — a ferramenta já manda o botão. É PROIBIDO perguntar "quer que eu peça sua localização?" — só chame a ferramenta. Se o cliente preferir, ele pode responder o BAIRRO por texto (aí registre e siga). Registre na ficha ANTES de orçar. Nas demais cidades (zona única) a cidade já basta — NÃO peça localização.`;
+  return `${base}\nATENÇÃO — estas cidades têm ZONAS com fretes diferentes: ${ex}${multi.length > 10 ? ` (e +${multi.length - 10})` : ""}. Se o lead for de UMA DELAS e você ainda não sabe a zona: CHAME a ferramenta pedir_localizacao NA HORA — ela envia o botão nativo de localização, que o cliente compartilha em 1 TOQUE (ideal p/ público mais velho). É PROIBIDO explicar como anexar a localização manualmente ("toque no clipe/+", "escolha Localização") — a ferramenta já manda o botão. É PROIBIDO perguntar "quer que eu peça sua localização?" — só chame a ferramenta. Se o cliente preferir, ele pode responder o BAIRRO por texto (aí registre e siga). Registre na ficha ANTES de orçar. Nas demais cidades (zona única) a cidade já basta — NÃO peça localização.${montNote}`;
 }
