@@ -43,6 +43,10 @@ function splitBlocks(text: string): string[] {
   return parts.length <= 1 ? [text.trim()] : parts.slice(0, 3);
 }
 
+// Ritmo humano: tempo de "digitando…" antes de uma bolha, proporcional ao tamanho dela
+// (~35ms/char), com piso e teto para não ficar nem instantâneo nem lento demais.
+const typingDelayMs = (t: string) => Math.min(3500, Math.max(800, Math.round(t.length * 35)));
+
 async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string }, to: string, text: string, replyTo?: string) {
   let last: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
   for (let a = 0; a < 2; a++) {
@@ -250,6 +254,12 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // (passa atenção sem parecer robótico — não cita toda mensagem). Só p/ texto do lead.
   const quoteId = (mediaType === null && inboundText.includes("?") && input.idempotencyKey) ? input.idempotencyKey : undefined;
   for (let i = 0; i < blocks.length; i++) {
+    // Antes de cada bolha seguinte: mostra "digitando…" de novo e espera um tempo
+    // proporcional ao tamanho dela — sensação de gente digitando, não bot instantâneo.
+    if (i > 0) {
+      if (input.idempotencyKey) void sendWhatsAppReadReceipt(conn, input.idempotencyKey, { typing: true }).catch(() => {});
+      await sleep(typingDelayMs(blocks[i]));
+    }
     const r = await sendWithRetry(conn, contact.waId, blocks[i], i === 0 ? quoteId : undefined);
     if (!r.ok) {
       await logWaEvent(conn.id, "integration.error", contact.id, { message: `envio IA falhou: ${r.error}` }).catch(() => {});
@@ -258,7 +268,6 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     }
     sent = r;
     await storeOutbound(conn.id, contact.id, r.waMessageId || `ia-${Date.now()}-${i}`, blocks[i], new Date());
-    if (i < blocks.length - 1) await sleep(900);
   }
 
   // Handoff no WhatsApp: a IA qualifica e passa a bola pro vendedor entrar na conversa.
