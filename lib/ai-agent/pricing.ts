@@ -170,7 +170,7 @@ export function cityKeyOf(f: FreightRegion): string { return f.code || normText(
 
 function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required" } {
   const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
-  return { label, amount: round2(f.amount), code: f.code ?? null, assembly: f.assembly };
+  return { label, amount: round2(f.amount), code: f.code ?? null, ...(f.assembly ? { assembly: f.assembly } : {}) };
 }
 
 // Resolve o frete a partir do endereço/cidade do lead. Determinístico e CIDADE-primeiro:
