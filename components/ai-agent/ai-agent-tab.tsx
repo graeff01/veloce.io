@@ -486,7 +486,6 @@ function ConsoleSection({ clientId }: { clientId: string }) {
   const [msgs, setMsgs] = useState<ConsoleMsg[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [locShare, setLocShare] = useState<{ turn: number; value: string } | null>(null);
 
   async function send(override?: string) {
     const t = (typeof override === "string" ? override : text).trim();
@@ -508,12 +507,11 @@ function ConsoleSection({ clientId }: { clientId: string }) {
     setLoading(false);
   }
 
-  // Simula o cliente COMPARTILHANDO a localização (manda o bairro/cidade como se fosse do GPS).
-  function doShare() {
-    const v = locShare?.value.trim();
-    if (!v) return;
-    setLocShare(null);
-    void send(`📍 Localização compartilhada: ${v}`);
+  // No simulador não há GPS: o botão é só o visual de como chega no WhatsApp. Ao clicar,
+  // a IA diz que não localizou e pede pra escrever (no WhatsApp real o botão funciona).
+  function locationUnavailableInSim() {
+    if (loading) return;
+    setMsgs((m) => [...m, { role: "assistant", content: "📍 (simulação) Aqui no teste não consigo pegar sua localização de verdade — no WhatsApp isso funciona num toque. Me escreve o bairro e a cidade que eu já sigo com o orçamento 😊" }]);
   }
 
   return (
@@ -543,20 +541,10 @@ function ConsoleSection({ clientId }: { clientId: string }) {
                 : a.kind === "video"
                 ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 240, width: "100%", borderRadius: 10, border: "1px solid var(--border)" }} />
                 : a.kind === "location_request"
-                ? <div key={j} style={{ marginTop: 6 }}>
-                    {locShare?.turn === i ? (
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", maxWidth: 300 }}>
-                        <input autoFocus value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doShare(); } }}
-                          placeholder="bairro, cidade (ex: Restinga, Porto Alegre)" style={{ ...input, flex: "1 1 170px", minWidth: 0 }} />
-                        <button onClick={doShare} disabled={!locShare.value.trim() || loading} style={btn(true)}>Enviar</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setLocShare({ turn: i, value: "" })} disabled={loading} style={{ ...btn(), display: "inline-flex", alignItems: "center", gap: 6, borderColor: "var(--accent)", color: "var(--accent)" }}>
-                        <MapPin size={14} /> Compartilhar localização
-                      </button>
-                    )}
-                  </div>
+                ? <button key={j} onClick={locationUnavailableInSim} disabled={loading} title="No WhatsApp o cliente compartilha em 1 toque. No simulador é só visual."
+                    style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", maxWidth: 240, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--accent)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    <MapPin size={15} /> Enviar localização
+                  </button>
                 : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", textDecoration: "none", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, maxWidth: 240 }}>
                     <span style={{ fontSize: 18 }}>📄</span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
