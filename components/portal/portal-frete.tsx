@@ -5,8 +5,9 @@
 // zonas com valor/montagem e os bairros que a IA usa pra reconhecer a zona do cliente.
 // Grava o rules.freight — a mesma tabela que a IA usa pra cotar.
 import { useEffect, useMemo, useState } from "react";
-import { Truck, Save, Plus, Trash2, Search, Upload, ChevronRight, X } from "lucide-react";
+import { Truck, Save, Plus, Trash2, Search, Upload, ChevronRight, X, AlertTriangle, Layers } from "lucide-react";
 import { parseFreightTable, buildImportPreview, type ImportRow } from "@/lib/freight-import";
+import { lintFreight } from "@/lib/ai-agent/freight-lint";
 
 type Neighborhood = { name: string; lat?: number; lng?: number };
 type Freight = { region: string; amount: number; city?: string; zone?: string; aliases?: string[]; neighborhoods?: Neighborhood[]; code?: string | null; assembly?: "optional" | "required" };
@@ -41,11 +42,22 @@ export function PortalFrete({ token }: { token: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [addQ, setAddQ] = useState("");
+  const [flash, setFlash] = useState<string | null>(null); // cidade recém-promovida → rola + destaca
 
   useEffect(() => {
     fetch(`/api/portal/${token}/freight`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => setFreight(Array.isArray(d?.freight) ? d.freight.map((f: Freight) => ({ ...f })) : [])).catch(() => setFreight([]));
     fetch("/geo/rs-municipios-list.json").then((r) => r.json()).then(setMunis).catch(() => {});
   }, [token]);
+
+  // Ao promover uma cidade (tabela → editor rico) ela "sobe" pra outra seção: rola até
+  // ela e destaca por ~1,4s pra deixar claro que é a mesma cidade que se moveu.
+  useEffect(() => {
+    if (!flash) return;
+    const el = document.getElementById(`city-${flash}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = setTimeout(() => setFlash(null), 1400);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   const { codeBySlug, nameByCode } = useMemo(() => ({
     codeBySlug: new Map(munis.map((m) => [m.slug, m.code])),
@@ -78,7 +90,27 @@ export function PortalFrete({ token }: { token: string }) {
     return munis.filter((m) => m.slug.includes(s) && !have.has(m.code)).slice(0, 6);
   }, [addQ, munis, groups]);
 
+  // Avisos do validador de acurácia, mapeados por cidade (⚠ inline) — a aba se auto-audita.
+  const { lintByCity, lintGeneral } = useMemo(() => {
+    const byCity = new Map<string, string[]>(); const general: string[] = [];
+    for (const iss of lintFreight((freight ?? []) as never)) {
+      const idx = iss.region ? (freight ?? []).findIndex((f) => f.region === iss.region) : -1;
+      if (idx < 0) { general.push(iss.message); continue; }
+      const k = cityKeyOf(freight![idx]);
+      (byCity.get(k) ?? byCity.set(k, []).get(k)!).push(iss.message);
+    }
+    return { lintByCity: byCity, lintGeneral: general };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freight, munis]);
+  const lintTotal = [...lintByCity.values()].reduce((s, a) => s + a.length, 0) + lintGeneral.length;
+
   if (!freight) return <div style={{ padding: 40, textAlign: "center", color: "var(--p-muted)" }}>Carregando frete…</div>;
+
+  // Cidade "complexa" (editor rico) = tem >1 zona, ou uma zona nomeada, ou bairros.
+  // Senão é "simples" (só cidade + valor) → vai pra tabela compacta. Classificação
+  // DERIVADA (não é um modo): ganhar zona/bairro promove; perder rebaixa, sozinho.
+  const isComplex = (g: { name: string; idxs: number[] }) =>
+    g.idxs.length > 1 || g.idxs.some((i) => !!deriveZone(freight![i], g.name) || (freight![i].neighborhoods?.length ?? 0) > 0);
 
   const mutate = (next: Freight[]) => { setFreight(next); setDirty(true); };
   const editAt = (i: number, patch: Partial<Freight>) => mutate(freight!.map((f, j) => (j === i ? { ...f, ...patch } : f)));
@@ -90,6 +122,17 @@ export function PortalFrete({ token }: { token: string }) {
     setExpanded((e) => new Set(e).add(m.code)); setAddQ("");
   }
   const toggle = (k: string) => setExpanded((e) => { const n = new Set(e); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  // Promove uma cidade simples (linha da tabela) para cidade-com-zonas: dá um rótulo à
+  // zona atual ("Central") e cria uma 2ª zona vazia. Ela migra sozinha p/ a seção rica.
+  function promoteCity(g: { key: string; name: string; code: string | null; idxs: number[] }) {
+    const first = g.idxs[0];
+    const next = freight!.map((f, j) => (j === first && !deriveZone(f, g.name) ? { ...f, zone: "Central" } : f));
+    next.push({ region: g.name, city: g.name, code: g.code, zone: "", amount: 0, assembly: "optional", neighborhoods: [] });
+    mutate(next);
+    setExpanded((e) => new Set(e).add(g.key));
+    setFlash(g.key);
+  }
 
   async function save() {
     if (!freight) return;
@@ -109,6 +152,58 @@ export function PortalFrete({ token }: { token: string }) {
   const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 10, overflow: "hidden" };
   const inp: React.CSSProperties = { padding: "7px 9px", borderRadius: 7, border: "1px solid var(--p-border)", background: "var(--p-bg)", fontSize: 13, color: "var(--p-text)" };
   const zonesCount = groups.reduce((s, g) => s + g.idxs.length, 0);
+  const complexGroups = filtered.filter(isComplex);
+  const simpleGroups = filtered.filter((g) => !isComplex(g));
+  const flashCard = (k: string): React.CSSProperties => flash === k ? { outline: "2px solid var(--p-accent)", outlineOffset: 1, boxShadow: "0 0 0 4px color-mix(in srgb, var(--p-accent) 22%, transparent)", transition: "box-shadow .3s" } : {};
+
+  // Card da cidade COM zonas (editor rico) — usado na 1ª seção.
+  const renderComplexCard = (g: { key: string; name: string; code: string | null; idxs: number[] }) => {
+    const open = expanded.has(g.key) || !!q;
+    const anyMontagem = g.idxs.some((i) => freight![i].assembly === "required");
+    const amounts = g.idxs.map((i) => freight![i].amount).filter((a) => a > 0);
+    const warns = lintByCity.get(g.key);
+    const summary = `${g.idxs.length} zona${g.idxs.length > 1 ? "s" : ""}${amounts.length ? ` · ${brl(Math.min(...amounts))}–${brl(Math.max(...amounts))}` : ""}`;
+    return (
+      <div key={g.key} id={`city-${g.key}`} style={{ ...card, ...flashCard(g.key) }}>
+        <div onClick={() => toggle(g.key)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", cursor: "pointer" }}>
+          <ChevronRight size={16} color="var(--p-muted)" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: bandColor(amounts.length ? Math.min(...amounts) : 0), flexShrink: 0 }} />
+          <span style={{ fontWeight: 600, fontSize: 14, color: "var(--p-text)" }}>{g.name}</span>
+          {anyMontagem && <span title="tem zona com montagem obrigatória" style={{ fontSize: 12 }}>⚙</span>}
+          {warns && <span title={warns.join("\n")} style={{ display: "inline-flex", flexShrink: 0 }}><AlertTriangle size={14} color="#eab308" /></span>}
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>{summary}</span>
+          <button onClick={(e) => { e.stopPropagation(); if (confirm(`Remover ${g.name} e todas as suas zonas?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={14} /></button>
+        </div>
+        {open && (
+          <div style={{ borderTop: "1px solid var(--p-border)", padding: "6px 14px 12px", background: "color-mix(in srgb, var(--p-accent) 3%, transparent)" }}>
+            {g.idxs.map((i) => {
+              const f = freight![i];
+              return (
+                <div key={i} style={{ padding: "10px 0", borderTop: g.idxs.indexOf(i) ? "1px dashed var(--p-border)" : "none" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input value={deriveZone(f, g.name)} onChange={(e) => editAt(i, { zone: e.target.value })} placeholder="zona (ex: Central)" list="zone-presets" style={{ ...inp, flex: "1 1 130px", minWidth: 0 }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13, color: "var(--p-muted)" }}>R$</span>
+                      <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 88 }} />
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--p-muted)" }}>
+                      <input type="checkbox" checked={f.assembly === "required"} onChange={(e) => editAt(i, { assembly: e.target.checked ? "required" : "optional" })} /> montagem
+                    </label>
+                    {g.idxs.length > 1 && <button onClick={() => removeAt(i)} title="Remover zona" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={13} /></button>}
+                  </div>
+                  <Bairros value={f.neighborhoods ?? []} onChange={(v) => editAt(i, { neighborhoods: v })} inp={inp} />
+                </div>
+              );
+            })}
+            <button onClick={() => addZone(g.name, g.code)} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--p-border)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--p-text)" }}>
+              <Plus size={13} /> Adicionar zona
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
@@ -127,79 +222,106 @@ export function PortalFrete({ token }: { token: string }) {
         Cadastre o frete por cidade. Cidades com variação (ex.: Porto Alegre) podem ter várias <b>zonas</b> (Central, Zona Sul, Rural…), cada uma com valor, montagem e os <b>bairros</b> que a IA usa para reconhecer a zona do cliente.
       </p>
 
-      {/* Busca + adicionar cidade */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 10px", flex: "1 1 240px" }}>
-          <Search size={14} color="var(--p-muted)" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cidade ou bairro…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--p-text)" }} />
-        </div>
-        <div style={{ position: "relative", flex: "1 1 240px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 10px" }}>
-            <Plus size={14} color="var(--p-accent)" />
-            <input value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder="Adicionar cidade (digite o nome)…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--p-text)" }} />
+      {/* Busca + adicionar cidade (fixo no topo enquanto rola) */}
+      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--p-bg)", paddingTop: 4, paddingBottom: 10, marginBottom: 4 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 10px", flex: "1 1 240px" }}>
+            <Search size={14} color="var(--p-muted)" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cidade ou bairro…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--p-text)" }} />
+            {q && <X size={14} style={{ cursor: "pointer", color: "var(--p-muted)" }} onClick={() => setQ("")} />}
           </div>
-          {addSuggestions.length > 0 && (
-            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,.18)", overflow: "hidden" }}>
-              {addSuggestions.map((m) => (
-                <button key={m.code} onClick={() => addCity(m)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "transparent", border: "none", borderBottom: "1px solid var(--p-border)", color: "var(--p-text)", fontSize: 13, cursor: "pointer" }}>{m.name}</button>
-              ))}
+          <div style={{ position: "relative", flex: "1 1 240px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 10px" }}>
+              <Plus size={14} color="var(--p-accent)" />
+              <input value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder="Adicionar cidade (digite o nome)…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--p-text)" }} />
             </div>
-          )}
+            {addSuggestions.length > 0 && (
+              <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,.18)", overflow: "hidden" }}>
+                {addSuggestions.map((m) => (
+                  <button key={m.code} onClick={() => addCity(m)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "transparent", border: "none", borderBottom: "1px solid var(--p-border)", color: "var(--p-text)", fontSize: 13, cursor: "pointer" }}>{m.name}</button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        {lintTotal > 0 && (
+          <div title={[...lintGeneral].join("\n")} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, color: "var(--p-text)", background: "color-mix(in srgb, #eab308 12%, transparent)", border: "1px solid color-mix(in srgb, #eab308 40%, transparent)", borderRadius: 8, padding: "6px 10px" }}>
+            <AlertTriangle size={14} color="#eab308" />
+            <span>{lintTotal} ponto{lintTotal > 1 ? "s" : ""} de atenção no cadastro — veja o ⚠ nas cidades.</span>
+          </div>
+        )}
       </div>
 
-      {/* Lista de cidades */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {filtered.length === 0 && <div style={{ ...card, padding: 20, textAlign: "center", color: "var(--p-muted)", fontSize: 13 }}>Nenhuma cidade{q ? " encontrada" : " cadastrada"}. Use “Adicionar cidade” ou “Importar planilha”.</div>}
-        {filtered.map((g) => {
-          const open = expanded.has(g.key) || !!q;
-          const multi = g.idxs.length > 1;
-          const anyMontagem = g.idxs.some((i) => freight[i].assembly === "required");
-          const amounts = g.idxs.map((i) => freight[i].amount).filter((a) => a > 0);
-          const summary = multi ? `${g.idxs.length} zonas${amounts.length ? ` · ${brl(Math.min(...amounts))}–${brl(Math.max(...amounts))}` : ""}` : (amounts.length ? brl(amounts[0]) : "sem valor");
-          return (
-            <div key={g.key} style={card}>
-              <div onClick={() => toggle(g.key)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", cursor: "pointer" }}>
-                <ChevronRight size={16} color="var(--p-muted)" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: bandColor(amounts.length ? Math.min(...amounts) : 0), flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: 14, color: "var(--p-text)" }}>{g.name}</span>
-                {anyMontagem && <span title="tem zona com montagem obrigatória" style={{ fontSize: 12 }}>⚙</span>}
-                <div style={{ flex: 1 }} />
-                <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>{summary}</span>
-                <button onClick={(e) => { e.stopPropagation(); if (confirm(`Remover ${g.name} e todas as suas zonas?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={14} /></button>
-              </div>
-              {open && (
-                <div style={{ borderTop: "1px solid var(--p-border)", padding: "6px 14px 12px", background: "color-mix(in srgb, var(--p-accent) 3%, transparent)" }}>
-                  {g.idxs.map((i) => {
-                    const f = freight[i];
+      {filtered.length === 0 && <div style={{ ...card, padding: 20, textAlign: "center", color: "var(--p-muted)", fontSize: 13 }}>Nenhuma cidade{q ? " encontrada" : " cadastrada"}. Use “Adicionar cidade” ou “Importar planilha”.</div>}
+
+      {/* Seção 1 — cidades COM zonas (editor rico) */}
+      {complexGroups.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "4px 2px 8px", fontSize: 12.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>
+            <Layers size={13} /> Cidades com zonas ({complexGroups.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {complexGroups.map(renderComplexCard)}
+          </div>
+        </div>
+      )}
+
+      {/* Seção 2 — demais cidades (tabela compacta, valor editável no lugar) */}
+      {simpleGroups.length > 0 && (
+        <div>
+          <div style={{ margin: "4px 2px 8px", fontSize: 12.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>
+            Demais cidades ({simpleGroups.length})
+          </div>
+          <div style={{ ...card }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ color: "var(--p-muted)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    <th style={{ textAlign: "left", padding: "8px 14px", fontWeight: 600 }}>Cidade</th>
+                    <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, width: 120 }}>Frete</th>
+                    <th style={{ textAlign: "center", padding: "8px 10px", fontWeight: 600, width: 130 }}>Montagem obrig.</th>
+                    <th style={{ padding: "8px 10px", width: 130 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {simpleGroups.map((g) => {
+                    const i = g.idxs[0]; const f = freight[i]; const warns = lintByCity.get(g.key);
                     return (
-                      <div key={i} style={{ padding: "10px 0", borderTop: g.idxs.indexOf(i) ? "1px dashed var(--p-border)" : "none" }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          {multi
-                            ? <input value={deriveZone(f, g.name)} onChange={(e) => editAt(i, { zone: e.target.value })} placeholder="zona (ex: Central)" list="zone-presets" style={{ ...inp, flex: "1 1 130px", minWidth: 0 }} />
-                            : <span style={{ flex: "1 1 130px", fontSize: 13, color: "var(--p-muted)" }}>cidade toda</span>}
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 13, color: "var(--p-muted)" }}>R$</span>
-                            <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 88 }} />
-                          </div>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--p-muted)" }}>
-                            <input type="checkbox" checked={f.assembly === "required"} onChange={(e) => editAt(i, { assembly: e.target.checked ? "required" : "optional" })} /> montagem
-                          </label>
-                          {multi && <button onClick={() => removeAt(i)} title="Remover zona" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={13} /></button>}
-                        </div>
-                        {multi && <Bairros value={f.neighborhoods ?? []} onChange={(v) => editAt(i, { neighborhoods: v })} inp={inp} />}
-                      </div>
+                      <tr key={g.key} style={{ borderTop: "1px solid var(--p-border)" }}>
+                        <td style={{ padding: "8px 14px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: bandColor(f.amount), flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600, color: "var(--p-text)" }}>{g.name}</span>
+                            {warns && <span title={warns.join("\n")} style={{ display: "inline-flex" }}><AlertTriangle size={13} color="#eab308" /></span>}
+                          </span>
+                        </td>
+                        <td style={{ padding: "6px 10px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>R$</span>
+                            <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 80 }} />
+                          </span>
+                        </td>
+                        <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                          <button onClick={() => editAt(i, { assembly: f.assembly === "required" ? "optional" : "required" })}
+                            title="Frete com montagem obrigatória" style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 600, padding: "3px 9px", borderRadius: 999, border: "1px solid var(--p-border)", background: f.assembly === "required" ? "var(--p-accent-soft)" : "transparent", color: f.assembly === "required" ? "var(--p-text)" : "var(--p-muted)" }}>
+                            ⚙ {f.assembly === "required" ? "sim" : "não"}
+                          </button>
+                        </td>
+                        <td style={{ padding: "6px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          <button onClick={() => promoteCity(g)} title="Transformar em cidade com zonas (Central, Zona Sul…)" style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 9px", borderRadius: 7, border: "1px dashed var(--p-border)", background: "transparent", color: "var(--p-text)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <Plus size={12} /> zona
+                          </button>
+                          <button onClick={() => { if (confirm(`Remover ${g.name}?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ marginLeft: 4, border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", padding: 5, verticalAlign: "middle" }}><Trash2 size={13} /></button>
+                        </td>
+                      </tr>
                     );
                   })}
-                  <button onClick={() => addZone(g.name, g.code)} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--p-border)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--p-text)" }}>
-                    <Plus size={13} /> Adicionar zona
-                  </button>
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
 
       <datalist id="zone-presets">{ZONE_PRESETS.map((z) => <option key={z} value={z} />)}</datalist>
       <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 14 }}>{groups.length} cidades · {zonesCount} zonas cadastradas</div>
