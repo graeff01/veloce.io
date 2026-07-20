@@ -147,10 +147,10 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
 // ── Frete determinístico por região ───────────────────────────────────────────
 // Normaliza texto (minúsculo, sem acento, pontuação→espaço, espaços colapsados) para
 // casar região no endereço coletado.
-const normText = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+export const normText = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 // Casamento por PALAVRA (não substring cru): evita falso-positivo como "sul" dentro de
 // "insulina" ou "feliz" dentro de "felizmente". needle e haystack já normalizados.
-const wordHit = (haystack: string, needle: string) => !!needle && (" " + haystack + " ").includes(" " + needle + " ");
+export const wordHit = (haystack: string, needle: string) => !!needle && (" " + haystack + " ").includes(" " + needle + " ");
 
 export type FreightZoneOption = { region: string; zone?: string; amount: number; assembly?: "optional" | "required" };
 export type FreightResult =
@@ -161,12 +161,12 @@ export type FreightResult =
 
 // Sufixos de zona no fim do nome ("Porto Alegre ZS" → cidade "Porto Alegre").
 const ZONE_SUFFIX_RE = /\s+(?:zona\s+(?:sul|norte|leste|oeste|rural|central)|extremo\s+sul|z[snelro]|central|rural)$/i;
-function baseCityName(f: FreightRegion): string {
+export function baseCityName(f: FreightRegion): string {
   if (f.city) return f.city;
   return f.region.replace(ZONE_SUFFIX_RE, "").trim() || f.region;
 }
 // Chave do MUNICÍPIO: código IBGE quando houver (sólido), senão o nome-base normalizado.
-function cityKeyOf(f: FreightRegion): string { return f.code || normText(baseCityName(f)); }
+export function cityKeyOf(f: FreightRegion): string { return f.code || normText(baseCityName(f)); }
 
 function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null } {
   const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
