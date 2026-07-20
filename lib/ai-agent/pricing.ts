@@ -184,33 +184,68 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
   const a = normText(address);
   if (!a) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
 
-  // 1) BAIRRO/apelido bate → zona identificada (sinal mais forte). Desempata pelo termo
-  //    mais específico (mais longo) que casou, p/ não confundir zonas vizinhas.
-  let bestKw = "", bestHit: FreightRegion | null = null;
-  for (const f of list) {
-    const kws = [...(f.aliases ?? []), ...((f.neighborhoods ?? []).map((n) => n.name))];
-    for (const kw of kws) {
-      const n = normText(kw);
+  // Melhor bairro (neighborhood) dentro de um conjunto de regiões: termo mais LONGO
+  // que casou por palavra ganha (evita confundir zonas vizinhas).
+  const bestNeighborhood = (regs: FreightRegion[]): FreightRegion | null => {
+    let bestKw = "", best: FreightRegion | null = null;
+    for (const f of regs) for (const nb of f.neighborhoods ?? []) {
+      const n = normText(nb.name);
+      if (n && n.length > bestKw.length && wordHit(a, n)) { bestKw = n; best = f; }
+    }
+    return best;
+  };
+
+  // 1) APELIDO (alias) — override forte e GLOBAL. Um alias é um distrito/nome ÚNICO
+  //    cadastrado de propósito p/ redirecionar (ex.: "morungava" → Gravataí), então
+  //    vence a cidade citada. Termo mais longo desempata. (Bairro comum NÃO entra aqui:
+  //    "Centro" é genérico e só vale dentro da cidade — ver passo 2a.)
+  {
+    let bestKw = "", bestHit: FreightRegion | null = null;
+    for (const f of list) for (const al of f.aliases ?? []) {
+      const n = normText(al);
       if (n && n.length > bestKw.length && wordHit(a, n)) { bestKw = n; bestHit = f; }
     }
+    if (bestHit) return resolvedLine(bestHit);
   }
-  if (bestHit) return resolvedLine(bestHit);
 
-  // 2) Sem bairro reconhecido: casa a CIDADE pelo nome-base (o match mais específico ganha).
+  // 2) Identifica a CIDADE citada no endereço (nome-base; match mais específico ganha).
   const cityHits = list.filter((f) => wordHit(a, normText(baseCityName(f))));
-  if (!cityHits.length) return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
-  const target = cityHits.reduce((best, f) => (normText(baseCityName(f)).length > normText(baseCityName(best)).length ? f : best));
-  const key = cityKeyOf(target);
-  const zones = list.filter((f) => cityKeyOf(f) === key);
-  if (zones.length === 1) return resolvedLine(zones[0]);
+  if (cityHits.length) {
+    const target = cityHits.reduce((best, f) => (normText(baseCityName(f)).length > normText(baseCityName(best)).length ? f : best));
+    const key = cityKeyOf(target);
+    const zones = list.filter((f) => cityKeyOf(f) === key);
 
-  // Rótulo da zona digitado ("zona sul", "extremo sul"), ESCOPADO à cidade identificada
-  // (evita "central" de uma cidade colidir com o de outra).
-  const zoneHit = zones.filter((z) => z.zone && wordHit(a, normText(z.zone)));
-  if (zoneHit.length === 1) return resolvedLine(zoneHit[0]);
+    // 2a) BAIRRO — só vale DENTRO da cidade citada. Assim um bairro genérico ("Centro")
+    //     cadastrado em OUTRA cidade nunca vaza pro endereço (rigor de cobrança).
+    const nb = bestNeighborhood(zones);
+    if (nb) return resolvedLine(nb);
 
-  // Várias zonas na cidade e nenhuma identificada → perguntar (não cobrar zona errada).
-  return { askZone: true, city: baseCityName(target), options: zones.map((z) => ({ region: z.region, zone: z.zone, amount: round2(z.amount), assembly: z.assembly })) };
+    // 2b) cidade de zona única resolve direto.
+    if (zones.length === 1) return resolvedLine(zones[0]);
+
+    // 2c) rótulo da zona digitado ("zona sul", "extremo sul"), ESCOPADO à cidade.
+    const zoneHit = zones.filter((z) => z.zone && wordHit(a, normText(z.zone)));
+    if (zoneHit.length === 1) return resolvedLine(zoneHit[0]);
+
+    // 2d) várias zonas e nenhuma identificada → perguntar (não cobrar zona errada).
+    return { askZone: true, city: baseCityName(target), options: zones.map((z) => ({ region: z.region, zone: z.zone, amount: round2(z.amount), assembly: z.assembly })) };
+  }
+
+  // 3) SEM cidade citada: tenta bairro globalmente, mas só resolve se NÃO for ambíguo
+  //    entre cidades. Bairro único (ex.: "Restinga") → resolve; genérico que existe em
+  //    várias cidades → não chuta (cai em unmatched p/ a IA pedir a cidade).
+  {
+    let bestKw = "", matches: FreightRegion[] = [];
+    for (const f of list) for (const nb of f.neighborhoods ?? []) {
+      const n = normText(nb.name);
+      if (!n || !wordHit(a, n)) continue;
+      if (n.length > bestKw.length) { bestKw = n; matches = [f]; }
+      else if (n.length === bestKw.length) matches.push(f);
+    }
+    if (bestKw && new Set(matches.map(cityKeyOf)).size === 1) return resolvedLine(matches[0]);
+  }
+
+  return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
 }
 
 // Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.

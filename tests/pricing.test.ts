@@ -60,12 +60,12 @@ test("computeQuote permite escolher só algumas fees", () => {
 
 test("resolveFreight casa a região pelo nome no endereço", () => {
   const f = resolveFreight(rules, "Rua X, 100 - Bairro Y, Caxias do Sul/RS");
-  assert.deepEqual(f, { label: "Frete — Caxias do Sul", amount: 150 });
+  assert.deepEqual(f, { label: "Frete — Caxias do Sul", amount: 150, code: null });
 });
 
 test("resolveFreight casa por alias e ignora acento/caixa", () => {
-  assert.deepEqual(resolveFreight(rules, "moro em BENTO"), { label: "Frete — Bento Gonçalves", amount: 200 });
-  assert.deepEqual(resolveFreight(rules, "sou de são paulo? não, porto alegre"), { label: "Frete — Porto Alegre", amount: 350 });
+  assert.deepEqual(resolveFreight(rules, "moro em BENTO"), { label: "Frete — Bento Gonçalves", amount: 200, code: null });
+  assert.deepEqual(resolveFreight(rules, "sou de são paulo? não, porto alegre"), { label: "Frete — Porto Alegre", amount: 350, code: null });
 });
 
 test("resolveFreight sem região configurada retorna null (sem linha de frete)", () => {
