@@ -5,7 +5,8 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction } from "@/lib/whatsapp-send";
+import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
+import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
@@ -95,6 +96,14 @@ export const TOOL_DEFS: ToolDef[] = [
       parameters: { type: "object", properties: {
         emoji: { type: "string", enum: ["❤️", "👍", "🔥", "😊", "👏", "🙏"], description: "emoji que combina com o momento" },
       }, required: ["emoji"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_localizacao_loja",
+      description: "Envia o PIN da loja/fábrica no mapa (o lead abre no GPS num toque). Use quando o lead quiser VISITAR, RETIRAR no local, ou perguntar ONDE fica / qual o endereço. NÃO invente endereço — a ferramenta usa o cadastrado.",
+      parameters: { type: "object", properties: {} },
     },
   },
 ];
@@ -430,6 +439,26 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!conn) return { result: "Conexão indisponível — siga a conversa normalmente." };
       await sendWhatsAppReaction(conn, ctx.contactWaId, lastIn.waMessageId, emoji).catch(() => {});
       return { result: `Reagiu com ${emoji}. NÃO comente a reação nem repita o emoji no texto — siga a conversa com naturalidade (ou nem responda, se já estava tudo dito).` };
+    }
+
+    case "enviar_localizacao_loja": {
+      const pcL = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId }, select: { rules: true } });
+      const company = (pcL?.rules as { company?: { address?: string; city?: string } } | null)?.company;
+      const addr = [company?.address, company?.city].filter((s): s is string => !!s && s.trim().length > 0).join(", ");
+      if (!addr) return { result: "Endereço da loja não cadastrado — não invente; se o lead perguntar, diga que confirma com o vendedor." };
+      if (ctx.mode === "test") return { result: `(enviaria o PIN da loja no mapa: ${addr}). Comente curtinho que mandou a localização.`, artifacts: [{ kind: "location_request", caption: addr }] };
+      const geo = await geocodeAddress(addr);
+      if (!geo) return { result: `Não consegui montar o mapa agora — passe o endereço por texto ao lead: ${addr}` };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: `Conexão indisponível — passe o endereço por texto: ${addr}` };
+      const cli = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
+      const sent = await sendWhatsAppLocation(conn, ctx.contactWaId, { latitude: geo.lat, longitude: geo.lng, name: cli?.name ?? "Loja", address: addr });
+      if (!sent.ok) return { result: `Não consegui enviar o mapa (${sent.error}); passe o endereço por texto: ${addr}` };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-loc-loja-${Date.now()}`,
+        direction: "out", type: "location", text: `[localização da loja: ${addr}]`, aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: "Localização da loja enviada no mapa. Comente curtinho (ex: 'te mandei nossa localização 📍, é só tocar pra abrir no mapa') e siga." };
     }
 
     case "escalar_humano": {

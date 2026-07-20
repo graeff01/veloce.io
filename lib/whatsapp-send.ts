@@ -195,6 +195,31 @@ export async function sendWhatsAppReadReceipt(
   return { ok: true };
 }
 
+// Envia um PIN de localização (mapa) ao lead — ex.: o endereço da loja/fábrica, que ele
+// abre no GPS num toque. name/address aparecem no cartão do mapa.
+export async function sendWhatsAppLocation(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  loc: { latitude: number; longitude: number; name?: string; address?: string },
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp", recipient_type: "individual", to: toWaId,
+      type: "location",
+      location: { latitude: loc.latitude, longitude: loc.longitude, ...(loc.name ? { name: loc.name } : {}), ...(loc.address ? { address: loc.address } : {}) },
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}
+
 // Pede a LOCALIZAÇÃO do cliente com o botão nativo do WhatsApp ("Enviar localização").
 // A resposta volta como uma mensagem type:"location" (lat/lng) no webhook. Só funciona
 // dentro da janela de 24h (o cliente acabou de escrever, então ok).

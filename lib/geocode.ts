@@ -11,6 +11,26 @@ const pick = (o: Record<string, string> | undefined, keys: string[]): string | n
   return null;
 };
 
+// Geocoding DIRETO (endereço → coordenada) — usado p/ mandar o PIN da loja no mapa.
+// Cache global por texto do endereço (não re-geocodifica nem martela o Nominatim).
+export async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
+  const q = (query || "").trim();
+  if (!q) return null;
+  const key = `fwd|${q.toLowerCase().replace(/\s+/g, " ")}`;
+  const cached = await prismaUnscoped.geocodeCache.findUnique({ where: { key } }).catch(() => null);
+  if (cached) return { lat: cached.lat, lng: cached.lng };
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`;
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": "veloce-frete/1.0 (contato@velocebm.com)", "Accept-Language": "pt-BR" }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) return null;
+    const arr = (await r.json()) as { lat: string; lon: string }[];
+    if (!arr.length) return null;
+    const lat = Number(arr[0].lat), lng = Number(arr[0].lon);
+    await prismaUnscoped.geocodeCache.upsert({ where: { key }, create: { key, lat, lng }, update: { lat, lng } }).catch(() => {});
+    return { lat, lng };
+  } catch { return null; }
+}
+
 export async function reverseGeocode(lat: number, lng: number): Promise<RevGeo> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { city: null, suburb: null };
   const key = `rev|${lat.toFixed(4)}|${lng.toFixed(4)}`;
