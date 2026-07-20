@@ -44,3 +44,4 @@ next-env.d.ts
 
 # Arquivos temporarios de commit
 *.tmp
+public/catalogo/*.pdf
