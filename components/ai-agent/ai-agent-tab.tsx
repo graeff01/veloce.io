@@ -479,7 +479,7 @@ function ActivitySection({ clientId }: { clientId: string }) {
 }
 
 // ── Console (dry-run) ─────────────────────────────────────────────────────────
-interface ConsoleArtifact { kind: "image" | "pdf" | "audio"; url?: string; dataUri?: string; caption?: string; filename?: string }
+interface ConsoleArtifact { kind: "image" | "pdf" | "audio" | "video"; url?: string; dataUri?: string; caption?: string; filename?: string }
 interface ConsoleMsg { role: "user" | "assistant"; content: string; artifacts?: ConsoleArtifact[]; meta?: { decision?: string; status?: string; toolCalls?: { name: string }[] } }
 
 function ConsoleSection({ clientId }: { clientId: string }) {
@@ -531,6 +531,8 @@ function ConsoleSection({ clientId }: { clientId: string }) {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={a.url || a.dataUri} alt={a.caption || "foto"} style={{ maxWidth: 220, width: "100%", borderRadius: 10, display: "block", border: "1px solid var(--border)" }} />
                   </a>
+                : a.kind === "video"
+                ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 240, width: "100%", borderRadius: 10, border: "1px solid var(--border)" }} />
                 : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-base)", textDecoration: "none", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, maxWidth: 240 }}>
                     <span style={{ fontSize: 18 }}>📄</span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
