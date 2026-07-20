@@ -115,3 +115,8 @@ test("describeFreightNote orienta pedir_localizacao só quando há cidade multi-
   assert.ok(comZona.includes("pedir_localizacao"));
   assert.ok(comZona.includes("Porto Alegre"));
 });
+
+test("resolveFreight expõe assembly='required' (p/ montagem obrigatória automática)", () => {
+  const r = resolveFreight(rules, "porto alegre extremo sul");
+  assert.ok(r && "assembly" in r && r.assembly === "required");
+});

@@ -466,6 +466,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const r = computeQuote(rules, sel);
       if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
       let q = r.quote;
+      let notaExtra = ""; // avisos p/ a IA (ex.: montagem obrigatória já incluída)
 
       // Frete determinístico pela REGIÃO do endereço coletado (blob da ficha).
       // Resolução cidade→zona: bairro conhecido resolve direto; cidade com várias zonas
@@ -479,10 +480,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
         }
         if (fr) {
-          // Regra JR: frete acima do limite SÓ sai com entrega + montagem.
+          // Regra JR: zona com montagem OBRIGATÓRIA (assembly required OU frete acima do
+          // limite) → a montagem entra SOZINHA, sem perguntar ao lead.
           const thr = rules.policies?.freightAssemblyThreshold;
-          if (thr != null && fr.amount > thr && !sel.montagem) {
-            return { result: `O frete de ${brl(fr.amount, pc.currency)} (acima de R$ ${thr}) SAI SEMPRE com entrega + montagem. Pergunte ao lead se pode incluir a montagem; se ele NÃO quiser, use escalar_humano (passa pro vendedor). Se topar, gere o orçamento de novo com montagem=true.` };
+          const montagemObrigatoria = fr.assembly === "required" || (thr != null && fr.amount > thr);
+          if (montagemObrigatoria && !sel.montagem) {
+            const r2 = computeQuote(rules, { ...sel, montagem: true });
+            if (r2.ok) { q = r2.quote; notaExtra += " Nessa região a MONTAGEM é OBRIGATÓRIA — já incluí no orçamento. NÃO pergunte se o lead quer montagem; se comentar, diga apenas que a entrega já vai com a montagem inclusa."; }
           }
           q = appendFeeLine(q, fr);
         }
@@ -510,7 +514,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const nome = typeof ficha.nome === "string" && ficha.nome.trim() ? ficha.nome.trim() : ctx.contactName;
         const art = await quotePdfArtifact(ctx.clientId, q, pc.currency, nome, num, cidade);
         return {
-          result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nComente o total (pode mencionar o parcelamento se houver), diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.`,
+          result: `Orçamento montado e PDF enviado ao lead:\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nComente o total (pode mencionar o parcelamento se houver), diga que enviou o PDF e ofereça tirar dúvidas ou seguir pra fechar.${notaExtra}`,
           decision: "orcou",
           artifacts: art ? [art] : undefined,
         };
@@ -522,7 +526,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
         currency: pc.currency, status: "draft", summary, intake: (ficha as unknown as Prisma.InputJsonValue) ?? undefined,
       } });
-      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nApresente ao lead e pergunte se pode enviar o PDF.`, decision: "orcou" };
+      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nApresente ao lead e pergunte se pode enviar o PDF.${notaExtra}`, decision: "orcou" };
     }
 
     // ── Orçamento: envia o PDF pelo WhatsApp ───────────────────────────────────
