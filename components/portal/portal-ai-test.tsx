@@ -19,8 +19,6 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
-  const [locShare, setLocShare] = useState<{ turn: number; value: string } | null>(null); // simula compartilhar localização
-  const [locPresets, setLocPresets] = useState<{ name: string; zone: string }[]>([]); // bairros reais p/ 1 clique
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -28,26 +26,6 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const name = assistantName || "IA";
 
   useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [turns, loading]);
-
-  // Bairros REAIS das cidades com várias zonas → viram "locais" de 1 clique na simulação
-  // (imita o cliente compartilhando a localização no WhatsApp, sem digitar).
-  useEffect(() => {
-    fetch(`/api/portal/${token}/freight`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
-      const fr: { city?: string; region: string; zone?: string; neighborhoods?: { name: string }[] }[] = Array.isArray(d?.freight) ? d.freight : [];
-      const zonesByCity = new Map<string, number>();
-      for (const f of fr) { const c = f.city || f.region; zonesByCity.set(c, (zonesByCity.get(c) ?? 0) + 1); }
-      const out: { name: string; zone: string }[] = [];
-      const seen = new Set<string>();
-      for (const f of fr) {
-        const c = f.city || f.region;
-        if ((zonesByCity.get(c) ?? 0) < 2) continue; // só cidades multi-zona
-        for (const n of f.neighborhoods ?? []) {
-          if (n.name && !seen.has(n.name)) { seen.add(n.name); out.push({ name: n.name, zone: `${c} · ${f.zone || ""}`.trim() }); }
-        }
-      }
-      setLocPresets(out.slice(0, 12));
-    }).catch(() => {});
-  }, [token]);
 
   async function send(text: string) {
     const msg = text.trim();
@@ -127,14 +105,12 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
     }
   }
 
-  // Simula o cliente COMPARTILHANDO a localização: manda o bairro/cidade como se tivesse
-  // vindo do GPS — exercita a resolução de zona igual ao WhatsApp real. Um clique num
-  // local (ou o texto digitado) dispara o envio.
-  function shareLocation(v: string) {
-    const t = v.trim();
-    if (!t) return;
-    setLocShare(null);
-    void send(`📍 Localização compartilhada: ${t}`);
+  // No SIMULADOR não dá pra compartilhar GPS (é web). O botão é só o visual de como
+  // chega no WhatsApp — ao clicar, a IA diz que não conseguiu localizar e pede pra
+  // escrever. No WhatsApp REAL o botão funciona de verdade (GPS → zona automática).
+  function locationUnavailableInSim() {
+    if (loading) return;
+    setTurns((t) => [...t, { role: "assistant", content: "📍 (simulação) Aqui no teste eu não consigo pegar sua localização de verdade — no WhatsApp isso funciona num toque. Me escreve o bairro e a cidade que eu já sigo com o orçamento 😊" }]);
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } };
@@ -249,35 +225,11 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                       : a.kind === "video"
                       ? <video key={j} controls src={a.url || a.dataUri} style={{ display: "block", marginTop: 6, maxWidth: 250, width: "100%", borderRadius: 12, border: "1px solid var(--p-border)" }} />
                       : a.kind === "location_request"
-                      ? <div key={j} style={{ marginTop: 6 }}>
-                          {locShare?.turn === i ? (
-                            <div style={{ padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", maxWidth: 320 }}>
-                              <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginBottom: 7, display: "flex", alignItems: "center", gap: 5 }}><MapPin size={13} /> Escolha um local (simula o GPS) — 1 clique:</div>
-                              {locPresets.length > 0 ? (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 9 }}>
-                                  {locPresets.map((p) => (
-                                    <button type="button" key={p.name} disabled={loading} title={p.zone} onClick={() => shareLocation(p.name)}
-                                      style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{p.name}</button>
-                                  ))}
-                                </div>
-                              ) : <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginBottom: 9, opacity: 0.8 }}>Nenhum bairro cadastrado ainda nas cidades com zonas — digite abaixo.</div>}
-                              <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 4 }}>ou escreva o endereço:</div>
-                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                <input value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
-                                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); shareLocation(locShare.value); } }}
-                                  placeholder="bairro, cidade"
-                                  style={{ flex: "1 1 150px", minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 13, outline: "none" }} />
-                                <button type="button" onClick={() => shareLocation(locShare.value)} disabled={!locShare.value.trim() || loading}
-                                  style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 13, fontWeight: 600, cursor: locShare.value.trim() ? "pointer" : "default", opacity: locShare.value.trim() ? 1 : 0.5 }}>Enviar</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button type="button" onClick={() => setLocShare({ turn: i, value: "" })} disabled={loading}
-                              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 13px", borderRadius: 12, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                              <MapPin size={15} /> Compartilhar localização
-                            </button>
-                          )}
-                        </div>
+                      ? <button key={j} type="button" onClick={locationUnavailableInSim} disabled={loading}
+                          title="No WhatsApp, o cliente compartilha a localização em 1 toque. No simulador é só visual."
+                          style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", maxWidth: 250, padding: "11px 14px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--p-accent)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+                          <MapPin size={16} /> Enviar localização
+                        </button>
                       : <a key={j} href={a.dataUri || a.url} download={a.filename || "orcamento.pdf"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", textDecoration: "none", color: "var(--p-text)", fontSize: 13, fontWeight: 600, maxWidth: 250 }}>
                           <span style={{ fontSize: 18 }}>📄</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.caption || a.filename || "Orçamento.pdf"}</span>
