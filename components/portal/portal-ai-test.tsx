@@ -20,6 +20,7 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [locShare, setLocShare] = useState<{ turn: number; value: string } | null>(null); // simula compartilhar localização
+  const [locPresets, setLocPresets] = useState<{ name: string; zone: string }[]>([]); // bairros reais p/ 1 clique
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -27,6 +28,26 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   const name = assistantName || "IA";
 
   useEffect(() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }, [turns, loading]);
+
+  // Bairros REAIS das cidades com várias zonas → viram "locais" de 1 clique na simulação
+  // (imita o cliente compartilhando a localização no WhatsApp, sem digitar).
+  useEffect(() => {
+    fetch(`/api/portal/${token}/freight`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      const fr: { city?: string; region: string; zone?: string; neighborhoods?: { name: string }[] }[] = Array.isArray(d?.freight) ? d.freight : [];
+      const zonesByCity = new Map<string, number>();
+      for (const f of fr) { const c = f.city || f.region; zonesByCity.set(c, (zonesByCity.get(c) ?? 0) + 1); }
+      const out: { name: string; zone: string }[] = [];
+      const seen = new Set<string>();
+      for (const f of fr) {
+        const c = f.city || f.region;
+        if ((zonesByCity.get(c) ?? 0) < 2) continue; // só cidades multi-zona
+        for (const n of f.neighborhoods ?? []) {
+          if (n.name && !seen.has(n.name)) { seen.add(n.name); out.push({ name: n.name, zone: `${c} · ${f.zone || ""}`.trim() }); }
+        }
+      }
+      setLocPresets(out.slice(0, 12));
+    }).catch(() => {});
+  }, [token]);
 
   async function send(text: string) {
     const msg = text.trim();
@@ -107,12 +128,13 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
   }
 
   // Simula o cliente COMPARTILHANDO a localização: manda o bairro/cidade como se tivesse
-  // vindo do GPS — exercita a resolução de zona igual ao WhatsApp real.
-  function doShare() {
-    const v = locShare?.value.trim();
-    if (!v) return;
+  // vindo do GPS — exercita a resolução de zona igual ao WhatsApp real. Um clique num
+  // local (ou o texto digitado) dispara o envio.
+  function shareLocation(v: string) {
+    const t = v.trim();
+    if (!t) return;
     setLocShare(null);
-    void send(`📍 Localização compartilhada: ${v}`);
+    void send(`📍 Localização compartilhada: ${t}`);
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } };
@@ -229,13 +251,25 @@ export function PortalAiTest({ token, assistantName }: { token: string; assistan
                       : a.kind === "location_request"
                       ? <div key={j} style={{ marginTop: 6 }}>
                           {locShare?.turn === i ? (
-                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", maxWidth: 300 }}>
-                              <input autoFocus value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
-                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doShare(); } }}
-                                placeholder="bairro, cidade (ex: Restinga, Porto Alegre)"
-                                style={{ flex: "1 1 170px", minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 13, outline: "none" }} />
-                              <button type="button" onClick={doShare} disabled={!locShare.value.trim() || loading}
-                                style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 13, fontWeight: 600, cursor: locShare.value.trim() ? "pointer" : "default", opacity: locShare.value.trim() ? 1 : 0.5 }}>Enviar</button>
+                            <div style={{ padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)", maxWidth: 320 }}>
+                              <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginBottom: 7, display: "flex", alignItems: "center", gap: 5 }}><MapPin size={13} /> Escolha um local (simula o GPS) — 1 clique:</div>
+                              {locPresets.length > 0 ? (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 9 }}>
+                                  {locPresets.map((p) => (
+                                    <button type="button" key={p.name} disabled={loading} title={p.zone} onClick={() => shareLocation(p.name)}
+                                      style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{p.name}</button>
+                                  ))}
+                                </div>
+                              ) : <div style={{ fontSize: 11.5, color: "var(--p-muted)", marginBottom: 9, opacity: 0.8 }}>Nenhum bairro cadastrado ainda nas cidades com zonas — digite abaixo.</div>}
+                              <div style={{ fontSize: 11, color: "var(--p-muted)", marginBottom: 4 }}>ou escreva o endereço:</div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <input value={locShare.value} onChange={(e) => setLocShare({ turn: i, value: e.target.value })}
+                                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); shareLocation(locShare.value); } }}
+                                  placeholder="bairro, cidade"
+                                  style={{ flex: "1 1 150px", minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 13, outline: "none" }} />
+                                <button type="button" onClick={() => shareLocation(locShare.value)} disabled={!locShare.value.trim() || loading}
+                                  style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 13, fontWeight: 600, cursor: locShare.value.trim() ? "pointer" : "default", opacity: locShare.value.trim() ? 1 : 0.5 }}>Enviar</button>
+                              </div>
                             </div>
                           ) : (
                             <button type="button" onClick={() => setLocShare({ turn: i, value: "" })} disabled={loading}
