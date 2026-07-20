@@ -100,3 +100,18 @@ test("bairro genérico SEM cidade citada não chuta (ambíguo → unmatched)", (
 test("bairro ÚNICO sem cidade citada resolve (Restinga só existe numa região)", () => {
   assert.equal(amount(resolveFreight(rulesGen, "sou lá da restinga")), 200);
 });
+
+// ── Nota de frete no prompt: localização nas cidades multi-zona ──────────────────
+import { describeFreightNote } from "../lib/ai-agent/pricing";
+
+test("describeFreightNote orienta pedir_localizacao só quando há cidade multi-zona", () => {
+  const semZona = describeFreightNote([{ region: "Canoas", city: "Canoas", amount: 60, code: "43" }]);
+  assert.ok(!semZona.includes("pedir_localizacao")); // zona única → não pede localização
+
+  const comZona = describeFreightNote([
+    { region: "POA — Sul", city: "Porto Alegre", zone: "Sul", amount: 200, code: "43" },
+    { region: "POA — Central", city: "Porto Alegre", zone: "Central", amount: 160, code: "43" },
+  ]);
+  assert.ok(comZona.includes("pedir_localizacao"));
+  assert.ok(comZona.includes("Porto Alegre"));
+});

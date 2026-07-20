@@ -285,5 +285,5 @@ export function describeFreightNote(freight: FreightRegion[]): string {
   const base = `FRETE: calculado AUTOMATICAMENTE pela cidade de entrega (${freight.length} regiões atendidas). NÃO escolha o frete — só garanta que coletou a cidade.`;
   if (!multi.length) return base;
   const ex = multi.slice(0, 10).join(", ");
-  return `${base}\nATENÇÃO — estas cidades têm ZONAS com fretes diferentes: ${ex}${multi.length > 10 ? ` (e +${multi.length - 10})` : ""}. Se o lead for de uma delas, PERGUNTE o bairro/região dele (ex.: "Você é de Porto Alegre? De qual bairro/região?") e registre na ficha ANTES de orçar — assim o frete sai certo.`;
+  return `${base}\nATENÇÃO — estas cidades têm ZONAS com fretes diferentes: ${ex}${multi.length > 10 ? ` (e +${multi.length - 10})` : ""}. Se o lead for de UMA DELAS e você ainda não sabe a zona, use pedir_localizacao (o cliente compartilha o GPS e a zona sai certa) — ou aceite o BAIRRO por texto se ele preferir. Registre na ficha ANTES de orçar. Nas demais cidades (zona única) a cidade já basta, NÃO peça localização.`;
 }

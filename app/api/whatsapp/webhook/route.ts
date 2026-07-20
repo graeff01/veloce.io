@@ -9,6 +9,8 @@ import { runFunnelClassify } from "@/lib/ai-agent/funnel-shadow";
 import { detectAdModel } from "@/lib/wa-ad-detect";
 import { logWaEvent } from "@/lib/wa-events";
 import { enqueueAgentJob } from "@/lib/ai-agent/queue";
+import { reverseGeocode } from "@/lib/geocode";
+import type { WaIncomingMessage } from "@/lib/whatsapp";
 import { notifyNovoLead } from "@/lib/notifications/novo-lead";
 import { notifyLeadQuente } from "@/lib/notifications/lead-quente";
 import { handleManagerFunnelReply, flushPendingChecks } from "@/lib/notifications/funnel-check";
@@ -211,11 +213,18 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     // Sobrevive a deploy/restart e serializa em multi-instância; o 200 não espera o agente.
     if (!outbound) {
       const media = mediaRef(m);
-      void enqueueAgentJob({
-        clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
-        idempotencyKey: m.id,
-        payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
-      }).catch(() => {});
+      if (m.type === "location") {
+        // Localização compartilhada: geocoding reverso (fora do caminho 200) → grava o
+        // bairro/cidade na ficha e enfileira o agente com o texto enriquecido. Isolado
+        // aqui p/ não tocar no fluxo de texto/imagem, que segue idêntico.
+        void enqueueLocationJob(conn, contact.id, m).catch(() => {});
+      } else {
+        void enqueueAgentJob({
+          clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
+          idempotencyKey: m.id,
+          payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
+        }).catch(() => {});
+      }
 
       // Alerta "Novo lead" no BOT DO CLIENTE (só no 1º contato). Fire-and-forget.
       void notifyNovoLead({
@@ -224,6 +233,37 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       }).catch(() => {});
     }
   }
+}
+
+// Localização compartilhada pelo cliente → geocoding reverso (coordenada → bairro/cidade),
+// grava na ficha (p/ o motor resolver a ZONA por bairro) e enfileira o agente com um texto
+// claro. Fora do caminho do 200 do webhook (chamada de rede) — fire-and-forget.
+async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIncomingMessage) {
+  let text = "[O cliente compartilhou a localização — se precisar, peça o bairro/cidade por texto.]";
+  const lat = m.location?.latitude, lng = m.location?.longitude;
+  if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+    try {
+      const geo = await reverseGeocode(lat, lng);
+      const addr = [geo.suburb, geo.city].filter(Boolean).join(", ");
+      if (addr) {
+        const prof = await prisma.leadProfile.findUnique({ where: { contactId } }).catch(() => null);
+        const data = { ...((prof?.data as Record<string, unknown>) ?? {}), localizacao_gps: addr };
+        await prisma.leadProfile.upsert({
+          where: { contactId },
+          create: { connectionId: conn.id, contactId, data: data as object },
+          update: { data: data as object },
+        }).catch(() => {});
+        text = `[O cliente compartilhou a localização: ${addr}. Registre a cidade/bairro na ficha (atualizar_ficha) e gere o orçamento — a ZONA do frete sai daí.]`;
+      } else {
+        text = "[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]";
+      }
+    } catch { /* mantém o texto de fallback */ }
+  }
+  await enqueueAgentJob({
+    clientId: conn.clientId, connectionId: conn.id, contactId,
+    idempotencyKey: m.id,
+    payload: { text, type: "location" },
+  }).catch(() => {});
 }
 
 // Coexistência: mensagens que o VENDEDOR enviou pelo app do celular (echo).

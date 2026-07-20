@@ -5,7 +5,7 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo } from "@/lib/whatsapp-send";
+import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest } from "@/lib/whatsapp-send";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
@@ -147,11 +147,24 @@ const VIDEO_TOOL: ToolDef = {
   },
 };
 
+// Pede a localização nativa do WhatsApp — usada SÓ nas cidades com várias zonas, p/ fixar
+// a zona pela coordenada (bairro→zona) sem o cliente ter que saber/digitar a zona.
+const LOCATION_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "pedir_localizacao",
+    description: "Pede a LOCALIZAÇÃO do cliente pelo botão nativo do WhatsApp. Use SOMENTE quando a cidade de entrega tem VÁRIAS ZONAS com fretes diferentes e você ainda não sabe a zona/bairro — a localização resolve a zona sozinha. NÃO use em cidade de zona única. Se o cliente preferir, ele pode responder o endereço por texto.",
+    parameters: { type: "object", properties: {
+      cidade: { type: "string", description: "cidade de entrega já identificada (só p/ personalizar a mensagem)" },
+    } },
+  },
+};
+
 export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null } | null): ToolDef[] {
   const defs = [...TOOL_DEFS];
   if (cfg?.quotesEnabled) {
     if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
-    defs.push(...QUOTE_TOOLS);
+    defs.push(...QUOTE_TOOLS, LOCATION_TOOL);
   }
   if (cfg?.presentationVideoUrl) defs.push(VIDEO_TOOL);
   return defs;
@@ -378,6 +391,23 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       return { result: "Vídeo de apresentação enviado. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho 😊') e siga pro catálogo/pergunta." };
     }
 
+    case "pedir_localizacao": {
+      const cidade = typeof (args as { cidade?: string }).cidade === "string" ? (args as { cidade?: string }).cidade!.trim() : "";
+      const body = `Pra calcular o frete certinho da sua região${cidade ? ` em ${cidade}` : ""}, toca no botão abaixo e compartilha sua localização 📍\n\nSe preferir, é só me mandar seu bairro/endereço por escrito 😊`;
+      if (ctx.mode === "test") return {
+        result: "Pedido de localização enviado ao lead (no WhatsApp aparece o botão 'Enviar localização'). No Console não dá pra compartilhar GPS — pra testar a zona, digite o BAIRRO como o cliente faria. Se o cliente preferir texto, aceite o endereço normalmente.",
+      };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível — peça a cidade/bairro por texto." };
+      const sent = await sendWhatsAppLocationRequest(conn, ctx.contactWaId, body);
+      if (!sent.ok) return { result: `Não consegui enviar o pedido de localização (${sent.error}); peça o bairro/endereço por texto.` };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-loc-${Date.now()}`,
+        direction: "out", type: "interactive", text: "[pedido de localização]", aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: "Pedido de localização enviado. AGUARDE o cliente compartilhar (ou mandar o endereço por texto). Quando vier, você recebe o bairro/cidade — aí é só gerar o orçamento. NÃO repita o pedido; não escolha a zona por conta própria." };
+    }
+
     case "escalar_humano": {
       return { result: "Ok, o vendedor já foi acionado. Diga ao lead, de forma natural, que um VENDEDOR VAI ENTRAR EM CONTATO pra dar sequência — NUNCA diga 'vou chamar um vendedor' (isso soa como se tivesse alguém disponível na hora). Siga o STATUS DA LOJA: se ABERTA, 'o vendedor já vai entrar em contato'; se FECHADA, 'no próximo horário comercial'. NÃO prometa horário exato. Nada de gíria (sem 'kkk').", decision: "escalou" };
     }
@@ -445,7 +475,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         if (fr && "unmatched" in fr) return { result: "Não identifiquei a REGIÃO de entrega para calcular o frete. Confirme a cidade/endereço do lead (use atualizar_ficha) ou, se for fora da área de atendimento, encaminhe a um vendedor." };
         if (fr && "askZone" in fr) {
           const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
-          return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Pergunte ao lead de qual ZONA ou BAIRRO ele é, registre na ficha (atualizar_ficha) e gere o orçamento de novo — NÃO escolha a zona por conta própria.` };
+          return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
         }
         if (fr) {
           // Regra JR: frete acima do limite SÓ sai com entrega + montagem.
