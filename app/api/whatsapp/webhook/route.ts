@@ -15,10 +15,24 @@ import { notifyNovoLead } from "@/lib/notifications/novo-lead";
 import { notifyLeadQuente } from "@/lib/notifications/lead-quente";
 import { handleManagerFunnelReply, flushPendingChecks } from "@/lib/notifications/funnel-check";
 import { captureException } from "@/lib/observability";
+import { decryptSecret, DecryptError } from "@/lib/crypto";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
 
 export const runtime = "nodejs";
+
+// Todos os phone_number_id referidos no payload (para achar a conexão dona da
+// entrega e validar a assinatura com o secret dela). Set dedupe entradas repetidas.
+function collectPhoneNumberIds(body: WaWebhookBody): string[] {
+  const ids = new Set<string>();
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const pnid = change.value?.metadata?.phone_number_id;
+      if (pnid) ids.add(pnid);
+    }
+  }
+  return [...ids];
+}
 
 // GET — handshake de verificação do webhook (Meta).
 export async function GET(req: Request) {
@@ -37,24 +51,60 @@ export async function GET(req: Request) {
 // responde nem altera nada no WhatsApp da loja.
 export async function POST(req: Request) {
   const raw = await req.text();
+  const signature = req.headers.get("x-hub-signature-256");
 
-  // Proteção principal: valida a assinatura do corpo (HMAC com o App Secret).
-  // Fail-closed em produção: sem App Secret configurado, recusa (evita injeção de
-  // lead forjado). Em dev permite sem assinatura para facilitar testes locais.
-  const appSecret = process.env.WHATSAPP_APP_SECRET;
-  if (!appSecret) {
-    if (process.env.NODE_ENV === "production") {
-      return new NextResponse("webhook não configurado", { status: 503 });
-    }
-  } else if (!verifySignature(raw, req.headers.get("x-hub-signature-256"), appSecret)) {
-    return new NextResponse("invalid signature", { status: 401 });
-  }
-
+  // Parse antes de validar: o webhook é multi-tenant e cada cliente pode estar num
+  // app da Meta diferente (App Secret próprio). Precisamos do phone_number_id do
+  // corpo para achar a conexão dona da entrega. O corpo aqui só é usado para
+  // rotear/validar — nada é persistido nem processado antes de a assinatura conferir.
   let body: WaWebhookBody;
   try {
     body = JSON.parse(raw);
   } catch {
     return NextResponse.json({ ok: true });
+  }
+
+  // Proteção principal: valida a assinatura do corpo (HMAC-SHA256 com o App Secret
+  // do app que entregou o evento). Aceita se bater com o secret GLOBAL
+  // (WHATSAPP_APP_SECRET — caminho da maioria) OU com o secret POR CONEXÃO
+  // (WaConnection.appSecret — cliente num app próprio da Veloce). Como uma entrega
+  // vem de UM app só, qualquer secret aplicável que bata prova a autenticidade.
+  // Fail-closed em produção: sem nenhum secret aplicável, recusa (evita lead
+  // forjado). Em dev, sem secret, deixa passar para facilitar testes locais.
+  const globalSecret = process.env.WHATSAPP_APP_SECRET;
+  let verified = false;
+  let hadSecret = false;
+
+  if (globalSecret) {
+    hadSecret = true;
+    if (verifySignature(raw, signature, globalSecret)) verified = true;
+  }
+
+  if (!verified && signature) {
+    for (const pnid of collectPhoneNumberIds(body)) {
+      const conn = await prisma.waConnection.findUnique({
+        where: { phoneNumberId: pnid },
+        select: { appSecret: true },
+      });
+      if (!conn?.appSecret) continue;
+      hadSecret = true;
+      try {
+        if (verifySignature(raw, signature, decryptSecret(conn.appSecret))) { verified = true; break; }
+      } catch (e) {
+        if (!(e instanceof DecryptError)) throw e; // segredo corrompido: ignora e tenta o próximo
+      }
+    }
+  }
+
+  if (!verified) {
+    if (!hadSecret) {
+      if (process.env.NODE_ENV === "production") {
+        return new NextResponse("webhook não configurado", { status: 503 });
+      }
+      // dev sem secret: segue sem validação
+    } else {
+      return new NextResponse("invalid signature", { status: 401 });
+    }
   }
 
   // Persist-first: grava o payload cru antes de processar (rede de replay/auditoria).
