@@ -407,9 +407,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const url = vcfg?.presentationVideoUrl?.trim();
       if (!url) return { result: "Sem vídeo de apresentação configurado — siga a conversa normalmente." };
       if (ctx.mode === "test") return {
-        result: "Vídeo de apresentação enviado ao lead. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho pra você conhecer a gente 😊') e siga.",
+        result: "Vídeo de apresentação enviado ao lead. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho pra você conhecer a gente 😊') e siga. NÃO envie o vídeo de novo nesta conversa.",
         artifacts: [{ kind: "video", url, caption: "Apresentação" }],
       };
+      // Trava dura: o vídeo de apresentação vai UMA vez só por contato. Se já mandamos,
+      // não reenvia (independe do que a IA decida).
+      const jaEnviou = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "video", aiGenerated: true }, select: { id: true } });
+      if (jaEnviou) return { result: "O vídeo de apresentação JÁ foi enviado a este cliente — NÃO reenvie. Siga a conversa normalmente." };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar o vídeo." };
       const sent = await sendWhatsAppVideo(conn, ctx.contactWaId, url);
