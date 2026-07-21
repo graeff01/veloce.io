@@ -479,6 +479,8 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     quoteReview: cfg?.quoteReviewEnabled ?? false, // modo revisão: retém o PDF até um vendedor aprovar
     testFicha: mode === "test" ? {} : undefined, // ficha efêmera do Console (acumula entre tools da run)
     inboundText: input.inboundText, isFirstTurn: isFirst, // trava anti-reenvio de foto (enviar_foto)
+    // trava anti-reenvio do vídeo: detecta pelo histórico (vale no teste, onde não há waMessage)
+    videoAlreadySent: (opts.transcript ?? []).some((m) => m.role === "assistant" && typeof m.content === "string" && /v[ií]deo bem curtinho|te mandei um v[ií]deo|v[ií]deo rapidinho/i.test(m.content)),
   };
 
   let decision = "respondeu_duvida";

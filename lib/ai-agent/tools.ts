@@ -26,6 +26,7 @@ export interface ToolCtx {
   testFicha?: IntakeData;
   inboundText?: string;   // última mensagem do lead — usado pela trava anti-reenvio de foto
   isFirstTurn?: boolean;  // 1ª mensagem da conversa (abertura) — libera a foto de entrada
+  videoAlreadySent?: boolean; // já mandou o vídeo de apresentação nesta conversa (trava anti-reenvio, vale no teste)
 }
 
 const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
@@ -406,6 +407,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const vcfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { presentationVideoUrl: true } });
       const url = vcfg?.presentationVideoUrl?.trim();
       if (!url) return { result: "Sem vídeo de apresentação configurado — siga a conversa normalmente." };
+      // Trava anti-reenvio que vale no TESTE também (via histórico da conversa).
+      if (ctx.videoAlreadySent) return { result: "O vídeo de apresentação JÁ foi enviado nesta conversa — NÃO reenvie. Só comente e siga." };
       if (ctx.mode === "test") return {
         result: "Vídeo de apresentação enviado ao lead. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho pra você conhecer a gente 😊') e siga. NÃO envie o vídeo de novo nesta conversa.",
         artifacts: [{ kind: "video", url, caption: "Apresentação" }],
