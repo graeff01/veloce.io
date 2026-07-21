@@ -581,6 +581,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
             const r2 = computeQuote(rules, { ...sel, montagem: true });
             if (r2.ok) { q = r2.quote; notaExtra += " Nessa região a MONTAGEM é OBRIGATÓRIA — já incluí no orçamento. NÃO pergunte se o lead quer montagem; se comentar, diga apenas que a entrega já vai com a montagem inclusa."; }
           }
+          // TRAVA determinística: com MONTAGEM, o ACESSO é obrigatório (afeta o preço). Se
+          // ainda não foi coletado, NÃO fecha o orçamento — a IA pergunta primeiro.
+          const montagemAplica = sel.montagem || montagemObrigatoria;
+          if (montagemAplica && !acesso) {
+            return { result: "AINDA NÃO feche o orçamento: como vai COM MONTAGEM, preciso do ACESSO do local. Pergunte ao lead, de forma leve: \"é térreo, tem escada (quantos lances? é tradicional ou caracol) ou é por elevador?\" e passe em 'acesso' (térreo = { lances: 0 }). Depois gere o orçamento de novo." };
+          }
           q = appendFeeLine(q, fr);
         }
       }
