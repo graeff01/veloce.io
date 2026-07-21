@@ -32,8 +32,9 @@ export const config = {
   // Gate de borda só para PÁGINAS internas. Fora do gate:
   //  • /api — rotas se protegem com requireAuth (401 JSON, não redirect HTML);
   //  • /r/ — PAINEL DO CLIENTE (capability link público, sem login);
+  //  • /privacy — política de privacidade pública (URL do app da Meta);
   //  • assets do Next e arquivos com extensão.
   matcher: [
-    "/((?!api|login|r/|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+    "/((?!api|login|privacy|r/|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };
