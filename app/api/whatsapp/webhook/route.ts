@@ -297,13 +297,19 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
       const addr = [geo.suburb, geo.city].filter(Boolean).join(", ");
       if (addr) {
         const prof = await prisma.leadProfile.findUnique({ where: { contactId } }).catch(() => null);
-        const data = { ...((prof?.data as Record<string, unknown>) ?? {}), localizacao_gps: addr };
+        const ficha = (prof?.data as Record<string, unknown>) ?? {};
+        const statedCity = String(ficha.cidade_entrega ?? ficha.cidade ?? ficha.city ?? "").trim();
+        const data = { ...ficha, localizacao_gps: addr };
         await prisma.leadProfile.upsert({
           where: { contactId },
           create: { connectionId: conn.id, contactId, data: data as object },
           update: { data: data as object },
         }).catch(() => {});
-        text = `[O cliente compartilhou a localização: ${addr}. Registre a cidade/bairro na ficha (atualizar_ficha) e gere o orçamento — a ZONA do frete sai daí.]`;
+        // Guarda de frete: a cidade do PIN precisa bater com a cidade que o cliente
+        // informou (o frete depende disso). Se divergir, a IA avisa e pede o endereço
+        // por escrito — não orça. A comparação (incl. abreviações) fica com o modelo.
+        const cityHint = statedCity ? ` Ele havia informado a cidade "${statedCity}".` : "";
+        text = `[O cliente compartilhou a localização por GPS: ${addr} (cidade do pin: ${geo.city ?? "?"}).${cityHint} ANTES de orçar, confira se a cidade do pin bate com a cidade que ele informou (considere abreviações, ex.: POA = Porto Alegre; Canoas ≠ Porto Alegre). Se for uma CIDADE DIFERENTE, NÃO gere orçamento — avise que a localização não corresponde à cidade que ele informou e peça o ENDEREÇO POR ESCRITO. Se bater, registre (atualizar_ficha) e siga com o orçamento — a ZONA do frete sai daí.]`;
       } else {
         text = "[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]";
       }
