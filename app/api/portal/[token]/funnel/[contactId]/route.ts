@@ -21,9 +21,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const stage = body?.stage;
   if (!STAGES.includes(stage)) return NextResponse.json({ error: "Etapa inválida" }, { status: 400 });
 
-  const conv = await prisma.waConversation.findFirst({ where: { contactId, connectionId: conn.id }, select: { contactId: true } });
-  if (!conv) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
+  // Segurança: o contato precisa ser desta conexão (escopo por token).
+  const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id }, select: { id: true } });
+  if (!contact) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
 
-  await prisma.waConversation.update({ where: { contactId }, data: { funnelStage: stage, funnelManual: true } });
+  await prisma.waConversation.upsert({
+    where: { contactId },
+    create: { connectionId: conn.id, contactId, funnelStage: stage, funnelManual: true },
+    update: { funnelStage: stage, funnelManual: true },
+  });
   return NextResponse.json({ ok: true, stage });
 }

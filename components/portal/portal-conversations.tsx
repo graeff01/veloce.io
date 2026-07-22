@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
 interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
@@ -18,6 +18,7 @@ const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
   negociacao: ["Negociação", "#7C3AED"], convertido: ["Convertido", "#16A34A"], perdido: ["Perdido", "#d6453d"],
 };
+const STAGE_ORDER = ["recebido", "respondido", "qualificado", "negociacao", "convertido", "perdido"];
 function StageBadge({ stage }: { stage: string | null }) {
   if (!stage) return null;
   const [label, color] = STAGE[stage] ?? [stage, "var(--wa-muted)"];
@@ -100,6 +101,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [ownerMenu, setOwnerMenu] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
+  const [stageMenu, setStageMenu] = useState(false);
+  const [stageSaving, setStageSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
@@ -292,6 +295,20 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       // reflete na lista sem esperar o polling
       setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, assignedEmail: ae } : row)) : l));
     } finally { setAssigning(false); }
+  }
+
+  // Muda a etapa do funil manualmente. Trava (funnelManual=true no backend) pra o
+  // classificador automático não desfazer. Reflete na conversa e na lista na hora.
+  async function changeStage(stage: string) {
+    if (!sel || stageSaving) return;
+    setStageSaving(true); setStageMenu(false);
+    try {
+      const r = await fetch(`/api/portal/${token}/funnel/${sel}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.error || "Não foi possível atualizar a etapa."); return; }
+      setConv((c) => (c ? { ...c, funnelStage: stage, funnelEvidence: null } : c));
+      setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, funnelStage: stage } : row)) : l));
+    } finally { setStageSaving(false); }
   }
 
   // Envio de MÍDIA (imagem/documento/áudio) — otimista + reconcile como o texto.
@@ -586,7 +603,28 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", flexShrink: 0 }}>
                 <Sparkles size={14} /> {aiReplying ? "…" : isMobile ? "IA" : "IA responder"}
               </button>
-              {!isMobile && <StageBadge stage={conv.funnelStage} />}
+              {/* Etapa do funil — clicável: abre menu pra mudar manualmente (trava o automático). */}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                {(() => { const st = conv.funnelStage; const color = st ? (STAGE[st]?.[1] ?? "var(--wa-muted)") : "var(--wa-muted)"; const label = st ? (STAGE[st]?.[0] ?? st) : "Etapa"; return (
+                  <button onClick={() => setStageMenu((o) => !o)} disabled={stageSaving} title="Mudar a etapa do funil"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 32, padding: isMobile ? "0 8px" : "0 10px", borderRadius: 10, border: `1px solid ${st ? color : "var(--p-border)"}`, background: st ? `color-mix(in srgb, ${color} 14%, transparent)` : "var(--p-bg)", color: st ? color : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: stageSaving ? "wait" : "pointer", whiteSpace: "nowrap" }}>
+                    {label} <ChevronDown size={13} style={{ flexShrink: 0 }} />
+                  </button>
+                ); })()}
+                {stageMenu && (<>
+                  <div onClick={() => setStageMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 41, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.16)", overflow: "hidden", minWidth: 178 }}>
+                    {STAGE_ORDER.map((s) => { const [label, color] = STAGE[s]; const active = conv.funnelStage === s; return (
+                      <button key={s} onClick={() => changeStage(s)} disabled={stageSaving}
+                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid var(--p-border)", background: active ? "var(--p-accent-soft)" : "transparent", color: "var(--p-text)", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                        <span style={{ flex: 1 }}>{label}</span>
+                        {active && <Check size={14} style={{ color: "var(--p-accent)", flexShrink: 0 }} />}
+                      </button>
+                    ); })}
+                  </div>
+                </>)}
+              </div>
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
