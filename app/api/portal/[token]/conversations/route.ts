@@ -45,6 +45,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
       return {
         contactId: c.id,
         name: c.displayName || c.name || c.waId,
+        waId: c.waId,
         lastText: last?.text ?? null,
         lastType: last?.type ?? null,
         lastDirection: last?.direction ?? null,

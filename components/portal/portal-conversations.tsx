@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEv
 import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
-interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
+interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -188,7 +188,16 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (tab === "ads" && !c.fromAd) return false;
     if (tab === "ads" && adFilter && adLabelOf(c) !== adFilter) return false;
     if (tab === "waiting" && !isWaiting(c)) return false;
-    if (q.trim() && !c.name.toLowerCase().includes(q.trim().toLowerCase())) return false;
+    if (q.trim()) {
+      // Busca por NOME ou por NÚMERO. Muitos contatos não têm nome salvo, então
+      // pesquisar pelo telefone precisa funcionar. Normaliza os dígitos dos dois
+      // lados (o waId é E.164 sem "+") pra casar mesmo com o número formatado.
+      const term = q.trim().toLowerCase();
+      const digits = term.replace(/\D/g, "");
+      const nameHit = c.name.toLowerCase().includes(term);
+      const numHit = digits.length >= 3 && c.waId.includes(digits);
+      if (!nameHit && !numHit) return false;
+    }
     return true;
   });
   const myWaiting = (list ?? []).filter((c) => me && c.assignedEmail === me && isWaiting(c)).length;
@@ -425,7 +434,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         <div style={{ padding: isMobile ? "10px 14px" : "8px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, height: isMobile ? 46 : 38, padding: "0 12px", borderRadius: 12, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
             <Search size={15} style={{ color: "var(--wa-muted)" }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar conversa" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar por nome ou número" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
         {/* filtro "Meus leads" (só com login + equipe) */}

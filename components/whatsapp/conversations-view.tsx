@@ -280,7 +280,11 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
     if (filter === "ads") r = r.filter((c) => c.fromAd);
     else if (filter === "waiting") r = r.filter((c) => isWaiting(c));
     const term = q.trim().toLowerCase();
-    if (term) r = r.filter((c) => (c.name ?? "").toLowerCase().includes(term) || c.waId.includes(term));
+    const digits = term.replace(/\D/g, "");
+    if (term) r = r.filter((c) =>
+      (c.name ?? "").toLowerCase().includes(term)
+      || (c.displayName ?? "").toLowerCase().includes(term)
+      || (digits.length >= 3 && c.waId.includes(digits)));
     return r;
   }, [list, q, filter]);
 
