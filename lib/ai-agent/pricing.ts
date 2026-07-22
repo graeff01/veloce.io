@@ -116,14 +116,23 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
     }
   }
 
-  // ── ACESSO (escada tradicional por lance / caracol fixo / elevador fixo) ──────
+  // ── ACESSO (montagem) — os acréscimos SOMAM ──────────────────────────────────
+  // Elevador + escada podem coexistir (ex.: prédio com elevador E escada caracol no
+  // apto). A ESCADA é caracol (fixo) OU tradicional (por lance) — nunca as duas (o
+  // `tipo` define). Antes usava else-if e cobrava só UM acesso (bug: ignorava a caracol
+  // quando também tinha elevador).
   if (sel.access && pol?.access) {
     const a = sel.access, ac = pol.access;
-    let val = 0, label = "";
-    if (a.elevator) { val = ac.elevator ?? 0; label = "Acesso (elevador)"; }
-    else if (a.spiral) { val = ac.spiral ?? 0; label = "Acesso (escada caracol)"; }
-    else if (a.flights && a.flights > 0) { val = round2((ac.stairPerFlight ?? 0) * a.flights); label = `Acesso (escada, ${a.flights} ${a.flights === 1 ? "lance" : "lances"})`; }
-    if (val > 0) extras.push({ key: "acesso", code: null, label, qty: 1, unit: val, amount: val });
+    if (a.elevator && (ac.elevator ?? 0) > 0) {
+      const v = ac.elevator!;
+      extras.push({ key: "acesso_elevador", code: null, label: "Acesso (elevador)", qty: 1, unit: v, amount: v });
+    }
+    if (a.spiral) {
+      if ((ac.spiral ?? 0) > 0) { const v = ac.spiral!; extras.push({ key: "acesso_caracol", code: null, label: "Acesso (escada caracol)", qty: 1, unit: v, amount: v }); }
+    } else if (a.flights && a.flights > 0 && (ac.stairPerFlight ?? 0) > 0) {
+      const v = round2(ac.stairPerFlight! * a.flights);
+      extras.push({ key: "acesso_escada", code: null, label: `Acesso (escada, ${a.flights} ${a.flights === 1 ? "lance" : "lances"})`, qty: a.flights, unit: ac.stairPerFlight!, amount: v });
+    }
   }
 
   // Fees configuradas (percentual incide sobre os produtos).
