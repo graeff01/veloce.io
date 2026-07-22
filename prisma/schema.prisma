@@ -1127,6 +1127,7 @@ model AiAgentConfig {
   playbook        Json?    // playbook de venda declarativo (por vertical). Vazio = comportamento automotivo padrão
   customPrompt    String?  // prompt de sistema COMPLETO por cliente. Se setado, SUBSTITUI o prompt-base (não herda o automotivo) — fonte única. Conhecimento e orçamento continuam anexados.
   presentationVideoUrl String? // vídeo de apresentação (URL pública). Se setado, expõe a tool enviar_video (ex.: manda no 1º contato)
+  presentationVideoIntro String? // texto de anúncio enviado ANTES do vídeo (ex.: "Vou lhe enviar um vídeo bem curtinho..."). Se vazio, usa um padrão genérico.
   optionsImageUrl String? // imagem dos opcionais/acessórios (URL pública). Se setado, expõe a tool enviar_opcionais
   model           String   @default("gpt-4o-mini")
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento

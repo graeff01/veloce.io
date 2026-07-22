@@ -5,7 +5,7 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
+import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
 import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
@@ -413,13 +413,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     // ── Vídeo de apresentação (1º contato) ─────────────────────────────────────
     case "enviar_video": {
-      const vcfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { presentationVideoUrl: true } });
+      const vcfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { presentationVideoUrl: true, presentationVideoIntro: true } });
       const url = vcfg?.presentationVideoUrl?.trim();
       if (!url) return { result: "Sem vídeo de apresentação configurado — siga a conversa normalmente." };
+      // Texto de anúncio ENVIADO ANTES do vídeo (fica natural: "vou te enviar um vídeo..."
+      // → vídeo). O `content` que a IA gera junto da tool call é descartado, então o anúncio
+      // sai daqui, não do modelo. Configurável por cliente; padrão genérico se vazio.
+      const intro = vcfg?.presentationVideoIntro?.trim() || "Vou lhe enviar um vídeo bem curtinho pra você conhecer um pouco mais sobre a gente 😊";
       // Trava anti-reenvio que vale no TESTE também (via histórico da conversa).
-      if (ctx.videoAlreadySent) return { result: "O vídeo de apresentação JÁ foi enviado nesta conversa — NÃO reenvie. Só comente e siga." };
+      if (ctx.videoAlreadySent) return { result: "O vídeo de apresentação JÁ foi enviado nesta conversa — NÃO reenvie. Só siga a conversa." };
       if (ctx.mode === "test") return {
-        result: "Vídeo de apresentação enviado ao lead. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho pra você conhecer a gente 😊') e siga. NÃO envie o vídeo de novo nesta conversa.",
+        result: `Anúncio ("${intro}") e vídeo de apresentação enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga direto com UMA pergunta leve (ex.: o nome). NÃO envie o vídeo de novo nesta conversa.`,
         artifacts: [{ kind: "video", url, caption: "Apresentação" }],
       };
       // Trava dura: o vídeo de apresentação vai UMA vez só por contato. Se já mandamos,
@@ -428,13 +432,20 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (jaEnviou) return { result: "O vídeo de apresentação JÁ foi enviado a este cliente — NÃO reenvie. Siga a conversa normalmente." };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar o vídeo." };
+      // 1) Anúncio (texto) primeiro — pra o cliente saber que vem um vídeo.
+      const introSent = await sendWhatsAppText(conn, ctx.contactWaId, intro);
+      if (introSent.ok) await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: introSent.waMessageId || `ia-vidintro-${Date.now()}`,
+        direction: "out", type: "text", text: intro, aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      // 2) Vídeo em seguida.
       const sent = await sendWhatsAppVideo(conn, ctx.contactWaId, url);
       if (!sent.ok) return { result: `Não consegui enviar o vídeo (${sent.error}); siga a conversa por texto.` };
       await prisma.waMessage.create({ data: {
         connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-vid-${Date.now()}`,
         direction: "out", type: "video", text: "[vídeo de apresentação]", aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
-      return { result: "Vídeo de apresentação enviado. Comente CURTINHO (ex: 'te mandei um vídeo rapidinho 😊') e siga pro catálogo/pergunta." };
+      return { result: "Anúncio + vídeo de apresentação já enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga DIRETO pra próxima etapa da conversa (ex.: perguntar o nome, conforme o fluxo)." };
     }
 
     case "pedir_localizacao": {
