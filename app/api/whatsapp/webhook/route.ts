@@ -311,7 +311,7 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
         }).catch(() => {});
         // A divergência (cidade informada × cidade do GPS) é checada no gerar_orcamento
         // (determinístico). Aqui só registra o GPS e deixa a IA seguir para o orçamento.
-        text = `[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada.]`;
+        text = `[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada. IMPORTANTE: NÃO afirme ao cliente de qual cidade/bairro é a localização (pode não bater com o que ele te informou) — apenas siga para o orçamento; o motor valida e, se divergir, te avisa.]`;
       } else {
         text = "[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]";
       }

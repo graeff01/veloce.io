@@ -584,7 +584,22 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           }
           return { result: `A LOCALIZAÇÃO que o cliente compartilhou é de ${gpsCity}, mas ele informou a entrega em ${statedCity}. NÃO gere orçamento e NÃO peça a localização de novo (pedir_localizacao). Avise de um jeito humano que a localização NÃO corresponde à cidade que ele informou e peça o ENDEREÇO COMPLETO POR ESCRITO (cidade, bairro e rua). Ex.: "Opa, a localização que você mandou é de ${gpsCity}, mas você tinha me falado ${statedCity} 😊 — me manda o endereço completo por escrito pra eu acertar o frete certinho?". Só volte a orçar quando ele mandar o endereço/bairro por escrito.` };
         }
-        const addressBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
+        // Endereço p/ resolver a zona = valores da ficha + as ÚLTIMAS mensagens do lead.
+        // O bairro/endereço que o cliente digita nem sempre vira campo da ficha (o modelo
+        // não salva sempre); sem isso o motor só enxerga a CIDADE e trava no loop de "qual
+        // zona?" mesmo o cliente tendo dito o bairro. Ler o que ele ESCREVEU torna a
+        // resolução determinística — o nome do bairro casa a zona (ex.: "Moinhos de Vento"
+        // → Central). Só no modo live (em test não há WaMessage; usa a ficha efêmera).
+        const fichaBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
+        let inboundBlob = "";
+        if (ctx.mode !== "test") {
+          const recent = await prisma.waMessage.findMany({
+            where: { contactId: ctx.contactId, direction: "in" },
+            orderBy: { timestamp: "desc" }, take: 8, select: { text: true },
+          });
+          inboundBlob = recent.map((m) => (m.text || "").trim()).filter((t) => t && !t.startsWith("[")).join(" ");
+        }
+        const addressBlob = `${fichaBlob} ${inboundBlob}`.trim();
         const fr = resolveFreight(rules, addressBlob);
         if (fr && "unmatched" in fr) {
           const temEndereco = addressBlob.trim().length > 0;
