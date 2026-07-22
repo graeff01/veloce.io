@@ -60,6 +60,12 @@ function formatPhone(wa: string) {
   const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
   return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : d ? `+${d}` : "";
 }
+// Versão compacta (sem +55) para a LISTA — cabe melhor no celular.
+function formatPhoneShort(wa: string) {
+  const d = (wa || "").replace(/\D/g, "");
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `${m[1]} ${m[2]}-${m[3]}` : d ? `+${d}` : "";
+}
 // True quando o "nome" exibido JÁ é o próprio número (contato sem nome salvo) — aí não
 // mostramos o número duas vezes.
 function nameIsNumber(name: string, wa: string) {
@@ -480,8 +486,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                      {!isMobile && !nameIsNumber(c.name, c.waId) && formatPhone(c.waId) && (
-                        <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatPhone(c.waId)}</span>
+                      {!nameIsNumber(c.name, c.waId) && formatPhoneShort(c.waId) && (
+                        <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatPhoneShort(c.waId)}</span>
                       )}
                       <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
                     </div>

@@ -62,6 +62,17 @@ function initials(name: string | null, wa: string) {
   const s = (name ?? wa).trim();
   return s.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 }
+// Número compacto (sem +55) pra mostrar ao lado do nome na lista.
+function fmtPhoneShort(wa: string) {
+  const d = (wa || "").replace(/\D/g, "");
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `${m[1]} ${m[2]}-${m[3]}` : d ? `+${d}` : "";
+}
+// True quando o "nome" exibido já é o próprio número — evita mostrar duas vezes.
+function nameIsNum(name: string | null, wa: string) {
+  const dn = (name || "").replace(/\D/g, "");
+  return !!dn && dn === (wa || "").replace(/\D/g, "");
+}
 function dayLabel(iso: string) {
   const d = new Date(iso); const today = new Date();
   const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
@@ -378,8 +389,11 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
                       <span style={{ fontSize: 13.5, fontWeight: waiting ? 700 : 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.displayName ?? c.name ?? `+${c.waId}`}</span>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{c.displayName ?? c.name ?? `+${c.waId}`}</span>
                         <StatusBadge badge={c.badge} />
+                        {!nameIsNum(c.displayName ?? c.name, c.waId) && fmtPhoneShort(c.waId) && (
+                          <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11.5, flexShrink: 0 }}>{fmtPhoneShort(c.waId)}</span>
+                        )}
                       </span>
                       <span style={{ fontSize: 11, color: waiting ? "#1FA855" : "var(--text-muted)", fontWeight: waiting ? 700 : 400, flexShrink: 0, letterSpacing: "0.01em" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
