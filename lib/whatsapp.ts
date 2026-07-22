@@ -49,6 +49,7 @@ export interface WaIncomingMessage {
   // Resposta de reply button (interactive) ou de botão de template (button).
   interactive?: { type?: string; button_reply?: { id?: string; title?: string }; list_reply?: { id?: string; title?: string } };
   button?: { payload?: string; text?: string };
+  reaction?: { message_id?: string; emoji?: string };
   // Pedido montado pelo cliente no CATÁLOGO do WhatsApp (clicou nos produtos e enviou).
   // Não temos o mapa retailer_id→modelo (número SMB); usamos qtd + preço como sinal.
   order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id?: string; quantity?: string | number; item_price?: number; currency?: string }> };
@@ -109,6 +110,11 @@ export function messageText(m: WaIncomingMessage): string | null {
       const t = total > 0 ? ` (~R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "";
       return `[O cliente montou um pedido no catálogo: ${count} item(ns)${t}]`;
     }
+    // "unsupported": tipo que a Cloud API NÃO repassa (enquete, "ver uma vez",
+    // mensagem de app não suportado...). O conteúdo não chega — rótulo limpo.
+    case "unsupported": return "[Mensagem não suportada pelo WhatsApp]";
+    case "contacts": return "[O lead compartilhou um contato]";
+    case "reaction": return m.reaction?.emoji ? `[O lead reagiu: ${m.reaction.emoji}]` : "[O lead reagiu a uma mensagem]";
     default: return `[O lead enviou um(a) ${m.type}]`;
   }
 }
