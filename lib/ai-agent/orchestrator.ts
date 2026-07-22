@@ -270,7 +270,13 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // senão a saudação padrão. Vale em live e em teste (Console) para refletir o real.
   let disclosureText = "";
   if (isFirst && cfg?.disclosureEnabled !== false && !opts.autoMode && !opts.suppressGreeting) {
-    disclosureText = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
+    const base = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
+    // Toque humano: prefixa "Bom dia/Boa tarde/Boa noite" conforme a HORA local (fuso do
+    // cliente), a menos que a saudação já comece com um cumprimento (evita duplicar em
+    // clientes com opener próprio). <12h bom dia · 12–17h boa tarde · 18h+ boa noite.
+    const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: cfg?.timezone || "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(new Date())) % 24;
+    const tg = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    disclosureText = /^\s*(bom dia|boa tarde|boa noite|oi+|ol[áa]|opa|e a[íi])/i.test(base) ? base : `${tg}! ${base}`;
   }
   // Saudação juntada à 1ª resposta com UMA quebra só → vira UM balão (abertura leve:
   // foto + 1 mensagem, não foto + 3 balões). Como a saudação fixa já cumprimenta, removemos
