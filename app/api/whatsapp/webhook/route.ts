@@ -285,15 +285,6 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
   }
 }
 
-// Normaliza nome de cidade (minúsculo, sem acento/pontuação) p/ comparação.
-const normCity = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
-// Cidades divergem? Tolera "Porto Alegre" vs "Porto Alegre Zona Sul" (por inclusão).
-function citiesDiffer(a: string, b: string): boolean {
-  const x = normCity(a), y = normCity(b);
-  if (!x || !y) return false;
-  return !(x.includes(y) || y.includes(x));
-}
-
 // Localização compartilhada pelo cliente → geocoding reverso (coordenada → bairro/cidade),
 // grava na ficha (p/ o motor resolver a ZONA por bairro) e enfileira o agente com um texto
 // claro. Fora do caminho do 200 do webhook (chamada de rede) — fire-and-forget.
@@ -307,24 +298,15 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
       if (addr) {
         const prof = await prisma.leadProfile.findUnique({ where: { contactId } }).catch(() => null);
         const ficha = (prof?.data as Record<string, unknown>) ?? {};
-        const statedCity = String(ficha.cidade_entrega ?? ficha.cidade ?? ficha.city ?? "").trim();
         const data = { ...ficha, localizacao_gps: addr };
         await prisma.leadProfile.upsert({
           where: { contactId },
           create: { connectionId: conn.id, contactId, data: data as object },
           update: { data: data as object },
         }).catch(() => {});
-        // Guarda de frete DETERMINÍSTICA: se a cidade do PIN diverge da cidade informada,
-        // o frete sairia errado. Detectamos AQUI (não confiamos no modelo, que loopava) e
-        // forçamos a IA a avisar + pedir o endereço por escrito, proibindo orçar/re-pedir o pin.
-        const pinCity = geo.city ?? "";
-        const nome = String(ficha.nome ?? "").trim();
-        if (statedCity && pinCity && citiesDiffer(pinCity, statedCity)) {
-          const nomeStr = nome ? `, ${nome}` : "";
-          text = `[LOCALIZAÇÃO NÃO CORRESPONDE — INSTRUÇÃO OBRIGATÓRIA: a localização enviada é de ${pinCity}, mas o cliente informou que a entrega é em ${statedCity}. É PROIBIDO gerar orçamento, chamar gerar_orcamento, pedir a localização de novo ou mandar o botão de localização. Responda avisando, com naturalidade, que a localização não corresponde à cidade informada e peça o ENDEREÇO COMPLETO POR ESCRITO (cidade, bairro e rua). Exemplo: "Opa${nomeStr}, a localização que você mandou é de ${pinCity}, mas você tinha me falado ${statedCity} 😊 — me manda o endereço completo por escrito pra eu acertar o frete certinho?"]`;
-        } else {
-          text = `[O cliente compartilhou a localização por GPS: ${addr}. Registre a cidade/bairro na ficha (atualizar_ficha) e siga com o orçamento — a ZONA do frete sai daí.]`;
-        }
+        // A divergência (cidade informada × cidade do GPS) é checada no gerar_orcamento
+        // (determinístico). Aqui só registra o GPS e deixa a IA seguir para o orçamento.
+        text = `[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada.]`;
       } else {
         text = "[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]";
       }

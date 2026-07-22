@@ -12,6 +12,15 @@ import { computeQuote, describeRules, resolveFreight, appendFeeLine, type Pricin
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
 import { renderQuotePdf, type QuoteDocData } from "@/lib/quote-pdf";
 
+// Normaliza nome de cidade (minúsculo, sem acento/pontuação) p/ comparar.
+const normCity = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+// Cidades divergem? Tolera "Porto Alegre" vs "Porto Alegre Zona Sul" (por inclusão).
+function citiesDiffer(a: string, b: string): boolean {
+  const x = normCity(a), y = normCity(b);
+  if (!x || !y) return false;
+  return !(x.includes(y) || y.includes(x));
+}
+
 export interface ToolCtx {
   clientId: string;
   connectionId: string;
@@ -561,6 +570,20 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // NÃO é retirada. Resolução cidade→zona: bairro conhecido resolve direto; cidade
       // com várias zonas e nenhuma identificada → a IA pergunta a zona (nunca chuta).
       if (!retirada && rules.freight?.length) {
+        // GATE de divergência: se o cliente compartilhou uma localização (GPS) cuja CIDADE
+        // difere da que ele informou, o frete sairia errado. Avisa (humano) e pede o endereço
+        // por escrito — NÃO orça, NÃO re-pede o pin. Limpa o GPS (não confiável) pra não
+        // re-disparar quando ele corrigir por escrito. (O modelo sozinho loopava aqui.)
+        const statedCity = String(ficha.cidade_entrega ?? ficha.cidade ?? "").trim();
+        const gpsCity = String(ficha.localizacao_gps ?? "").split(",").pop()?.trim() ?? "";
+        if (statedCity && gpsCity && citiesDiffer(statedCity, gpsCity)) {
+          if (ctx.mode === "test") { if (ctx.testFicha) delete (ctx.testFicha as Record<string, unknown>).localizacao_gps; }
+          else {
+            const nf = { ...(ficha as Record<string, unknown>) }; delete nf.localizacao_gps;
+            await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { data: nf as object } }).catch(() => {});
+          }
+          return { result: `A LOCALIZAÇÃO que o cliente compartilhou é de ${gpsCity}, mas ele informou a entrega em ${statedCity}. NÃO gere orçamento e NÃO peça a localização de novo (pedir_localizacao). Avise de um jeito humano que a localização NÃO corresponde à cidade que ele informou e peça o ENDEREÇO COMPLETO POR ESCRITO (cidade, bairro e rua). Ex.: "Opa, a localização que você mandou é de ${gpsCity}, mas você tinha me falado ${statedCity} 😊 — me manda o endereço completo por escrito pra eu acertar o frete certinho?". Só volte a orçar quando ele mandar o endereço/bairro por escrito.` };
+        }
         const addressBlob = Object.values(ficha).filter((v): v is string => typeof v === "string").join(" ");
         const fr = resolveFreight(rules, addressBlob);
         if (fr && "unmatched" in fr) {
