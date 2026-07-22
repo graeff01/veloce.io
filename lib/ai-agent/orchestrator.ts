@@ -269,7 +269,12 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Saudação na 1ª mensagem: usa o texto fixo da loja (greetingMessage) se houver,
   // senão a saudação padrão. Vale em live e em teste (Console) para refletir o real.
   let disclosureText = "";
-  if (isFirst && cfg?.disclosureEnabled !== false && !opts.autoMode && !opts.suppressGreeting) {
+  // A saudação sai no 1º contato (isFirst) mesmo em autoMode — ex.: operador clica
+  // "IA responder" num lead NOVO, ou o auto atua na 1ª mensagem. O que NÃO deve saudar é
+  // entrar numa conversa EM ANDAMENTO — e isso já é barrado por isFirst (contatos antigos
+  // têm histórico) e pelo suppressGreeting explícito. (Antes, !autoMode pulava a saudação
+  // até no 1º contato quando vinha pelo botão/cron.)
+  if (isFirst && cfg?.disclosureEnabled !== false && !opts.suppressGreeting) {
     const base = cfg?.greetingMessage?.trim() || buildDisclosure(storeName ?? "", cfg?.assistantName);
     // Toque humano: prefixa "Bom dia/Boa tarde/Boa noite" conforme a HORA local (fuso do
     // cliente), a menos que a saudação já comece com um cumprimento (evita duplicar em

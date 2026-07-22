@@ -24,9 +24,13 @@ const CONT_WORD = /(?:^|\s)(e|ou|de|do|da|dos|das|no|na|nos|nas|pra|para|que|com
 export function looksIncomplete(text: string): boolean {
   const t = (text || "").trim();
   if (!t) return false;
-  if (t.length < 25) return true;        // muito curta → provável fragmento
+  // Fragmento = termina em conjunção/preposição/verbo pendente ("Eu moro em", "quero").
+  // NÃO usamos mais "curta = fragmento": no WhatsApp quase toda msg é curta e COMPLETA
+  // ("Oi", "Porto Alegre", "Gourmet", "boa tarde") — tratá-las como fragmento fazia a IA
+  // esperar o tempo de fragmento (12s) em TODA mensagem. Só 1-2 caracteres soltos ficam.
   if (CONT_WORD.test(t)) return true;    // termina em conjunção/preposição/pergunta pendente
-  return false;                          // frase média/longa e "fechada" → resposta normal
+  if (t.length <= 2) return true;        // "No", "de", "Eu" soltos → provável fragmento
+  return false;                          // frase "fechada" → resposta normal
 }
 export function debounceFor(text: string): number {
   return looksIncomplete(text) ? DEBOUNCE_FRAGMENT_MS : DEBOUNCE_MS;
