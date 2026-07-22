@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, type WaWebhookBody, type WaChangeValue,
+  verifySignature, onlyDigits, messageText, mediaRef, messageEchoes, orderSummary, type WaWebhookBody, type WaChangeValue,
 } from "@/lib/whatsapp";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { applyFunnelFromMessage } from "@/lib/wa-funnel";
@@ -268,6 +268,11 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
         // bairro/cidade na ficha e enfileira o agente com o texto enriquecido. Isolado
         // aqui p/ não tocar no fluxo de texto/imagem, que segue idêntico.
         void enqueueLocationJob(conn, contact.id, m).catch(() => {});
+      } else if (m.type === "order") {
+        // Pedido montado no CATÁLOGO do WhatsApp: sinal FORTE de compra. Enfileira com
+        // instrução de seguir o FLUXO NORMAL de orçamento (confirmar modelo → cidade/
+        // montagem → PDF) e só avisar o vendedor após APROVAÇÃO — não escala cedo.
+        void enqueueOrderJob(conn, contact.id, m).catch(() => {});
       } else {
         void enqueueAgentJob({
           clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
@@ -316,6 +321,23 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
     clientId: conn.clientId, connectionId: conn.id, contactId,
     idempotencyKey: m.id,
     payload: { text, type: "location" },
+  }).catch(() => {});
+}
+
+// Pedido montado pelo cliente no CATÁLOGO do WhatsApp (type "order"). NÃO é uma compra
+// fechada — é um SINAL FORTE de intenção. Não temos o mapa retailer_id→modelo (número SMB
+// não expõe o catálogo por API), então usamos qtd + total como contexto e a IA confirma o
+// modelo pela conversa. O texto injetado manda SEGUIR O FLUXO NORMAL de orçamento e só
+// avisar o vendedor DEPOIS da aprovação — é a mensagem que o agente de fato lê neste turno.
+async function enqueueOrderJob(conn: WaConnection, contactId: string, m: WaIncomingMessage) {
+  const { count, total, note } = orderSummary(m);
+  const totalStr = total > 0 ? ` (total aproximado R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "";
+  const noteStr = note ? ` Observação que ele digitou: "${note}".` : "";
+  const text = `[O cliente MONTOU UM PEDIDO no catálogo do WhatsApp: ${count} item(ns)${totalStr}.${noteStr} É um lead QUENTE, quer comprar! Comemore de leve e SIGA O FLUXO NORMAL de orçamento: confirme com ele qual(is) modelo(s) escolheu — de forma NATURAL, como quem viu o pedido e quer fechar certinho (ex.: "Show, vi que você montou seu pedido aqui! 😍 Só pra eu fechar o orçamento com a entrega certinha, me confirma o modelo que você escolheu?"). Depois colete o que ainda falta (cidade de entrega, montagem, etc.) e gere o orçamento com o PDF (gerar_orcamento → enviar_orcamento). NÃO avise o vendedor ainda — só use aprovar_orcamento DEPOIS que o cliente APROVAR o orçamento.]`;
+  await enqueueAgentJob({
+    clientId: conn.clientId, connectionId: conn.id, contactId,
+    idempotencyKey: m.id,
+    payload: { text, type: "order" },
   }).catch(() => {});
 }
 

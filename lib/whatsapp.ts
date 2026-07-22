@@ -49,6 +49,19 @@ export interface WaIncomingMessage {
   // Resposta de reply button (interactive) ou de botão de template (button).
   interactive?: { type?: string; button_reply?: { id?: string; title?: string }; list_reply?: { id?: string; title?: string } };
   button?: { payload?: string; text?: string };
+  // Pedido montado pelo cliente no CATÁLOGO do WhatsApp (clicou nos produtos e enviou).
+  // Não temos o mapa retailer_id→modelo (número SMB); usamos qtd + preço como sinal.
+  order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id?: string; quantity?: string | number; item_price?: number; currency?: string }> };
+}
+
+// Resumo de um pedido do catálogo: nº de itens (soma das quantidades) + total aproximado
+// (Σ preço×qtd) + a observação que o cliente digitou junto (se houver). Usado no texto do
+// agente e no que o vendedor vê no painel — sem depender de mapear o retailer_id.
+export function orderSummary(m: WaIncomingMessage): { count: number; total: number; note?: string } {
+  const items = m.order?.product_items ?? [];
+  const count = items.reduce((s, it) => s + (Number(it.quantity) || 1), 0);
+  const total = items.reduce((s, it) => s + (Number(it.item_price) || 0) * (Number(it.quantity) || 1), 0);
+  return { count, total, note: m.order?.text?.trim() || undefined };
 }
 
 // Metadados de mídia (sem baixar o conteúdo) — usado p/ o agente reconhecer o tipo.
@@ -91,6 +104,11 @@ export function messageText(m: WaIncomingMessage): string | null {
     case "sticker": return "[O lead enviou uma figurinha]";
     case "location": return "[O cliente compartilhou a localização]";
     case "audio": return "[O lead enviou um áudio]";
+    case "order": {
+      const { count, total } = orderSummary(m);
+      const t = total > 0 ? ` (~R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "";
+      return `[O cliente montou um pedido no catálogo: ${count} item(ns)${t}]`;
+    }
     default: return `[O lead enviou um(a) ${m.type}]`;
   }
 }
