@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaUnscoped } from "@/lib/prisma";
 import { shouldRespond, isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import type { Window } from "@/lib/visit-availability";
@@ -477,7 +477,9 @@ const AUTO_REPLY_MIN = Number(process.env.AI_AUTO_REPLY_MIN || 10);   // min sem
 const AUTO_REPLY_MAX_H = Number(process.env.AI_AUTO_REPLY_MAX_H || 6); // não responde msg muito antiga
 
 export async function autoReplyStalled(): Promise<{ replied: number }> {
-  const cfgs = await prisma.aiAgentConfig.findMany({
+  // Query GLOBAL (todos os clientes) → prismaUnscoped (o guard multi-tenant exige clientId
+  // no where; aqui é intencionalmente cross-client, como reengage/catalog-sync/cost-alerts).
+  const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
     where: { enabled: true, paused: false, status: "live", answerMode: { in: ["always", "ads_in_hours"] } },
     select: { clientId: true, businessHours: true, timezone: true },
   });

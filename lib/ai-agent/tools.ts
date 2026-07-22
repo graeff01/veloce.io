@@ -422,6 +422,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const intro = vcfg?.presentationVideoIntro?.trim() || "Vou lhe enviar um vídeo bem curtinho pra você conhecer um pouco mais sobre a gente 😊";
       // Trava anti-reenvio que vale no TESTE também (via histórico da conversa).
       if (ctx.videoAlreadySent) return { result: "O vídeo de apresentação JÁ foi enviado nesta conversa — NÃO reenvie. Só siga a conversa." };
+      // ORDEM DO FLUXO: o vídeo SÓ vai DEPOIS de perguntar "primeiro contato?" e o cliente
+      // responder. Sem isso a IA dispara o vídeo cedo (cliente abre com "qual o preço da
+      // gourmet") e a pergunta de primeiro-contato sai DEPOIS do vídeo — invertido. Só no
+      // live (em test não há WaMessage; a ordem é validada pelo próprio transcript).
+      if (ctx.mode !== "test") {
+        const askedFirst = await prisma.waMessage.findFirst({
+          where: { contactId: ctx.contactId, direction: "out", text: { contains: "primeiro contato", mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (!askedFirst) return { result: "AINDA NÃO envie o vídeo. Primeiro PERGUNTE (sem mais nada junto): \"Você já esteve em nossa loja alguma vez ou é o primeiro contato conosco?\" e ESPERE a resposta. Só chame enviar_video DEPOIS que o cliente confirmar que é o primeiro contato." };
+      }
       if (ctx.mode === "test") return {
         result: `Anúncio ("${intro}") e vídeo de apresentação enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga direto com UMA pergunta leve (ex.: o nome). NÃO envie o vídeo de novo nesta conversa.`,
         artifacts: [{ kind: "video", url, caption: "Apresentação" }],
