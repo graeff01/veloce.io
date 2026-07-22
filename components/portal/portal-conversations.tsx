@@ -54,6 +54,18 @@ function ThreadImage({ src, caption }: { src: string; caption: string | null }) 
   );
 }
 function avatarColor(name: string) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 42% 52%)`; }
+// Formata o telefone (waId é E.164 sem "+", ex.: 5551991597229 → +55 51 99159-7229).
+function formatPhone(wa: string) {
+  const d = (wa || "").replace(/\D/g, "");
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : d ? `+${d}` : "";
+}
+// True quando o "nome" exibido JÁ é o próprio número (contato sem nome salvo) — aí não
+// mostramos o número duas vezes.
+function nameIsNumber(name: string, wa: string) {
+  const dn = (name || "").replace(/\D/g, "");
+  return !!dn && dn === (wa || "").replace(/\D/g, "");
+}
 function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
 }
@@ -468,6 +480,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      {!isMobile && !nameIsNumber(c.name, c.waId) && formatPhone(c.waId) && (
+                        <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatPhone(c.waId)}</span>
+                      )}
                       <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
@@ -519,6 +534,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               <Avatar name={conv.contact.name} size={40} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
+                {(() => { const wa = list?.find((r) => r.contactId === sel)?.waId ?? ""; const ph = formatPhone(wa); return ph && !nameIsNumber(conv.contact.name, wa) ? <div style={{ fontSize: 11.5, color: "var(--wa-muted)" }}>{ph}</div> : null; })()}
                 {conv.lead?.adTitle && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>veio do anúncio “{conv.lead.adTitle}”</div>}
               </div>
               {/* Dono do lead (atribuição): assumir / transferir */}
