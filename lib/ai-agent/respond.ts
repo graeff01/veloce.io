@@ -46,6 +46,13 @@ function splitBlocks(text: string): string[] {
 // Ritmo humano: tempo de "digitando…" antes de uma bolha, proporcional ao tamanho dela
 // (~35ms/char), com piso e teto para não ficar nem instantâneo nem lento demais.
 const typingDelayMs = (t: string) => Math.min(3500, Math.max(800, Math.round(t.length * 35)));
+// "Parece pergunta?" — decide quando CITAR a mensagem do lead (quote-reply). Além do "?",
+// pega perguntas informais SEM pontuação (comuns no WhatsApp, público mais velho): "quanto
+// custa", "tem entrega", "cabe na minha área", "qual o prazo". A lookahead evita casar
+// dentro de palavras (ex.: "tempo"/"sistema"). Assim a Bruna "puxa" a msg nos momentos certos.
+const isQuestionLike = (t: string) =>
+  /\?/.test(t || "") ||
+  /(^|\s)(quant[oa]s?|qual|quais|quando|onde|como|quem|cabe|custa|pre[çc]o|valor|medidas?|tamanho|prazo|garantia|frete|entrega|tem|faz|serve|vale|consegue)(?=\s|$|[?.,!:;])/i.test(t || "");
 
 async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string }, to: string, text: string, replyTo?: string) {
   let last: { ok: boolean; waMessageId?: string; error?: string } = { ok: false };
@@ -252,7 +259,7 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   const blocks = voiceSent ? [] : splitBlocks(out.reply);
   // Threading: cita a mensagem do lead SÓ na 1ª bolha e SÓ quando ele fez uma PERGUNTA
   // (passa atenção sem parecer robótico — não cita toda mensagem). Só p/ texto do lead.
-  const quoteId = (mediaType === null && inboundText.includes("?") && input.idempotencyKey) ? input.idempotencyKey : undefined;
+  const quoteId = (mediaType === null && isQuestionLike(inboundText) && input.idempotencyKey) ? input.idempotencyKey : undefined;
   for (let i = 0; i < blocks.length; i++) {
     // Antes de cada bolha seguinte: mostra "digitando…" de novo e espera um tempo
     // proporcional ao tamanho dela — sensação de gente digitando, não bot instantâneo.
