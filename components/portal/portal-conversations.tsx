@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon } from "lucide-react";
+import { MediaContent } from "@/components/whatsapp/wa-media";
 
 interface Row { contactId: string; name: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
 interface Attendant { email: string; name: string }
@@ -599,8 +600,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
-                          {!mine && m.type === "image" && !m.pending
+                          {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
                             ? <ThreadImage src={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} caption={m.text} />
+                            : !mine && !m.pending && (m.type === "audio" || m.type === "video" || m.type === "document")
+                            ? <MediaContent url={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} type={m.type} caption={m.text} />
                             : <span>{body}</span>}
                           <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
                         </div>

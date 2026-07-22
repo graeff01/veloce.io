@@ -6,13 +6,14 @@ import { Mic, Image, FileText, Video, Download, AlertCircle, Loader2 } from "luc
 // Exibe a mídia de uma WaMessage para o OPERADOR (espelhamento/auditoria).
 // Baixa via proxy do servidor — nada vai para terceiros. A IA NÃO usa este
 // componente; ela apenas reconhece o tipo por marcador e segue suas regras.
-export function MediaContent({ clientId, msgId, type, caption, filename }: {
-  clientId: string; msgId: string; type: string; caption: string | null; filename?: string | null;
+export function MediaContent({ url: urlProp, clientId, msgId, type, caption, filename }: {
+  url?: string; clientId?: string; msgId?: string; type: string; caption: string | null; filename?: string | null;
 }) {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [lightbox, setLightbox] = useState(false);
-  const url = `/api/clients/${clientId}/whatsapp/media/${msgId}`;
+  // URL direta (ex.: portal) ou monta a de admin a partir de clientId+msgId.
+  const url = urlProp ?? `/api/clients/${clientId}/whatsapp/media/${msgId}`;
 
   const icon: Record<string, React.ReactNode> = {
     audio: <Mic size={12} />, image: <Image size={12} />, sticker: <Image size={12} />,
