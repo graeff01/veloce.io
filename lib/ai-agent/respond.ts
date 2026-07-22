@@ -38,9 +38,33 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Divide a resposta da IA em até 3 bolhas por LINHA EM BRANCO (cadência humana).
 // Sem linha em branco → 1 mensagem só (comportamento de antes).
+// Divide a resposta em BALÕES (como gente no WhatsApp). 1) por parágrafo (linha dupla);
+// 2) um parágrafo LONGO de texto corrido é quebrado por FRASE em balões de ~280 chars —
+// assim uma mensagem grande vira 2-3 balões naturais em vez de um "paredão". Curtas ficam
+// intactas; blocos com quebras internas (LISTAS) NÃO são mexidos (evita spam de 1 linha por
+// balão). O laço de envio já põe "digitando…" + delay entre balões (sensação de digitação).
+const MAX_BUBBLE = 280;
+const MAX_BUBBLES = 4;
+function splitLong(block: string): string[] {
+  if (block.length <= MAX_BUBBLE || /\n/.test(block)) return [block];
+  // Quebra em frases: só corta em pontuação SEGUIDA de espaço (não parte "R$ 1.790").
+  const sentences = block.split(/(?<=[.!?…])\s+/).map((s) => s.trim()).filter(Boolean);
+  const out: string[] = [];
+  let cur = "";
+  for (const s of sentences) {
+    if (cur && cur.length + 1 + s.length > MAX_BUBBLE) { out.push(cur); cur = s; }
+    else cur = cur ? `${cur} ${s}` : s;
+  }
+  if (cur) out.push(cur);
+  return out.length ? out : [block];
+}
 function splitBlocks(text: string): string[] {
-  const parts = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
-  return parts.length <= 1 ? [text.trim()] : parts.slice(0, 3);
+  const paras = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  const base = paras.length ? paras : [text.trim()];
+  const blocks = base.flatMap(splitLong).filter(Boolean);
+  if (blocks.length <= MAX_BUBBLES) return blocks;
+  // Nunca descarta conteúdo: junta o excedente no último balão.
+  return [...blocks.slice(0, MAX_BUBBLES - 1), blocks.slice(MAX_BUBBLES - 1).join(" ")];
 }
 
 // Ritmo humano: tempo de "digitando…" antes de uma bolha, proporcional ao tamanho dela
