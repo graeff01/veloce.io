@@ -684,6 +684,23 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           return { result: "Ainda não sei a cidade de entrega. Pergunte a cidade do lead (atualizar_ficha) e gere de novo." };
         }
         if (fr && "askZone" in fr) {
+          // TRAVA ANTI-LOOP: se já pedimos a zona/bairro 2x e ainda não casou (bairro fora do
+          // cadastro), PARA de repetir → escala pro vendedor. Conta os pedidos recentes de
+          // localização/bairro. Sem isso, bairro não-cadastrado → loop infinito de "qual zona?".
+          if (ctx.mode !== "test") {
+            const asks = await prisma.waMessage.count({
+              where: {
+                contactId: ctx.contactId, direction: "out", aiGenerated: true,
+                timestamp: { gte: new Date(Date.now() - 6 * 3600_000) },
+                OR: [
+                  { text: "[pedido de localização]" },
+                  { text: { contains: "bairro", mode: "insensitive" } },
+                  { text: { contains: "localiza", mode: "insensitive" } },
+                ],
+              },
+            });
+            if (asks >= 2) return { result: `Você JÁ pediu a zona/bairro ${asks} vezes e não deu pra identificar a zona de ${fr.city} (o bairro deve estar fora do cadastro). PARE de pedir de novo — NÃO repita a pergunta. Use escalar_humano AGORA e diga ao cliente, de forma natural, que um vendedor vai confirmar o frete certinho da região dele.` };
+          }
           const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
         }
