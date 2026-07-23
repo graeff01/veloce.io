@@ -2,30 +2,36 @@ import { prismaUnscoped } from "@/lib/prisma";
 
 // ── Hardening: medição de custo por pipeline (fonte única) ─────────────────────
 // Preços por 1M de tokens (USD). Mantenha sincronizado com a tabela da OpenAI.
-const PRICES: Record<string, { in: number; out: number }> = {
-  "gpt-4o-mini": { in: 0.15, out: 0.60 },
-  "gpt-4o": { in: 2.5, out: 10 },
-  "gpt-4.1-mini": { in: 0.4, out: 1.6 },
-  "text-embedding-3-small": { in: 0.02, out: 0 },
-  "text-embedding-3-large": { in: 0.13, out: 0 },
+// `cachedIn` = preço do token de entrada servido pelo prompt cache (mais barato).
+const PRICES: Record<string, { in: number; out: number; cachedIn: number }> = {
+  "gpt-4o-mini": { in: 0.15, out: 0.60, cachedIn: 0.075 },
+  "gpt-4o": { in: 2.5, out: 10, cachedIn: 1.25 },
+  "gpt-4.1-mini": { in: 0.4, out: 1.6, cachedIn: 0.10 },
+  "text-embedding-3-small": { in: 0.02, out: 0, cachedIn: 0.02 },
+  "text-embedding-3-large": { in: 0.13, out: 0, cachedIn: 0.13 },
 };
-const DEFAULT_PRICE = { in: 0.15, out: 0.60 };
+const DEFAULT_PRICE = { in: 0.15, out: 0.60, cachedIn: 0.075 };
 
 export type Pipeline = "chat" | "memory" | "intelligence" | "judge" | "embedding";
 
-export function costOf(model: string | undefined, tokensIn: number, tokensOut: number): number {
+// tokensIn é o TOTAL de entrada; cachedTokens é o subconjunto servido pelo cache. Os
+// não-cacheados pagam preço cheio; os cacheados pagam `cachedIn`. cachedTokens=0 → igual ao anterior.
+export function costOf(model: string | undefined, tokensIn: number, tokensOut: number, cachedTokens = 0): number {
   const p = PRICES[model ?? ""] ?? DEFAULT_PRICE;
-  return (tokensIn / 1e6) * p.in + (tokensOut / 1e6) * p.out;
+  const cached = Math.min(Math.max(cachedTokens, 0), tokensIn);
+  const uncached = tokensIn - cached;
+  return (uncached / 1e6) * p.in + (cached / 1e6) * p.cachedIn + (tokensOut / 1e6) * p.out;
 }
 
 // Best-effort: nunca lança (não pode quebrar o atendimento por causa de telemetria).
 export async function recordUsage(u: {
-  clientId?: string; pipeline: Pipeline; model?: string; tokensIn: number; tokensOut: number;
+  clientId?: string; pipeline: Pipeline; model?: string; tokensIn: number; tokensOut: number; cachedTokens?: number;
 }): Promise<void> {
   if (!u.clientId) return;
-  const costUsd = costOf(u.model, u.tokensIn, u.tokensOut);
+  const cachedTokens = u.cachedTokens ?? 0;
+  const costUsd = costOf(u.model, u.tokensIn, u.tokensOut, cachedTokens);
   await prismaUnscoped.aiUsage.create({
-    data: { clientId: u.clientId, pipeline: u.pipeline, model: u.model ?? null, tokensIn: u.tokensIn, tokensOut: u.tokensOut, costUsd },
+    data: { clientId: u.clientId, pipeline: u.pipeline, model: u.model ?? null, tokensIn: u.tokensIn, cachedTokens, tokensOut: u.tokensOut, costUsd },
   }).catch(() => {});
 }
 

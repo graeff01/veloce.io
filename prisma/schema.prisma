@@ -1368,6 +1368,7 @@ model AiUsage {
   pipeline  String   // chat | memory | intelligence | judge | embedding
   model     String?
   tokensIn  Int      @default(0)
+  cachedTokens Int   @default(0) // subconjunto de tokensIn servido pelo prompt cache da OpenAI (mais barato)
   tokensOut Int      @default(0)
   costUsd   Float    @default(0)
   createdAt DateTime @default(now())

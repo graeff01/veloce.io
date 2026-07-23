@@ -35,7 +35,7 @@ export interface ToolDef {
 
 export interface ChatResult {
   message: { role: "assistant"; content: string | null; tool_calls?: ToolCall[] };
-  usage: { prompt_tokens: number; completion_tokens: number };
+  usage: { prompt_tokens: number; completion_tokens: number; cached_tokens?: number };
 }
 
 export async function openaiChat(opts: {
@@ -50,6 +50,11 @@ export async function openaiChat(opts: {
   if (!key) throw new OpenAIError("OPENAI_API_KEY não configurada");
   const model = opts.model ?? "gpt-4o-mini";
 
+  // Prompt caching: chave estável por (cliente + pipeline) — o prefixo do prompt é
+  // idêntico dentro desse grupo, então a OpenAI roteia p/ o mesmo cache e sobe o hit-rate.
+  // NÃO altera a resposta do modelo (é só dica de roteamento — garantia da OpenAI).
+  const cacheKey = opts.meta ? [opts.meta.tenantKey ?? opts.meta.clientId, opts.meta.pipeline].filter(Boolean).join(":") : "";
+
   const result = await withLLMLimits(opts.meta?.tenantKey ?? opts.meta?.clientId, async () => {
     const res = await fetch(`${OPENAI_URL}/chat/completions`, {
       method: "POST",
@@ -57,6 +62,7 @@ export async function openaiChat(opts: {
       body: JSON.stringify({
         model, messages: opts.messages,
         ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
+        ...(cacheKey ? { prompt_cache_key: cacheKey } : {}),
         temperature: opts.temperature ?? 0.3,
         max_tokens: opts.maxTokens ?? 600,
       }),
@@ -65,9 +71,11 @@ export async function openaiChat(opts: {
     return res.json();
   });
 
-  const usage = result.usage ?? { prompt_tokens: 0, completion_tokens: 0 };
+  const rawUsage = result.usage ?? { prompt_tokens: 0, completion_tokens: 0 };
+  const cachedTokens = rawUsage.prompt_tokens_details?.cached_tokens ?? 0;
+  const usage = { prompt_tokens: rawUsage.prompt_tokens, completion_tokens: rawUsage.completion_tokens, cached_tokens: cachedTokens };
   if (opts.meta?.pipeline) {
-    void recordUsage({ clientId: opts.meta.clientId, pipeline: opts.meta.pipeline, model, tokensIn: usage.prompt_tokens, tokensOut: usage.completion_tokens });
+    void recordUsage({ clientId: opts.meta.clientId, pipeline: opts.meta.pipeline, model, tokensIn: usage.prompt_tokens, tokensOut: usage.completion_tokens, cachedTokens });
   }
   return { message: result.choices?.[0]?.message ?? { role: "assistant", content: null }, usage };
 }
