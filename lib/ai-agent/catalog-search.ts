@@ -17,9 +17,11 @@ const STOP = new Set([
   "azul", "verde", "amarelo", "amarela", "dourado", "dourada", "bege", "marrom", "vinho",
 ]);
 
-// Tokens significativos do termo (>=3 chars, sem stopwords). Puro/testável.
+// Tokens significativos do termo (>=3 chars OU número, sem stopwords). Puro/testável.
+// Números curtos (7, 9, 11, 32) são MANTIDOS — eles diferenciam modelos (ex.: Prime 7 vs
+// Prime 9 espetos). Antes, o filtro >=3 descartava o "9" e a busca casava o modelo errado.
 export function catalogTokens(termo: string): string[] {
-  return (termo || "").toLowerCase().split(/[^a-z0-9.à-ú]+/i).filter((t) => t.length >= 3 && !STOP.has(t));
+  return (termo || "").toLowerCase().split(/[^a-z0-9.à-ú]+/i).filter((t) => (t.length >= 3 || /^\d+$/.test(t)) && !STOP.has(t));
 }
 
 const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -67,12 +69,26 @@ export async function searchCatalog(clientId: string, termo: string) {
     return applyColor(items);
   }
 
-  // 1) Exato: todos os tokens no título (qualquer ordem).
+  // 1) Exato: todos os tokens no título (qualquer ordem). Ordena por RELEVÂNCIA — o título
+  // mais "focado" primeiro (menos palavras extras): p/ "gourmet", "Churrasqueira Gourmet"
+  // (2 palavras) vence "Pia Simples com Cuba Gourmet" (5). Empate → mais barato. Sem isso,
+  // ordenar só por preço fazia o acessório mais barato ganhar do produto principal.
   const exact = await prisma.catalogItem.findMany({
     where: { ...base, AND: tokens.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })) },
-    ...SELECT,
+    take: 12, orderBy: { price: "asc" },
   });
-  if (exact.length > 0) return applyColor(exact);
+  if (exact.length > 0) {
+    const wc = (s: string) => (s || "").trim().split(/\s+/).length;
+    // Produto PRINCIPAL primeiro: quando um termo ambíguo casa uma churrasqueira E um
+    // acessório (ex.: "gourmet" → Churrasqueira Gourmet vs Bancada Gourmet), a churrasqueira
+    // ganha. Só afeta catálogos com títulos "Churrasqueira ..." (outros clientes: sem efeito).
+    const isChurr = (s: string) => /^churrasqueira\b/i.test(s || "");
+    const ranked = [...exact].sort((a, b) =>
+      (isChurr(b.title) ? 1 : 0) - (isChurr(a.title) ? 1 : 0)
+      || wc(a.title) - wc(b.title)
+      || (a.price ?? 1e12) - (b.price ?? 1e12));
+    return applyColor(ranked.slice(0, 6));
+  }
 
   // 2) Fuzzy: tolera typo no termo ou no dado (pg_trgm). Ordena por similaridade.
   const fuzzy = await prisma.$queryRaw<Row[]>`
