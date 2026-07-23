@@ -5,6 +5,7 @@ import { nowParts } from "@/lib/tz";
 import { logWaEvent } from "@/lib/wa-events";
 import type { Window } from "@/lib/visit-availability";
 import { isGloballyBlocked } from "./blocklist";
+import { sameBrazilNumber } from "@/lib/phone-br";
 
 // ── Re-engajamento dentro da janela ─────────────────────────────────────────────
 // Recupera lead que ENGAJOU e ficou em silêncio: a IA manda UMA cutucada calorosa,
@@ -28,7 +29,7 @@ function nudgeText(produto: string | null, custom: string | null): string {
 export async function reengageStalled(): Promise<{ nudged: number }> {
   const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
     where: { enabled: true, paused: false, status: "live", reengageEnabled: true },
-    select: { clientId: true, businessHours: true, timezone: true, followUpMessage: true },
+    select: { clientId: true, businessHours: true, timezone: true, followUpMessage: true, testMode: true, testNumbers: true },
   });
   const now = Date.now();
   let nudged = 0;
@@ -65,6 +66,8 @@ export async function reengageStalled(): Promise<{ nudged: number }> {
       ]);
       if (!profile) continue;                                                     // não engajou → não cutuca
       if (!contact || contact.aiOptedOut || contact.aiSilenced) continue;        // opt-out / silenciado
+      // CANÁRIO: cliente em testMode → cutuca SÓ os números de teste (não vaza lead real).
+      if (cfg.testMode && !((cfg.testNumbers as unknown as string[]) ?? []).some((n) => sameBrazilNumber(n, contact.waId))) continue;
       if (await isGloballyBlocked(contact.waId)) continue;                        // bloqueio global (dono/colaborador)
       if (!lastMsg || lastMsg.direction !== "out" || !lastMsg.aiGenerated) continue; // humano assumiu → não cutuca
       // Conversa JÁ concluída/encaminhada (a IA já fez o handoff) → não cutuca, é redundante e robótico.
