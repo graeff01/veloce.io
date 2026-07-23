@@ -43,7 +43,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // assim uma mensagem grande vira 2-3 balões naturais em vez de um "paredão". Curtas ficam
 // intactas; blocos com quebras internas (LISTAS) NÃO são mexidos (evita spam de 1 linha por
 // balão). O laço de envio já põe "digitando…" + delay entre balões (sensação de digitação).
-const MAX_BUBBLE = 280;
+const MAX_BUBBLE = 150;
 const MAX_BUBBLES = 4;
 function splitLong(block: string): string[] {
   if (block.length <= MAX_BUBBLE || /\n/.test(block)) return [block];
