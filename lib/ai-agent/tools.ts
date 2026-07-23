@@ -252,6 +252,19 @@ export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], 
   const c = r.company ?? {};
   const validity = Number(r.validityDays) > 0 ? Number(r.validityDays) : null;
   const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
+  // Item 7: o PDF adapta à forma de PAGAMENTO. Se o orçamento tem desconto à vista (dinheiro),
+  // o total já vem com os 8% off → observação específica + abaixo do total mostra o valor
+  // CHEIO parcelado (sem o desconto), pra o à vista e o 10x NÃO ficarem iguais. Sem desconto
+  // (parcelado/pix/cartão) → observação padrão + 10x sobre o próprio total.
+  const descLine = items.find((i) => /desconto\s+[àa]?\s*vista/i.test(i.label || ""));
+  const inst = Number(r.installments) > 1 ? Math.floor(Number(r.installments)) : 0;
+  const fullPrice = descLine ? Math.round((total - descLine.amount) * 100) / 100 : total; // descLine.amount é negativo
+  const obsFinal = descLine
+    ? "Valor válido para pagamento à vista em dinheiro (espécie)."
+    : (r.observacoes ?? r.paymentTerms ?? r.notes ?? null);
+  const instFinal = descLine
+    ? (inst > 0 && fullPrice > 0 ? `${inst}x de ${brl(fullPrice / inst, currency)} sem juros (total ${brl(fullPrice, currency)} no parcelado)` : null)
+    : installmentsLabel(total, currency, r.installments);
   return {
     company: {
       name: client?.name ?? "Orçamento", logoUrl: client?.logoUrl ?? null,
@@ -261,8 +274,8 @@ export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], 
     },
     number, contactName, contactCity: contactCity ?? null, sellerName: r.sellerName ?? null,
     items: items.map((i) => ({ code: i.code ?? null, label: i.label, qty: i.qty, unit: i.unit, amount: i.amount })),
-    total, currency, observacoes: r.observacoes ?? r.paymentTerms ?? r.notes ?? null,
-    installmentsLabel: installmentsLabel(total, currency, r.installments),
+    total, currency, observacoes: obsFinal,
+    installmentsLabel: instFinal,
     generatedAt: new Date().toLocaleDateString("pt-BR"), validUntil,
   };
 }
