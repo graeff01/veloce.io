@@ -69,14 +69,13 @@ export async function searchCatalog(clientId: string, termo: string) {
     return applyColor(items);
   }
 
-  // 1) Exato: todos os tokens no título (qualquer ordem). Ordena por RELEVÂNCIA — o título
-  // mais "focado" primeiro (menos palavras extras): p/ "gourmet", "Churrasqueira Gourmet"
-  // (2 palavras) vence "Pia Simples com Cuba Gourmet" (5). Empate → mais barato. Sem isso,
-  // ordenar só por preço fazia o acessório mais barato ganhar do produto principal.
-  const exact = await prisma.catalogItem.findMany({
-    where: { ...base, AND: tokens.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })) },
-    take: 12, orderBy: { price: "asc" },
-  });
+  // 1) Exato ACENTO-insensível: todos os tokens no título, ignorando acento e caixa. O termo
+  // do LLM às vezes vem SEM acento (chave "tradicao_gourmet") e os títulos TÊM acento
+  // ("Tradição") — o `contains` do banco não casaria e caía no fuzzy (pegava o conjunto/
+  // acessório errado). Normalizamos os dois lados aqui. Catálogo é pequeno (filtra em memória).
+  const ntokens = tokens.map(norm);
+  const allItems = await prisma.catalogItem.findMany({ where: base, take: 500 });
+  const exact = allItems.filter((it) => { const nt = norm(it.title ?? ""); return ntokens.every((t) => nt.includes(t)); });
   if (exact.length > 0) {
     const wc = (s: string) => (s || "").trim().split(/\s+/).length;
     // Produto PRINCIPAL primeiro: quando um termo ambíguo casa uma churrasqueira E um
