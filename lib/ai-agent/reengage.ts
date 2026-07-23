@@ -4,6 +4,7 @@ import { isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import { logWaEvent } from "@/lib/wa-events";
 import type { Window } from "@/lib/visit-availability";
+import { isGloballyBlocked } from "./blocklist";
 
 // ── Re-engajamento dentro da janela ─────────────────────────────────────────────
 // Recupera lead que ENGAJOU e ficou em silêncio: a IA manda UMA cutucada calorosa,
@@ -64,6 +65,7 @@ export async function reengageStalled(): Promise<{ nudged: number }> {
       ]);
       if (!profile) continue;                                                     // não engajou → não cutuca
       if (!contact || contact.aiOptedOut || contact.aiSilenced) continue;        // opt-out / silenciado
+      if (await isGloballyBlocked(contact.waId)) continue;                        // bloqueio global (dono/colaborador)
       if (!lastMsg || lastMsg.direction !== "out" || !lastMsg.aiGenerated) continue; // humano assumiu → não cutuca
       // Conversa JÁ concluída/encaminhada (a IA já fez o handoff) → não cutuca, é redundante e robótico.
       if (/vendedor|entrar? em contato|deixei (tudo )?anotado|já registr|horário comercial|test drive|conhecer.*(de )?perto/i.test(lastMsg.text || "")) continue;

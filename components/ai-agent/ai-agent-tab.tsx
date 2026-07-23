@@ -1740,7 +1740,80 @@ function PricingSection({ clientId }: { clientId: string }) {
   );
 }
 
-type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "precos" | "dna" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
+// ── Números bloqueados (lista GLOBAL — vale para TODOS os clientes) ────────────
+interface BlockedNumber { id: string; phone: string; label: string | null; createdBy: string | null; createdAt: string }
+
+// Formata E.164 sem "+" para leitura (ex.: 5551991597229 → +55 51 99159-7229). Best-effort.
+function fmtPhone(p: string): string {
+  const d = (p || "").replace(/\D/g, "");
+  const nat = d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+  if (nat.length === 11) return `+55 ${nat.slice(0, 2)} ${nat.slice(2, 7)}-${nat.slice(7)}`;
+  if (nat.length === 10) return `+55 ${nat.slice(0, 2)} ${nat.slice(2, 6)}-${nat.slice(6)}`;
+  return p.startsWith("+") ? p : `+${d}`;
+}
+
+function BlockedNumbersSection() {
+  const [items, setItems] = useState<BlockedNumber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [phone, setPhone] = useState("");
+  const [labelText, setLabelText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function load() {
+    fetch("/api/ai-agent/blocklist").then((r) => r.json()).then((d) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setItems(Array.isArray(d) ? d : []); setLoading(false);
+    });
+  }
+  useEffect(() => { load(); }, []);
+
+  async function add() {
+    if (!phone.trim()) return;
+    setSaving(true); setErr(null);
+    const res = await fetch("/api/ai-agent/blocklist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: phone.trim(), label: labelText.trim() || undefined }) });
+    setSaving(false);
+    if (!res.ok) { const d = await res.json().catch(() => null); setErr(d?.error ?? "Não foi possível adicionar"); return; }
+    setPhone(""); setLabelText(""); load();
+  }
+  async function del(id: string) {
+    await fetch(`/api/ai-agent/blocklist?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    load();
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ ...card, background: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <ShieldAlert size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
+        <p style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: "18px" }}>
+          Lista <b>global</b>: a IA <b>nunca responde</b> estes números, em <b>todos os clientes ativos</b>. Use para donos, colaboradores, contadores e fornecedores — quem não deve ser tratado como lead. O casamento tolera o 9º dígito do celular.
+        </p>
+      </div>
+
+      <div style={{ ...card, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 200px" }}><label style={label}>Número (com DDD)</label><input style={input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ex: 51 99159-7229" /></div>
+        <div style={{ flex: "1 1 200px" }}><label style={label}>Rótulo (opcional)</label><input style={input} value={labelText} onChange={(e) => setLabelText(e.target.value)} placeholder="Ex: Dono, Colaborador João" /></div>
+        <button onClick={add} disabled={saving} style={{ ...btn(true), opacity: saving ? 0.6 : 1 }}>{saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Adicionar</button>
+      </div>
+      {err && <p style={{ fontSize: 12, color: "var(--red)", marginTop: -6 }}>{err}</p>}
+
+      {loading ? <div style={{ padding: 30, textAlign: "center" }}><Loader2 size={18} className="animate-spin" /></div> : (
+        <div style={{ ...card, padding: 0 }}>
+          {items.length === 0 && <p style={{ padding: 20, fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>Nenhum número bloqueado ainda.</p>}
+          {items.map((it) => (
+            <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 13, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>{fmtPhone(it.phone)}</span>
+              <span style={{ flex: 1, fontSize: 13, color: "var(--text-secondary)" }}>{it.label || "—"}</span>
+              <button onClick={() => del(it.id)} title="Remover" style={{ ...btn(), padding: 7, color: "var(--red)" }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Section = "overview" | "impacto" | "config" | "conhecimento" | "catalogo" | "memoria" | "prompts" | "playbook" | "precos" | "dna" | "bloqueios" | "aprendizado" | "console" | "avaliacao" | "atividade" | "custos" | "logs" | "inteligencia" | "qualificacao" | "analytics";
 
 // Item de navegação da sidebar da IA — com hover e indicador ativo.
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -1780,6 +1853,7 @@ const AREAS: { key: string; label: string; icon: React.ReactNode; subs: { key: S
     { key: "catalogo", label: "Estoque" },
     { key: "prompts", label: "Prompt Lab" },
     { key: "memoria", label: "Memória" },
+    { key: "bloqueios", label: "Números bloqueados" },
   ] },
   { key: "testar", label: "Testar", icon: <FlaskConical size={15} />, subs: [
     { key: "console", label: "Console" },
@@ -1845,6 +1919,7 @@ export function AiAgentTab({ clientId }: { clientId: string }) {
         {sub === "catalogo" && <CatalogSection clientId={clientId} />}
         {sub === "conhecimento" && <KnowledgeSection clientId={clientId} />}
         {sub === "memoria" && <MemorySection clientId={clientId} />}
+        {sub === "bloqueios" && <BlockedNumbersSection />}
         {sub === "prompts" && <PromptLabSection clientId={clientId} />}
         {sub === "inteligencia" && <InsightsSection clientId={clientId} />}
         {sub === "qualificacao" && <QualificationSection clientId={clientId} />}

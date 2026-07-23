@@ -5,6 +5,7 @@ import type { Window } from "@/lib/visit-availability";
 import { runAgent } from "./orchestrator";
 import { globalSpendExceeded, clientSpendExceeded } from "./limits";
 import { isOptOut, OPT_OUT_REPLY } from "./optout";
+import { isGloballyBlocked } from "./blocklist";
 import { createEscalationTask } from "./escalation";
 import { updateRollingMemory } from "./memory";
 import { analyzeMessage } from "./intelligence";
@@ -113,6 +114,10 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true },
   });
   if (!contact) return "skipped";
+
+  // Bloqueio GLOBAL: números que a IA nunca responde em NENHUM cliente (donos,
+  // colaboradores...). Trava determinística, antes de qualquer geração/reenvio.
+  if (await isGloballyBlocked(contact.waId)) return "skipped";
 
   // Retry IDEMPOTENTE: se um attempt anterior JÁ gerou a resposta (mas o envio falhou),
   // apenas REENVIA a mesma — não re-roda o agente (evita re-gerar, re-mandar foto ou
@@ -528,6 +533,7 @@ export async function autoReplyStalled(): Promise<{ replied: number }> {
       if (!contact) continue;
       await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { autoRepliedAt: new Date() } }).catch(() => {}); // marca ANTES (mesmo se skip)
       if (contact.aiOptedOut || contact.aiSilenced) continue;
+      if (await isGloballyBlocked(contact.waId)) continue; // bloqueio global (dono/colaborador)
       const last = await prisma.waMessage.findFirst({ where: { contactId: c.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { text: true } });
       const inboundText = last?.text?.trim();
       if (!inboundText) continue;

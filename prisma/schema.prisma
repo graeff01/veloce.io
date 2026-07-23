@@ -1183,6 +1183,17 @@ model AiJob {
   @@index([status, runAfter])
 }
 
+// Números que a IA NUNCA responde — em NENHUM cliente. Lista GLOBAL (donos, colaboradores,
+// contadores, fornecedores...). O casamento tolera o 9º dígito/código de país do BR
+// (sameBrazilNumber). Guardado em E.164 sem "+" (normalizado). Editável na aba IA do painel.
+model AiBlockedNumber {
+  id        String   @id @default(cuid())
+  phone     String   @unique // E.164 sem "+" (normalizado); a comparação em runtime tolera o 9º dígito
+  label     String?  // rótulo livre: "Dono", "Colaborador João", "Contador"
+  createdBy String?  // e-mail de quem cadastrou (auditoria)
+  createdAt DateTime @default(now())
+}
+
 // Catálogo genérico (produto) por cliente — multi-segmento (carro/imóvel/serviço).
 model CatalogItem {
   id          String   @id @default(cuid())
