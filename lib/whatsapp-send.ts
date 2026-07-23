@@ -297,3 +297,26 @@ export async function sendWhatsAppDocument(
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
+
+// Envia um documento por URL pública (o WhatsApp baixa o link) — usado p/ arquivos já
+// hospedados (ex.: catálogo em PDF no /public). Evita ler o arquivo do disco no app.
+export async function sendWhatsAppDocumentByUrl(
+  conn: { phoneNumberId: string; accessToken: string },
+  toWaId: string,
+  doc: { url: string; filename: string; caption?: string },
+): Promise<{ ok: boolean; waMessageId?: string; error?: string }> {
+  let token: string;
+  try { token = decryptSecret(conn.accessToken); }
+  catch { return { ok: false, error: "Token do WhatsApp inválido — reconecte a conta." }; }
+  const res = await fetch(`https://graph.facebook.com/v25.0/${conn.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp", recipient_type: "individual", to: toWaId,
+      type: "document", document: { link: doc.url, filename: doc.filename, ...(doc.caption ? { caption: doc.caption } : {}) },
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
+  return { ok: true, waMessageId: payload?.messages?.[0]?.id };
+}

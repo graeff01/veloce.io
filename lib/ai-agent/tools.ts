@@ -5,7 +5,7 @@ import { scoreLead, funnelStageFor } from "./scoring";
 import { applyProfileStage } from "./funnel-shadow";
 import { createEscalationTask } from "./escalation";
 import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/portal-push";
-import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
+import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppDocumentByUrl, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
 import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
 import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
@@ -177,6 +177,16 @@ const VIDEO_TOOL: ToolDef = {
   },
 };
 
+// Catálogo completo em PDF: mandado quando o cliente quer ver TUDO (não um modelo só).
+const CATALOG_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "enviar_catalogo",
+    description: "Envia o CATÁLOGO COMPLETO em PDF ao lead. Use quando ele pedir 'o catálogo', 'ver os modelos', 'manda tudo', ou responder que prefere o catálogo completo (em vez de um modelo específico). Uma vez por conversa — NÃO reenvie. Para um MODELO específico, use enviar_foto (não o catálogo inteiro).",
+    parameters: { type: "object", properties: {} },
+  },
+};
+
 // Pede a localização nativa do WhatsApp — usada SÓ nas cidades com várias zonas, p/ fixar
 // a zona pela coordenada (bairro→zona) sem o cliente ter que saber/digitar a zona.
 const LOCATION_TOOL: ToolDef = {
@@ -199,7 +209,7 @@ const OPTIONS_TOOL: ToolDef = {
   },
 };
 
-export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null; optionsImageUrl?: string | null } | null): ToolDef[] {
+export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null; optionsImageUrl?: string | null; catalogPdfUrl?: string | null } | null): ToolDef[] {
   const defs = [...TOOL_DEFS];
   if (cfg?.quotesEnabled) {
     if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
@@ -207,6 +217,7 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
   }
   if (cfg?.presentationVideoUrl) defs.push(VIDEO_TOOL);
   if (cfg?.optionsImageUrl) defs.push(OPTIONS_TOOL);
+  if (cfg?.catalogPdfUrl) defs.push(CATALOG_TOOL);
   return defs;
 }
 
@@ -457,6 +468,26 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         direction: "out", type: "video", text: "[vídeo de apresentação]", aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
       return { result: "Anúncio + vídeo de apresentação já enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga DIRETO pra próxima etapa da conversa (ex.: perguntar o nome, conforme o fluxo)." };
+    }
+    case "enviar_catalogo": {
+      const ccfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { catalogPdfUrl: true } });
+      const url = ccfg?.catalogPdfUrl?.trim();
+      if (!url) return { result: "Sem catálogo em PDF configurado — apresente os modelos por texto (buscar_estoque) e ofereça a foto de cada um (enviar_foto)." };
+      // Catálogo vai UMA vez por conversa.
+      if (ctx.mode !== "test") {
+        const ja = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "document", aiGenerated: true, text: "[catálogo em PDF]" }, select: { id: true } });
+        if (ja) return { result: "O catálogo em PDF JÁ foi enviado nesta conversa — NÃO reenvie. Se ele quiser um modelo específico, use enviar_foto." };
+      }
+      if (ctx.mode === "test") return { result: "Catálogo completo (PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo completo 😊') e pergunte se algum modelo chamou a atenção.", artifacts: [{ kind: "pdf", url, caption: "Catálogo" }] };
+      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      if (!conn) return { result: "Conexão indisponível para enviar o catálogo." };
+      const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: "Catalogo JR Churrasqueiras.pdf", caption: "Nosso catálogo completo 🔥" });
+      if (!sent.ok) return { result: `Não consegui enviar o catálogo (${sent.error}); apresente os modelos por texto e ofereça a foto de cada um.` };
+      await prisma.waMessage.create({ data: {
+        connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-cat-${Date.now()}`,
+        direction: "out", type: "document", text: "[catálogo em PDF]", aiGenerated: true, timestamp: new Date(),
+      } }).catch(() => {});
+      return { result: "Catálogo completo em PDF enviado. Comente CURTINHO (ex.: 'te mandei nosso catálogo completo 😊') e pergunte se algum modelo chamou a atenção. NÃO reenvie o catálogo." };
     }
 
     case "pedir_localizacao": {
