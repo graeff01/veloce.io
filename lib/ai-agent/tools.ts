@@ -182,8 +182,8 @@ const CATALOG_TOOL: ToolDef = {
   type: "function",
   function: {
     name: "enviar_catalogo",
-    description: "Envia o CATÁLOGO COMPLETO em PDF ao lead. Use quando ele pedir 'o catálogo', 'ver os modelos', 'manda tudo', ou responder que prefere o catálogo completo (em vez de um modelo específico). Uma vez por conversa — NÃO reenvie. Para um MODELO específico, use enviar_foto (não o catálogo inteiro).",
-    parameters: { type: "object", properties: {} },
+    description: "Envia um CATÁLOGO COMPLETO em PDF ao lead. Use quando ele pedir 'o catálogo', 'ver os modelos', 'manda tudo', ou o catálogo completo. Escolha `categoria`: 'churrasqueira' (padrão — churrasqueiras, conjuntos, campeiros, complementos) OU 'lareira' (catálogo só das lareiras pré-moldadas). Uma vez por categoria — NÃO reenvie a mesma. Para um MODELO específico, use enviar_foto.",
+    parameters: { type: "object", properties: { categoria: { type: "string", enum: ["churrasqueira", "lareira"], description: "qual catálogo enviar (padrão churrasqueira)" } } },
   },
 };
 
@@ -483,24 +483,35 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       return { result: "Anúncio + vídeo de apresentação já enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga DIRETO pra próxima etapa da conversa (ex.: perguntar o nome, conforme o fluxo)." };
     }
     case "enviar_catalogo": {
-      const ccfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { catalogPdfUrl: true } });
-      const url = ccfg?.catalogPdfUrl?.trim();
-      if (!url) return { result: "Sem catálogo em PDF configurado — apresente os modelos por texto (buscar_estoque) e ofereça a foto de cada um (enviar_foto)." };
-      // Catálogo vai UMA vez por conversa.
-      if (ctx.mode !== "test") {
-        const ja = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "document", aiGenerated: true, text: "[catálogo em PDF]" }, select: { id: true } });
-        if (ja) return { result: "O catálogo em PDF JÁ foi enviado nesta conversa — NÃO reenvie. Se ele quiser um modelo específico, use enviar_foto." };
+      const categoria = String(args.categoria ?? "").toLowerCase() === "lareira" ? "lareira" : "churrasqueira";
+      // Churrasqueiras: AiAgentConfig.catalogPdfUrl. Lareiras: PricingConfig.rules.lareirasPdfUrl.
+      let url: string | undefined;
+      if (categoria === "lareira") {
+        const pc = await prisma.pricingConfig.findFirst({ where: { clientId: ctx.clientId }, select: { rules: true } });
+        url = ((pc?.rules as { lareirasPdfUrl?: string } | null)?.lareirasPdfUrl ?? "").trim() || undefined;
+      } else {
+        const ccfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { catalogPdfUrl: true } });
+        url = ccfg?.catalogPdfUrl?.trim() || undefined;
       }
-      if (ctx.mode === "test") return { result: "Catálogo completo (PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo completo 😊') e pergunte se algum modelo chamou a atenção.", artifacts: [{ kind: "pdf", url, caption: "Catálogo" }] };
+      const nome = categoria === "lareira" ? "lareiras" : "churrasqueiras";
+      if (!url) return { result: `Sem catálogo de ${nome} em PDF configurado — apresente os modelos por texto e ofereça a foto de cada um (enviar_foto).` };
+      const marker = `[catálogo de ${nome} em PDF]`;
+      // Cada catálogo vai UMA vez por conversa (por categoria).
+      if (ctx.mode !== "test") {
+        const ja = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "document", aiGenerated: true, text: marker }, select: { id: true } });
+        if (ja) return { result: `O catálogo de ${nome} JÁ foi enviado nesta conversa — NÃO reenvie. Se ele quiser um modelo específico, use enviar_foto.` };
+      }
+      const cap = `Nosso catálogo de ${nome} 🔥`;
+      if (ctx.mode === "test") return { result: `Catálogo de ${nome} (PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção.`, artifacts: [{ kind: "pdf", url, caption: cap }] };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar o catálogo." };
-      const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: "Catalogo JR Churrasqueiras.pdf", caption: "Nosso catálogo completo 🔥" });
+      const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: `Catalogo ${nome} JR Churrasqueiras.pdf`, caption: cap });
       if (!sent.ok) return { result: `Não consegui enviar o catálogo (${sent.error}); apresente os modelos por texto e ofereça a foto de cada um.` };
       await prisma.waMessage.create({ data: {
         connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-cat-${Date.now()}`,
-        direction: "out", type: "document", text: "[catálogo em PDF]", aiGenerated: true, timestamp: new Date(),
+        direction: "out", type: "document", text: marker, aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
-      return { result: "Catálogo completo em PDF enviado. Comente CURTINHO (ex.: 'te mandei nosso catálogo completo 😊') e pergunte se algum modelo chamou a atenção. NÃO reenvie o catálogo." };
+      return { result: `Catálogo de ${nome} em PDF enviado. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção. NÃO reenvie o catálogo.` };
     }
 
     case "pedir_localizacao": {
