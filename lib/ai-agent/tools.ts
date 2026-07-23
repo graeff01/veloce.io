@@ -484,14 +484,19 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     }
     case "enviar_catalogo": {
       const categoria = String(args.categoria ?? "").toLowerCase() === "lareira" ? "lareira" : "churrasqueira";
-      // Churrasqueiras: AiAgentConfig.catalogPdfUrl. Lareiras: PricingConfig.rules.lareirasPdfUrl.
+      // Churrasqueiras: PDF em AiAgentConfig.catalogPdfUrl. Lareiras: PricingConfig.rules.
+      // As CAPAS (1ª página renderizada) ficam em rules.catalogCoverUrl / lareirasCoverUrl.
+      const pc = await prisma.pricingConfig.findFirst({ where: { clientId: ctx.clientId }, select: { rules: true } });
+      const r = (pc?.rules ?? {}) as { lareirasPdfUrl?: string; catalogCoverUrl?: string; lareirasCoverUrl?: string };
       let url: string | undefined;
+      let coverUrl: string | undefined;
       if (categoria === "lareira") {
-        const pc = await prisma.pricingConfig.findFirst({ where: { clientId: ctx.clientId }, select: { rules: true } });
-        url = ((pc?.rules as { lareirasPdfUrl?: string } | null)?.lareirasPdfUrl ?? "").trim() || undefined;
+        url = (r.lareirasPdfUrl ?? "").trim() || undefined;
+        coverUrl = (r.lareirasCoverUrl ?? "").trim() || undefined;
       } else {
         const ccfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { catalogPdfUrl: true } });
         url = ccfg?.catalogPdfUrl?.trim() || undefined;
+        coverUrl = (r.catalogCoverUrl ?? "").trim() || undefined;
       }
       const nome = categoria === "lareira" ? "lareiras" : "churrasqueiras";
       if (!url) return { result: `Sem catálogo de ${nome} em PDF configurado — apresente os modelos por texto e ofereça a foto de cada um (enviar_foto).` };
@@ -502,16 +507,25 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         if (ja) return { result: `O catálogo de ${nome} JÁ foi enviado nesta conversa — NÃO reenvie. Se ele quiser um modelo específico, use enviar_foto.` };
       }
       const cap = `Nosso catálogo de ${nome} 🔥`;
-      if (ctx.mode === "test") return { result: `Catálogo de ${nome} (PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção.`, artifacts: [{ kind: "pdf", url, caption: cap }] };
+      if (ctx.mode === "test") return { result: `Catálogo de ${nome} (capa + PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção.`, artifacts: [...(coverUrl ? [{ kind: "image" as const, url: coverUrl, caption: cap }] : []), { kind: "pdf" as const, url, caption: cap }] };
       const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
       if (!conn) return { result: "Conexão indisponível para enviar o catálogo." };
-      const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: `Catalogo ${nome} JR Churrasqueiras.pdf`, caption: cap });
+      // 1) CAPA (imagem) antes do PDF — prévia bonita em vez do arquivo cru.
+      if (coverUrl) {
+        const ci = await sendWhatsAppImage(conn, ctx.contactWaId, coverUrl, cap);
+        if (ci.ok) await prisma.waMessage.create({ data: {
+          connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: ci.waMessageId || `ia-cov-${Date.now()}`,
+          direction: "out", type: "image", text: `[capa do catálogo de ${nome}]`, aiGenerated: true, timestamp: new Date(),
+        } }).catch(() => {});
+      }
+      // 2) PDF (sem legenda quando a capa já legendou).
+      const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: `Catalogo ${nome} JR Churrasqueiras.pdf`, caption: coverUrl ? undefined : cap });
       if (!sent.ok) return { result: `Não consegui enviar o catálogo (${sent.error}); apresente os modelos por texto e ofereça a foto de cada um.` };
       await prisma.waMessage.create({ data: {
         connectionId: ctx.connectionId, contactId: ctx.contactId, waMessageId: sent.waMessageId || `ia-cat-${Date.now()}`,
         direction: "out", type: "document", text: marker, aiGenerated: true, timestamp: new Date(),
       } }).catch(() => {});
-      return { result: `Catálogo de ${nome} em PDF enviado. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção. NÃO reenvie o catálogo.` };
+      return { result: `Catálogo de ${nome} (capa + PDF) enviado. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção. NÃO reenvie.` };
     }
 
     case "pedir_localizacao": {
