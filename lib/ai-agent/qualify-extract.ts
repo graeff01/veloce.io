@@ -28,9 +28,32 @@ Responda SOMENTE um JSON válido com estas chaves (use null quando o LEAD não d
 }
 Considere SÓ o que o LEAD falou (ignore o que a assistente ofereceu). Só preencha com evidência clara no texto.`;
 
-interface Ex {
+export interface QualifExtract {
   produto?: unknown; uso?: unknown; orcamento?: unknown; financiamento?: unknown; financiamento_detalhe?: unknown;
   troca?: unknown; troca_veiculo?: unknown; urgencia?: unknown; prioridade?: unknown; estagio?: unknown;
+}
+
+const qStr = (v: unknown) => (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null" ? v.trim() : undefined);
+const qBool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
+
+// Mapeia o JSON de qualificação → campos do LeadProfile. FONTE ÚNICA: usado tanto pelo
+// backstop (extractQualification) quanto pelo classificador consolidado (classify.ts),
+// pra os dois NUNCA divergirem. Só campos com evidência (nunca zera os já existentes).
+export function mapQualifToProfile(ex: QualifExtract): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (qStr(ex.produto)) data.productInterest = qStr(ex.produto);
+  if (qStr(ex.uso)) data.usageContext = qStr(ex.uso);
+  if (qStr(ex.orcamento)) data.budget = qStr(ex.orcamento);
+  const finDet = qStr(ex.financiamento_detalhe), fin = qBool(ex.financiamento);
+  if (fin != null) data.wantsFinancing = fin; else if (finDet) data.wantsFinancing = true;
+  if (finDet) data.financingDetail = finDet;
+  const trDet = qStr(ex.troca_veiculo), tr = qBool(ex.troca);
+  if (tr != null) data.hasTradeIn = tr; else if (trDet) data.hasTradeIn = true;
+  if (trDet) data.tradeInDetail = trDet;
+  if (qStr(ex.urgencia)) data.urgency = qStr(ex.urgencia);
+  if (qStr(ex.prioridade)) data.buyingPriority = qStr(ex.prioridade);
+  if (qStr(ex.estagio)) data.decisionStage = qStr(ex.estagio);
+  return data;
 }
 
 export async function extractQualification(clientId: string, contactId: string, connectionId: string): Promise<void> {
@@ -41,7 +64,7 @@ export async function extractQualification(clientId: string, contactId: string, 
   const transcript = [...msgs].reverse().filter((m) => m.text)
     .map((m) => `${m.direction === "in" ? "LEAD" : "ASSISTENTE"}: ${m.text}`).join("\n").slice(-4000);
 
-  let ex: Ex | null = null;
+  let ex: QualifExtract | null = null;
   try {
     const { message } = await openaiChat({
       model: MODEL, temperature: 0, maxTokens: 300,
@@ -52,21 +75,7 @@ export async function extractQualification(clientId: string, contactId: string, 
   } catch { return; }
   if (!ex || typeof ex !== "object") return;
 
-  const str = (v: unknown) => (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null" ? v.trim() : undefined);
-  const bool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-  const data: Record<string, unknown> = {};
-  if (str(ex.produto)) data.productInterest = str(ex.produto);
-  if (str(ex.uso)) data.usageContext = str(ex.uso);
-  if (str(ex.orcamento)) data.budget = str(ex.orcamento);
-  const finDet = str(ex.financiamento_detalhe), fin = bool(ex.financiamento);
-  if (fin != null) data.wantsFinancing = fin; else if (finDet) data.wantsFinancing = true;
-  if (finDet) data.financingDetail = finDet;
-  const trDet = str(ex.troca_veiculo), tr = bool(ex.troca);
-  if (tr != null) data.hasTradeIn = tr; else if (trDet) data.hasTradeIn = true;
-  if (trDet) data.tradeInDetail = trDet;
-  if (str(ex.urgencia)) data.urgency = str(ex.urgencia);
-  if (str(ex.prioridade)) data.buyingPriority = str(ex.prioridade);
-  if (str(ex.estagio)) data.decisionStage = str(ex.estagio);
+  const data = mapQualifToProfile(ex);
   if (!Object.keys(data).length) return; // nada de novo
 
   const prof = await prismaUnscoped.leadProfile.upsert({

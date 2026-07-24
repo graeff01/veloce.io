@@ -8,8 +8,9 @@ import { isOptOut, OPT_OUT_REPLY } from "./optout";
 import { isGloballyBlocked } from "./blocklist";
 import { createEscalationTask } from "./escalation";
 import { updateRollingMemory } from "./memory";
-import { analyzeMessage } from "./intelligence";
+import { analyzeMessage, isAnalyzable } from "./intelligence";
 import { extractQualification } from "./qualify-extract";
+import { classifyMode, runConsolidatedClassify } from "./classify";
 import { evaluateResponse } from "./evaluation";
 import { sendWhatsAppText, sendWhatsAppMediaById, uploadWhatsAppMedia, sendWhatsAppReadReceipt } from "@/lib/whatsapp-send";
 import { synthesizeVoice, shouldVoice } from "@/lib/tts";
@@ -320,13 +321,25 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // Pipeline assíncrono (fora do caminho crítico): memória rolante + inteligência
   // (intent/sentiment/objeção da mensagem do lead). Nunca atrasa nem quebra o atendimento.
   void updateRollingMemory(contact.id, conn.clientId).catch(() => {});
-  if (input.idempotencyKey) {
-    void analyzeMessage({ clientId: conn.clientId, connectionId: conn.id, contactId: contact.id, waMessageId: input.idempotencyKey, text: inboundText }).catch(() => {});
+  // Classificação pós-envio. Fase 1 do Runtime: AI_CONSOLIDATED_CLASSIFY consolida
+  // analyzeMessage + extractQualification numa ÚNICA chamada (reduz a maior fonte de
+  // chamadas ao modelo). "off" (padrão) = comportamento ATUAL, byte-a-byte. Estes
+  // classificadores NÃO geram texto de atendimento — não afetam o que o cliente recebe.
+  const cMode = classifyMode();
+  const trivialAck = /^(ok|sim|n[aã]o|blz|beleza|obrigad\w*|valeu|certo|isso|uhum|t[aá] bom|pode ser)\W*$/i.test(inboundText.trim());
+  if (cMode !== "on") {
+    if (input.idempotencyKey) {
+      void analyzeMessage({ clientId: conn.clientId, connectionId: conn.id, contactId: contact.id, waMessageId: input.idempotencyKey, text: inboundText }).catch(() => {});
+    }
+    // Backstop de qualificação: lê a conversa e preenche o perfil (garante a ficha completa),
+    // mesmo que a IA não tenha chamado atualizar_perfil. Pula acks triviais (economia).
+    if (!trivialAck) {
+      void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
+    }
   }
-  // Backstop de qualificação: lê a conversa e preenche o perfil (garante a ficha completa),
-  // mesmo que a IA não tenha chamado atualizar_perfil. Pula acks triviais (economia).
-  if (!/^(ok|sim|n[aã]o|blz|beleza|obrigad\w*|valeu|certo|isso|uhum|t[aá] bom|pode ser)\W*$/i.test(inboundText.trim())) {
-    void extractQualification(conn.clientId, contact.id, conn.id).catch(() => {});
+  // shadow: roda a consolidada só p/ observar (as 2 acima seguem autoridade). on: autoridade.
+  if (cMode !== "off" && input.idempotencyKey && (isAnalyzable(inboundText) || !trivialAck)) {
+    void runConsolidatedClassify({ mode: cMode, clientId: conn.clientId, connectionId: conn.id, contactId: contact.id, waMessageId: input.idempotencyKey, latestText: inboundText }).catch(() => {});
   }
   // Self-improvement: avalia a qualidade da resposta da IA (juiz LLM, amostrado).
   void evaluateResponse({
