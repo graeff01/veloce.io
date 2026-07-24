@@ -9,6 +9,7 @@ import { checkGrounding } from "./grounding";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
+import { deriveAgentState, agentStateMode, type AgentState } from "./conversation-state";
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant, hashString } from "./variants";
 import { searchCatalog } from "./catalog-search";
@@ -330,14 +331,31 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let qualif = "";
   let vehicle = "";
   let returning = "";
+  let agentState: AgentState | null = null; // Fase 3: eixo de estado (shadow — só observa/loga)
   let priorMessages: ChatMessage[];
   if (mode === "live") {
     const [profile, convo, variant, lead] = await Promise.all([
       prisma.leadProfile.findUnique({ where: { contactId: input.contact.id } }),
-      prisma.waConversation.findUnique({ where: { contactId: input.contact.id }, select: { agentMemory: true } }),
+      prisma.waConversation.findUnique({ where: { contactId: input.contact.id }, select: { agentMemory: true, funnelStage: true, quoteApprovedAt: true } }),
       resolveVariant(input.clientId, input.contact.id),
       prisma.waLead.findUnique({ where: { contactId: input.contact.id }, select: { adModel: true, adTitle: true } }),
     ]);
+
+    // Conversation State (shadow): projeta o estágio a partir de sinais já carregados.
+    // off = nem calcula (byte-idêntico). shadow = calcula e registra no log (contextUsed).
+    if (agentStateMode() === "shadow") {
+      const hasQuote = cfg?.quotesEnabled
+        ? !!(await prisma.quote.findFirst({ where: { clientId: input.clientId, contactId: input.contact.id }, select: { id: true } }).catch(() => null))
+        : false;
+      agentState = deriveAgentState({
+        isFirstTurn: isFirst,
+        hasProductInterest: !!profile?.productInterest,
+        quoteReady: false, // refinado quando virar authority (ficha modelo+cidade)
+        quoteInProgress: hasQuote,
+        quoteApproved: !!convo?.quoteApprovedAt,
+        funnelStage: convo?.funnelStage ?? null,
+      });
+    }
     // Veículo de interesse: o lead entrou por um anúncio específico → carrega a ficha
     // do item do catálogo p/ a IA já responder ano/km/itens e oferecer foto. Genérico
     // (produto de interesse). Se o catálogo estiver vazio, nada é injetado (graceful).
@@ -445,6 +463,8 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       contextUsed = { chunks: used };
     }
   } catch { /* conhecimento é opcional */ }
+  // Conversation State (shadow): anexa o estágio ao log para observação/telemetria.
+  if (agentState) contextUsed = { ...(contextUsed as Record<string, unknown> ?? {}), agentState };
   stages.push({ name: "rag", ms: Date.now() - stageStart });
   stageStart = Date.now();
 
