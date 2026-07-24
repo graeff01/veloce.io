@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const total = Math.max(0, quote.total - desconto);
 
   try {
-    const pdf = await renderQuotePdf(await buildQuoteDocData(portal.clientId, linhas, total, quote.currency, contactName, quote.number, fichaCidade));
+    const pdf = await renderQuotePdf(await buildQuoteDocData(portal.clientId, linhas, total, quote.currency, contactName, quote.number, fichaCidade, quote.subtotal));
     return new NextResponse(new Uint8Array(pdf), {
       headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="orcamento-${quote.number}.pdf"`, "Cache-Control": "no-store" },
     });

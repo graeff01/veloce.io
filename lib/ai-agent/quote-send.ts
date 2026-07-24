@@ -37,7 +37,7 @@ export async function sendQuotePdf(opts: {
   const total = Math.max(0, quote.total - desconto);
 
   try {
-    const pdf = await renderQuotePdf(await buildQuoteDocData(opts.clientId, linhas, total, quote.currency, contactName, quote.number, fichaCidade));
+    const pdf = await renderQuotePdf(await buildQuoteDocData(opts.clientId, linhas, total, quote.currency, contactName, quote.number, fichaCidade, quote.subtotal));
     const sent = await sendWhatsAppDocument(conn, contact.waId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
     if (!sent.ok) return { ok: false, error: sent.error ?? "Falha no envio do PDF." };
 

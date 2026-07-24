@@ -27,7 +27,8 @@ export interface QuoteDocData {
   contactCity?: string | null;
   sellerName?: string | null;
   items: QuoteDocLine[];
-  total: number;
+  total: number;             // valor CHEIO (parcelado). Quando avistaTotal existe, é o destaque parcelado.
+  avistaTotal?: number | null; // valor à vista (com desconto em espécie); quando presente, mostra os DOIS totais
   currency: string;
   observacoes?: string | null;
   installmentsLabel?: string | null; // ex.: "10x de R$ 253,00 sem juros" (só se configurado)
@@ -168,14 +169,34 @@ export function buildQuoteDoc(d: QuoteDocData) {
           </View>
         ))}
 
-        {/* Total */}
-        <View style={s.totalWrap}>
-          <View style={s.totalBox}>
-            <Text style={s.totalLabel}>Total</Text>
-            <Text style={s.totalValue}>{brl(d.total, cur)}</Text>
-          </View>
-        </View>
-        {d.installmentsLabel ? <Text style={s.parcela}>ou {d.installmentsLabel}</Text> : null}
+        {/* Total — quando há desconto à vista, mostra os DOIS: à vista (espécie) e parcelado (cheio) */}
+        {d.avistaTotal != null ? (
+          <>
+            <View style={s.totalWrap}>
+              <View style={s.totalBox}>
+                <Text style={s.totalLabel}>Total à vista (espécie)</Text>
+                <Text style={s.totalValue}>{brl(d.avistaTotal, cur)}</Text>
+              </View>
+            </View>
+            <View style={s.totalWrap}>
+              <View style={s.totalBox}>
+                <Text style={s.totalLabel}>Total parcelado</Text>
+                <Text style={s.totalValue}>{brl(d.total, cur)}</Text>
+              </View>
+            </View>
+            {d.installmentsLabel ? <Text style={s.parcela}>ou {d.installmentsLabel}</Text> : null}
+          </>
+        ) : (
+          <>
+            <View style={s.totalWrap}>
+              <View style={s.totalBox}>
+                <Text style={s.totalLabel}>Total</Text>
+                <Text style={s.totalValue}>{brl(d.total, cur)}</Text>
+              </View>
+            </View>
+            {d.installmentsLabel ? <Text style={s.parcela}>ou {d.installmentsLabel}</Text> : null}
+          </>
+        )}
 
         {/* Observações */}
         <Text style={s.obsBar}>Observações:</Text>

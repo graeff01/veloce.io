@@ -247,26 +247,51 @@ function installmentsLabel(total: number, currency: string, n: number | null | u
 
 // Monta o QuoteDocData (layout fiel: logo + contatos + Cliente/Vendedor + tabela c/ CÓDIGO +
 // Total + Observações). Fonte única usada pelo Console (artefato) e pelo envio real.
-export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: number, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<QuoteDocData> {
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Calcula à vista (com desconto em espécie nos PRODUTOS) × parcelado (cheio). Pura/testável.
+// productsSubtotal = subtotal só dos produtos (base+opcionais); o desconto NÃO incide em
+// montagem/frete/acesso. Retorna avista=null quando não há desconto configurado (aí o PDF
+// mostra um Total único, comportamento antigo).
+export function avistaParcelado(fullPrice: number, productsSubtotal: number | null | undefined, pct: number): { avista: number | null; desconto: number } {
+  if (productsSubtotal == null || !(pct > 0)) return { avista: null, desconto: 0 };
+  const desconto = round2((productsSubtotal * pct) / 100);
+  const avista = round2(fullPrice - desconto);
+  return { avista: avista < fullPrice ? avista : null, desconto };
+}
+
+export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], total: number, currency: string, contactName: string | null, number: number, contactCity?: string | null, productsSubtotal?: number | null): Promise<QuoteDocData> {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true, logoUrl: true } });
   const pcfg = await prisma.pricingConfig.findUnique({ where: { clientId }, select: { rules: true } });
   const r = (pcfg?.rules ?? {}) as PresRules;
+  const pct = Number((pcfg?.rules as { policies?: { cashDiscountPct?: number } } | null)?.policies?.cashDiscountPct) || 0;
   const c = r.company ?? {};
   const validity = Number(r.validityDays) > 0 ? Number(r.validityDays) : null;
   const validUntil = validity ? new Date(Date.now() + validity * 86_400_000).toLocaleDateString("pt-BR") : null;
-  // Item 7: o PDF adapta à forma de PAGAMENTO. Se o orçamento tem desconto à vista (dinheiro),
-  // o total já vem com os 8% off → observação específica + abaixo do total mostra o valor
-  // CHEIO parcelado (sem o desconto), pra o à vista e o 10x NÃO ficarem iguais. Sem desconto
-  // (parcelado/pix/cartão) → observação padrão + 10x sobre o próprio total.
-  const descLine = items.find((i) => /desconto\s+[àa]?\s*vista/i.test(i.label || ""));
   const inst = Number(r.installments) > 1 ? Math.floor(Number(r.installments)) : 0;
-  const fullPrice = descLine ? Math.round((total - descLine.amount) * 100) / 100 : total; // descLine.amount é negativo
-  const obsFinal = descLine
-    ? "Valor válido para pagamento à vista em dinheiro (espécie)."
-    : (r.observacoes ?? r.paymentTerms ?? r.notes ?? null);
-  const instFinal = descLine
-    ? (inst > 0 && fullPrice > 0 ? `${inst}x de ${brl(fullPrice / inst, currency)} sem juros (total ${brl(fullPrice, currency)} no parcelado)` : null)
-    : installmentsLabel(total, currency, r.installments);
+
+  // O PDF SEMPRE mostra as duas opções quando há desconto à vista configurado: o à vista
+  // (com o desconto em espécie nos produtos) e o parcelado (valor cheio, Nx). Independe da
+  // forma de pagamento que a IA chutou — anuncia o desconto em todo orçamento.
+  const descLine = items.find((i) => /desconto\s+[àa]?\s*vista/i.test(i.label || ""));
+  // fullPrice = valor CHEIO (parcelado), sem o desconto à vista. Se o orçamento veio com a
+  // linha de desconto (dinheiro), removemos ela do total p/ obter o cheio.
+  const fullPrice = descLine ? round2(total - descLine.amount) : total; // descLine.amount é negativo
+  const { avista } = avistaParcelado(fullPrice, productsSubtotal, pct);
+  const showBoth = avista != null;
+
+  // Remove a linha de "desconto à vista" da TABELA — a comparação vai no bloco de totais.
+  const displayItems = showBoth ? items.filter((i) => i !== descLine) : items;
+
+  const obsFinal = showBoth
+    ? `Valor à vista em espécie (dinheiro): ${pct}% de desconto nos produtos. No parcelado, o valor é o cheio.`
+    : (descLine ? "Valor válido para pagamento à vista em dinheiro (espécie)." : (r.observacoes ?? r.paymentTerms ?? r.notes ?? null));
+  const instFinal = showBoth
+    ? (inst > 0 && fullPrice > 0 ? `${inst}x de ${brl(fullPrice / inst, currency)} sem juros` : null)
+    : (descLine
+        ? (inst > 0 && fullPrice > 0 ? `${inst}x de ${brl(fullPrice / inst, currency)} sem juros (total ${brl(fullPrice, currency)} no parcelado)` : null)
+        : installmentsLabel(total, currency, r.installments));
+
   return {
     company: {
       name: client?.name ?? "Orçamento", logoUrl: client?.logoUrl ?? null,
@@ -275,8 +300,10 @@ export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], 
       website: c.website ?? c.site ?? null, facebook: c.facebook ?? null, instagram: c.instagram ?? null,
     },
     number, contactName, contactCity: contactCity ?? null, sellerName: r.sellerName ?? null,
-    items: items.map((i) => ({ code: i.code ?? null, label: i.label, qty: i.qty, unit: i.unit, amount: i.amount })),
-    total, currency, observacoes: obsFinal,
+    items: displayItems.map((i) => ({ code: i.code ?? null, label: i.label, qty: i.qty, unit: i.unit, amount: i.amount })),
+    total: showBoth ? fullPrice : total, // destaque parcelado (cheio) quando mostra as duas
+    avistaTotal: showBoth ? avista : null,
+    currency, observacoes: obsFinal,
     installmentsLabel: instFinal,
     generatedAt: new Date().toLocaleDateString("pt-BR"), validUntil,
   };
@@ -284,9 +311,9 @@ export async function buildQuoteDocData(clientId: string, items: QuoteLineIn[], 
 
 // Renderiza o PDF do orçamento como artefato, para o Console exibir no modo teste.
 // Best-effort: falha vira null (não quebra o fluxo).
-async function quotePdfArtifact(clientId: string, q: { items: QuoteLineIn[]; total: number }, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<ToolArtifact | null> {
+async function quotePdfArtifact(clientId: string, q: { items: QuoteLineIn[]; total: number; subtotal?: number }, currency: string, contactName: string | null, number: number, contactCity?: string | null): Promise<ToolArtifact | null> {
   try {
-    const pdf = await renderQuotePdf(await buildQuoteDocData(clientId, q.items, q.total, currency, contactName, number, contactCity));
+    const pdf = await renderQuotePdf(await buildQuoteDocData(clientId, q.items, q.total, currency, contactName, number, contactCity, q.subtotal));
     return { kind: "pdf", dataUri: `data:application/pdf;base64,${pdf.toString("base64")}`, filename: `orcamento-${number}.pdf`, caption: `Orçamento Nº ${number}` };
   } catch { return null; }
 }
@@ -800,6 +827,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           typeof fichaNome === "string" && fichaNome.trim() ? fichaNome.trim() : ctx.contactName,
           quote.number,
           typeof fichaCidade === "string" ? fichaCidade : null,
+          quote.subtotal,
         ));
         const sent = await sendWhatsAppDocument(conn, ctx.contactWaId, { buffer: pdf, filename: `orcamento-${quote.number}.pdf`, caption: `Orçamento Nº ${quote.number}` });
         if (!sent.ok) return { result: `Falha ao enviar o PDF: ${sent.error}. Ofereça tentar de novo ou chamar um vendedor.` };
