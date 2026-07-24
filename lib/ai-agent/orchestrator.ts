@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { toolsForConfig, executeTool, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
+import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { retrieveKnowledge } from "./retrieval";
@@ -332,6 +333,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let vehicle = "";
   let returning = "";
   let agentState: AgentState | null = null; // Fase 3: eixo de estado (shadow — só observa/loga)
+  let quoteImminent = false; // ficha completa → orçamento iminente (lazy catalog "smart")
   let priorMessages: ChatMessage[];
   if (mode === "live") {
     const [profile, convo, variant, lead] = await Promise.all([
@@ -340,6 +342,14 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       resolveVariant(input.clientId, input.contact.id),
       prisma.waLead.findUnique({ where: { contactId: input.contact.id }, select: { adModel: true, adTitle: true } }),
     ]);
+
+    // Ficha completa? → orçamento IMINENTE (sinal do lazy catalog "smart" e do estado).
+    // Determinístico, sem custo: os campos obrigatórios da ficha já estão no perfil.
+    if (cfg?.quotesEnabled) {
+      const spec = parseSpec(cfg.intakeSpec);
+      const ficha = (profile?.data as IntakeData) ?? {};
+      quoteImminent = spec.length > 0 && missingRequired(spec, ficha).length === 0;
+    }
 
     // Conversation State (shadow): projeta o estágio a partir de sinais já carregados.
     // off = nem calcula (byte-idêntico). shadow = calcula e registra no log (contextUsed).
@@ -350,7 +360,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       agentState = deriveAgentState({
         isFirstTurn: isFirst,
         hasProductInterest: !!profile?.productInterest,
-        quoteReady: false, // refinado quando virar authority (ficha modelo+cidade)
+        quoteReady: quoteImminent, // ficha completa (modelo + obrigatórios)
         quoteInProgress: hasQuote,
         quoteApproved: !!convo?.quoteApprovedAt,
         funnelStage: convo?.funnelStage ?? null,
@@ -474,7 +484,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   if (tempBucket) promptVariant = promptVariant ? `${promptVariant}::${tempBucket}` : tempBucket;
 
   // Orçamento (opt-in): orientação de ficha/preço anexada ao prompt.
-  const quoteGuidance = await buildQuoteGuidance(input.clientId, cfg?.quotesEnabled ?? false, cfg?.intakeSpec);
+  const quoteGuidance = await buildQuoteGuidance(input.clientId, cfg?.quotesEnabled ?? false, cfg?.intakeSpec, quoteImminent);
 
   // Prompt caching: prefixo estável (cacheável) + contexto dinâmico em 2 mensagens system.
   // "Clonar o melhor vendedor": DNA de venda destilado do time, injetado quando ligado.

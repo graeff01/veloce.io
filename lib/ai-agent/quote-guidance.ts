@@ -13,14 +13,22 @@ import { prisma } from "@/lib/prisma";
 import { parseSpec } from "./intake";
 import { describeRules, describeFreightNote, type PricingRules } from "./pricing";
 
-export type LazyCatalogMode = "off" | "on";
+// off = catálogo sempre (comportamento original).
+// on  = catálogo NUNCA no prompt (self-heal do gerar_orcamento devolve na hora). Validado.
+// smart = catálogo fora do prompt na COLETA, mas INJETADO quando o orçamento está iminente
+//         (ficha completa / estado orçamento) — evita o round-trip do self-heal no turno do
+//         orçamento E mantém a economia na coleta. Monotonicamente ≥ "on" (pior caso = self-heal).
+export type LazyCatalogMode = "off" | "on" | "smart";
 export function lazyCatalogMode(): LazyCatalogMode {
-  return (process.env.AI_LAZY_CATALOG || "off").toLowerCase() === "on" ? "on" : "off";
+  const m = (process.env.AI_LAZY_CATALOG || "off").toLowerCase();
+  return m === "on" || m === "smart" ? m : "off";
 }
 
-export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolean, intakeSpec: unknown): Promise<string> {
+export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolean, intakeSpec: unknown, quoteImminent = false): Promise<string> {
   if (!quotesEnabled) return "";
-  const lazy = lazyCatalogMode() === "on";
+  const mode = lazyCatalogMode();
+  // "smart": só esconde o catálogo enquanto o orçamento NÃO está iminente.
+  const lazy = mode === "on" || (mode === "smart" && !quoteImminent);
   const parts: string[] = ["── ATENDIMENTO COM ORÇAMENTO ──"];
 
   const spec = parseSpec(intakeSpec);
