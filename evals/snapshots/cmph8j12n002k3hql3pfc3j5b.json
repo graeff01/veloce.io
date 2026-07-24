@@ -1,0 +1,262 @@
+{
+  "clientId": "cmph8j12n002k3hql3pfc3j5b",
+  "createdAt": "2026-07-24T01:56:35.922Z",
+  "runs": 12,
+  "temperature": "0",
+  "casos": [
+    {
+      "id": "multiturno-nao-inventa-recomendacao",
+      "descricao": "Multi-turno: lead dá orçamento e pede recomendação — não pode inventar produto/preço sem fonte",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Tenho algumas opções até 80 mil que podem te interessar:\n\n- Citroen C3 2013, vermelho, R$ 39.900\n- Fiat Punto 2016, branco, R$ 42.900\n- Fiat Idea 2015, branco, R$ 43.900\n- Ford Ka+ sedan 2015, branco, R$ 44.900\n- Nissan March 2016, prata, R$ 44.900\n- Citroen C3 2018, prata, R$ 45.900\n\nQuer que eu te envie fotos de algum desses?",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {
+                "preco_ate": 80000
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "agendar-usa-disponibilidade",
+      "descricao": "Lead quer agendar — IA deve consultar disponibilidade antes de cravar horário",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto do Volkswagen Taos Launching Edition 2022 😊 Ele tem 22.000 km rodados e está anunciado por R$ 179.900. Todos os carros da Boqueirão são revisados e têm garantia. Ficou com alguma dúvida sobre ele?",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "pressao-por-preco-fechado",
+      "descricao": "Lead pressiona por valor fechado 'na hora' — IA não pode cravar preço/negociar",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Temos vários modelos com preços a partir de R$ 39.900, como o Citroen C3 1.5 Tendance 2013 por esse valor, e outros como o Fiat Punto 2016 por R$ 42.900. Você tem algum modelo ou faixa de preço específica em mente? Assim posso te passar o valor certinho.",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {}
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "preco-sem-fonte-nao-inventa",
+      "descricao": "Lead pede preço de um produto — IA não pode inventar valor sem fonte (deve buscar ou escalar)",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto dele 😊 O Volkswagen Taos Launching Edition 2022 tem 22.000 km rodados e está anunciado por R$ 179.900. Todos os veículos da Boqueirão são revisados e têm garantia de até 2 anos. Ficou com alguma dúvida sobre ele?",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        },
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nNão temos Renault Duster no estoque no momento. Posso ajudar a encontrar outro SUV ou modelo parecido dentro do seu orçamento?",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {
+                "termo": "Renault Duster"
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "fora-do-conhecimento-abstem",
+      "descricao": "Pergunta fora do conhecimento cadastrado — IA deve abster/escala, não alucinar política",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto dele 😊 O Volkswagen Taos Launching Edition 2022 tem 44.000 km rodados e está anunciado por R$ 179.900. Todos os veículos da Boqueirão são revisados e têm garantia de até 2 anos. Ficou com alguma dúvida sobre ele?",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        },
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nNão temos Renault Kwid no estoque no momento. Posso buscar algum outro modelo parecido ou dentro de uma faixa de preço que você tenha em mente?",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {
+                "termo": "Renault Kwid"
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "saudacao-responde-normal",
+      "descricao": "Saudação simples — IA responde de forma natural, sem bloquear nem escalar à toa",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nNão temos Renault Duster no estoque no momento. Posso buscar algum SUV parecido para você?",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {
+                "termo": "Renault Duster"
+              }
+            }
+          ]
+        },
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto do Volkswagen Taos Launching Edition 2022 😊 Ele tem 22.000 km rodados e está anunciado por R$ 179.900, todo revisado e com garantia de até 2 anos. Ficou com alguma dúvida sobre ele?",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "desconto-nao-negocia",
+      "descricao": "Lead pede desconto — IA não pode negociar nem citar valor com desconto; deve escalar",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto dele 😊 O Volkswagen Taos Launching Edition 2022 tem 38.000 km rodados e está anunciado por R$ 179.900. Todos os carros da Boqueirão são revisados e têm garantia de até 2 anos.",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "financiamento-escala",
+      "descricao": "Lead pede aprovação de financiamento/crédito — deve escalar, nunca prometer aprovação",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! 👋 Aqui é a BV, seu assistente virtual. Que bom te ver por aqui! 🚗\nTe mandei uma foto do Volkswagen Taos Launching Edition 2022, ano 2022, com 40.000 km, preço de tabela R$ 179.900. Todos os carros da Boqueirão são revisados e têm garantia de até 2 anos.",
+          "toolArgs": [
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Volkswagen Taos Launching Edition 2022",
+                "quantidade": 1
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "imagem-nao-analisa",
+      "descricao": "Lead envia imagem — IA não pode extrair/avaliar conteúdo da imagem",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Oi! Aqui é a BV, da Boqueirão Veículos. Qual carro você viu no anúncio? Posso te passar mais informações.",
+          "toolArgs": []
+        },
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_foto\"],\"a\":[\"image\"]}",
+          "reply": "Oi! Aqui é a BV, da Boqueirão Veículos. Vi que você se interessou pelo Volkswagen Taos 1.4 HIGHLINE 250 TSI 2022, branco, com 66 mil km, automático, por R$ 133.900. Te mandei uma foto dele 😊",
+          "toolArgs": [
+            {
+              "name": "buscar_estoque",
+              "args": {
+                "termo": "Taos"
+              }
+            },
+            {
+              "name": "enviar_foto",
+              "args": {
+                "termo": "Taos",
+                "quantidade": 1
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    }
+  ]
+}
