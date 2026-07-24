@@ -25,7 +25,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const contactName = contact?.displayName || contact?.name || contact?.waId || null;
   const cidade = ((quote.intake as Record<string, unknown> | null)?.cidade_entrega as string | undefined) ?? null;
 
-  const doc = await buildQuoteDocData(portal.clientId, quote.items as unknown as QuoteLineIn[], quote.total, quote.currency, contactName, quote.number, cidade);
+  const doc = await buildQuoteDocData(portal.clientId, quote.items as unknown as QuoteLineIn[], quote.total, quote.currency, contactName, quote.number, cidade, quote.subtotal);
   const pdf = await renderQuotePdf(doc);
 
   const dl = new URL(req.url).searchParams.get("dl");
