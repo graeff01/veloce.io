@@ -142,8 +142,10 @@ const QUOTE_TOOLS: ToolDef[] = [
         quantidades: { type: "object", description: "chave:quantidade (opcional; padrão 1)" },
         montagem: { type: "boolean", description: "inclui entrega + montagem (o motor soma a montagem de cada produto com desconto por quantidade). Frete acima do limite exige montagem." },
         pagamento: { type: "string", enum: ["dinheiro", "cartao", "pix", "debito"], description: "forma de pagamento (dinheiro dá desconto à vista nos produtos)" },
-        acesso: { type: "object", description: "acesso p/ a montagem: { lances: number (0 = térreo), tipo: 'tradicional'|'caracol', elevador: boolean }", properties: {
-          lances: { type: "number" }, tipo: { type: "string", enum: ["tradicional", "caracol"] }, elevador: { type: "boolean" },
+        acesso: { type: "object", description: "Acesso p/ a montagem. Os componentes COEXISTEM e SOMAM — pergunte todos: (1) quantos lances de escada COMUM até o andar; (2) se há escada CARACOL no caminho; (3) se usa elevador. Ex.: 3º andar por escada comum E caracol dentro do apê → lances=3 E caracol=true (cobra os dois). Térreo/sem escada → lances=0.", properties: {
+          lances: { type: "number", description: "nº de lances de escada COMUM até o andar (0 se térreo ou só elevador). NÃO conte a caracol aqui." },
+          caracol: { type: "boolean", description: "true se há escada CARACOL no acesso (cobrança fixa, SOMADA aos lances comuns e/ou elevador)" },
+          elevador: { type: "boolean" },
         } },
         retirada: { type: "boolean", description: "true se o cliente vai RETIRAR na fábrica (sem frete). Nesse caso NÃO cobra frete e não precisa de endereço." },
       }, required: ["base"] },
@@ -616,12 +618,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
       const rules = pc.rules as unknown as PricingRules;
 
-      const acesso = args.acesso as { lances?: number; tipo?: string; elevador?: boolean } | undefined;
+      const acesso = args.acesso as { lances?: number; caracol?: boolean; tipo?: string; elevador?: boolean } | undefined;
       const sel = {
         base: (args.base as string[]) ?? [], options: (args.opcionais as string[]) ?? [], quantities: (args.quantidades as Record<string, number>) ?? undefined,
         montagem: args.montagem === true,
         cash: args.pagamento === "dinheiro",
-        access: acesso ? { flights: acesso.lances, spiral: acesso.tipo === "caracol", elevator: acesso.elevador === true } : undefined,
+        // caracol (novo) OU tipo==="caracol" (legado). lances = escada COMUM; caracol SOMA à parte.
+        access: acesso ? { flights: acesso.lances, spiral: acesso.caracol === true || acesso.tipo === "caracol", elevator: acesso.elevador === true } : undefined,
       };
       // Trava 1: sem MODELO (base) não orça.
       if (!sel.base.length) return { result: "Escolha ao menos um MODELO (base) para orçar. Pergunte ao lead qual modelo ele quer." };

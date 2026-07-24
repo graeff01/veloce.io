@@ -39,11 +39,14 @@ test("montagem 3+ itens = -13% sobre TODAS as montagens", () => {
   assert.equal(line(quote, "montagem"), 704.7);
 });
 
-test("acesso: elevador fixo, caracol fixo, escada por lance", () => {
-  assert.equal(line(q({ base: ["trad"], access: { elevator: true } }), "acesso"), 100);
-  assert.equal(line(q({ base: ["trad"], access: { spiral: true, flights: 5 } }), "acesso"), 200); // caracol ignora nº de lances
-  assert.equal(line(q({ base: ["trad"], access: { flights: 3 } }), "acesso"), 300); // 3 × 100
-  assert.equal(line(q({ base: ["trad"], access: { flights: 0 } }), "acesso"), undefined); // térreo → nada
+test("acesso: elevador + escada comum + caracol SOMAM (independentes)", () => {
+  const acc = (sel: Parameters<typeof q>[0]) => q(sel).items.filter((i) => i.key.startsWith("acesso")).reduce((s, i) => s + i.amount, 0);
+  assert.equal(acc({ base: ["trad"], access: { elevator: true } }), 100);            // só elevador
+  assert.equal(acc({ base: ["trad"], access: { flights: 3 } }), 300);                // 3 lances comuns × 100
+  assert.equal(acc({ base: ["trad"], access: { spiral: true } }), 200);              // só caracol (fixo)
+  assert.equal(acc({ base: ["trad"], access: { spiral: true, flights: 3 } }), 500);  // Maria: 3 lances comuns + caracol
+  assert.equal(acc({ base: ["trad"], access: { elevator: true, spiral: true, flights: 3 } }), 600); // os três somam
+  assert.equal(acc({ base: ["trad"], access: { flights: 0 } }), 0);                  // térreo → nada
 });
 
 test("desconto à vista = 8% SÓ nos produtos (não montagem/acesso)", () => {
@@ -102,10 +105,11 @@ test("assemblyDiscount vazio → montagem cheia (sem desconto)", () => {
   assert.ok(r.ok && r.quote.items.find((i) => i.key === "montagem")?.amount === 810);
 });
 
-test("acesso: prioridade elevador > caracol > escada quando vários flags", () => {
-  assert.equal(line2(q2({ base: ["churr"], access: { elevator: true, spiral: true, flights: 5 } }), "acesso"), 100); // elevador
-  assert.equal(line2(q2({ base: ["churr"], access: { spiral: true, flights: 5 } }), "acesso"), 200);                 // caracol
-  assert.equal(line2(q2({ base: ["churr"], access: { flights: -2 } }), "acesso"), undefined);                        // negativo → nada
+test("acesso: componentes SOMAM (não é prioridade) — inclui o caso da Maria", () => {
+  const acc = (sel: Parameters<typeof q2>[0]) => q2(sel).items.filter((i) => i.key.startsWith("acesso")).reduce((s, i) => s + i.amount, 0);
+  assert.equal(acc({ base: ["churr"], access: { elevator: true, spiral: true, flights: 5 } }), 100 + 200 + 500); // 800 — os três somam
+  assert.equal(acc({ base: ["churr"], access: { spiral: true, flights: 3 } }), 500);   // 3 lances comuns + caracol (caso Maria)
+  assert.equal(acc({ base: ["churr"], access: { flights: -2 } }), 0);                   // negativo → nada
 });
 
 test("acesso ignorado quando policies.access não existe", () => {

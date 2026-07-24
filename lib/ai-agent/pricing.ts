@@ -116,22 +116,25 @@ export function computeQuote(rules: PricingRules, sel: QuoteSelection): PricingR
     }
   }
 
-  // ── ACESSO (montagem) — os acréscimos SOMAM ──────────────────────────────────
-  // Elevador + escada podem coexistir (ex.: prédio com elevador E escada caracol no
-  // apto). A ESCADA é caracol (fixo) OU tradicional (por lance) — nunca as duas (o
-  // `tipo` define). Antes usava else-if e cobrava só UM acesso (bug: ignorava a caracol
-  // quando também tinha elevador).
+  // ── ACESSO (montagem) — os acréscimos SÃO INDEPENDENTES e SOMAM ───────────────
+  // Elevador, escada COMUM (por lance) e escada CARACOL (fixo) podem COEXISTIR no mesmo
+  // acesso — ex.: 3 lances de escada comum para chegar ao andar E uma escada caracol
+  // DENTRO do imóvel. `flights` = nº de lances de escada COMUM (0 se não houver); `spiral`
+  // = há caracol (cobrança fixa, ADICIONAL aos lances). Antes o `else if` cobrava a caracol
+  // OU os lances, nunca os dois — bug real (cobrava só 1 caracol quando havia 3 lances + caracol).
   if (sel.access && pol?.access) {
     const a = sel.access, ac = pol.access;
     if (a.elevator && (ac.elevator ?? 0) > 0) {
       const v = ac.elevator!;
       extras.push({ key: "acesso_elevador", code: null, label: "Acesso (elevador)", qty: 1, unit: v, amount: v });
     }
-    if (a.spiral) {
-      if ((ac.spiral ?? 0) > 0) { const v = ac.spiral!; extras.push({ key: "acesso_caracol", code: null, label: "Acesso (escada caracol)", qty: 1, unit: v, amount: v }); }
-    } else if (a.flights && a.flights > 0 && (ac.stairPerFlight ?? 0) > 0) {
+    if (a.flights && a.flights > 0 && (ac.stairPerFlight ?? 0) > 0) {
       const v = round2(ac.stairPerFlight! * a.flights);
       extras.push({ key: "acesso_escada", code: null, label: `Acesso (escada, ${a.flights} ${a.flights === 1 ? "lance" : "lances"})`, qty: a.flights, unit: ac.stairPerFlight!, amount: v });
+    }
+    if (a.spiral && (ac.spiral ?? 0) > 0) {
+      const v = ac.spiral!;
+      extras.push({ key: "acesso_caracol", code: null, label: "Acesso (escada caracol)", qty: 1, unit: v, amount: v });
     }
   }
 
