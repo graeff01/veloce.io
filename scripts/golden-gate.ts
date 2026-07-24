@@ -61,6 +61,11 @@ async function main() {
     process.exit(2);
   }
   const baseline = JSON.parse(readFileSync(snapPath(clientId), "utf8")) as GoldenBaseline;
+  const effDir = casesDir ?? "evals/cases";
+  if (baseline.casesDir && baseline.casesDir !== effDir) {
+    console.error(`ATENÇÃO: baseline foi capturado com --cases-dir "${baseline.casesDir}", mas você está comparando contra "${effDir}". Use o mesmo conjunto.`);
+    process.exit(2);
+  }
   const report = await checkAgainstBaseline({ clientId, runs, baseline, casesDir });
 
   if (process.argv.includes("--json")) {

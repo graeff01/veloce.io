@@ -1,0 +1,111 @@
+[
+  {
+    "id": "jr-abertura-produto",
+    "descricao": "Primeiro contato só com saudação — deve acolher e descobrir o produto, sem inventar preço",
+    "vertical": "churrasqueira",
+    "mensagem": "Olá",
+    "espera": {
+      "proibido": ["R\\$\\s?\\d"]
+    }
+  },
+  {
+    "id": "jr-pede-catalogo",
+    "descricao": "Lead pede o catálogo completo — deve enviar o catálogo em PDF",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "assistant", "content": "Oi, aqui é o Juninho, seu assistente virtual da JR Churrasqueiras. Você procura churrasqueira, fogão campeiro ou lareira?" },
+      { "role": "user", "content": "Churrasqueira" },
+      { "role": "assistant", "content": "Você procura algum modelo específico ou prefere que eu envie o catálogo completo pra dar uma olhada?" }
+    ],
+    "mensagem": "Manda o catálogo",
+    "espera": {
+      "usaFerramenta": ["enviar_catalogo"]
+    }
+  },
+  {
+    "id": "jr-confirma-modelo-pede-cidade",
+    "descricao": "Lead escolhe um modelo do catálogo — deve confirmar e pedir a cidade de entrega, sem cravar preço",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "Churrasqueira" },
+      { "role": "assistant", "content": "Te mandei nosso catálogo completo. Algum modelo chamou sua atenção?" },
+      { "role": "user", "content": "Eu gostaria de um conjunto do catálogo" },
+      { "role": "assistant", "content": "Show! Só me confirma qual modelo exatamente pra eu preparar o orçamento certinho?" }
+    ],
+    "mensagem": "9 espetos com forno e fogão de 3 bocas",
+    "espera": {
+      "proibido": ["R\\$\\s?\\d"]
+    }
+  },
+  {
+    "id": "jr-cidade-multizona-pede-localizacao",
+    "descricao": "Cidade com várias zonas de frete (Gravataí) — deve pedir a localização pelo botão do WhatsApp",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "Quero o conjunto 9 espetos com forno e fogão de 3 bocas" },
+      { "role": "assistant", "content": "Ótima escolha! Me confirma a cidade onde será a entrega pra eu preparar o orçamento certinho?" }
+    ],
+    "mensagem": "Gravataí",
+    "espera": {
+      "usaFerramenta": ["pedir_localizacao"],
+      "proibido": ["R\\$\\s?\\d"]
+    }
+  },
+  {
+    "id": "jr-retirada-fabrica",
+    "descricao": "Lead prefere retirar na fábrica — não deve cobrar frete nem pedir endereço de entrega",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "Quero a churrasqueira 8 espetos" },
+      { "role": "assistant", "content": "Perfeito! Me confirma a cidade de entrega pra eu calcular o frete certinho?" }
+    ],
+    "mensagem": "Não precisa entrega, eu mesmo retiro aí na fábrica",
+    "espera": {}
+  },
+  {
+    "id": "jr-preco-modelo-nao-inventa",
+    "descricao": "Lead pergunta o preço de um modelo — a IA nunca inventa valor; preço só sai do orçamento/ferramenta",
+    "vertical": "churrasqueira",
+    "mensagem": "Quanto custa a churrasqueira de 16 espetos?",
+    "espera": {
+      "proibido": ["custa R\\$\\s?\\d", "fica R\\$\\s?\\d", "sai por R\\$\\s?\\d"]
+    }
+  },
+  {
+    "id": "jr-desconto-nao-negocia",
+    "descricao": "Lead pressiona por desconto — a IA não negocia nem inventa abatimento; é do vendedor/regra de pagamento",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "Quero a churrasqueira 12 espetos com montagem em Canoas" },
+      { "role": "assistant", "content": "Deixa eu preparar o orçamento certinho pra você." }
+    ],
+    "mensagem": "Tem algum desconto? O que dá pra melhorar nesse preço?",
+    "espera": {
+      "naoPodeBloquear": true
+    }
+  },
+  {
+    "id": "jr-montagem-acesso-apartamento",
+    "descricao": "Entrega com montagem em apartamento com escada — deve coletar os dados de acesso (lances/tipo)",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "É pra entregar em Porto Alegre, no meu apartamento" },
+      { "role": "assistant", "content": "Combinado! Pra acertar a montagem, o acesso é térreo, tem escada ou é por elevador?" }
+    ],
+    "mensagem": "Tem elevador, mas dentro do apartamento tem uma escada caracol pra subir pro andar de cima",
+    "espera": {}
+  },
+  {
+    "id": "jr-parrilla-sob-medida-arquiteto",
+    "descricao": "Arquiteto pede parrilla com medidas específicas — não pode prometer fabricação/medida sem confirmar; encaminha/registra",
+    "vertical": "churrasqueira",
+    "historico": [
+      { "role": "user", "content": "Bom dia! Sou arquiteto e estou orçando churrasqueiras pré-fabricadas para uma obra" },
+      { "role": "assistant", "content": "Bom dia! Fico à disposição pra ajudar no que precisar do projeto." }
+    ],
+    "mensagem": "Vocês conseguem fazer uma parrilla de 105 cm de largura, fechada dos dois lados, com o braseiro mais fundo?",
+    "espera": {
+      "proibido": ["R\\$\\s?\\d"]
+    }
+  }
+]

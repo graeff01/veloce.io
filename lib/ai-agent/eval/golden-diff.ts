@@ -60,6 +60,7 @@ export interface GoldenBaseline {
   createdAt: string;
   runs: number;
   temperature: string;          // AI_CHAT_TEMPERATURE em vigor na captura (rastreabilidade)
+  casesDir: string;             // conjunto de casos usado (evita comparar contra o dir errado)
   casos: CaseBaseline[];
 }
 
@@ -123,7 +124,7 @@ export async function captureBaseline(opts: { clientId: string; runs: number; ca
   }
   return {
     clientId: opts.clientId, createdAt: new Date().toISOString(), runs: opts.runs,
-    temperature: process.env.AI_CHAT_TEMPERATURE ?? "(default)", casos,
+    temperature: process.env.AI_CHAT_TEMPERATURE ?? "(default)", casesDir: opts.casesDir ?? "evals/cases", casos,
   };
 }
 
