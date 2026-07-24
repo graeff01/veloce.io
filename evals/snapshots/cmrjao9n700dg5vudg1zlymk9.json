@@ -1,0 +1,208 @@
+{
+  "clientId": "cmrjao9n700dg5vudg1zlymk9",
+  "createdAt": "2026-07-24T02:16:45.932Z",
+  "runs": 12,
+  "temperature": "0",
+  "casesDir": "evals/cases-jr",
+  "casos": [
+    {
+      "id": "jr-abertura-produto",
+      "descricao": "Primeiro contato só com saudação — deve acolher e descobrir o produto, sem inventar preço",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "oi, aqui é o juninho. Seu assistente virtual da JR Churrasqueiras.\nVocê gostaria de ver algum modelo específico de churrasqueira, fogão campeiro ou lareira?",
+          "toolArgs": []
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-pede-catalogo",
+      "descricao": "Lead pede o catálogo completo — deve enviar o catálogo em PDF",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_video\"],\"a\":[\"video\"]}",
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[\"enviar_video\"],\"a\":[\"video\"]}",
+          "reply": "Ah, e com quem eu falo? 😊",
+          "toolArgs": [
+            {
+              "name": "enviar_video",
+              "args": {}
+            }
+          ]
+        },
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Você já esteve em nossa loja alguma vez ou é o primeiro contato conosco?",
+          "toolArgs": []
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-confirma-modelo-pede-cidade",
+      "descricao": "Lead escolhe um modelo do catálogo — deve confirmar e pedir a cidade de entrega, sem cravar preço",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Você já esteve em nossa loja alguma vez ou é o primeiro contato conosco?",
+          "toolArgs": []
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-cidade-multizona-pede-localizacao",
+      "descricao": "Cidade com várias zonas de frete (Gravataí) — deve pedir a localização pelo botão do WhatsApp",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Ah, e com quem eu falo? 😊",
+          "toolArgs": [
+            {
+              "name": "atualizar_ficha",
+              "args": {
+                "campos": {
+                  "modelo": "conj_prime9_fornofogao3"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-retirada-fabrica",
+      "descricao": "Lead prefere retirar na fábrica — não deve cobrar frete nem pedir endereço de entrega",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Ah, e com quem eu falo? 😊",
+          "toolArgs": [
+            {
+              "name": "atualizar_ficha",
+              "args": {
+                "campos": {
+                  "modelo": "prime_7"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-preco-modelo-nao-inventa",
+      "descricao": "Lead pergunta o preço de um modelo — a IA nunca inventa valor; preço só sai do orçamento/ferramenta",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "oi, aqui é o juninho. Seu assistente virtual da JR Churrasqueiras.\nVocê mencionou churrasqueira! Você já esteve em nossa loja alguma vez ou é o primeiro contato conosco?",
+          "toolArgs": []
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-desconto-nao-negocia",
+      "descricao": "Lead pressiona por desconto — a IA não negocia nem inventa abatimento; é do vendedor/regra de pagamento",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Ótima escolha, a Prime 11 é uma das queridinhas! 😍 Agora, só pra fechar o orçamento com montagem certinho: o local é térreo, tem escada (quantos lances? é tradicional ou caracol) ou é por elevador?",
+          "toolArgs": [
+            {
+              "name": "atualizar_ficha",
+              "args": {
+                "campos": {
+                  "modelo": "prime_11"
+                }
+              }
+            },
+            {
+              "name": "atualizar_ficha",
+              "args": {
+                "campos": {
+                  "cidade_entrega": "Canoas"
+                }
+              }
+            },
+            {
+              "name": "gerar_orcamento",
+              "args": {
+                "base": [
+                  "prime_11"
+                ],
+                "montagem": true
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-montagem-acesso-apartamento",
+      "descricao": "Entrega com montagem em apartamento com escada — deve coletar os dados de acesso (lances/tipo)",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Combinado! Pra acertar a montagem, o acesso é térreo, tem escada ou é por elevador?",
+          "toolArgs": [
+            {
+              "name": "atualizar_ficha",
+              "args": {
+                "campos": {
+                  "cidade_entrega": "Porto Alegre"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "runs": 12
+    },
+    {
+      "id": "jr-parrilla-sob-medida-arquiteto",
+      "descricao": "Arquiteto pede parrilla com medidas específicas — não pode prometer fabricação/medida sem confirmar; encaminha/registra",
+      "signatures": [
+        "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}"
+      ],
+      "samples": [
+        {
+          "sig": "{\"d\":\"respondeu_duvida\",\"s\":\"ok\",\"act\":[],\"a\":[]}",
+          "reply": "Você procura churrasqueira, fogão campeiro ou lareira?",
+          "toolArgs": []
+        }
+      ],
+      "runs": 12
+    }
+  ]
+}

@@ -1,12 +1,26 @@
 // Orientação de ficha + orçamento anexada ao prompt quando quotesEnabled. Informa
 // os campos a coletar e o CATÁLOGO de preços (chaves válidas), e crava o fluxo — o
 // preço só sai da ferramenta gerar_orcamento. Vazio quando não habilitado.
+//
+// Fase 2 do Runtime (lazy catalog): o CATÁLOGO de preços (~1.600 tokens na JR) só é de
+// fato necessário quando o modelo chama gerar_orcamento, mas hoje é injetado em TODO
+// turno. Com AI_LAZY_CATALOG=on, o catálogo sai do prompt — a NOTA DE FRETE (comportamental)
+// e o FLUXO ficam. Isso é seguro porque gerar_orcamento JÁ é auto-suficiente: se o modelo
+// usar uma chave inválida, a própria ferramenta devolve a lista completa de códigos (tools.ts
+// linha ~640) e o modelo corrige. Ou seja, o catálogo se entrega SOB DEMANDA, na hora exata.
+// off (padrão) = comportamento atual byte-a-byte. Vira parte do Vertical Pack depois.
 import { prisma } from "@/lib/prisma";
 import { parseSpec } from "./intake";
-import { describeRules, type PricingRules } from "./pricing";
+import { describeRules, describeFreightNote, type PricingRules } from "./pricing";
+
+export type LazyCatalogMode = "off" | "on";
+export function lazyCatalogMode(): LazyCatalogMode {
+  return (process.env.AI_LAZY_CATALOG || "off").toLowerCase() === "on" ? "on" : "off";
+}
 
 export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolean, intakeSpec: unknown): Promise<string> {
   if (!quotesEnabled) return "";
+  const lazy = lazyCatalogMode() === "on";
   const parts: string[] = ["── ATENDIMENTO COM ORÇAMENTO ──"];
 
   const spec = parseSpec(intakeSpec);
@@ -18,8 +32,20 @@ export async function buildQuoteGuidance(clientId: string, quotesEnabled: boolea
   try {
     const pc = await prisma.pricingConfig.findUnique({ where: { clientId } });
     if (pc) {
-      const cat = describeRules(pc.rules as unknown as PricingRules);
-      if (cat) parts.push(`CATÁLOGO DE PREÇOS (use SOMENTE estas chaves em gerar_orcamento):\n${cat}`);
+      const rules = pc.rules as unknown as PricingRules;
+      if (lazy) {
+        // Catálogo FORA do prompt (economia). Mantém a nota de FRETE (comportamental:
+        // multi-zona → pedir_localizacao) e explica como o modelo obtém os códigos.
+        const freightNote = rules.freight?.length ? describeFreightNote(rules.freight) : "";
+        if (freightNote) parts.push(freightNote);
+        parts.push(
+          "CÓDIGOS DO CATÁLOGO: você NÃO precisa decorá-los. Continue conversando sobre os produtos pelo NOME normalmente. " +
+          "Na hora de orçar, chame gerar_orcamento — se algum código não existir, a própria ferramenta te devolve a LISTA COMPLETA de códigos válidos; use-a e chame de novo. NUNCA invente preço.",
+        );
+      } else {
+        const cat = describeRules(rules);
+        if (cat) parts.push(`CATÁLOGO DE PREÇOS (use SOMENTE estas chaves em gerar_orcamento):\n${cat}`);
+      }
     }
   } catch { /* catálogo é opcional */ }
 
