@@ -1448,6 +1448,28 @@ model AiResponseEvaluation {
   @@index([clientId, promptVariant])
 }
 
+// Camada de Inteligência (Fase 1): avaliação técnica por CONVERSA (não por mensagem).
+// Determinística/observacional — mede se a IA executou o esperado. Idempotente por
+// (contactId, closureAt): reavalia quando a conversa "reabre". Ver docs/rfc-camada-inteligencia.md.
+model ConversationEvaluation {
+  id            String    @id @default(cuid())
+  clientId      String
+  contactId     String
+  closureAt     DateTime  // quando a conversa "fechou" (inatividade/terminal/handoff)
+  windowStart   DateTime?
+  overall       Float
+  confidence    Float
+  method        String    @default("deterministic")
+  rubricVersion String
+  dimensions    Json      // { policy:{score,status,evidence[]}, videoTiming:{...}, ... }
+  turnCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  @@unique([contactId, closureAt])
+  @@index([clientId, createdAt])
+  @@index([clientId, overall])
+}
+
 // Sprint 4: variantes de prompt por cliente (A/B). Overrides opcionais do prompt base.
 model PromptVariant {
   id               String   @id @default(cuid())
