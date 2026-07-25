@@ -6,7 +6,7 @@
 // Observacional: nada é aplicado na IA automaticamente. Ver docs/rfc-camada-inteligencia.md.
 
 import { useEffect, useState, useCallback } from "react";
-import { Brain, Check, X, Clock, Rocket, Loader2, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { Brain, Check, X, Clock, Rocket, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Evidence { contactId?: string | null; excerpt: string }
 interface Reco {
@@ -17,7 +17,6 @@ interface Reco {
 interface Evals { total: number; avgOverall: number | null; dimensions: { dimension: string; avg: number; n: number }[]; worst: { contactId: string; overall: number; turnCount: number }[] }
 
 const COMP_LABEL: Record<string, string> = { catalogo: "Catálogo", playbook: "Playbook", conhecimento: "Conhecimento", politica: "Política", midia: "Mídia", ficha: "Ficha", preco: "Preço" };
-const DIM_LABEL: Record<string, string> = { policy: "Políticas", handoff: "Handoff", missedOpportunity: "Oportunidade", quoteTiming: "Orçamento", discovery: "Descoberta", videoTiming: "Vídeo", conductionQuality: "Condução", dnaAdherence: "DNA de venda", discoveryQuality: "Descoberta (qualit.)" };
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export function PortalCentroEvolucao({ token }: { token: string }) {
@@ -62,23 +61,9 @@ export function PortalCentroEvolucao({ token }: { token: string }) {
 
       {/* Resumo das avaliações */}
       {ev && ev.total > 0 && (
-        <div style={{ ...card, display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
-          <div style={{ textAlign: "center", minWidth: 90 }}>
-            <div style={{ fontSize: 30, fontWeight: 800, color: scoreColor(ev.avgOverall ?? 1), lineHeight: 1 }}>{ev.avgOverall != null ? pct(ev.avgOverall) : "—"}</div>
-            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>qualidade média<br />({ev.total} conversas)</div>
-          </div>
-          <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.6, display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> DIMENSÕES MAIS FRACAS</div>
-            {ev.dimensions.slice(0, 4).map((d) => (
-              <div key={d.dimension} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                <span style={{ width: 130 }}>{DIM_LABEL[d.dimension] ?? d.dimension}</span>
-                <div style={{ flex: 1, height: 7, background: "var(--p-border, #eee)", borderRadius: 999, overflow: "hidden" }}>
-                  <div style={{ width: pct(d.avg), height: "100%", background: scoreColor(d.avg) }} />
-                </div>
-                <span style={{ width: 36, textAlign: "right", fontVariantNumeric: "tabular-nums", color: scoreColor(d.avg), fontWeight: 700 }}>{pct(d.avg)}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: scoreColor(ev.avgOverall ?? 1), lineHeight: 1 }}>{ev.avgOverall != null ? pct(ev.avgOverall) : "—"}</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>qualidade média das conversas avaliadas ({ev.total})</div>
         </div>
       )}
 
