@@ -1,0 +1,26 @@
+name: Inteligência (cron)
+
+# Dispara a Camada de Inteligência: avalia conversas FECHADAS (Fase 1) e gera
+# recomendações dos sinais agregados (Fase 3/4). Determinístico e observacional —
+# não altera o comportamento da IA. O endpoint /api/cron/intelligence decide o que
+# processar (conversas sem avaliação; recomendações por cliente); é idempotente.
+#
+# PRÉ-REQUISITO: secret CRON_SECRET no repositório (Settings → Secrets and variables →
+# Actions) com o mesmo valor da env CRON_SECRET no Railway (já existe para os outros crons).
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # a cada 30 min, 24/7 (não é time-critical)
+  workflow_dispatch: {}       # permite disparar manualmente pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar /api/cron/intelligence
+        run: |
+          curl -fsS -X POST \
+            "https://veloceio-production.up.railway.app/api/cron/intelligence" \
+            -H "authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "content-type: application/json" \
+            --max-time 120
