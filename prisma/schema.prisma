@@ -1470,6 +1470,35 @@ model ConversationEvaluation {
   @@index([clientId, overall])
 }
 
+// Camada de Inteligência (Fase 3): recomendação estruturada com CONTRATO de evidência
+// (§5.6 do RFC). Observacional — vira mudança só com aprovação humana. Dedupe por
+// (clientId, signature): recomendação pendente é atualizada; aprovada/rejeitada não re-sugere.
+model LearningRecommendation {
+  id                String   @id @default(cuid())
+  clientId          String
+  signature         String   // dedupe: tipo + alvo
+  type              String   // dimensao_baixa | objecao_frequente | conhecimento_ausente | ...
+  title             String
+  targetComponent   String   // catalogo | playbook | conhecimento | politica | midia | ficha | preco
+  evidence          Json     // conversas concretas (drill-down)
+  conversationCount Int      @default(0)
+  rate              Float    @default(0)
+  confidence        Float    @default(0)
+  expectedImpact    Json     // { reach, basis }
+  proposedChange    Json     // { summary }
+  status            String   @default("pendente") // pendente | aprovada | rejeitada | adiada | promovida
+  approvedByEmail   String?
+  rejectionReason   String?
+  promotedRef       String?  // ref do que foi criado ao promover (chunk/playbook/...)
+  measuredImpact    Json?    // pós-promoção: previu × entregou
+  windowDays        Int      @default(30)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([clientId, signature])
+  @@index([clientId, status, createdAt])
+}
+
 // Sprint 4: variantes de prompt por cliente (A/B). Overrides opcionais do prompt base.
 model PromptVariant {
   id               String   @id @default(cuid())
