@@ -5,6 +5,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalAprendizado } from "@/components/portal/portal-aprendizado";
+import { PortalCentroEvolucao } from "@/components/portal/portal-centro-evolucao";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export default async function AprendizadoPage({ params }: { params: Promise<{ to
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%);background-repeat:no-repeat;background-position:center top;background-attachment:fixed}`}</style>
+      <PortalCentroEvolucao token={token} />
       <PortalAprendizado token={token} />
     </main>
   );

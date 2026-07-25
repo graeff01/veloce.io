@@ -23,9 +23,10 @@ export interface Recommendation {
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
-const rnd = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
+export const rnd = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
 // Confiança: cresce com o volume (satura ~10 conversas). Nunca 1.0 (é hipótese).
-const conf = (count: number) => clamp01(0.4 + 0.5 * Math.min(1, count / 10)) * 0.95;
+export const confidenceFor = (count: number) => rnd(clamp01(0.4 + 0.5 * Math.min(1, count / 10)) * 0.95);
+const conf = confidenceFor;
 
 // ── Entradas agregadas (o runner monta do banco) ──────────────────────────────
 export interface DimensionStat {

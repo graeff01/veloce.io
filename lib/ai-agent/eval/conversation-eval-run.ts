@@ -6,15 +6,17 @@
 
 import { prismaUnscoped } from "@/lib/prisma";
 import { parseSpec } from "../intake";
-import { scoreConversation, type ConversationView, type EvalTurn } from "./conversation-eval";
+import { scoreConversation, aggregateOverall, type ConversationView, type EvalTurn } from "./conversation-eval";
+import { judgeMode, judgeConversation, JUDGE_SAMPLE } from "./conversation-judge";
+import { shouldSample } from "../evaluation";
 import { Prisma } from "@prisma/client";
 
 const CLOSE_HOURS = Number(process.env.AI_EVAL_CLOSE_HOURS || 6);
 
 interface ToolLog { name?: string; result?: string | null }
 
-// Monta a ConversationView de UM contato a partir dos eventos já persistidos.
-async function buildView(clientId: string, contactId: string): Promise<ConversationView | null> {
+// Monta a ConversationView + a REFERÊNCIA (DNA/objetivo/persona) de UM contato.
+async function buildView(clientId: string, contactId: string): Promise<{ view: ConversationView; reference: string } | null> {
   const [interactions, analyses, profile, convo, cfg] = await Promise.all([
     prismaUnscoped.aiInteraction.findMany({
       where: { clientId, contactId }, orderBy: { createdAt: "asc" },
@@ -23,7 +25,7 @@ async function buildView(clientId: string, contactId: string): Promise<Conversat
     prismaUnscoped.messageAnalysis.findMany({ where: { clientId, contactId }, select: { waMessageId: true, intent: true } }),
     prismaUnscoped.leadProfile.findUnique({ where: { contactId }, select: { data: true } }).catch(() => null),
     prismaUnscoped.waConversation.findUnique({ where: { contactId }, select: { funnelStage: true } }).catch(() => null),
-    prismaUnscoped.aiAgentConfig.findUnique({ where: { clientId }, select: { quotesEnabled: true, presentationVideoUrl: true, intakeSpec: true, vertical: true } }),
+    prismaUnscoped.aiAgentConfig.findUnique({ where: { clientId }, select: { quotesEnabled: true, presentationVideoUrl: true, intakeSpec: true, vertical: true, salesDna: true, salesDnaEnabled: true, goals: true, persona: true } }),
   ]);
   if (!interactions.length) return null;
 
@@ -37,34 +39,47 @@ async function buildView(clientId: string, contactId: string): Promise<Conversat
   }));
 
   const requiredFields = parseSpec(cfg?.intakeSpec).filter((f) => f.required).map((f) => ({ key: f.key, label: f.label }));
-  return {
-    turns,
-    ficha: (profile?.data as Record<string, unknown>) ?? {},
-    requiredFields,
-    funnelStage: convo?.funnelStage ?? null,
-    quotesEnabled: cfg?.quotesEnabled ?? false,
-    hasVideo: !!cfg?.presentationVideoUrl,
-    vertical: cfg?.vertical ?? "servicos",
+  const view: ConversationView = {
+    turns, ficha: (profile?.data as Record<string, unknown>) ?? {}, requiredFields,
+    funnelStage: convo?.funnelStage ?? null, quotesEnabled: cfg?.quotesEnabled ?? false,
+    hasVideo: !!cfg?.presentationVideoUrl, vertical: cfg?.vertical ?? "servicos",
   };
+  const reference = [
+    cfg?.salesDnaEnabled && cfg?.salesDna ? `DNA de venda:\n${cfg.salesDna}` : "",
+    cfg?.goals ? `Objetivo: ${cfg.goals}` : "",
+    cfg?.persona ? `Tom/persona: ${cfg.persona}` : "",
+  ].filter(Boolean).join("\n\n");
+  return { view, reference };
 }
 
 // Avalia UMA conversa e persiste (upsert por contactId+closureAt). Best-effort.
+// Determinístico sempre; juiz LLM só quando AI_EVAL_JUDGE=on + amostrado (custo controlado).
 export async function evaluateConversation(clientId: string, contactId: string, closureAt: Date): Promise<boolean> {
   try {
-    const view = await buildView(clientId, contactId);
-    if (!view) return false;
+    const built = await buildView(clientId, contactId);
+    if (!built) return false;
+    const { view, reference } = built;
     const r = scoreConversation(view);
+    const dimensions: Record<string, unknown> = { ...r.dimensions };
+    let overall = r.overall, confidence = r.confidence;
+    let method: string = r.method;
+
+    // Fase 2 (juiz LLM): dimensões qualitativas, mescladas — recomputa o overall.
+    if (judgeMode() === "on" && view.turns.length >= 2 && shouldSample(JUDGE_SAMPLE)) {
+      const transcript = view.turns.filter((t) => t.inbound || t.outbound).map((t) => `${t.inbound ? `LEAD: ${t.inbound}` : ""}${t.outbound ? `\nIA: ${t.outbound}` : ""}`).join("\n");
+      const j = await judgeConversation({ clientId, transcript, reference });
+      if (j) {
+        Object.assign(dimensions, j.dimensions);
+        overall = aggregateOverall(dimensions as Record<string, { score: number | null }>);
+        confidence = Math.round(((r.confidence + j.confidence) / 2) * 1000) / 1000;
+        method = "hybrid";
+      }
+    }
+
     await prismaUnscoped.conversationEvaluation.upsert({
       where: { contactId_closureAt: { contactId, closureAt } },
-      create: {
-        clientId, contactId, closureAt, overall: r.overall, confidence: r.confidence,
-        method: r.method, rubricVersion: r.rubricVersion, turnCount: view.turns.length,
-        dimensions: r.dimensions as unknown as Prisma.InputJsonValue,
-      },
-      update: {
-        overall: r.overall, confidence: r.confidence, rubricVersion: r.rubricVersion,
-        turnCount: view.turns.length, dimensions: r.dimensions as unknown as Prisma.InputJsonValue,
-      },
+      create: { clientId, contactId, closureAt, overall, confidence, method, rubricVersion: r.rubricVersion, turnCount: view.turns.length, dimensions: dimensions as unknown as Prisma.InputJsonValue },
+      update: { overall, confidence, method, rubricVersion: r.rubricVersion, turnCount: view.turns.length, dimensions: dimensions as unknown as Prisma.InputJsonValue },
     });
     return true;
   } catch {

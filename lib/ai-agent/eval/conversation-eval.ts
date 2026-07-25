@@ -122,12 +122,26 @@ export function scoreHandoff(v: ConversationView): DimensionResult {
   return { score: 0.7, status: "escalou_sem_sinal", evidence: [{ turn: 0, excerpt: "", reason: "escalou sem sinal claro de fechamento" }] };
 }
 
-// Pesos default da rubrica (renormalizados sobre as dimensões APLICÁVEIS). Vertical Pack sobrescreve.
+// Pesos default da rubrica (renormalizados sobre as dimensões APLICÁVEIS). Inclui as
+// dimensões qualitativas do juiz LLM (Fase 2) — só entram quando presentes. Vertical Pack sobrescreve.
 const WEIGHTS: Record<string, number> = {
   policy: 0.25, quoteTiming: 0.2, missedOpportunity: 0.2, discovery: 0.15, handoff: 0.15, videoTiming: 0.05,
+  conductionQuality: 0.15, dnaAdherence: 0.15, discoveryQuality: 0.1,
 };
 
-// Agrega as 6 dimensões numa avaliação da conversa (média ponderada sobre as aplicáveis).
+// overall = média ponderada sobre as dimensões APLICÁVEIS (score != null). Pura/reutilizável
+// (o runner recomputa depois de mesclar as dimensões do juiz LLM).
+export function aggregateOverall(dimensions: Record<string, { score: number | null }>): number {
+  let wsum = 0, acc = 0;
+  for (const [k, d] of Object.entries(dimensions)) {
+    if (d.score == null) continue;
+    const w = WEIGHTS[k] ?? 0.1;
+    wsum += w; acc += w * d.score;
+  }
+  return wsum > 0 ? Math.round(clamp01(acc / wsum) * 1000) / 1000 : 1;
+}
+
+// Agrega as 6 dimensões determinísticas numa avaliação da conversa.
 export function scoreConversation(v: ConversationView): ConversationEvalResult {
   const dimensions: Record<string, DimensionResult> = {
     policy: scorePolicy(v),
@@ -137,14 +151,7 @@ export function scoreConversation(v: ConversationView): ConversationEvalResult {
     missedOpportunity: scoreMissedOpportunity(v),
     handoff: scoreHandoff(v),
   };
-  let wsum = 0, acc = 0;
-  for (const [k, d] of Object.entries(dimensions)) {
-    if (d.score == null) continue;
-    const w = WEIGHTS[k] ?? 0.1;
-    wsum += w; acc += w * d.score;
-  }
-  const overall = wsum > 0 ? clamp01(acc / wsum) : 1;
   // Confiança: determinístico é alto; conversa curta é menos confiável de avaliar.
   const confidence = v.turns.length < 2 ? 0.4 : v.turns.length < 4 ? 0.7 : 0.9;
-  return { overall: Math.round(overall * 1000) / 1000, confidence, dimensions, method: "deterministic", rubricVersion: RUBRIC_VERSION };
+  return { overall: aggregateOverall(dimensions), confidence, dimensions, method: "deterministic", rubricVersion: RUBRIC_VERSION };
 }
