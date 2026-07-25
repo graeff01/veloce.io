@@ -35,6 +35,7 @@ interface RunOpts {
   transcript?: ChatMessage[]; // memória efêmera (apenas no modo test)
   autoMode?: boolean; // auto-resposta de lead sem atendimento: só responde se SOUBER, senão "[SKIP]"
   suppressGreeting?: boolean; // entrando numa conversa em andamento (auto/manual) → NÃO saúda, só responde
+  testFicha?: Record<string, unknown>; // ficha efêmera PERSISTENTE entre turnos (só test) — p/ simulação de replay multi-turno
 }
 
 // Instrução do MODO AUTO: a IA entra só pra não deixar o lead no vácuo quando o atendente
@@ -518,7 +519,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
     intakeSpec: cfg?.intakeSpec,
     quoteReview: cfg?.quoteReviewEnabled ?? false, // modo revisão: retém o PDF até um vendedor aprovar
-    testFicha: mode === "test" ? {} : undefined, // ficha efêmera do Console (acumula entre tools da run)
+    testFicha: mode === "test" ? ((opts.testFicha ?? {}) as ToolCtx["testFicha"]) : undefined, // ficha efêmera (persiste entre turnos na simulação)
     inboundText: input.inboundText, isFirstTurn: isFirst, // trava anti-reenvio de foto (enviar_foto)
     // trava anti-reenvio do vídeo: detecta pelo histórico (vale no teste, onde não há waMessage)
     videoAlreadySent: (opts.transcript ?? []).some((m) => m.role === "assistant" && typeof m.content === "string" && /v[ií]deo bem curtinho|te mandei um v[ií]deo|v[ií]deo rapidinho/i.test(m.content)),
