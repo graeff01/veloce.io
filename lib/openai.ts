@@ -44,6 +44,7 @@ export async function openaiChat(opts: {
   tools?: ToolDef[];
   temperature?: number;
   maxTokens?: number;
+  seed?: number; // reprodutibilidade (best-effort da OpenAI) — usado só na simulação
   meta?: LLMMeta;
 }): Promise<ChatResult> {
   const key = process.env.OPENAI_API_KEY;
@@ -63,6 +64,7 @@ export async function openaiChat(opts: {
         model, messages: opts.messages,
         ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
         ...(cacheKey ? { prompt_cache_key: cacheKey } : {}),
+        ...(opts.seed != null ? { seed: opts.seed } : {}),
         temperature: opts.temperature ?? 0.3,
         max_tokens: opts.maxTokens ?? 600,
       }),

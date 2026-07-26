@@ -21,6 +21,7 @@ import type { ChatMessage } from "@/lib/openai";
 import { groupLeadTurns } from "@/lib/ai-agent/eval/replay";
 import { scoreConversation, type EvalTurn, type ConversationView } from "@/lib/ai-agent/eval/conversation-eval";
 import { parseSpec } from "@/lib/ai-agent/intake";
+import { summarizeConversation, REFRESH_EVERY } from "@/lib/ai-agent/memory";
 
 function arg(name: string): string | undefined { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : undefined; }
 
@@ -46,13 +47,21 @@ async function main() {
 
   for (const ct of contacts) {
     if (processed >= limit) break;
-    const msgs = await prismaUnscoped.waMessage.findMany({ where: { contactId: ct.id, text: { not: null } }, orderBy: { timestamp: "asc" }, select: { direction: true, text: true } });
+    const rawMsgs = await prismaUnscoped.waMessage.findMany({ where: { contactId: ct.id }, orderBy: { timestamp: "asc" }, select: { direction: true, text: true, type: true } });
+    // Fidelidade: uma localização (pin GPS) chega ao agente como TEXTO em produção (o webhook
+    // geocodifica e injeta um placeholder). Sem isso, a IA fica presa pedindo localização.
+    const msgs = rawMsgs.map((m) => ({
+      direction: m.direction,
+      text: m.text ?? (m.type === "location" ? "[O cliente compartilhou a localização — se precisar, peça o bairro/cidade por texto.]" : null),
+    }));
     const turnsText = groupLeadTurns(msgs);
     if (turnsText.length < minMsgs) continue;
     processed++;
 
     const transcript: ChatMessage[] = [];
     const testFicha: Record<string, unknown> = {}; // persiste a ficha entre turnos
+    let testMemory = "";        // resumo rolante efêmero (reproduz agentMemory de produção)
+    let memoryUpto = 0;         // nº de turnos já sumarizados
     const evalTurns: EvalTurn[] = [];
     const log: unknown[] = [];
     let errors = 0, blocks = 0;
@@ -64,7 +73,7 @@ async function main() {
       try {
         const out = await runAgent(
           { clientId, connectionId: "sim", contact: { id: `sim-${ct.id}`, name: ct.name, waId: "0000000000" }, inboundText: turnText },
-          { mode: "test", transcript, testFicha },
+          { mode: "test", transcript, testFicha, testMemory },
         );
         reply = out.reply ?? ""; decision = out.decision; status = out.status;
         for (const t of out.toolCalls ?? []) { tools.push(t.name); toolsAll.add(t.name); }
@@ -75,6 +84,15 @@ async function main() {
       transcript.push({ role: "user", content: turnText }, { role: "assistant", content: reply });
       evalTurns.push({ inbound: turnText, outbound: reply, decision, status, guardrails: [], tools: tools.map((name) => ({ name })), intent: null });
       log.push({ lead: turnText, ia: reply, decision, status, tools, artifacts });
+
+      // Memória rolante: PÓS-turno e a cada REFRESH_EVERY turnos (idêntico a produção). Sem isso,
+      // conversas longas perdem contexto e a IA "reinicia" a abertura.
+      const doneTurns = transcript.filter((m) => m.role === "assistant").length;
+      if (doneTurns - memoryUpto >= REFRESH_EVERY) {
+        const convoText = transcript.slice(-24).map((m) => `${m.role === "user" ? "Lead" : "Loja"}: ${typeof m.content === "string" ? m.content : ""}`).join("\n");
+        testMemory = await summarizeConversation(testMemory, convoText, undefined, clientId);
+        memoryUpto = doneTurns;
+      }
     }
 
     const view: ConversationView = { turns: evalTurns, ficha: testFicha, requiredFields, funnelStage: null, quotesEnabled: cfg?.quotesEnabled ?? false, hasVideo: !!cfg?.presentationVideoUrl, vertical: cfg?.vertical ?? "servicos" };

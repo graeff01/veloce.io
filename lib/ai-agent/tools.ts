@@ -28,6 +28,14 @@ export interface ToolCtx {
   contactName: string | null;
   contactWaId: string;
   mode: "live" | "test"; // test: tools que escrevem apenas simulam (não gravam)
+  // #2 Runtime: reuso/memoização por-turno de dados IMUTÁVEIS no turno. Retornam o MESMO
+  // dado que os reads diretos → comportamento intocado (prova por construção). NÃO cobre
+  // leadProfile/quote (mutáveis por atualizar_ficha/gerar_orcamento — memoizar daria stale).
+  getConnection: () => Promise<{ phoneNumberId: string; accessToken: string } | null>; // 8×→1× por turno
+  // #2b: reusa o aiAgentConfig JÁ carregado no orchestrator (0 query nova; elimina 3 re-loads).
+  agentConfig?: { presentationVideoUrl: string | null; presentationVideoIntro: string | null; catalogPdfUrl: string | null; optionsImageUrl: string | null } | null;
+  // #2c: pricingConfig memoizado (imutável no turno) — 4×→1×.
+  getPricing: () => Promise<{ rules: unknown; currency: string } | null>;
   intakeSpec?: unknown; // ficha configurável (AiAgentConfig.intakeSpec) p/ orçamento
   quoteReview?: boolean; // modo revisão: o PDF NÃO vai ao lead — fica retido p/ um vendedor aprovar na fila
   // Ficha EFÊMERA do modo teste (Console): atualizar_ficha não grava no banco, então
@@ -36,6 +44,10 @@ export interface ToolCtx {
   inboundText?: string;   // última mensagem do lead — usado pela trava anti-reenvio de foto
   isFirstTurn?: boolean;  // 1ª mensagem da conversa (abertura) — libera a foto de entrada
   videoAlreadySent?: boolean; // já mandou o vídeo de apresentação nesta conversa (trava anti-reenvio, vale no teste)
+  // FIDELIDADE do modo teste (simulação de replay): substituem as leituras de banco que o
+  // gerar_orcamento faz em produção — sem eles, o bairro/zona por texto não chega ao motor.
+  recentInboundBlob?: string; // test: últimas mensagens do lead (resolução de zona por bairro)
+  zoneAsksPrior?: number;     // test: nº de vezes que a IA já pediu zona/bairro/localização (trava anti-loop)
 }
 
 const brl = (v: number, currency = "BRL") => v.toLocaleString("pt-BR", { style: "currency", currency });
@@ -444,7 +456,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         artifacts: toSend.map((u) => ({ kind: "image" as const, url: u, caption: item!.title })),
       };
 
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível para enviar a foto." };
       let okCount = 0;
       for (const link of toSend) {
@@ -466,7 +478,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     // ── Vídeo de apresentação (1º contato) ─────────────────────────────────────
     case "enviar_video": {
-      const vcfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { presentationVideoUrl: true, presentationVideoIntro: true } });
+      const vcfg = ctx.agentConfig; // #2b: reusa o cfg já carregado (era um re-load)
       const url = vcfg?.presentationVideoUrl?.trim();
       if (!url) return { result: "Sem vídeo de apresentação configurado — siga a conversa normalmente." };
       // Texto de anúncio ENVIADO ANTES do vídeo (fica natural: "vou te enviar um vídeo..."
@@ -494,7 +506,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // não reenvia (independe do que a IA decida).
       const jaEnviou = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "video", aiGenerated: true }, select: { id: true } });
       if (jaEnviou) return { result: "O vídeo de apresentação JÁ foi enviado a este cliente — NÃO reenvie. Siga a conversa normalmente." };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível para enviar o vídeo." };
       // 1) Anúncio (texto) primeiro — pra o cliente saber que vem um vídeo.
       const introSent = await sendWhatsAppText(conn, ctx.contactWaId, intro);
@@ -516,10 +528,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // Churrasqueiras: PDF em AiAgentConfig.catalogPdfUrl. Lareiras: PricingConfig.rules.lareirasPdfUrl.
       let url: string | undefined;
       if (categoria === "lareira") {
-        const pc = await prisma.pricingConfig.findFirst({ where: { clientId: ctx.clientId }, select: { rules: true } });
+        const pc = await ctx.getPricing(); // #2c: pricingConfig memoizado
         url = ((pc?.rules as { lareirasPdfUrl?: string } | null)?.lareirasPdfUrl ?? "").trim() || undefined;
       } else {
-        const ccfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { catalogPdfUrl: true } });
+        const ccfg = ctx.agentConfig; // #2b: reusa o cfg já carregado
         url = ccfg?.catalogPdfUrl?.trim() || undefined;
       }
       const nome = categoria === "lareira" ? "lareiras" : "churrasqueiras";
@@ -532,7 +544,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       }
       const cap = `Nosso catálogo de ${nome} 🔥`;
       if (ctx.mode === "test") return { result: `Catálogo de ${nome} (PDF) enviado ao lead. Comente CURTINHO (ex.: 'te mandei nosso catálogo 😊') e pergunte se algum modelo chamou a atenção.`, artifacts: [{ kind: "pdf", url, caption: cap }] };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível para enviar o catálogo." };
       const sent = await sendWhatsAppDocumentByUrl(conn, ctx.contactWaId, { url, filename: `Catalogo ${nome} JR Churrasqueiras.pdf`, caption: cap });
       if (!sent.ok) return { result: `Não consegui enviar o catálogo (${sent.error}); apresente os modelos por texto e ofereça a foto de cada um.` };
@@ -550,7 +562,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         result: "Pedido de localização enviado ao lead (no WhatsApp aparece o botão 'Enviar localização'). Aguarde ele compartilhar a localização (ou mandar o endereço por texto) e então gere o orçamento — não escolha a zona por conta própria.",
         artifacts: [{ kind: "location_request", caption: body }],
       };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível — peça a cidade/bairro por texto." };
       const sent = await sendWhatsAppLocationRequest(conn, ctx.contactWaId, body);
       if (!sent.ok) return { result: `Não consegui enviar o pedido de localização (${sent.error}); peça o bairro/endereço por texto.` };
@@ -568,21 +580,21 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // Reage à última mensagem RECEBIDA do lead.
       const lastIn = await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { waMessageId: true } });
       if (!lastIn?.waMessageId) return { result: "Não há mensagem recente do lead para reagir — siga normalmente." };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível — siga a conversa normalmente." };
       await sendWhatsAppReaction(conn, ctx.contactWaId, lastIn.waMessageId, emoji).catch(() => {});
       return { result: `Reagiu com ${emoji}. NÃO comente a reação nem repita o emoji no texto — siga a conversa com naturalidade (ou nem responda, se já estava tudo dito).` };
     }
 
     case "enviar_localizacao_loja": {
-      const pcL = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId }, select: { rules: true } });
+      const pcL = await ctx.getPricing(); // #2c: pricingConfig memoizado
       const company = (pcL?.rules as { company?: { address?: string; city?: string } } | null)?.company;
       const addr = [company?.address, company?.city].filter((s): s is string => !!s && s.trim().length > 0).join(", ");
       if (!addr) return { result: "Endereço da loja não cadastrado — não invente; se o lead perguntar, diga que confirma com o vendedor." };
       if (ctx.mode === "test") return { result: `(enviaria o PIN da loja no mapa: ${addr}). Comente curtinho que mandou a localização.`, artifacts: [{ kind: "location_request", caption: addr }] };
       const geo = await geocodeAddress(addr);
       if (!geo) return { result: `Não consegui montar o mapa agora — passe o endereço por texto ao lead: ${addr}` };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: `Conexão indisponível — passe o endereço por texto: ${addr}` };
       const cli = await prisma.client.findUnique({ where: { id: ctx.clientId }, select: { name: true } });
       const sent = await sendWhatsAppLocation(conn, ctx.contactWaId, { latitude: geo.lat, longitude: geo.lng, name: cli?.name ?? "Loja", address: addr });
@@ -595,11 +607,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     }
 
     case "enviar_opcionais": {
-      const ocfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: ctx.clientId }, select: { optionsImageUrl: true } });
+      const ocfg = ctx.agentConfig; // #2b: reusa o cfg já carregado
       const url = ocfg?.optionsImageUrl?.trim();
       if (!url) return { result: "Sem imagem de opcionais configurada — descreva os opcionais por texto." };
       if (ctx.mode === "test") return { result: "Imagem dos opcionais enviada ao lead. Comente CURTINHO (ex: 'te mandei a imagem com os acessórios 😊') e siga.", artifacts: [{ kind: "image", url, caption: "Opcionais" }] };
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão indisponível para enviar a imagem." };
       const sent = await sendWhatsAppImage(conn, ctx.contactWaId, url, "Acessórios");
       if (!sent.ok) return { result: `Não consegui enviar a imagem (${sent.error}); descreva os opcionais por texto.` };
@@ -641,7 +653,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     // ── Orçamento: preço determinístico (nunca inventado) ──────────────────────
     case "gerar_orcamento": {
-      const pc = await prisma.pricingConfig.findUnique({ where: { clientId: ctx.clientId } });
+      const pc = await ctx.getPricing(); // #2c: pricingConfig memoizado (imutável no turno)
       if (!pc) return { result: "Sem tabela de preço configurada. Não invente valores: encaminhe para um vendedor." };
       const rules = pc.rules as unknown as PricingRules;
 
@@ -705,6 +717,8 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
             orderBy: { timestamp: "desc" }, take: 8, select: { text: true },
           });
           inboundBlob = recent.map((m) => (m.text || "").trim()).filter((t) => t && !t.startsWith("[")).join(" ");
+        } else {
+          inboundBlob = ctx.recentInboundBlob ?? ""; // simulação: vem do transcript (não do banco)
         }
         const addressBlob = `${fichaBlob} ${inboundBlob}`.trim();
         const fr = resolveFreight(rules, addressBlob);
@@ -717,20 +731,20 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           // TRAVA ANTI-LOOP: se já pedimos a zona/bairro 2x e ainda não casou (bairro fora do
           // cadastro), PARA de repetir → escala pro vendedor. Conta os pedidos recentes de
           // localização/bairro. Sem isso, bairro não-cadastrado → loop infinito de "qual zona?".
-          if (ctx.mode !== "test") {
-            const asks = await prisma.waMessage.count({
-              where: {
-                contactId: ctx.contactId, direction: "out", aiGenerated: true,
-                timestamp: { gte: new Date(Date.now() - 6 * 3600_000) },
-                OR: [
-                  { text: "[pedido de localização]" },
-                  { text: { contains: "bairro", mode: "insensitive" } },
-                  { text: { contains: "localiza", mode: "insensitive" } },
-                ],
-              },
-            });
-            if (asks >= 2) return { result: `Você JÁ pediu a zona/bairro ${asks} vezes e não deu pra identificar a zona de ${fr.city} (o bairro deve estar fora do cadastro). PARE de pedir de novo — NÃO repita a pergunta. Use escalar_humano AGORA e diga ao cliente, de forma natural, que um vendedor vai confirmar o frete certinho da região dele.` };
-          }
+          const asks = ctx.mode !== "test"
+            ? await prisma.waMessage.count({
+                where: {
+                  contactId: ctx.contactId, direction: "out", aiGenerated: true,
+                  timestamp: { gte: new Date(Date.now() - 6 * 3600_000) },
+                  OR: [
+                    { text: "[pedido de localização]" },
+                    { text: { contains: "bairro", mode: "insensitive" } },
+                    { text: { contains: "localiza", mode: "insensitive" } },
+                  ],
+                },
+              })
+            : (ctx.zoneAsksPrior ?? 0); // simulação: contado no transcript (não no banco)
+          if (asks >= 2) return { result: `Você JÁ pediu a zona/bairro ${asks} vezes e não deu pra identificar a zona de ${fr.city} (o bairro deve estar fora do cadastro). PARE de pedir de novo — NÃO repita a pergunta. Use escalar_humano AGORA e diga ao cliente, de forma natural, que um vendedor vai confirmar o frete certinho da região dele.` };
           const opts = fr.options.map((o) => `${o.zone || o.region}: ${brl(o.amount, pc.currency)}${o.assembly === "required" ? " (com montagem obrigatória)" : ""}`).join("; ");
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
         }
@@ -814,7 +828,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           decision: "orcou",
         };
       }
-      const conn = await prisma.waConnection.findUnique({ where: { id: ctx.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+      const conn = await ctx.getConnection();
       if (!conn) return { result: "Conexão de WhatsApp indisponível para envio." };
       const fichaIntake = quote.intake as IntakeData | null;
       const fichaCidade = fichaIntake?.cidade_entrega;

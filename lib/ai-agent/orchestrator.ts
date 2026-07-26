@@ -36,6 +36,7 @@ interface RunOpts {
   autoMode?: boolean; // auto-resposta de lead sem atendimento: só responde se SOUBER, senão "[SKIP]"
   suppressGreeting?: boolean; // entrando numa conversa em andamento (auto/manual) → NÃO saúda, só responde
   testFicha?: Record<string, unknown>; // ficha efêmera PERSISTENTE entre turnos (só test) — p/ simulação de replay multi-turno
+  testMemory?: string; // resumo rolante efêmero (só test) — reproduz a memória de longo prazo (agentMemory) que produção tem em conversas longas
 }
 
 // Instrução do MODO AUTO: a IA entra só pra não deixar o lead no vácuo quando o atendente
@@ -91,7 +92,7 @@ const buildDisclosure = (store: string, name?: string | null) =>
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; tools: ToolDef[]; temperature: number; meta?: { clientId?: string; pipeline?: "chat"; tenantKey?: string } }): Promise<ChatResult> {
+async function chatWithRetry(opts: { model: string; messages: ChatMessage[]; tools: ToolDef[]; temperature: number; seed?: number; meta?: { clientId?: string; pipeline?: "chat"; tenantKey?: string } }): Promise<ChatResult> {
   let lastErr: unknown;
   for (let a = 0; a < 3; a++) {
     try { return await openaiChat(opts); }
@@ -458,6 +459,9 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     priorMessages = budgetedWindow(mapped, RECENT_TOKEN_BUDGET);
   } else {
     priorMessages = budgetedWindow(opts.transcript ?? [], RECENT_TOKEN_BUDGET);
+    // Reproduz a memória de longo prazo que produção tem (agentMemory): sem ela, conversas
+    // longas em test perdem o contexto podado pela janela e a IA "reinicia" a abertura.
+    memory = opts.testMemory ?? "";
   }
   stages.push({ name: "context", ms: Date.now() - stageStart });
   stageStart = Date.now();
@@ -514,8 +518,28 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     }
   }
 
+  // #2 eficiência de Runtime: memoização POR-TURNO de dados IMUTÁVEIS no turno. A conexão
+  // (phoneNumberId/accessToken) era relida do banco até 8× por turno (uma por tool de envio).
+  // Imutável dentro do turno → lê 1× e reusa. Dado idêntico → comportamento idêntico (prova
+  // por construção). NÃO memoizar leadProfile/quote (mutáveis por atualizar_ficha/gerar_orcamento).
+  let _connCache: { phoneNumberId: string; accessToken: string } | null | undefined;
+  const getConnection = async () => {
+    if (_connCache === undefined) {
+      _connCache = await prisma.waConnection.findUnique({ where: { id: input.connectionId }, select: { phoneNumberId: true, accessToken: true } });
+    }
+    return _connCache;
+  };
+  // #2c: pricingConfig (regras de preço/frete) era relido até 4× por turno. Imutável no turno.
+  let _pricingCache: { rules: unknown; currency: string } | null | undefined;
+  const getPricing = async () => {
+    if (_pricingCache === undefined) {
+      _pricingCache = await prisma.pricingConfig.findUnique({ where: { clientId: input.clientId } });
+    }
+    return _pricingCache;
+  };
+
   const ctx: ToolCtx = {
-    clientId: input.clientId, connectionId: input.connectionId,
+    clientId: input.clientId, connectionId: input.connectionId, getConnection, getPricing, agentConfig: cfg,
     contactId: input.contact.id, contactName: input.contact.name, contactWaId: input.contact.waId, mode,
     intakeSpec: cfg?.intakeSpec,
     quoteReview: cfg?.quoteReviewEnabled ?? false, // modo revisão: retém o PDF até um vendedor aprovar
@@ -523,6 +547,15 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     inboundText: input.inboundText, isFirstTurn: isFirst, // trava anti-reenvio de foto (enviar_foto)
     // trava anti-reenvio do vídeo: detecta pelo histórico (vale no teste, onde não há waMessage)
     videoAlreadySent: (opts.transcript ?? []).some((m) => m.role === "assistant" && typeof m.content === "string" && /v[ií]deo bem curtinho|te mandei um v[ií]deo|v[ií]deo rapidinho/i.test(m.content)),
+    // Fidelidade da simulação: reproduz as leituras de banco do gerar_orcamento (bairro por texto
+    // → resolução de zona; contagem de pedidos → trava anti-loop). Só no test; live usa o banco.
+    recentInboundBlob: mode === "test"
+      ? [...(opts.transcript ?? []).filter((m) => m.role === "user").slice(-7).map((m) => (typeof m.content === "string" ? m.content : "")), input.inboundText]
+          .map((t) => t.trim()).filter((t) => t && !t.startsWith("[")).join(" ")
+      : undefined,
+    zoneAsksPrior: mode === "test"
+      ? (opts.transcript ?? []).filter((m) => m.role === "assistant" && typeof m.content === "string" && /bairro|localiza/i.test(m.content as string)).length
+      : undefined,
   };
 
   let decision = "respondeu_duvida";
@@ -535,7 +568,10 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   try {
     for (let i = 0; i < 5; i++) {
-      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg), temperature: chatTemp, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
+      // seed: reprodutibilidade só na SIMULAÇÃO (mode test) — derruba o ruído do modelo p/
+      // a validação de equivalência. Produção NUNCA passa seed (comportamento intocado).
+      const seed = mode === "test" ? Number(process.env.AI_CHAT_SEED ?? 7) : undefined;
+      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg), temperature: chatTemp, seed, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
