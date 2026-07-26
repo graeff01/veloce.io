@@ -24,7 +24,7 @@ export function budgetedWindow(msgs: ChatMessage[], tokenBudget: number): ChatMe
   return out.reverse();
 }
 
-const REFRESH_EVERY = Number(process.env.AI_MEMORY_REFRESH_EVERY || 6);
+export const REFRESH_EVERY = Number(process.env.AI_MEMORY_REFRESH_EVERY || 6);
 const MEMORY_MODEL = process.env.AI_MEMORY_MODEL || "gpt-4o-mini";
 
 const SUMMARY_SYSTEM =
@@ -34,6 +34,22 @@ const SUMMARY_SYSTEM =
   `financiamento (entrada/prazo), urgência, objeções, quem decide, preferências e próximo passo.\n` +
   `NÃO invente. Mantenha o que ainda é verdadeiro, atualize o que mudou, remova redundância.\n` +
   `Responda APENAS o resumo atualizado, em tópicos curtos (máx ~120 palavras).`;
+
+// Núcleo PURO do resumo rolante: dado o resumo atual + o texto da conversa recente, produz o
+// resumo atualizado (1 chamada de modelo). Sem I/O de banco — reusado pelo worker (live) e pela
+// simulação por replay (test), que precisa da MESMA memória para reproduzir produção fielmente.
+export async function summarizeConversation(currentSummary: string, convoText: string, model = MEMORY_MODEL, clientId?: string): Promise<string> {
+  if (!convoText.trim()) return currentSummary;
+  const user = `RESUMO ATUAL:\n${currentSummary || "(vazio)"}\n\nCONVERSA RECENTE:\n${convoText}`;
+  try {
+    const { message } = await openaiChat({
+      model, temperature: 0.2, maxTokens: 220,
+      messages: [{ role: "system", content: SUMMARY_SYSTEM }, { role: "user", content: user }],
+      meta: { clientId, pipeline: "memory", tenantKey: clientId },
+    });
+    return (message.content || "").trim() || currentSummary;
+  } catch { return currentSummary; } // memória é best-effort; nunca quebra o atendimento
+}
 
 // Atualiza a memória rolante da conversa. Chamada PÓS-ENVIO (fora do caminho crítico do
 // lead) e só quando acumulou turnos suficientes — controla custo e latência.
@@ -55,17 +71,8 @@ export async function updateRollingMemory(contactId: string, clientId?: string, 
     .map((m) => `${m.direction === "in" ? "Lead" : "Loja"}: ${m.text}`).join("\n");
   if (!convoText) return;
 
-  const user = `RESUMO ATUAL:\n${convo.agentMemory || "(vazio)"}\n\nCONVERSA RECENTE:\n${convoText}`;
-  let summary = "";
-  try {
-    const { message } = await openaiChat({
-      model, temperature: 0.2, maxTokens: 220,
-      messages: [{ role: "system", content: SUMMARY_SYSTEM }, { role: "user", content: user }],
-      meta: { clientId, pipeline: "memory", tenantKey: clientId },
-    });
-    summary = (message.content || "").trim();
-  } catch { return; } // memória é best-effort; nunca quebra o atendimento
-  if (!summary) return;
+  const summary = await summarizeConversation(convo.agentMemory || "", convoText, model, clientId);
+  if (!summary || summary === (convo.agentMemory || "")) return;
 
   await prismaUnscoped.waConversation.update({
     where: { contactId },

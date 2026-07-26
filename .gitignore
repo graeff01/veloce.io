@@ -47,3 +47,6 @@ next-env.d.ts
 public/catalogo/*.pdf
 !public/catalogo/catalogo-jr.pdf
 !public/catalogo/lareiras-jr.pdf
+# saída das simulações de replay (offline; nunca versionar)
+sim-jr/
+sim-*/
