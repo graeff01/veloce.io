@@ -37,6 +37,28 @@ function lexicalOverlap(q: Set<string>, text: string): number {
 
 interface Cand { id: string; title: string | null; content: string; emb: number[]; cos: number; rel: number }
 
+// #3 eficiência de Runtime: cache em memória dos chunks por cliente. Antes, todo turno fazia
+// findMany(take:300) com os embeddings. Os chunks só mudam quando o conhecimento é editado
+// (raro, nunca no meio de uma conversa) → dentro do TTL o conjunto é IDÊNTICO, logo o RAG e a
+// resposta são idênticos (prova por construção). Chaveado por clientId (single-tenant seguro).
+type ChunkRow = { id: string; title: string | null; content: string; embedding: number[] };
+const CHUNK_TTL_MS = Number(process.env.AI_KNOWLEDGE_CACHE_TTL_MS ?? 60_000);
+const chunkCache = new Map<string, { rows: ChunkRow[]; at: number }>();
+
+// Invalidação explícita: chamar quando o conhecimento do cliente for editado (opcional — o
+// TTL curto já garante frescor; a invalidação só torna a atualização instantânea).
+export function invalidateKnowledgeCache(clientId?: string): void {
+  if (clientId) chunkCache.delete(clientId); else chunkCache.clear();
+}
+
+async function loadChunks(clientId: string): Promise<ChunkRow[]> {
+  const hit = chunkCache.get(clientId);
+  if (hit && Date.now() - hit.at < CHUNK_TTL_MS) return hit.rows;
+  const rows = await prisma.knowledgeChunk.findMany({ where: { clientId }, take: 300 });
+  chunkCache.set(clientId, { rows, at: Date.now() });
+  return rows;
+}
+
 export async function retrieveKnowledge(
   clientId: string,
   query: string,
@@ -45,7 +67,7 @@ export async function retrieveKnowledge(
   const poolSize = opts?.pool ?? POOL;
   const finalN = opts?.final ?? FINAL;
 
-  const rows = await prisma.knowledgeChunk.findMany({ where: { clientId }, take: 300 });
+  const rows = await loadChunks(clientId); // #3: cache por-cliente (TTL) em vez de reler todo turno
   if (!rows.length) return { chunks: [], used: [] };
 
   const [q] = await embed([query], { clientId, pipeline: "embedding", tenantKey: clientId });
