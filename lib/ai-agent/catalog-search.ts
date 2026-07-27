@@ -26,6 +26,17 @@ export function catalogTokens(termo: string): string[] {
 
 const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// Casa um token do termo no título (já normalizado). Além do substring exato, cobre o
+// DIMINUTIVO em português — "campeiro" casa "Campeirinho": pega o radical do token (sem a
+// vogal final) e aceita radical + "inh" (inho/inha/...). É ESTREITO de propósito (radical ≥ 4
+// e exige a terminação -inh): NÃO é match por prefixo solto, então não afeta prime/gourmet/
+// forno/etc. (provado por construção em scripts de auditoria — só a família "campeiro" muda).
+export function tokenInTitle(normTitle: string, token: string): boolean {
+  if (normTitle.includes(token)) return true;
+  const stem = token.replace(/[aeiou]$/, "");
+  return stem.length >= 4 && normTitle.includes(stem + "inh");
+}
+
 // Cor pedida no termo → radical p/ casar com o atributo "cor" do item (preto/preta→"pret").
 const COLOR_STEMS: Record<string, string> = {
   preto: "pret", preta: "pret", branco: "branc", branca: "branc", prata: "prata",
@@ -75,7 +86,7 @@ export async function searchCatalog(clientId: string, termo: string) {
   // acessório errado). Normalizamos os dois lados aqui. Catálogo é pequeno (filtra em memória).
   const ntokens = tokens.map(norm);
   const allItems = await prisma.catalogItem.findMany({ where: base, take: 500 });
-  const exact = allItems.filter((it) => { const nt = norm(it.title ?? ""); return ntokens.every((t) => nt.includes(t)); });
+  const exact = allItems.filter((it) => { const nt = norm(it.title ?? ""); return ntokens.every((t) => tokenInTitle(nt, t)); });
   if (exact.length > 0) {
     const wc = (s: string) => (s || "").trim().split(/\s+/).length;
     // Produto PRINCIPAL primeiro: quando um termo ambíguo casa uma churrasqueira E um
