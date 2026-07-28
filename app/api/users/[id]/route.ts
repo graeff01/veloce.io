@@ -8,9 +8,11 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   password: z.string().min(6).optional().or(z.literal("")),
-  role: z.enum(["ADMIN", "OPERATIONAL", "DESIGNER"]).optional(),
+  role: z.enum(["ADMIN", "OPERATIONAL", "DESIGNER", "MANAGER"]).optional(),
   operationalRole: z.string().optional(),
   active: z.boolean().optional(),
+  // Carteira do gestor. Quando enviado, substitui a lista inteira (set).
+  managedClientIds: z.array(z.string()).optional(),
 });
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +36,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const hashedPassword = parsed.data.password ? await bcrypt.hash(parsed.data.password, 12) : undefined;
 
+  // Carteira do gestor: se o papel final não for MANAGER, zera; se for e vier a
+  // lista, substitui pela nova. `set` troca o vínculo inteiro de uma vez.
+  const finalRole = parsed.data.role ?? user.role;
+  let managedClients: { set: { id: string }[] } | undefined;
+  if (finalRole !== "MANAGER") {
+    managedClients = { set: [] };
+  } else if (parsed.data.managedClientIds !== undefined) {
+    managedClients = { set: parsed.data.managedClientIds.map((cid) => ({ id: cid })) };
+  }
+
   const updated = await prisma.user.update({
     where: { id },
     data: {
@@ -43,8 +55,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...(parsed.data.role && { role: parsed.data.role }),
       ...(parsed.data.operationalRole !== undefined && { operationalRole: parsed.data.operationalRole || null }),
       ...(parsed.data.active !== undefined && { active: parsed.data.active }),
+      ...(managedClients && { managedClients }),
     },
-    select: { id: true, name: true, email: true, role: true, operationalRole: true, active: true, createdAt: true },
+    select: {
+      id: true, name: true, email: true, role: true, operationalRole: true, active: true, createdAt: true,
+      managedClients: { select: { id: true } },
+    },
   });
 
   await logAction(session!.user.id, "UPDATE_USER", undefined, undefined, {
@@ -53,7 +69,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     passwordChanged: Boolean(hashedPassword),
   });
 
-  return NextResponse.json(updated);
+  const { managedClients: mc, ...rest } = updated;
+  return NextResponse.json({ ...rest, managedClientIds: mc.map((c) => c.id) });
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 import { fmtDuration } from "@/lib/wa-metrics";
@@ -21,7 +21,7 @@ const COLD_HOURS = 24; // sem atividade há mais de 24h = lead frio (oportunidad
 // GET /api/clients/[id]/whatsapp/attendance-report?year=&month=  → PDF de diagnóstico
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

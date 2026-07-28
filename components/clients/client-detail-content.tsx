@@ -170,6 +170,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
   }, []);
 
   const isAdmin    = session?.user.role === "ADMIN";
+  const isManager  = session?.user.role === "MANAGER"; // gestor: só tráfego + WhatsApp (read-only)
   const currentPlan = client?.clientPlans?.[0];
 
   if (loading) return (
@@ -205,11 +206,16 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
     { key: "relatorios", label: "Relatórios", icon: <FileText size={13} /> },
     { key: "perfil",    label: "Perfil",    icon: <User size={13} /> },
   ];
-  const tabs = client.modules
+  // O gestor (MANAGER) só vê tráfego (Anúncios/Google) + WhatsApp — e apenas
+  // dos módulos que o cliente realmente roda. As demais abas ficam fora.
+  const MANAGER_TABS: Tab[] = ["leads", "anuncios", "google"];
+  const tabs = isManager
+    ? allTabs.filter((t) => MANAGER_TABS.includes(t.key) && (!client.modules || client.modules.includes(t.key)))
+    : client.modules
     ? allTabs.filter((t) => CORE_TABS.includes(t.key) || client.modules!.includes(t.key))
     : allTabs;
-  // Se a aba ativa não está visível (módulo desligado / deep-link), cai na Operação.
-  const activeTab: Tab = tabs.some((t) => t.key === tab) ? tab : "operacao";
+  // Se a aba ativa não está visível (módulo desligado / deep-link), cai na 1ª disponível.
+  const activeTab: Tab = tabs.some((t) => t.key === tab) ? tab : (tabs[0]?.key ?? "operacao");
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
@@ -312,7 +318,7 @@ export function ClientDetailContent({ clientId }: { clientId: string }) {
       )}
 
       {activeTab === "leads" && (
-        <WhatsAppTab clientId={clientId} />
+        <WhatsAppTab clientId={clientId} readOnly={isManager} />
       )}
 
       {activeTab === "anuncios" && (

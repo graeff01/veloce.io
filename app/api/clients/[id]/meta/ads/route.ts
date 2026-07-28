@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 
 // GET /api/clients/[id]/meta/ads?year=&month=
@@ -7,7 +7,7 @@ import { computeMetaAdsView } from "@/lib/meta-ads-view";
 // chama a Meta — então mostra os dados sincronizados mesmo se o token expirou.
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

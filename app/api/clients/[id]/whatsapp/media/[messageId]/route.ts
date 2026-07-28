@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { downloadWhatsAppMedia, ALLOWED_MEDIA_MIME } from "@/lib/whatsapp-media";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 // devolvemos os bytes. Nada vai para terceiros; é só exibição no espelho.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; messageId: string }> }) {
   const { id, messageId } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true, accessToken: true } });

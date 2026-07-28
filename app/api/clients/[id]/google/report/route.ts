@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { buildGoogleReport, type GoogleReportData } from "@/components/clients/google-report-document";
 import { computeWaste, accountHealth } from "@/lib/google-ads/audit";
@@ -12,7 +12,7 @@ const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Jul
 // GET /api/clients/[id]/google/report?year=&month=  → PDF de performance + auditoria do Google
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

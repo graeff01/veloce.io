@@ -46,6 +46,12 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
     "content:read",
     "content:update",
   ] as Permission[],
+  // MANAGER (gestor): papel escopado. NÃO recebe nenhuma permissão global de
+  // propósito — o acesso é por-cliente e só de LEITURA das abas de tráfego/WhatsApp,
+  // validado em runtime por `requireClientAccess` (lib/api-helpers). Deixar vazio
+  // aqui é fail-secure: qualquer rota que use `requireAuth("clients:read")` etc.
+  // nega o gestor por padrão; só as rotas explicitamente liberadas o deixam entrar.
+  MANAGER: [] as Permission[],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { analyzeAdConversations } from "@/lib/ad-conversation-intel";
 
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 // recomendação de criativo via IA) + resultado real + ação sugerida (co-piloto).
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

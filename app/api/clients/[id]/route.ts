@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { requireAuth, logAction } from "@/lib/api-helpers";
+import { requireAuth, logAction, requireClientAccess } from "@/lib/api-helpers";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -44,7 +44,7 @@ const updateSchema = z.object({
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const client = await prisma.client.findFirst({

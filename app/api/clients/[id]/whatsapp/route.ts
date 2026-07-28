@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { encryptSecret } from "@/lib/crypto";
 import { z } from "zod";
 
@@ -21,7 +21,7 @@ function safe(conn: { accessToken: string; appSecret: string | null }) {
 // GET — conexão (sem segredos) + contagens
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({

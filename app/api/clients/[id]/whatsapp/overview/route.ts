@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { computeOverview, WA_THRESHOLDS } from "@/lib/wa-metrics";
 import { computeCplByModel } from "@/lib/wa-cpl";
 import { computeRealAttribution, computeRevenueAttribution } from "@/lib/meta-attribution";
@@ -10,7 +10,7 @@ import { closeInactiveConversations } from "@/lib/wa-conversation";
 // + CPL real (gasto Meta × leads reais). Parâmetros: ?from=&to= (ISO) ou ?year=&month=
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: id } });

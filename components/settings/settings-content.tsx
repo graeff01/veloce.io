@@ -19,14 +19,17 @@ import { Modal } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/input";
 import { NotificationSettings } from "@/components/settings/notification-settings";
 
+type UserRole = "ADMIN" | "OPERATIONAL" | "DESIGNER" | "MANAGER";
+
 interface UserData {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "OPERATIONAL" | "DESIGNER";
+  role: UserRole;
   operationalRole?: string | null;
   active: boolean;
   createdAt: string;
+  managedClientIds?: string[];
 }
 
 export function SettingsContent() {
@@ -69,7 +72,7 @@ export function SettingsContent() {
     load();
   }
 
-  async function changeRole(user: UserData, role: "ADMIN" | "OPERATIONAL" | "DESIGNER") {
+  async function changeRole(user: UserData, role: UserRole) {
     await fetch(`/api/users/${user.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -415,7 +418,7 @@ function UserRow({
   user: UserData;
   currentUserId?: string;
   last: boolean;
-  onRoleChange: (user: UserData, role: "ADMIN" | "OPERATIONAL" | "DESIGNER") => void;
+  onRoleChange: (user: UserData, role: UserRole) => void;
   onOperationalRoleChange: (user: UserData, operationalRole: string) => void;
   onToggleActive: (user: UserData) => void;
   onEdit: (user: UserData) => void;
@@ -495,12 +498,12 @@ function UserRow({
         {isCurrent ? (
           <Badge variant={user.role === "ADMIN" ? "purple" : "blue"}>
             {user.role === "ADMIN" ? <Shield size={10} /> : <UserRound size={10} />}
-            {user.role === "ADMIN" ? "Admin" : user.role === "DESIGNER" ? "Designer" : "Operacional"}
+            {user.role === "ADMIN" ? "Admin" : user.role === "DESIGNER" ? "Designer" : user.role === "MANAGER" ? "Gestor" : "Operacional"}
           </Badge>
         ) : (
           <select
             value={user.role}
-            onChange={(event) => onRoleChange(user, event.target.value as "ADMIN" | "OPERATIONAL" | "DESIGNER")}
+            onChange={(event) => onRoleChange(user, event.target.value as UserRole)}
             style={{
               width: 150,
               height: 34,
@@ -516,6 +519,7 @@ function UserRow({
             <option value="ADMIN">Admin</option>
             <option value="OPERATIONAL">Operacional</option>
             <option value="DESIGNER">Designer</option>
+            <option value="MANAGER">Gestor</option>
           </select>
         )}
       </div>
@@ -594,11 +598,28 @@ function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: (
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "OPERATIONAL" | "DESIGNER">(user?.role ?? "OPERATIONAL");
+  const [role, setRole] = useState<UserRole>(user?.role ?? "OPERATIONAL");
   const [operationalRole, setOperationalRole] = useState(user?.operationalRole ?? "Operacoes");
   const [active, setActive] = useState(user?.active ?? true);
+  const [managedClientIds, setManagedClientIds] = useState<string[]>(user?.managedClientIds ?? []);
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Carrega os clientes só quando o papel é Gestor (para montar a carteira).
+  useEffect(() => {
+    if (role !== "MANAGER" || clients.length) return;
+    fetch("/api/clients")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Array<{ id: string; name: string }>) =>
+        setClients(data.map((c) => ({ id: c.id, name: c.name })))
+      )
+      .catch(() => {});
+  }, [role, clients.length]);
+
+  function toggleClient(id: string) {
+    setManagedClientIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -614,6 +635,7 @@ function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: (
         password,
         role,
         operationalRole,
+        ...(role === "MANAGER" ? { managedClientIds } : null),
         ...(user ? { active } : null),
       }),
     });
@@ -649,11 +671,44 @@ function UserForm({ user, onSuccess, onCancel }: { user?: UserData; onSuccess: (
         <option value="Social">Social</option>
         <option value="Atendimento">Atendimento</option>
       </Select>
-      <Select label="Funcao" value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "OPERATIONAL" | "DESIGNER")}>
+      <Select label="Funcao" value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
         <option value="OPERATIONAL">Operacional</option>
         <option value="ADMIN">Administrador</option>
         <option value="DESIGNER">Designer (só Conteúdo)</option>
+        <option value="MANAGER">Gestor (tráfego + WhatsApp dos clientes selecionados)</option>
       </Select>
+
+      {role === "MANAGER" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+              Clientes que o gestor acessa
+            </label>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{managedClientIds.length} selecionado(s)</span>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-surface)" }}>
+            {clients.length === 0 ? (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "12px 12px" }}>Carregando clientes…</p>
+            ) : (
+              clients.map((c) => (
+                <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text-primary)" }}>
+                  <input
+                    type="checkbox"
+                    checked={managedClientIds.includes(c.id)}
+                    onChange={() => toggleClient(c.id)}
+                    style={{ width: 15, height: 15, accentColor: "var(--accent)", cursor: "pointer" }}
+                  />
+                  {c.name}
+                </label>
+              ))
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+            O gestor vê só esses clientes, e dentro deles apenas as abas de Anúncios, Google e WhatsApp (somente leitura).
+          </p>
+        </div>
+      )}
+
       {user && (
         <Select label="Status" value={active ? "active" : "inactive"} onChange={(e) => setActive(e.target.value === "active")}>
           <option value="active">Ativo</option>

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { z } from "zod";
 
 // Tags planas por conexão (segmentação de leads).
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
   const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
   if (!conn) return NextResponse.json([]);

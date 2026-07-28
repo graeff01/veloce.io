@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 import { buildAdsReport, type AdsReportData } from "@/components/clients/ads-report-document";
@@ -12,7 +12,7 @@ const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Jul
 // GET /api/clients/[id]/meta/report?year=&month=  → PDF de performance de anúncios
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

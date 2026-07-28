@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { decryptSecret } from "@/lib/crypto";
 
 export const runtime = "nodejs";
@@ -35,7 +35,7 @@ async function fetchPreview(adId: string, format: string, token: string) {
 // Devolve as prévias oficiais (Meta) do anúncio nos 3 formatos, de uma vez.
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const url = new URL(req.url);

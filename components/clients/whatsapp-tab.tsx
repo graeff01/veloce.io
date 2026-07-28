@@ -29,7 +29,7 @@ function timeAgo(iso: string) {
   return `há ${Math.floor(hrs / 24)}d`;
 }
 
-export function WhatsAppTab({ clientId }: { clientId: string }) {
+export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; readOnly?: boolean }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
@@ -77,6 +77,13 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
     </div>
   );
 
+  // Gestor (read-only) não configura conexão: se não houver, mostra aviso.
+  if (readOnly && !conn) return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 48, color: "var(--text-muted)", fontSize: 13 }}>
+      WhatsApp ainda não conectado para este cliente.
+    </div>
+  );
+
   if (!conn || editing) return (
     <Setup
       clientId={clientId}
@@ -114,17 +121,22 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
             <a href={`/api/clients/${clientId}/whatsapp/attendance-report?year=${year}&month=${month}`} target="_blank" rel="noopener noreferrer" title="Diagnóstico de atendimento (PDF) — sem apontar pessoas" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
               <FileText size={13} /> Diagnóstico (PDF)
             </a>
+            {!readOnly && (<>
             <button onClick={recalcFunnel} disabled={recalcing} title="Reclassificar o funil de todos os leads pelo histórico" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: recalcing ? "not-allowed" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
               {recalcing ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Recalcular funil
             </button>
             <button onClick={() => setEditing(true)} title="Atualizar conexão" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               <Settings2 size={13} /> Atualizar conexão
             </button>
+            </>)}
           </div>
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
-          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
+          {(readOnly
+            ? ([["painel", "Painel"], ["leads", "Leads de anúncio"]] as const)
+            : ([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const)
+          ).map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{
               padding: "8px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
               fontWeight: view === k ? 600 : 500, color: view === k ? "var(--text-primary)" : "var(--text-muted)",
@@ -165,7 +177,7 @@ export function WhatsAppTab({ clientId }: { clientId: string }) {
       </div>
       )}
 
-      {open && <WaConversation clientId={clientId} contact={open} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConn(); }} />}
+      {open && <WaConversation clientId={clientId} contact={open} readOnly={readOnly} onClose={() => setOpen(null)} onFunnelChange={() => { void loadConn(); }} />}
     </div>
   );
 }

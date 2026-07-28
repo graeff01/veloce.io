@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-helpers";
+import { requireClientAccess } from "@/lib/api-helpers";
 import { deriveBadge, monthStart } from "@/lib/wa-leads";
 
 // GET — lista de conversas (contatos) com a última mensagem e marca de anúncio.
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: id } });

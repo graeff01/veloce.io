@@ -25,6 +25,12 @@ export async function proxy(req: NextRequest) {
     }
   }
 
+  // Gestor (MANAGER): papel escopado — só páginas de clientes. Qualquer outra
+  // página interna (visão geral, finanças, equipe, conteúdo…) volta pra carteira.
+  if (token.role === "MANAGER" && !req.nextUrl.pathname.startsWith("/clients")) {
+    return NextResponse.redirect(new URL("/clients", req.url));
+  }
+
   return NextResponse.next();
 }
 

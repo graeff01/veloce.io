@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { requireAuth, logAction } from "@/lib/api-helpers";
+import { hasPermission } from "@/lib/permissions";
 import { slugify } from "@/lib/utils";
 import { z } from "zod";
 
@@ -35,11 +36,21 @@ const createClientSchema = z.object({
 });
 
 export async function GET() {
-  const { error, session } = await requireAuth("clients:read");
+  // O gestor (MANAGER) não tem "clients:read" global: ele enxerga apenas a
+  // carteira atribuída. Autentica sem exigir a permissão e filtra pela relação.
+  const { error, session } = await requireAuth();
   if (error) return error;
 
+  const isManager = session!.user.role === "MANAGER";
+  if (!isManager && !hasPermission(session!.user.role, "clients:read")) {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
+
   const clients = await prisma.client.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      ...(isManager ? { managers: { some: { id: session!.user.id } } } : {}),
+    },
     orderBy: { name: "asc" },
     include: {
       _count: { select: { tasks: { where: { deletedAt: null } } } },

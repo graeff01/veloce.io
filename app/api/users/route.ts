@@ -8,8 +8,10 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(["ADMIN", "OPERATIONAL", "DESIGNER"]).default("OPERATIONAL"),
+  role: z.enum(["ADMIN", "OPERATIONAL", "DESIGNER", "MANAGER"]).default("OPERATIONAL"),
   operationalRole: z.string().optional(),
+  // Carteira do gestor (só se aplica quando role === "MANAGER").
+  managedClientIds: z.array(z.string()).optional(),
 });
 
 export async function GET() {
@@ -26,11 +28,18 @@ export async function GET() {
       operationalRole: true,
       active: true,
       createdAt: true,
+      managedClients: { select: { id: true } },
     },
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json(users);
+  // Achata a carteira do gestor em uma lista de ids (facilita o front).
+  const shaped = users.map(({ managedClients, ...u }) => ({
+    ...u,
+    managedClientIds: managedClients.map((c) => c.id),
+  }));
+
+  return NextResponse.json(shaped);
 }
 
 export async function POST(req: Request) {
@@ -50,6 +59,8 @@ export async function POST(req: Request) {
 
   const hashedPassword = await bcrypt.hash(parsed.data.password, 12);
 
+  const managedIds = parsed.data.role === "MANAGER" ? (parsed.data.managedClientIds ?? []) : [];
+
   const user = await prisma.user.create({
     data: {
       name: parsed.data.name,
@@ -57,6 +68,7 @@ export async function POST(req: Request) {
       password: hashedPassword,
       role: parsed.data.role,
       operationalRole: parsed.data.operationalRole || null,
+      ...(managedIds.length ? { managedClients: { connect: managedIds.map((id) => ({ id })) } } : {}),
     },
     select: { id: true, name: true, email: true, role: true, operationalRole: true, active: true, createdAt: true },
   });

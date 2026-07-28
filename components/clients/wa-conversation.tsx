@@ -16,11 +16,12 @@ interface Msg { id: string; text: string | null; direction: string; type: string
 const STAGES = ["recebido", "respondido", "qualificado", "negociacao", "perdido", "convertido"];
 
 // Drawer com o histórico de mensagens do WhatsApp (SOMENTE LEITURA) + funil manual.
-export function WaConversation({ clientId, contact, onClose, onFunnelChange }: {
+export function WaConversation({ clientId, contact, onClose, onFunnelChange, readOnly = false }: {
   clientId: string;
   contact: WaConversationContact;
   onClose: () => void;
   onFunnelChange?: () => void;
+  readOnly?: boolean;
 }) {
   const [items, setItems] = useState<Msg[] | null>(null);
   const [adTitle, setAdTitle] = useState<string | null>(contact.adTitle ?? null);
@@ -74,14 +75,20 @@ export function WaConversation({ clientId, contact, onClose, onFunnelChange }: {
               <X size={18} />
             </button>
           </div>
-          {/* Funil (gestão manual) */}
+          {/* Funil — editável para operador/admin; só leitura para o gestor. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Funil</span>
-            <select value={stage} onChange={(e) => changeStage(e.target.value)}
-              style={{ height: 30, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer", flex: 1 }}>
-              <option value="">— Sem etapa —</option>
-              {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
-            </select>
+            {readOnly ? (
+              <span style={{ height: 30, display: "flex", alignItems: "center", padding: "0 10px", fontSize: 12.5, color: "var(--text-primary)", flex: 1 }}>
+                {stage ? FUNNEL_LABELS[stage] : "— Sem etapa —"}
+              </span>
+            ) : (
+              <select value={stage} onChange={(e) => changeStage(e.target.value)}
+                style={{ height: 30, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "0 10px", fontSize: 12.5, outline: "none", cursor: "pointer", flex: 1 }}>
+                <option value="">— Sem etapa —</option>
+                {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
+              </select>
+            )}
           </div>
         </div>
 

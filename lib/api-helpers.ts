@@ -27,6 +27,43 @@ export async function requireAuth(permission?: Permission) {
   return { error: null, session };
 }
 
+/**
+ * Autorização de LEITURA escopada por cliente, usada nas rotas das abas que o
+ * gestor (MANAGER) pode ver (WhatsApp, Anúncios/Meta, Google + detalhe do cliente).
+ *
+ * - ADMIN/OPERATIONAL: passam se tiverem a permissão de leitura de clientes (comportamento atual).
+ * - MANAGER: passa SÓ se o cliente estiver na carteira dele (relação managedClients).
+ * - Demais papéis (ex.: DESIGNER): negados.
+ *
+ * Escrita continua barrada para o gestor porque ele não tem `clients:update` —
+ * as rotas de escrita seguem usando `requireAuth("clients:update")`.
+ */
+export async function requireClientAccess(clientId: string) {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    return { error: NextResponse.json({ error: "Não autenticado" }, { status: 401 }), session: null };
+  }
+
+  const role = session.user.role as Role;
+
+  if (role === "MANAGER") {
+    const count = await prisma.client.count({
+      where: { id: clientId, deletedAt: null, managers: { some: { id: session.user.id } } },
+    });
+    if (count === 0) {
+      return { error: NextResponse.json({ error: "Sem permissão" }, { status: 403 }), session: null };
+    }
+    return { error: null, session };
+  }
+
+  if (!hasPermission(role, "clients:read")) {
+    return { error: NextResponse.json({ error: "Sem permissão" }, { status: 403 }), session: null };
+  }
+
+  return { error: null, session };
+}
+
 export async function logAction(
   userId: string,
   action: string,

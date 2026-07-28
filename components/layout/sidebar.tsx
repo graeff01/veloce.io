@@ -46,13 +46,16 @@ export function Sidebar() {
   const router = useRouter();
   const { data: session } = useSession();
   const isDesigner = session?.user?.role === "DESIGNER"; // papel enxuto: só Conteúdo
+  const isManager = session?.user?.role === "MANAGER";   // gestor: só a carteira dele, dentro do cliente
   const [clients, setClients] = useState<ClientRow[]>([]);
 
-  // Trava de rota: designer só acessa /content. As APIs já barram o resto por
-  // permissão (sem vazar dado); aqui só evita o designer cair em página sem acesso.
+  // Trava de rota: designer só acessa /content; gestor só acessa /clients. As APIs
+  // já barram o resto por permissão (sem vazar dado); aqui só evita cair em página
+  // sem acesso.
   useEffect(() => {
     if (isDesigner && pathname && !pathname.startsWith("/content")) router.replace("/content");
-  }, [isDesigner, pathname, router]);
+    if (isManager && pathname && !pathname.startsWith("/clients")) router.replace("/clients");
+  }, [isDesigner, isManager, pathname, router]);
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -99,7 +102,11 @@ export function Sidebar() {
   }
 
   const firstName = session?.user.name?.split(" ")[0] ?? "";
-  const role = session?.user.role === "ADMIN" ? "Administrador" : "Operacional";
+  const role =
+    session?.user.role === "ADMIN" ? "Administrador"
+    : session?.user.role === "MANAGER" ? "Gestor"
+    : session?.user.role === "DESIGNER" ? "Designer"
+    : "Operacional";
 
   const activeClients = clients.filter((c) => c.status === "ACTIVE");
   const pausedClients = clients.filter((c) => c.status === "PAUSED");
@@ -179,6 +186,7 @@ export function Sidebar() {
         }}
       >
         {!isDesigner && (<>
+        {!isManager && (
         <div style={{ margin: "0 12px 12px" }}>
           <button
             type="button"
@@ -206,6 +214,7 @@ export function Sidebar() {
             <span style={{ fontSize: 10 }}>K</span>
           </button>
         </div>
+        )}
 
         {/* Section label + Ver todos */}
         <div
@@ -296,7 +305,12 @@ export function Sidebar() {
       >
         {/* Bottom nav items */}
         <div style={{ padding: "10px 8px 6px" }}>
-          {(isDesigner ? bottomNavItems.filter((i) => i.href === "/content") : bottomNavItems).map((item) => (
+          {(isDesigner
+            ? bottomNavItems.filter((i) => i.href === "/content")
+            : isManager
+            ? [] // gestor não tem seções globais — só a carteira dele
+            : bottomNavItems
+          ).map((item) => (
             <BottomNavItem key={item.href} {...item} active={isActive(item.href)} />
           ))}
           {session?.user.role === "ADMIN" &&

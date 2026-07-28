@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, logAction } from "@/lib/api-helpers";
+import { requireAuth, logAction, requireClientAccess } from "@/lib/api-helpers";
 import { isGoogleAdsConfigured } from "@/lib/google-ads/config";
 import { z } from "zod";
 
@@ -13,7 +13,7 @@ const connectSchema = z.object({
 // GET — estado da conexão + campanhas (vazio até o 1º sync)
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireAuth("clients:read");
+  const { error } = await requireClientAccess(id);
   if (error) return error;
 
   const conn = await prisma.googleConnection.findUnique({
