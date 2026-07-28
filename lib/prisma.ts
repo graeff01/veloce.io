@@ -4,11 +4,43 @@ import { Pool } from "pg";
 
 declare global {
   var prisma: PrismaClient | undefined;
+  var prismaPgPool: Pool | undefined;
+}
+
+// ── Pool do Postgres ─────────────────────────────────────────────────────────
+// O `max` DEFAULT do `pg` é 10 — baixo p/ picos de atendimento concorrente: webhook
+// (ingestão), jobs do agente, os crons e o cockpit dividem o MESMO pool. Sob rajada
+// isso vira fila de conexão e timeout. Configurável por env; `connectionTimeoutMillis`
+// faz FALHAR RÁPIDO com erro claro sob exaustão, em vez de pendurar o request esperando.
+// SIZING (medido em scripts/load-test.ts): 15 webhooks SIMULTÂNEOS de ingestão pedem
+// ~33 conexões no pico — cada mensagem faz fan-out de tarefas fire-and-forget (funil,
+// notificações, enqueue) que abrem conexões em paralelo. Com o agente LIGADO, os jobs
+// (GLOBAL_MAX=8) somam mais. Default 40 cobre esse alvo com folga.
+// ATENÇÃO: DB_POOL_MAX × nº de instâncias deve ficar abaixo do `max_connections` do
+// Postgres (cheque com `SHOW max_connections;`); se o plano for pequeno, baixe o valor
+// e aceite alguma fila (o connectionTimeout faz esperar, não estourar).
+const DB_POOL_MAX = Number(process.env.DB_POOL_MAX || 40);
+const DB_POOL_CONN_TIMEOUT_MS = Number(process.env.DB_POOL_CONN_TIMEOUT_MS || 10_000);
+const DB_POOL_IDLE_TIMEOUT_MS = Number(process.env.DB_POOL_IDLE_TIMEOUT_MS || 30_000);
+
+function createPool() {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: DB_POOL_MAX,
+    connectionTimeoutMillis: DB_POOL_CONN_TIMEOUT_MS,
+    idleTimeoutMillis: DB_POOL_IDLE_TIMEOUT_MS,
+  });
+}
+
+const pool = global.prismaPgPool ?? createPool();
+if (process.env.NODE_ENV !== "production") global.prismaPgPool = pool;
+
+// Saturação do pool p/ o /api/health observar em produção (fila > 0 = gargalo).
+export function getPoolStats() {
+  return { max: DB_POOL_MAX, total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
 }
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-  const pool = new Pool({ connectionString });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({
     adapter,

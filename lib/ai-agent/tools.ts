@@ -434,10 +434,14 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       // aqui a gente barra, a menos que o lead tenha pedido de fato.
       const inboundN = (ctx.inboundText ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       const pedeFoto = /foto|imagem|\bver\b|\bvejo\b|mostr|por dentro|interior|de novo|outra|mais/.test(inboundN);
+      // Confirmação a uma oferta de foto ("Sim", "pode", "manda", "quero"...) também conta como
+      // pedido — senão a IA oferece "quer que eu envie a foto?" e o "Sim" do cliente cai na trava
+      // anti-reenvio (a foto nunca vai e a IA acaba dizendo que mandou sem ter mandado).
+      const confirma = /^(sim|isso|claro|pode|posso|quero|queria|manda|envia|aham|ok|bora|por favor|beleza|blz)\b/.test(inboundN.trim());
       const explicitArg = args.interior === true || Number(args.quantidade) > 1;
       const termToks = term.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
       const mencionaModelo = termToks.some((t) => inboundN.includes(t));
-      if (!ctx.isFirstTurn && !pedeFoto && !explicitArg && !mencionaModelo) {
+      if (!ctx.isFirstTurn && !pedeFoto && !confirma && !explicitArg && !mencionaModelo) {
         return { result: "A foto desse modelo já apareceu na conversa e o lead NÃO pediu para ver agora — NÃO reenvie imagem. Siga só com o texto/orçamento." };
       }
       // Busca robusta (tokens + fuzzy) — casa "Taos Highline" mesmo com "1.4" no meio do título.
