@@ -301,11 +301,16 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   // Evita a IA cumprimentar/apresentar de novo (a saudação já foi prefixada).
   const trust = cfg?.trustHighlights?.trim();
   const firstNote = (isFirst && disclosureText)
-    ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Escolha a ABERTURA conforme o que o lead já trouxe (não siga sempre a mesma sequência):
+    ? (cfg?.customPrompt?.trim()
+      // Cliente com customPrompt (fonte única): a saudação fixa já foi prefixada (e pode já
+      // pedir o nome). NÃO injetamos a nota automotiva abaixo — ela conflita com o customPrompt e
+      // faz a IA re-perguntar o nome / re-cumprimentar. Só o essencial; o resto é o customPrompt.
+      ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem (ela pode já ter perguntado o nome). NÃO cumprimente, NÃO se apresente e NÃO pergunte o nome de novo. Siga as SUAS regras de atendimento a partir do que o lead trouxe. Máximo 2-3 linhas.`
+      : `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Escolha a ABERTURA conforme o que o lead já trouxe (não siga sempre a mesma sequência):
 - Se ele só sinalizou interesse no anúncio (sem pergunta específica) e há VEÍCULO DE INTERESSE: mande UMA foto dele (enviar_foto, quantidade 1) e, em UMA mensagem curta, adiante ano, km e PREÇO ${trust ? `+ o diferencial de confiança da loja (${trust})` : "+ um diferencial de confiança se houver no CONHECIMENTO"}.
 - Se ele JÁ foi direto numa pergunta (preço, km, disponibilidade, uma cor específica): responda PRIMEIRO exatamente o que ele perguntou, sem repetir a sequência completa; foto e demais dados você complementa depois, se fizer sentido.
 - Se ele mandou algo vago/ambíguo (um "oi", um link, um print, ou um modelo que pode ter versões diferentes): confirme em UMA frase curta qual veículo é ANTES de disparar foto/dados.
-Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma dúvida sobre ele?") OU só entregar a informação e PARAR — não force pergunta. NÃO fale de test drive, "conhecer de perto", visita nem financiamento logo na abertura — deixe a conversa esquentar primeiro e entenda o lead com calma. Nada de cobrança nem de vitrine. Máximo 2-3 linhas.`
+Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma dúvida sobre ele?") OU só entregar a informação e PARAR — não force pergunta. NÃO fale de test drive, "conhecer de perto", visita nem financiamento logo na abertura — deixe a conversa esquentar primeiro e entenda o lead com calma. Nada de cobrança nem de vitrine. Máximo 2-3 linhas.`)
     : "";
 
   // Teto de custo por contato (só produção).
