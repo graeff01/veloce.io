@@ -81,6 +81,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // Marca d'água do chat: imagem própria do cliente (portal-bg) quando houver; senão o logo.
   const chatWatermark = chatBgUrl || logoUrl;
   const [list, setList] = useState<Row[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
   const [adFilter, setAdFilter] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -109,6 +111,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const docInputRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<{ mr: MediaRecorder; chunks: Blob[]; stream: MediaStream; mime: string; timer: ReturnType<typeof setInterval> } | null>(null);
   const nearBottomRef = useRef(true);
+  const qRef = useRef("");
+  const loadedMoreRef = useRef(false);
+  const PAGE = 50;
   const onScroll = () => { const el = scrollRef.current; if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
 
   // Tema (claro/escuro) — a MESMA chave/atributo do resto do painel, mantendo a cor da
@@ -132,21 +137,52 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   }, []);
 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
+  // Carga da 1ª página + BUSCA no servidor (debounce leve). A busca acha QUALQUER conversa, de
+  // qualquer data (não só as carregadas). Ao (re)buscar, volta pra página 1 (loadedMore=false).
   useEffect(() => {
     let alive = true;
-    const load = () => fetch(`/api/portal/${token}/conversations`).then((r) => (r.ok ? r.json() : null)).then((d) => {
-      if (!alive) return;
-      const arr = Array.isArray(d) ? d : (d?.conversations ?? []);
-      setList(arr);
-      if (d && !Array.isArray(d)) { setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []); }
-    }).catch(() => {});
-    load();
-    const iv = setInterval(() => { if (!document.hidden) load(); }, 6000);
-    const onActive = () => { if (!document.hidden) load(); };
-    window.addEventListener("focus", onActive);
-    document.addEventListener("visibilitychange", onActive);
-    return () => { alive = false; clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
+    qRef.current = q.trim();
+    loadedMoreRef.current = false;
+    const t = setTimeout(() => {
+      const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
+      if (q.trim()) sp.set("q", q.trim());
+      fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+        if (!alive || !d) return;
+        setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setHasMore(!!d.hasMore); setList(d.conversations ?? []);
+      }).catch(() => {});
+    }, q.trim() ? 300 : 0);
+    return () => { alive = false; clearTimeout(t); };
+  }, [token, q]);
+
+  // Auto-atualização (novas conversas/mensagens) — só na 1ª página e fora de busca, para NÃO
+  // resetar o histórico já carregado com "Carregar mais".
+  useEffect(() => {
+    const reload = () => {
+      if (document.hidden || qRef.current || loadedMoreRef.current) return;
+      fetch(`/api/portal/${token}/conversations?limit=${PAGE}&offset=0`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+        if (!d) return;
+        setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setHasMore(!!d.hasMore); setList(d.conversations ?? []);
+      }).catch(() => {});
+    };
+    const iv = setInterval(reload, 6000);
+    window.addEventListener("focus", reload);
+    document.addEventListener("visibilitychange", reload);
+    return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
   }, [token]);
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    loadedMoreRef.current = true;
+    const sp = new URLSearchParams({ limit: String(PAGE), offset: String(list?.length ?? 0) });
+    if (q.trim()) sp.set("q", q.trim());
+    fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
+      setLoadingMore(false);
+    }).catch(() => setLoadingMore(false));
+  };
 
   // Conversa aberta — carrega (com spinner) e AUTO-ATUALIZA em silêncio (novas mensagens).
   useEffect(() => {
@@ -209,16 +245,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (tab === "ads" && !c.fromAd) return false;
     if (tab === "ads" && adFilter && adLabelOf(c) !== adFilter) return false;
     if (tab === "waiting" && !isWaiting(c)) return false;
-    if (q.trim()) {
-      // Busca por NOME ou por NÚMERO. Muitos contatos não têm nome salvo, então
-      // pesquisar pelo telefone precisa funcionar. Normaliza os dígitos dos dois
-      // lados (o waId é E.164 sem "+") pra casar mesmo com o número formatado.
-      const term = q.trim().toLowerCase();
-      const digits = term.replace(/\D/g, "");
-      const nameHit = c.name.toLowerCase().includes(term);
-      const numHit = digits.length >= 3 && c.waId.includes(digits);
-      if (!nameHit && !numHit) return false;
-    }
+    // A BUSCA (q) agora é no SERVIDOR — aqui fica só o filtro de aba/atendente/anúncio.
     return true;
   });
   const myWaiting = (list ?? []).filter((c) => me && c.assignedEmail === me && isWaiting(c)).length;
@@ -493,7 +520,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {/* rows */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: isMobile ? "calc(84px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
-            : items.length === 0 ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
+            : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
               const waiting = isWaiting(c);
@@ -518,6 +545,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 </button>
               );
             })}
+          {!!list && hasMore && (
+            <div style={{ padding: "12px 16px 18px", textAlign: "center" }}>
+              <button onClick={loadMore} disabled={loadingMore}
+                style={{ fontSize: 12.5, fontWeight: 600, color: "var(--p-accent)", background: "transparent", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 18px", cursor: loadingMore ? "default" : "pointer", opacity: loadingMore ? 0.6 : 1 }}>
+                {loadingMore ? "Carregando…" : "Carregar mais"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Barra flutuante inferior (mobile) — estilo WhatsApp: vidro fosco, sutil, entra deslizando. Só na lista. */}

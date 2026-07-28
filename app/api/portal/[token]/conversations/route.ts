@@ -6,20 +6,36 @@ import { getPortalUser, isAdminRole } from "@/lib/portal-auth";
 export const runtime = "nodejs";
 
 // GET — lista de conversas do cliente (token-scoped). Devolve { conversations, me, attendants }.
-export async function GET(_: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId } });
-  if (!conn) return NextResponse.json({ conversations: [], me: null, attendants: [] });
+  if (!conn) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
 
-  const contacts = await prisma.waContact.findMany({
-    where: { connectionId: conn.id },
+  const url = new URL(req.url);
+  const q = (url.searchParams.get("q") ?? "").trim();
+  const limit = Math.min(100, Math.max(10, Number(url.searchParams.get("limit")) || 50));
+  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const digits = q.replace(/\D/g, "");
+  const search = q
+    ? { OR: [
+        { name: { contains: q, mode: "insensitive" as const } },
+        { displayName: { contains: q, mode: "insensitive" as const } },
+        ...(digits.length >= 3 ? [{ waId: { contains: digits } }] : []),
+      ] }
+    : {};
+
+  const rows = await prisma.waContact.findMany({
+    where: { connectionId: conn.id, ...search },
     orderBy: { lastMessageAt: "desc" },
-    take: 300,
+    skip: offset,
+    take: limit + 1,
     include: { messages: { orderBy: { timestamp: "desc" }, take: 1, select: { text: true, direction: true, type: true } } },
   });
+  const hasMore = rows.length > limit;
+  const contacts = hasMore ? rows.slice(0, limit) : rows;
   const ids = contacts.map((c) => c.id);
   const [leads, convs, attendants, user] = await Promise.all([
     prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true } }),
@@ -36,6 +52,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   return NextResponse.json({
     me,
     isAdmin,
+    hasMore,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),
     conversations: contacts.map((c) => {
