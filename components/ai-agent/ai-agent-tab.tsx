@@ -119,7 +119,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
             <Power size={15} color={cfg.enabled ? "var(--green)" : "var(--text-muted)"} /> Agente {cfg.enabled ? "ligado" : "desligado"}
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Quando ligado, a IA responde leads {cfg.answerMode === "always" ? <b>sempre (24h)</b> : <>somente <b>fora do horário comercial</b></>} — configure abaixo.</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Quando ligado, a IA responde leads {cfg.answerMode === "manual" ? <>somente quando o vendedor <b>aciona "IA Atender"</b> (sob demanda)</> : cfg.answerMode === "always" ? <b>sempre (24h)</b> : <>somente <b>fora do horário comercial</b></>} — configure abaixo.</p>
         </div>
         <button onClick={() => set({ enabled: !cfg.enabled })} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: cfg.enabled ? "var(--green)" : "var(--border)", position: "relative", transition: "background .15s" }}>
           <span style={{ position: "absolute", top: 3, left: cfg.enabled ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
@@ -170,6 +170,7 @@ function ConfigSection({ clientId }: { clientId: string }) {
             { key: "off_hours", label: "Só fora do horário", hint: "atende quando a loja está fechada" },
             { key: "always", label: "Sempre (24h)", hint: "atende também no horário comercial" },
             { key: "ads_in_hours", label: "24h — no horário, só anúncio", hint: "no horário só lead de anúncio; fora, todos" },
+            { key: "manual", label: "Manual (sob demanda)", hint: "não atende sozinha — só quando o vendedor clica “IA Atender” no lead" },
           ].map((s) => (
             <button key={s.key} onClick={() => set({ answerMode: s.key })} style={{ ...btn(cfg.answerMode === s.key), flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "8px 12px", borderColor: cfg.answerMode === s.key ? "var(--accent)" : "var(--border)" }}>
               <span>{s.label}</span>
