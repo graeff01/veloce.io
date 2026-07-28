@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Plus, Search, Users, AlertTriangle, ChevronRight } from "lucide-react";
+import { Plus, Search, Users, AlertTriangle, ChevronRight, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { ClientStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,6 +233,8 @@ export function ClientsContent() {
                 key={client.id}
                 client={client}
                 last={i === filtered.length - 1}
+                isAdmin={isAdmin}
+                onDeleted={loadClients}
               />
             ))}
           </div>
@@ -256,7 +258,19 @@ export function ClientsContent() {
 }
 
 /* ─── Client Row ─────────────────────────────────────── */
-function ClientRow({ client, last }: { client: Client; last: boolean }) {
+function ClientRow({ client, last, isAdmin, onDeleted }: { client: Client; last: boolean; isAdmin: boolean; onDeleted: () => void }) {
+  const [hover, setHover] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (deleting) return;
+    if (!confirm(`Excluir o cliente "${client.name}"? Ele será removido da sua lista de clientes.`)) return;
+    setDeleting(true);
+    const res = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
+    if (res.ok) { onDeleted(); }
+    else { setDeleting(false); alert("Não foi possível excluir o cliente. Verifique se você tem permissão para isso."); }
+  }
+
   const health =
     client.stats.overdueTasks > 2 ? "critical"
     : client.stats.overdueTasks > 0 || (client.stats.daysSinceActivity ?? 0) >= 7 ? "warning"
@@ -281,12 +295,14 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
           transition: "background 150ms ease-out",
           cursor: "pointer",
         }}
-        onMouseEnter={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)")
-        }
-        onMouseLeave={(e) =>
-          ((e.currentTarget as HTMLDivElement).style.background = "transparent")
-        }
+        onMouseEnter={(e) => {
+          setHover(true);
+          (e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)";
+        }}
+        onMouseLeave={(e) => {
+          setHover(false);
+          (e.currentTarget as HTMLDivElement).style.background = "transparent";
+        }}
       >
         {/* Client name + email */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -386,9 +402,28 @@ function ClientRow({ client, last }: { client: Client; last: boolean }) {
           </span>
         </div>
 
-        {/* Arrow */}
-        <div>
-          <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
+        {/* Chevron — ou excluir (admin, ao passar o mouse) */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          {isAdmin && hover ? (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(); }}
+              disabled={deleting}
+              title="Excluir cliente"
+              aria-label={`Excluir cliente ${client.name}`}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 24, height: 24, padding: 0, border: "none", borderRadius: 6,
+                background: "transparent", color: "var(--text-muted)",
+                cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--red-soft)"; e.currentTarget.style.color = "var(--red)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              <Trash2 size={14} />
+            </button>
+          ) : (
+            <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
+          )}
         </div>
       </div>
     </Link>
