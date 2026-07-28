@@ -305,7 +305,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
       // Cliente com customPrompt (fonte única): a saudação fixa já foi prefixada (e pode já
       // pedir o nome). NÃO injetamos a nota automotiva abaixo — ela conflita com o customPrompt e
       // faz a IA re-perguntar o nome / re-cumprimentar. Só o essencial; o resto é o customPrompt.
-      ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem (ela pode já ter perguntado o nome). NÃO cumprimente, NÃO se apresente e NÃO pergunte o nome de novo. Siga as SUAS regras de atendimento a partir do que o lead trouxe. Máximo 2-3 linhas.`
+      ? `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Siga as SUAS regras de atendimento a partir do que o lead trouxe. Máximo 2-3 linhas.`
       : `IMPORTANTE: uma saudação automática JÁ foi enviada ao lead nesta mensagem. NÃO cumprimente nem se apresente de novo. Escolha a ABERTURA conforme o que o lead já trouxe (não siga sempre a mesma sequência):
 - Se ele só sinalizou interesse no anúncio (sem pergunta específica) e há VEÍCULO DE INTERESSE: mande UMA foto dele (enviar_foto, quantidade 1) e, em UMA mensagem curta, adiante ano, km e PREÇO ${trust ? `+ o diferencial de confiança da loja (${trust})` : "+ um diferencial de confiança se houver no CONHECIMENTO"}.
 - Se ele JÁ foi direto numa pergunta (preço, km, disponibilidade, uma cor específica): responda PRIMEIRO exatamente o que ele perguntou, sem repetir a sequência completa; foto e demais dados você complementa depois, se fizer sentido.
@@ -328,6 +328,15 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       await log({ outbound: reply, decision: "escalou", status: "ok" });
       return { reply, status: "ok", decision: "escalou" };
     }
+  }
+
+  // 1º turno cuja SAUDAÇÃO já pergunta o nome (ex.: JR): a saudação É a mensagem completa.
+  // Enviamos SÓ a saudação e NEM chamamos o modelo — assim a abertura é exatamente a saudação,
+  // sem o modelo colar "e qual seu nome?"/preço por cima (instrução de "responda vazio" não é
+  // confiável). O fluxo (nome → vídeo → preço) segue normal a partir do 2º turno.
+  if (isFirst && disclosureText && cfg?.customPrompt?.trim() && /\bnome\b/i.test(cfg?.greetingMessage || "")) {
+    if (mode === "live") await log({ outbound: disclosureText, decision: "saudacao", status: "ok" });
+    return { reply: disclosureText, status: "ok", decision: "saudacao" };
   }
 
   // Timeline por etapa (logs avançados): context → rag → llm → guardrail.
