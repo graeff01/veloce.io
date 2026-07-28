@@ -167,14 +167,39 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
   const [rightOpen, setRightOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const loadList = useCallback(async () => {
-    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations`);
-    if (r.ok) setList(await r.json());
-    setLoadingList(false);
+  const PAGE = 50;
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const fetchPage = useCallback(async (offset: number, query: string): Promise<{ items: ConvRow[]; hasMore: boolean }> => {
+    const sp = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
+    if (query) sp.set("q", query);
+    const r = await fetch(`/api/clients/${clientId}/whatsapp/conversations?${sp}`);
+    if (!r.ok) return { items: [], hasMore: false };
+    return r.json();
   }, [clientId]);
 
+  // Recarrega a 1ª página com a busca atual (usado no refresh e pelo LeadDetails).
+  const loadList = useCallback(async () => {
+    const d = await fetchPage(0, q.trim());
+    setList(d.items); setHasMore(d.hasMore); setLoadingList(false);
+  }, [fetchPage, q]);
+
+  // Carga inicial + quando a BUSCA muda (debounce leve). A busca é no SERVIDOR — acha
+  // qualquer conversa, de qualquer data, mesmo que não esteja carregada na lista.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => {
+    const t = setTimeout(() => { void loadList(); }, q.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [loadList, q]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const d = await fetchPage(list.length, q.trim());
+    setList((prev) => [...prev, ...d.items]);
+    setHasMore(d.hasMore); setLoadingMore(false);
+  }, [loadingMore, hasMore, fetchPage, list.length, q]);
 
   // Filtros → URL (refresh-safe, compartilhável).
   useEffect(() => {
@@ -188,10 +213,14 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
   }, [q, filter]);
 
   // Atualização automática da lista (novos leads/mensagens) sem recarregar a página.
+  // Só na 1ª página e fora de busca — para não resetar o histórico já carregado com "Carregar mais".
   useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) loadList(); }, 15000);
+    const id = setInterval(() => {
+      if (document.hidden || q.trim() || list.length > PAGE) return;
+      void loadList();
+    }, 15000);
     return () => clearInterval(id);
-  }, [loadList]);
+  }, [loadList, q, list.length]);
 
   // Atualização silenciosa da conversa aberta (sem spinner).
   useEffect(() => {
@@ -286,18 +315,13 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
     setDetail((d) => (d ? { ...d, contact: { ...d.contact, aiOptedOut: true } } : d));
   }
 
+  // A BUSCA (q) agora é no SERVIDOR. Aqui fica só o filtro de aba (todos/anúncio/aguardando),
+  // aplicado sobre as conversas já carregadas.
   const filtered = useMemo(() => {
-    let r = list;
-    if (filter === "ads") r = r.filter((c) => c.fromAd);
-    else if (filter === "waiting") r = r.filter((c) => isWaiting(c));
-    const term = q.trim().toLowerCase();
-    const digits = term.replace(/\D/g, "");
-    if (term) r = r.filter((c) =>
-      (c.name ?? "").toLowerCase().includes(term)
-      || (c.displayName ?? "").toLowerCase().includes(term)
-      || (digits.length >= 3 && c.waId.includes(digits)));
-    return r;
-  }, [list, q, filter]);
+    if (filter === "ads") return list.filter((c) => c.fromAd);
+    if (filter === "waiting") return list.filter((c) => isWaiting(c));
+    return list;
+  }, [list, filter]);
 
   const selectedConv = list.find((c) => c.contactId === selected);
 
@@ -366,7 +390,7 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
           <div className="wa-scroll" style={{ flex: 1, overflowY: "auto" }}>
             {loadingList ? (
               Array.from({ length: 6 }).map((_, i) => <SkeletonConv key={i} />)
-            ) : filtered.length === 0 ? (
+            ) : filtered.length === 0 && !hasMore ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "48px 20px", color: "var(--text-muted)" }}>
                 <MessageSquare size={28} style={{ opacity: 0.2 }} />
                 <p style={{ fontSize: 13, margin: 0 }}>Nenhuma conversa encontrada</p>
@@ -419,6 +443,14 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                 </button>
               );
             })}
+            {!loadingList && hasMore && (
+              <div style={{ padding: "14px 16px 22px", textAlign: "center" }}>
+                <button onClick={loadMore} disabled={loadingMore}
+                  style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)", background: "transparent", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 18px", cursor: loadingMore ? "default" : "pointer", opacity: loadingMore ? 0.6 : 1 }}>
+                  {loadingMore ? "Carregando…" : "Carregar mais conversas"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
