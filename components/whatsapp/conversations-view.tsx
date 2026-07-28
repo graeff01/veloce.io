@@ -150,7 +150,7 @@ function PanelCard({ icon, title, children }: { icon: React.ReactNode; title: st
 
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export function ConversationsView({ clientId, onFunnelChange }: { clientId: string; onFunnelChange?: () => void }) {
+export function ConversationsView({ clientId, onFunnelChange, readOnly = false }: { clientId: string; onFunnelChange?: () => void; readOnly?: boolean }) {
   const sp0 = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const [list, setList] = useState<ConvRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -460,6 +460,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {!readOnly && (<>
                   {!detail?.contact.aiOptedOut && (
                     <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
                       style={{ height: 32, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 10, border: "1px solid var(--border)", cursor: aiReplying ? "wait" : "pointer", padding: "0 10px", fontSize: 12, fontWeight: 600, background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)", opacity: aiReplying ? 0.6 : 1 }}>
@@ -492,6 +493,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                     <option value="">Funil: —</option>
                     {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
                   </select>
+                  </>)}
                   <button onClick={() => setRightOpen((v) => !v)} className="wa-btn-ghost"
                     style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                     {rightOpen ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
@@ -607,9 +609,10 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
           <div className="wa-scroll" style={{ width: 296, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--bg-elevated)", overflowY: "auto" }}>
 
             {/* Ficha de lead unificada (nome, tags, notas, funil, validação, origem) */}
-            <LeadDetails clientId={clientId} contactId={selected} badge={selectedConv?.badge} showTimeline={false} onChanged={loadList} />
+            <LeadDetails clientId={clientId} contactId={selected} badge={selectedConv?.badge} showTimeline={false} onChanged={loadList} readOnly={readOnly} />
 
-            {/* AI card */}
+            {/* AI card — ações de IA são escrita; escondidas no modo leitura (gestor). */}
+            {!readOnly && (
             <PanelCard icon={<Sparkles size={13} />} title="Inteligência IA">
               {!ai ? (
                 <div>
@@ -642,6 +645,7 @@ export function ConversationsView({ clientId, onFunnelChange }: { clientId: stri
                 </div>
               )}
             </PanelCard>
+            )}
 
           </div>
         )}

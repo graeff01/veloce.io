@@ -133,10 +133,7 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
         </div>
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
-          {(readOnly
-            ? ([["painel", "Painel"], ["leads", "Leads de anúncio"]] as const)
-            : ([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const)
-          ).map(([k, label]) => (
+          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{
               padding: "8px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
               fontWeight: view === k ? 600 : 500, color: view === k ? "var(--text-primary)" : "var(--text-muted)",
@@ -148,7 +145,7 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
 
       {view === "conversas" ? (
         <div style={{ flex: 1, minHeight: 0, padding: "16px 28px" }}>
-          <ConversationsView clientId={clientId} />
+          <ConversationsView clientId={clientId} readOnly={readOnly} />
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>

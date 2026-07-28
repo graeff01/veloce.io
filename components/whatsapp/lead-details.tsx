@@ -34,8 +34,8 @@ function dayLabel(iso: string) { return new Date(iso).toLocaleDateString("pt-BR"
 function fmtDateTime(iso: string | null) { return iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export function LeadDetails({ clientId, contactId, badge, campaignName, onChanged, showTimeline = true }: {
-  clientId: string; contactId: string; badge?: LeadBadge | null; campaignName?: string | null; onChanged?: () => void; showTimeline?: boolean;
+export function LeadDetails({ clientId, contactId, badge, campaignName, onChanged, showTimeline = true, readOnly = false }: {
+  clientId: string; contactId: string; badge?: LeadBadge | null; campaignName?: string | null; onChanged?: () => void; showTimeline?: boolean; readOnly?: boolean;
 }) {
   const [data, setData] = useState<LeadFull | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,7 +74,7 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
       {/* Header */}
       <div style={{ padding: "18px 18px 14px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "var(--bg-surface)" }}>
         <Avatar name={leadName(c)} wa={c.waId} size={60} />
-        <EditableName value={c.displayName} fallback={c.name || `+${c.waId}`}
+        <EditableName value={c.displayName} fallback={c.name || `+${c.waId}`} readOnly={readOnly}
           onSave={(v) => { setData({ ...data, contact: { ...c, displayName: v } }); patch({ displayName: v || null }); }} />
         <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, display: "flex", alignItems: "center", gap: 4 }}><Phone size={10} /> +{c.waId}</p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
@@ -87,11 +87,16 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
 
       {/* Funil */}
       <Card icon={<Hash size={13} />} title="Funil">
-        <select value={data.funnelStage ?? ""} onChange={(e) => { const v = e.target.value || null; setData({ ...data, funnelStage: v }); patch({ funnelStage: v }); }}
-          style={selectStyle}>
-          <option value="">Sem etapa</option>
-          {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
-        </select>
+        {!readOnly && (
+          <select value={data.funnelStage ?? ""} onChange={(e) => { const v = e.target.value || null; setData({ ...data, funnelStage: v }); patch({ funnelStage: v }); }}
+            style={selectStyle}>
+            <option value="">Sem etapa</option>
+            {STAGES.map((s) => <option key={s} value={s}>{FUNNEL_LABELS[s]}</option>)}
+          </select>
+        )}
+        {readOnly && !data.funnelStage && (
+          <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem etapa</span>
+        )}
         {data.funnelStage && (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: STAGE_COLORS[data.funnelStage] ?? "var(--text-muted)" }} />
@@ -111,7 +116,7 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
 
       {/* Tags */}
       <Card icon={<Tag size={13} />} title="Tags">
-        <TagsEditor clientId={clientId} current={data.tags} all={allTags}
+        <TagsEditor clientId={clientId} current={data.tags} all={allTags} readOnly={readOnly}
           onChange={(tags) => { setData({ ...data, tags }); patch({ tagIds: tags.map((t) => t.id) }); }}
           onNewTag={(t) => setAllTags((prev) => prev.some((x) => x.id === t.id) ? prev : [...prev, t])} />
       </Card>
@@ -138,12 +143,12 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
 
       {/* Notas */}
       <Card icon={<Pencil size={13} />} title="Notas internas">
-        <NotesEditor value={c.notes} onSave={(v) => { setData({ ...data, contact: { ...c, notes: v } }); patch({ notes: v || null }); }} />
+        <NotesEditor value={c.notes} readOnly={readOnly} onSave={(v) => { setData({ ...data, contact: { ...c, notes: v } }); patch({ notes: v || null }); }} />
       </Card>
 
       {/* Validação para relatório */}
       <Card icon={c.reportValid ? <ShieldCheck size={13} color="#16A34A" /> : <ShieldAlert size={13} color="#DC2626" />} title="Validação para relatório">
-        <ValidityEditor valid={c.reportValid} reason={c.reportInvalidReason}
+        <ValidityEditor valid={c.reportValid} reason={c.reportInvalidReason} readOnly={readOnly}
           onSave={(valid, reason) => { setData({ ...data, contact: { ...c, reportValid: valid, reportInvalidReason: reason } }); patch({ reportValid: valid, reportInvalidReason: reason }); }} />
       </Card>
 
@@ -162,9 +167,12 @@ export function LeadDetails({ clientId, contactId, badge, campaignName, onChange
 }
 
 // ─── Editable name ────────────────────────────────────────────────────────────
-function EditableName({ value, fallback, onSave }: { value: string | null; fallback: string; onSave: (v: string) => void }) {
+function EditableName({ value, fallback, onSave, readOnly = false }: { value: string | null; fallback: string; onSave: (v: string) => void; readOnly?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
+  if (readOnly) {
+    return <span style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text-primary)" }}>{value || fallback}</span>;
+  }
   if (editing) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -186,11 +194,19 @@ function EditableName({ value, fallback, onSave }: { value: string | null; fallb
 }
 
 // ─── Tags editor ──────────────────────────────────────────────────────────────
-function TagsEditor({ clientId, current, all, onChange, onNewTag }: { clientId: string; current: TagT[]; all: TagT[]; onChange: (tags: TagT[]) => void; onNewTag: (t: TagT) => void }) {
+function TagsEditor({ clientId, current, all, onChange, onNewTag, readOnly = false }: { clientId: string; current: TagT[]; all: TagT[]; onChange: (tags: TagT[]) => void; onNewTag: (t: TagT) => void; readOnly?: boolean }) {
   const [adding, setAdding] = useState(false);
   const [input, setInput] = useState("");
   const currentIds = new Set(current.map((t) => t.id));
   const suggestions = useMemo(() => all.filter((t) => !currentIds.has(t.id) && t.name.toLowerCase().includes(input.toLowerCase())), [all, current, input]);
+
+  if (readOnly) {
+    return current.length ? (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {current.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+      </div>
+    ) : <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem tags</span>;
+  }
 
   async function createAndAdd(name: string) {
     const n = name.trim();
@@ -232,9 +248,14 @@ function TagsEditor({ clientId, current, all, onChange, onNewTag }: { clientId: 
 }
 
 // ─── Notes editor ─────────────────────────────────────────────────────────────
-function NotesEditor({ value, onSave }: { value: string | null; onSave: (v: string) => void }) {
+function NotesEditor({ value, onSave, readOnly = false }: { value: string | null; onSave: (v: string) => void; readOnly?: boolean }) {
   const [draft, setDraft] = useState(value ?? "");
   const dirty = draft !== (value ?? "");
+  if (readOnly) {
+    return value
+      ? <p style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5, whiteSpace: "pre-wrap", margin: 0 }}>{value}</p>
+      : <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem anotações</span>;
+  }
   return (
     <div>
       <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Anotações internas sobre o lead…" rows={3}
@@ -247,8 +268,16 @@ function NotesEditor({ value, onSave }: { value: string | null; onSave: (v: stri
 }
 
 // ─── Validity editor ──────────────────────────────────────────────────────────
-function ValidityEditor({ valid, reason, onSave }: { valid: boolean; reason: string | null; onSave: (valid: boolean, reason: string | null) => void }) {
+function ValidityEditor({ valid, reason, onSave, readOnly = false }: { valid: boolean; reason: string | null; onSave: (valid: boolean, reason: string | null) => void; readOnly?: boolean }) {
   const [draftReason, setDraftReason] = useState(reason ?? "");
+  if (readOnly) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: valid ? "#16A34A" : "#DC2626" }}>
+        {valid ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+        {valid ? "Válido" : `Inválido${reason ? ` · ${reason}` : ""}`}
+      </div>
+    );
+  }
   return (
     <div>
       <div style={{ display: "flex", gap: 8 }}>
