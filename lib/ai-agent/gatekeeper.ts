@@ -17,6 +17,11 @@ export function shouldRespond(cfg: CfgLike | null): { respond: boolean; reason: 
   if (cfg.paused) return { respond: false, reason: "pausado pelo cliente (kill-switch)" };
   if (cfg.status !== "live") return { respond: false, reason: `status ${cfg.status} (não está em produção)` };
 
+  // Modo MANUAL (PRD sob demanda): a IA NUNCA responde no automático — só quando um vendedor
+  // clica "IA Atender" no lead (manualAiReply, que roda o FLUXO PADRÃO completo). Rollout
+  // controlado: atende só os leads escolhidos, um a um. Tem precedência sobre canário/horário.
+  if (cfg.answerMode === "manual") return { respond: false, reason: "modo manual (só via botão IA Atender)" };
+
   // Canário: ignora o horário comercial para permitir validar em PRD a qualquer hora.
   // Seguro — o respond.ts filtra e só responde os números de teste; nenhum lead real é tocado.
   if (cfg.testMode) return { respond: true, reason: "canário (ignora horário)" };
