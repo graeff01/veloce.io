@@ -181,7 +181,9 @@ export function baseCityName(f: FreightRegion): string {
 export function cityKeyOf(f: FreightRegion): string { return f.code || normText(baseCityName(f)); }
 
 function resolvedLine(f: FreightRegion): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required" } {
-  const label = `Frete — ${f.region}${f.assembly === "required" ? " (entrega com montagem obrigatória)" : ""}`;
+  // Label do frete no PDF do cliente: NÃO expõe "(entrega com montagem obrigatória)" — confunde
+  // o cliente (feedback Maria). A obrigatoriedade fica no campo `assembly` (interno, p/ a IA/motor).
+  const label = `Frete — ${f.region}`;
   return { label, amount: round2(f.amount), code: f.code ?? null, ...(f.assembly ? { assembly: f.assembly } : {}) };
 }
 
