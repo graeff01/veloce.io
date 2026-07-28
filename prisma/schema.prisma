@@ -905,6 +905,7 @@ model WaContact {
   aiOptedOut    Boolean   @default(false) // lead pediu para não receber mensagens automáticas (LGPD)
   aiOptedOutAt  DateTime?
   aiSilenced    Boolean   @default(false) // operador silenciou a IA neste contato (assumiu manualmente)
+  aiEngaged     Boolean   @default(false) // modo MANUAL: vendedor clicou "IA Atender" → a IA assume e completa o atendimento deste lead (até um envio humano desengajar)
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 

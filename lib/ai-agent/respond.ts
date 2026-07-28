@@ -99,6 +99,9 @@ export async function storeOutbound(connectionId: string, contactId: string, waM
     create: { connectionId, contactId, waMessageId, direction: "out", type, text, aiGenerated, timestamp: ts, sentByEmail },
     update: { aiGenerated, text },
   }).catch(() => {});
+  // Envio HUMANO (aiGenerated=false): o vendedor assumiu → DESENGAJA a IA neste lead. No modo
+  // manual, a IA para de responder sozinha até o vendedor clicar "IA Atender" de novo.
+  if (!aiGenerated) await prisma.waContact.update({ where: { id: contactId }, data: { aiEngaged: false } }).catch(() => {});
   await applyMessageToConversation({ connectionId, contactId, direction: "out", timestamp: ts }).catch(() => {});
 }
 
@@ -112,7 +115,7 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   if (!conn) return "skipped";
   const contact = await prisma.waContact.findUnique({
     where: { id: input.contactId },
-    select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true },
+    select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, aiEngaged: true },
   });
   if (!contact) return "skipped";
 
@@ -157,7 +160,8 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
 
   // 1) Gatekeeper: kill-switch global, pause por cliente, status live, fora do horário.
-  const gate = shouldRespond(cfg);
+  //    No modo manual, `engaged` libera os leads que o vendedor engajou ("IA Atender").
+  const gate = shouldRespond(cfg, { engaged: contact.aiEngaged });
   if (!gate.respond) return "skipped";
 
   // 2) Modo canário: responde SOMENTE os números de teste liberados (validação em PRD
@@ -382,6 +386,9 @@ export async function manualAiReply(clientId: string, contactId: string): Promis
   // demais modos, mantém o assistência de hoje (a IA só complementa o que o vendedor não deu).
   const acfg = await prisma.aiAgentConfig.findUnique({ where: { clientId }, select: { answerMode: true } });
   const fullFlow = acfg?.answerMode === "manual";
+  // Modo manual: engaja a IA neste lead — a partir daqui ela COMPLETA o atendimento sozinha
+  // (responde as próximas mensagens do lead) até um envio humano desengajar (storeOutbound).
+  if (fullFlow) await prisma.waContact.update({ where: { id: contactId }, data: { aiEngaged: true } }).catch(() => {});
   const out = await runAgent({ clientId, connectionId: conn.id, contact: { id: contact.id, name: contact.name, waId: contact.waId }, inboundText }, fullFlow ? {} : { autoMode: true });
   const reply = out.reply?.trim();
   // [SKIP]/escalou/bloqueado → a IA não tem o que responder (é do vendedor); não envia nada.
