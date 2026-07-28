@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { getPortalUser, isAdminRole } from "@/lib/portal-auth";
+import { isStrongAd } from "@/lib/wa-leads";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const contacts = hasMore ? rows.slice(0, limit) : rows;
   const ids = contacts.map((c) => c.id);
   const [leads, convs, attendants, user] = await Promise.all([
-    prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true } }),
+    prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
     getPortalUser(portal.clientId),
@@ -68,6 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         lastDirection: last?.direction ?? null,
         lastMessageAt: c.lastMessageAt,
         fromAd: !!lead,
+        adStrong: isStrongAd(lead),
         adTitle: lead?.adTitle ?? null,
         adModel: lead?.adModel ?? null,
         funnelStage: cv?.funnelStage ?? null,

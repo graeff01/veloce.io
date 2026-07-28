@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireClientAccess } from "@/lib/api-helpers";
-import { deriveBadge, monthStart } from "@/lib/wa-leads";
+import { deriveBadge, monthStart, isStrongAd } from "@/lib/wa-leads";
 
 // GET — lista de conversas (contatos) com a última mensagem e marca de anúncio.
 // Paginação (offset/limit) + BUSCA NO SERVIDOR (nome/apelido/número) — encontra qualquer
@@ -62,6 +62,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         lastText: last?.text ?? null,
         lastDirection: last?.direction ?? null,
         fromAd: !!lead,
+        adStrong: isStrongAd(lead),
         adTitle: lead?.adTitle ?? null,
         reportValid: c.reportValid,
         tags: c.tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),

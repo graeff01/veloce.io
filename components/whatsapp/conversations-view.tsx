@@ -16,7 +16,7 @@ import { StatusBadge, TagChip } from "@/components/whatsapp/primitives/lead-badg
 interface ConvRow {
   contactId: string; waId: string; name: string | null; displayName: string | null;
   lastMessageAt: string | null; lastText: string | null; lastDirection: string | null;
-  fromAd: boolean; adTitle: string | null;
+  fromAd: boolean; adStrong?: boolean; adTitle: string | null;
   reportValid: boolean; tags: { id: string; name: string; color: string }[]; badge: LeadBadge;
 }
 interface Msg {
@@ -26,7 +26,7 @@ interface Msg {
 }
 interface Detail {
   contact: { id: string; waId: string; name: string | null; aiSilenced?: boolean; aiOptedOut?: boolean };
-  lead: { adTitle: string | null; adId?: string | null; enteredAt?: string | null; sourceType?: string | null } | null;
+  lead: { adTitle: string | null; adModel?: string | null; adStrong?: boolean; adId?: string | null; enteredAt?: string | null; sourceType?: string | null } | null;
   funnelStage: string | null; items: Msg[];
   aiSummary: string | null; aiSuggestedStage: string | null;
   leadScore?: { score: number; temperature: string | null; qualified: boolean } | null;
@@ -431,12 +431,17 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                         {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)" }} />}
                         {c.tags?.slice(0, 1).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
                         {c.reportValid === false && <span style={{ fontSize: 9.5, fontWeight: 700, color: "#DC2626", background: "rgba(220,38,38,0.1)", padding: "1px 6px", borderRadius: 99 }}>inválido</span>}
-                        {c.fromAd && (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 10%, transparent)", borderRadius: 99, padding: "2px 7px" }}>
+                        {c.fromAd && (c.adStrong ? (
+                          <span title="Clicou no anúncio (Click-to-WhatsApp)" style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 10%, transparent)", borderRadius: 99, padding: "2px 7px" }}>
                             <Megaphone size={9} style={{ color: "var(--accent)" }} />
                             <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>Meta</span>
                           </span>
-                        )}
+                        ) : (
+                          <span title="Menção ao anúncio (a IA identificou pelo texto, sem clique)" style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "var(--bg-elevated)", borderRadius: 99, padding: "2px 7px" }}>
+                            <MessageSquare size={9} style={{ color: "var(--text-muted)" }} />
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>menção</span>
+                          </span>
+                        ))}
                       </span>
                     </div>
                   </div>
@@ -472,11 +477,15 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                       <span style={{ fontSize: 11.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 3 }}>
                         <Phone size={10} /> +{detail?.contact.waId ?? selectedConv?.waId}
                       </span>
-                      {detail?.lead?.adTitle && (
-                        <span style={{ fontSize: 11, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 8%, transparent)", padding: "1px 7px", borderRadius: 99 }}>
-                          <Megaphone size={9} /> {detail.lead.adTitle}
+                      {detail?.lead?.adTitle && (detail.lead.adStrong ? (
+                        <span title="Clicou no anúncio (Click-to-WhatsApp)" style={{ fontSize: 11, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3, background: "color-mix(in srgb, var(--accent) 8%, transparent)", padding: "1px 7px", borderRadius: 99 }}>
+                          <Megaphone size={9} /> Anúncio: {detail.lead.adTitle}
                         </span>
-                      )}
+                      ) : (
+                        <span title="Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique no anúncio." style={{ fontSize: 11, color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 3, background: "var(--bg-elevated)", padding: "1px 7px", borderRadius: 99 }}>
+                          <MessageSquare size={9} /> Menção: {detail.lead.adModel ?? detail.lead.adTitle}
+                        </span>
+                      ))}
                       {detail?.funnelStage && (
                         <span style={{ fontSize: 10.5, fontWeight: 600, color: STAGE_COLORS[detail.funnelStage] ?? "var(--text-muted)", background: `color-mix(in srgb, ${STAGE_COLORS[detail.funnelStage] ?? "#64748B"} 10%, transparent)`, padding: "1px 7px", borderRadius: 99 }}>
                           {FUNNEL_LABELS[detail.funnelStage]}

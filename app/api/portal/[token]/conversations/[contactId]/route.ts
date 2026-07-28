@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isWithin24h } from "@/lib/wa-window";
 import { getPortalSessionEmail } from "@/lib/portal-auth";
+import { isStrongAd } from "@/lib/wa-leads";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
 
   const [messages, lead, conv, attendants, me] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true, sentByEmail: true } }),
-    prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true } }),
+    prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
     getPortalSessionEmail(portal.clientId),
@@ -49,7 +50,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
 
   return NextResponse.json({
     contact: { name: contact.displayName || contact.name || contact.waId },
-    lead: lead ? { adTitle: lead.adTitle, adModel: lead.adModel, adBody: lead.adBody, sourceUrl: lead.sourceUrl, image: adImage } : null,
+    lead: lead ? { adTitle: lead.adTitle, adModel: lead.adModel, adBody: lead.adBody, sourceUrl: lead.sourceUrl, image: adImage, adStrong: isStrongAd(lead) } : null,
     funnelStage: conv?.funnelStage ?? null,
     funnelEvidence: conv?.funnelManual ? null : (conv?.funnelEvidence ?? null),
     windowOpen: isWithin24h(lastInboundAt),

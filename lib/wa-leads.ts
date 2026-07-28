@@ -28,6 +28,14 @@ export const BADGE_COLOR: Record<LeadBadge, string> = {
   novo: "#16A34A", recorrente: "#3B82F6", reativado: "#D97706",
 };
 
+// Atribuição de anúncio FORTE (clicou no anúncio de verdade — Click-to-WhatsApp: tem adId
+// e/ou ctwa_clid, ou um source_type real) vs FRACA (sourceType "message": a IA só identificou
+// um modelo/anúncio pelo TEXTO da mensagem, sem clique). Usado p/ diferenciar na UI.
+export function isStrongAd(lead: { adId?: string | null; ctwaClid?: string | null; sourceType?: string | null } | null | undefined): boolean {
+  if (!lead) return false;
+  return !!(lead.adId || lead.ctwaClid) || (!!lead.sourceType && lead.sourceType !== "message");
+}
+
 export function monthStart(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }

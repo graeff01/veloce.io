@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { logWaEvent } from "@/lib/wa-events";
 import { explainHistory } from "@/lib/wa-funnel";
+import { isStrongAd } from "@/lib/wa-leads";
 import { eraseContactAiData } from "@/lib/ai-agent/retention";
 import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
@@ -57,7 +58,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       createdAt: contact.createdAt,
     },
     tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),
-    lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, adModel: lead.adModel, sourceType: lead.sourceType, sourceUrl: lead.sourceUrl, ctwaClid: lead.ctwaClid, enteredAt: lead.enteredAt, imported: lead.imported } : null,
+    lead: lead ? { adTitle: lead.adTitle, adId: lead.adId, adModel: lead.adModel, adStrong: isStrongAd(lead), sourceType: lead.sourceType, sourceUrl: lead.sourceUrl, ctwaClid: lead.ctwaClid, enteredAt: lead.enteredAt, imported: lead.imported } : null,
     funnelStage: conversation?.funnelStage ?? null,
     funnelEvidence: conversation?.funnelEvidence ?? null, // frase que justificou a etapa (auditoria)
     funnelManual: conversation?.funnelManual ?? false,
