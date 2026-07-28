@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Lock, User } from "lucide-react";
+import { Mail, Lock, User, X } from "lucide-react";
+import { PrivacyPolicyContent } from "@/components/privacy-policy";
 
 // Tela de acesso do painel do cliente: LOGIN (e-mail + senha) e CRIAR CONTA
 // (auto-cadastro pelo link fixo). Mostra o logo real do cliente. Mesma tela mobile/web.
@@ -13,6 +14,7 @@ export function PortalGate({ token, brandName, logoUrl }: { token: string; brand
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [logoOk, setLogoOk] = useState(true);
+  const [showPrivacy, setShowPrivacy] = useState(false);
 
   async function submit() {
     setErr("");
@@ -92,7 +94,31 @@ export function PortalGate({ token, brandName, logoUrl }: { token: string; brand
             Esqueceu a senha? Peça ao admin do painel para resetar seu acesso.
           </p>
         )}
+        <p style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--p-border)", textAlign: "center" }}>
+          <button type="button" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", color: "var(--p-muted)", fontSize: 11.5, cursor: "pointer", textDecoration: "underline", padding: 0, fontFamily: "inherit" }}>
+            Política de Privacidade
+          </button>
+        </p>
       </div>
+
+      {showPrivacy && (
+        <div onClick={() => setShowPrivacy(false)} role="dialog" aria-modal="true" aria-label="Política de Privacidade"
+          style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "#ffffff", borderRadius: 16, maxWidth: 680, width: "100%", maxHeight: "86dvh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 70px rgba(0,0,0,.4)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "13px 18px", borderBottom: "1px solid #ececec", flexShrink: 0 }}>
+              <span style={{ fontWeight: 800, fontSize: 15, color: "#4F46E5", fontFamily: "system-ui, sans-serif", letterSpacing: "-.01em" }}>Veloce</span>
+              <button type="button" onClick={() => setShowPrivacy(false)} aria-label="Fechar"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", background: "#f3f4f6", color: "#374151", cursor: "pointer" }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ overflowY: "auto", padding: "20px 24px 28px" }}>
+              <PrivacyPolicyContent />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
