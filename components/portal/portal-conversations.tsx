@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEv
 import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
-interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
+interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -12,7 +12,7 @@ const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null; adStrong?: boolean } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -538,7 +538,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ fontSize: 12.5, fontWeight: waiting ? 700 : 400, color: waiting ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
                       {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} />}
-                      {c.fromAd && <span style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>}
+                      {c.fromAd && (c.adStrong
+                        ? <span title="Clicou no anúncio (Click-to-WhatsApp)" style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>
+                        : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
+                      )}
                       <StageBadge stage={c.funnelStage} />
                     </div>
                   </div>
@@ -593,7 +596,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
                 {(() => { const wa = list?.find((r) => r.contactId === sel)?.waId ?? ""; const ph = formatPhone(wa); return ph && !nameIsNumber(conv.contact.name, wa) ? <div style={{ fontSize: 11.5, color: "var(--wa-muted)" }}>{ph}</div> : null; })()}
-                {conv.lead?.adTitle && <div style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>veio do anúncio “{conv.lead.adTitle}”</div>}
+                {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
               </div>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
@@ -675,7 +678,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             {/* mensagens */}
             <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 12px" : "16px 8%" }}>
               {/* Card do anúncio que originou o lead (estilo referral CTWA) */}
-              {conv.lead && (conv.lead.image || conv.lead.adTitle) && (
+              {conv.lead && (conv.lead.image || conv.lead.adStrong) && (
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
                   <a href={conv.lead.sourceUrl ?? undefined} target="_blank" rel="noopener noreferrer" style={{ display: "flex", gap: 0, maxWidth: 380, width: "100%", background: "var(--wa-in)", border: "1px solid var(--p-border)", borderRadius: 12, overflow: "hidden", textDecoration: "none", color: "var(--wa-text)", boxShadow: "0 1px 3px rgba(0,0,0,.1)" }}>
                     {conv.lead.image && (
