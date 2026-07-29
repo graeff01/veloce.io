@@ -114,7 +114,7 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "reagir",
-      description: "Reage à ÚLTIMA mensagem do lead com um emoji (como uma pessoa dá um ❤️/👍 no WhatsApp). Use com PARCIMÔNIA e só quando for natural: o lead demonstrou empolgação ('amei!', 'ficou linda'), concordou/fechou ('fechado!', 'pode ser'), agradeceu, ou mandou uma foto legal. NÃO reaja a toda mensagem, nem a perguntas ou reclamações. Na maioria das vezes NÃO reaja.",
+      description: "Reage à ÚLTIMA mensagem do lead com um emoji (como uma pessoa dá um ❤️/👍 no WhatsApp). Use com PARCIMÔNIA, no momento certo: o lead demonstrou empolgação ('amei!', 'ficou linda'), concordou/fechou ('fechado!', 'pode ser'), agradeceu, elogiou, mandou uma foto legal, OU fez uma pergunta boa/animada que você vai responder (um 👍/😊 rápido antes de responder é natural). NÃO reaja a TODA mensagem nem a coisas neutras ('ok', 'sim', 'certo'); reclamações nunca. Reagir demais fica robótico — reaja de vez em quando, quando couber de verdade.",
       parameters: { type: "object", properties: {
         emoji: { type: "string", enum: ["❤️", "👍", "🔥", "😊", "👏", "🙏"], description: "emoji que combina com o momento" },
       }, required: ["emoji"] },
