@@ -37,6 +37,7 @@ interface RunOpts {
   suppressGreeting?: boolean; // entrando numa conversa em andamento (auto/manual) → NÃO saúda, só responde
   testFicha?: Record<string, unknown>; // ficha efêmera PERSISTENTE entre turnos (só test) — p/ simulação de replay multi-turno
   testMemory?: string; // resumo rolante efêmero (só test) — reproduz a memória de longo prazo (agentMemory) que produção tem em conversas longas
+  promptOverride?: string; // SÓ modo test: usa este customPrompt no lugar do banco (A/B do Prompt Compiler — compara prompt limpo × atual sem tocar em produção)
 }
 
 // Instrução do MODO AUTO: a IA entra só pra não deixar o lead no vácuo quando o atendente
@@ -246,7 +247,9 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     language: cfg?.language ?? "pt-BR", assistantName: cfg?.assistantName ?? null, storeName,
     persona: cfg?.persona ?? null, goals: cfg?.goals ?? null,
     rules: cfg?.rules ?? null, timezone: cfg?.timezone ?? "America/Sao_Paulo",
-    playbook: parsePlaybook(cfg?.playbook), variantKey: null, customPrompt: cfg?.customPrompt ?? null,
+    playbook: parsePlaybook(cfg?.playbook), variantKey: null,
+    // promptOverride só vale no modo teste (A/B do Prompt Compiler); em produção, sempre o banco.
+    customPrompt: (mode === "test" && opts.promptOverride?.trim()) ? opts.promptOverride.trim() : (cfg?.customPrompt ?? null),
   };
   let promptVariant: string | null = null;
 

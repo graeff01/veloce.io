@@ -13,7 +13,7 @@
  * Requer DATABASE_URL e OPENAI_API_KEY. Custa chamadas de modelo (gpt-4o-mini) — offline.
  */
 import "dotenv/config";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prismaUnscoped } from "@/lib/prisma";
 import { runAgent } from "@/lib/ai-agent/orchestrator";
@@ -30,6 +30,11 @@ async function main() {
   const limit = Number(arg("limit") ?? 50);
   const minMsgs = Number(arg("min-msgs") ?? 2);
   const outDir = join(process.cwd(), arg("out") ?? "sim-out");
+  // A/B do Prompt Compiler: com --prompt-file, a IA usa esse customPrompt (candidato limpo) no
+  // lugar do banco; sem ele, usa o do banco (baseline atual). Só afeta o modo teste (offline).
+  const promptFile = arg("prompt-file");
+  const promptOverride = promptFile ? readFileSync(promptFile, "utf8") : undefined;
+  if (promptOverride) console.log(`Prompt CANDIDATO: ${promptFile} (${promptOverride.length} chars) — override no modo teste.\n`);
   if (!process.env.OPENAI_API_KEY) { console.error("OPENAI_API_KEY necessária (a IA responde de verdade)."); process.exit(2); }
   if (process.env.AI_CHAT_TEMPERATURE !== "0") console.warn("AVISO: rode com AI_CHAT_TEMPERATURE=0 para reprodutibilidade.\n");
 
@@ -39,7 +44,8 @@ async function main() {
 
   // Conversas reais do cliente.
   const conns = (await prismaUnscoped.waConnection.findMany({ where: { clientId }, select: { id: true } })).map((c) => c.id);
-  const contacts = await prismaUnscoped.waContact.findMany({ where: { connectionId: { in: conns } }, select: { id: true, name: true, waId: true } });
+  // orderBy fixo: baseline e candidato têm que rodar EXATAMENTE as mesmas conversas na mesma ordem.
+  const contacts = await prismaUnscoped.waContact.findMany({ where: { connectionId: { in: conns } }, orderBy: { id: "asc" }, select: { id: true, name: true, waId: true } });
 
   mkdirSync(outDir, { recursive: true });
   const summary: { contactId: string; name: string | null; turns: number; overall: number; errors: number; blocks: number; tools: string[] }[] = [];
@@ -73,7 +79,7 @@ async function main() {
       try {
         const out = await runAgent(
           { clientId, connectionId: "sim", contact: { id: `sim-${ct.id}`, name: ct.name, waId: "0000000000" }, inboundText: turnText },
-          { mode: "test", transcript, testFicha, testMemory },
+          { mode: "test", transcript, testFicha, testMemory, promptOverride },
         );
         reply = out.reply ?? ""; decision = out.decision; status = out.status;
         for (const t of out.toolCalls ?? []) { tools.push(t.name); toolsAll.add(t.name); }
