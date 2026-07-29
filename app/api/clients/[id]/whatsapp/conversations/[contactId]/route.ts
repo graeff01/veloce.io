@@ -74,6 +74,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         timestamp: m.timestamp, deliveredAt: m.deliveredAt, readAt: m.readAt,
         filename: raw?.[m.type]?.filename ?? null,
         transcription: m.media?.transcription ?? null,
+        reaction: m.reaction,
       };
     }),
   });

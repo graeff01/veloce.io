@@ -22,7 +22,7 @@ interface ConvRow {
 interface Msg {
   id: string; text: string | null; direction: string; type: string;
   timestamp: string; deliveredAt: string | null; readAt: string | null;
-  filename?: string | null; transcription?: string | null;
+  filename?: string | null; transcription?: string | null; reaction?: string | null;
 }
 interface Detail {
   contact: { id: string; waId: string; name: string | null; aiSilenced?: boolean; aiOptedOut?: boolean };
@@ -607,11 +607,12 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                               : "1px solid color-mix(in srgb, #1FA855 22%, var(--border))",
                             boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
                             color: "var(--text-primary)",
-                            fontSize: 13.5, lineHeight: 1.5,
+                            fontSize: 13.5, lineHeight: 1.5, position: "relative",
+                            marginBottom: m.reaction ? 12 : 0,
                             ...br,
                           }}>
                             {MEDIA_TYPES.has(m.type) ? (
-                              <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} transcription={m.transcription} />
+                              <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} transcription={m.transcription} incoming={incoming} />
                             ) : (
                               <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
                             )}
@@ -625,6 +626,9 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                                     : <Check size={13} style={{ color: "var(--text-muted)" }} />
                               )}
                             </div>
+                            {m.reaction && (
+                              <span style={{ position: "absolute", bottom: -11, [incoming ? "right" : "left"]: 8, background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 11, padding: "1px 5px", fontSize: 12, lineHeight: "16px", boxShadow: "0 1px 3px rgba(15,23,42,0.12)" }}>{m.reaction}</span>
+                            )}
                           </div>
                         </div>
                       </div>

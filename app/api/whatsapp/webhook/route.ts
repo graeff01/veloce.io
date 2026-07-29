@@ -178,6 +178,19 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 
     const ts = new Date(Number(m.timestamp) * 1000);
 
+    // REAÇÃO (❤️/👍…): não é mensagem visível — aplica o emoji na mensagem ALVO e segue.
+    // emoji vazio = reação removida.
+    if (m.type === "reaction") {
+      const reaction = (m as { reaction?: { message_id?: string; emoji?: string } }).reaction;
+      if (reaction?.message_id) {
+        await prisma.waMessage.updateMany({
+          where: { connectionId, waMessageId: reaction.message_id },
+          data: { reaction: reaction.emoji || null },
+        }).catch(() => {});
+      }
+      continue;
+    }
+
     const contact = await prisma.waContact.upsert({
       where: { connectionId_waId: { connectionId, waId: customerWaId } },
       create: { connectionId, waId: customerWaId, name: nameByWaId.get(customerWaId) || null, lastMessageAt: ts },
