@@ -2,9 +2,10 @@
 // pública /privacy quanto no modal do login do portal. Sem hooks/estado: renderiza em
 // server e client. Cores fixas (fundo claro): a página e o modal usam superfície clara.
 import type { CSSProperties } from "react";
+import { COMPANY } from "@/lib/company";
 
 export const PRIVACY_UPDATED_AT = "21 de julho de 2026";
-export const PRIVACY_CONTACT_EMAIL = "contato@veloce.io";
+export const PRIVACY_CONTACT_EMAIL = COMPANY.privacyEmail;
 
 const h2: CSSProperties = { fontSize: 18, fontWeight: 700, margin: "28px 0 8px", color: "#111827" };
 const ul: CSSProperties = { paddingLeft: 20, margin: "8px 0" };
@@ -70,10 +71,13 @@ export function PrivacyPolicyContent() {
       <h2 style={h2}>7. Segurança</h2>
       <p>Adotamos medidas técnicas e organizacionais para proteger os dados, incluindo criptografia de credenciais sensíveis, controle de acesso e validação da autenticidade das mensagens recebidas.</p>
 
-      <h2 style={h2}>8. Contato</h2>
+      <h2 style={h2}>8. Contato e Encarregado (DPO)</h2>
       <p>
         Para exercer seus direitos ou tirar dúvidas sobre esta Política, entre em contato:
         {" "}<a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} style={{ color: "#4F46E5" }}>{PRIVACY_CONTACT_EMAIL}</a>.
+        Nosso Encarregado pela Proteção de Dados (DPO) é <strong>{COMPANY.dpoName}</strong>
+        {" "}(<a href={`mailto:${COMPANY.dpoEmail}`} style={{ color: "#4F46E5" }}>{COMPANY.dpoEmail}</a>).
+        Para pedir a <strong>exclusão dos seus dados</strong>, veja também a página de Exclusão de Dados.
       </p>
 
       <p style={{ color: "#9ca3af", fontSize: 13, marginTop: 32 }}>© {new Date().getFullYear()} Veloce. Todos os direitos reservados.</p>
