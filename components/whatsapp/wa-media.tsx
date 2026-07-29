@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { Mic, Image, FileText, Video, Download, AlertCircle, Loader2 } from "lucide-react";
+import { WaAudioPlayer } from "./wa-audio-player";
 
 // Exibe a mídia de uma WaMessage para o OPERADOR (espelhamento/auditoria).
 // Baixa via proxy do servidor — nada vai para terceiros. A IA NÃO usa este
 // componente; ela apenas reconhece o tipo por marcador e segue suas regras.
-export function MediaContent({ url: urlProp, clientId, msgId, type, caption, filename }: {
-  url?: string; clientId?: string; msgId?: string; type: string; caption: string | null; filename?: string | null;
+export function MediaContent({ url: urlProp, clientId, msgId, type, caption, filename, transcription, accent }: {
+  url?: string; clientId?: string; msgId?: string; type: string; caption: string | null; filename?: string | null; transcription?: string | null; accent?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -56,7 +57,7 @@ export function MediaContent({ url: urlProp, clientId, msgId, type, caption, fil
     );
   }
   if (type === "audio") {
-    return <audio controls preload="metadata" src={url} onError={() => setFailed(true)} style={{ width: 240, height: 40 }} />;
+    return <WaAudioPlayer src={url} transcription={transcription} accent={accent ?? "var(--accent)"} />;
   }
   if (type === "video") {
     return (

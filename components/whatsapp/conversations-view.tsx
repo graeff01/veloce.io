@@ -22,7 +22,7 @@ interface ConvRow {
 interface Msg {
   id: string; text: string | null; direction: string; type: string;
   timestamp: string; deliveredAt: string | null; readAt: string | null;
-  filename?: string | null;
+  filename?: string | null; transcription?: string | null;
 }
 interface Detail {
   contact: { id: string; waId: string; name: string | null; aiSilenced?: boolean; aiOptedOut?: boolean };
@@ -611,7 +611,7 @@ export function ConversationsView({ clientId, onFunnelChange, readOnly = false }
                             ...br,
                           }}>
                             {MEDIA_TYPES.has(m.type) ? (
-                              <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} />
+                              <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} transcription={m.transcription} />
                             ) : (
                               <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>
                             )}

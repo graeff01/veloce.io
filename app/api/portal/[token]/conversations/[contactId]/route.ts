@@ -24,7 +24,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const [messages, lead, conv, attendants, me] = await Promise.all([
-    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true, sentByEmail: true } }),
+    prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true, sentByEmail: true, media: { select: { transcription: true } } } }),
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
@@ -60,6 +60,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     me,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),
-    items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp, aiGenerated: m.aiGenerated, sentByEmail: m.sentByEmail, sentByName: nameOf(m.sentByEmail) })),
+    items: messages.map((m) => ({ id: m.id, text: m.text, direction: m.direction, type: m.type, timestamp: m.timestamp, aiGenerated: m.aiGenerated, sentByEmail: m.sentByEmail, sentByName: nameOf(m.sentByEmail), transcription: m.media?.transcription ?? null })),
   });
 }

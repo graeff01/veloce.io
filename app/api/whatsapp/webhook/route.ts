@@ -18,6 +18,7 @@ import { captureException } from "@/lib/observability";
 import { decryptSecret, DecryptError } from "@/lib/crypto";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
+import { persistWaMedia } from "@/lib/wa-media-store";
 
 export const runtime = "nodejs";
 
@@ -190,13 +191,17 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
     });
     if (exists) continue;
 
-    await prisma.waMessage.create({
+    const createdMsg = await prisma.waMessage.create({
       data: {
         connectionId, contactId: contact.id, waMessageId: m.id,
         direction: outbound ? "out" : "in",
         type: m.type, text: messageText(m), timestamp: ts, raw: m as object,
       },
     });
+
+    // Persiste a mídia UMA vez (baixa da Meta antes de expirar) + transcreve áudio.
+    // Fire-and-forget: nunca bloqueia nem quebra o webhook.
+    void persistWaMedia(conn, { id: createdMsg.id, type: m.type, raw: m }).catch(() => {});
 
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: outbound ? "out" : "in", timestamp: ts });
 
@@ -364,12 +369,14 @@ async function processMessageEchoes(conn: WaConnection, value: WaChangeValue) {
     });
     if (exists) continue;
 
-    await prisma.waMessage.create({
+    const createdEcho = await prisma.waMessage.create({
       data: {
         connectionId, contactId: contact.id, waMessageId: m.id,
         direction: "out", type: m.type, text: messageText(m), timestamp: ts, raw: m as object,
       },
     });
+    // Persiste mídia enviada pela loja pelo próprio celular (coexistência). Fire-and-forget.
+    void persistWaMedia(conn, { id: createdEcho.id, type: m.type, raw: m }).catch(() => {});
     await applyMessageToConversation({ connectionId, contactId: contact.id, direction: "out", timestamp: ts });
     // Funil: mensagem da loja (echo). Só converte com confirmação de venda real.
     void applyFunnelFromMessage({ connectionId, contactId: contact.id, clientId: conn.clientId, text: messageText(m), direction: "out" }).catch(() => {});
