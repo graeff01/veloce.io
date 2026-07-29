@@ -11,7 +11,7 @@ interface Attendant { email: string; name: string }
 const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
-interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null }
+interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null; transcription?: string | null }
 interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null; adStrong?: boolean } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
@@ -710,7 +710,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
                             ? <ThreadImage src={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} caption={m.text} />
                             : !mine && !m.pending && (m.type === "audio" || m.type === "video" || m.type === "document")
-                            ? <MediaContent url={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} type={m.type} caption={m.text} />
+                            ? <MediaContent url={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} type={m.type} caption={m.text} transcription={m.transcription} accent="var(--p-accent)" />
                             : <span>{body}</span>}
                           <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
                         </div>

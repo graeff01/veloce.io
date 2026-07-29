@@ -962,11 +962,27 @@ model WaMessage {
 
   connection    WaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   contact       WaContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  media         WaMedia?
 
   @@unique([connectionId, waMessageId])
   @@index([connectionId, timestamp])
   @@index([contactId, timestamp])
   @@index([connectionId, direction, timestamp])
+}
+
+// Mídia (imagem/áudio/vídeo/doc) PERSISTIDA de uma WaMessage. A Meta só retém o arquivo
+// por um tempo → sem isso, a mídia "expira" e some da caixa do atendente. Baixamos UMA vez
+// (no webhook) e guardamos os bytes aqui; o proxy serve daqui (instantâneo, permanente).
+// Para áudio, guardamos também a transcrição (Groq Whisper) p/ o atendente LER a nota de voz.
+model WaMedia {
+  messageId     String   @id
+  mime          String
+  data          Bytes
+  sizeBytes     Int      @default(0)
+  transcription String?  // só áudio: fala→texto (exibida ao atendente)
+  createdAt     DateTime @default(now())
+
+  message       WaMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }
 
 // Lead de anúncio: criado quando a 1ª mensagem traz o "referral" (Click-to-WhatsApp).
