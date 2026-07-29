@@ -957,6 +957,7 @@ model WaMessage {
   timestamp     DateTime
   deliveredAt   DateTime? // do evento "statuses" (entregue)
   readAt        DateTime? // do evento "statuses" (lido)
+  reaction      String?   // emoji com que o lead reagiu a ESTA mensagem (evento "reaction"); null = sem reação
   raw           Json?
   createdAt     DateTime @default(now())
 

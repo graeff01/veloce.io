@@ -7,12 +7,13 @@ import { WaAudioPlayer } from "./wa-audio-player";
 // Exibe a mídia de uma WaMessage para o OPERADOR (espelhamento/auditoria).
 // Baixa via proxy do servidor — nada vai para terceiros. A IA NÃO usa este
 // componente; ela apenas reconhece o tipo por marcador e segue suas regras.
-export function MediaContent({ url: urlProp, clientId, msgId, type, caption, filename, transcription, accent }: {
-  url?: string; clientId?: string; msgId?: string; type: string; caption: string | null; filename?: string | null; transcription?: string | null; accent?: string;
+export function MediaContent({ url: urlProp, clientId, msgId, type, caption, filename, transcription, accent, incoming }: {
+  url?: string; clientId?: string; msgId?: string; type: string; caption: string | null; filename?: string | null; transcription?: string | null; accent?: string; incoming?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
   // URL direta (ex.: portal) ou monta a de admin a partir de clientId+msgId.
   const url = urlProp ?? `/api/clients/${clientId}/whatsapp/media/${msgId}`;
 
@@ -57,7 +58,7 @@ export function MediaContent({ url: urlProp, clientId, msgId, type, caption, fil
     );
   }
   if (type === "audio") {
-    return <WaAudioPlayer src={url} transcription={transcription} accent={accent ?? "var(--accent)"} />;
+    return <WaAudioPlayer src={url} transcription={transcription} accent={accent ?? "var(--accent)"} unheard={incoming ?? false} />;
   }
   if (type === "video") {
     return (
@@ -68,14 +69,28 @@ export function MediaContent({ url: urlProp, clientId, msgId, type, caption, fil
     );
   }
   if (type === "document") {
+    const isPdf = /\.pdf$/i.test(filename || "") || /\.pdf$/i.test(caption || "");
     return (
-      <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--text-primary)", textDecoration: "none", maxWidth: 240 }}>
-        <FileText size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
-        <span style={{ minWidth: 0 }}>
-          <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{filename || caption || "Documento"}</span>
-          <span style={{ fontSize: 11, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 3 }}><Download size={10} /> Abrir</span>
-        </span>
-      </a>
+      <>
+        <button type="button" onClick={() => setDocOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-base)", color: "var(--text-primary)", cursor: "pointer", maxWidth: 240, textAlign: "left", fontFamily: "inherit" }}>
+          <FileText size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{filename || caption || "Documento"}</span>
+            <span style={{ fontSize: 11, color: "var(--accent)" }}>{isPdf ? "Visualizar" : "Abrir"}</span>
+          </span>
+        </button>
+        {docOpen && (
+          <div onClick={() => setDocOpen(false)} role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 820, height: "88vh", background: "#fff", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", background: "#f3f4f6", flexShrink: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename || caption || "Documento"}</span>
+                <a href={url} download style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, color: "#4F46E5", textDecoration: "none", flexShrink: 0 }}><Download size={13} /> Baixar</a>
+              </div>
+              <iframe src={url} title={filename || "documento"} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
+            </div>
+          </div>
+        )}
+      </>
     );
   }
   return (

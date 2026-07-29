@@ -11,7 +11,7 @@ interface Attendant { email: string; name: string }
 const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").trim();
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
-interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null; transcription?: string | null }
+interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null; transcription?: string | null; deliveredAt?: string | null; readAt?: string | null; reaction?: string | null }
 interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null; adStrong?: boolean } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
 
 const STAGE: Record<string, [string, string]> = {
@@ -105,6 +105,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [recSecs, setRecSecs] = useState(0);
   const [stageMenu, setStageMenu] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
+  // Pré-visualização antes de enviar mídia (imagem/documento): confirma com legenda.
+  const [pendingMedia, setPendingMedia] = useState<{ kind: "image" | "document"; file: File; url: string | null } | null>(null);
+  const [mediaCaption, setMediaCaption] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
@@ -368,8 +371,25 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const onPickFile = (kind: "image" | "document") => (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
-    if (f) void sendMedia(kind, f);
+    if (!f) return;
+    // Abre a pré-visualização (confirmar + legenda) em vez de enviar direto.
+    setMediaCaption("");
+    setPendingMedia({ kind, file: f, url: kind === "image" ? URL.createObjectURL(f) : null });
   };
+
+  // Confirma o envio da mídia pré-visualizada (com a legenda digitada).
+  function confirmSendMedia() {
+    if (!pendingMedia) return;
+    const { kind, file, url } = pendingMedia;
+    const cap = mediaCaption.trim() || undefined;
+    if (url) URL.revokeObjectURL(url);
+    setPendingMedia(null); setMediaCaption("");
+    void sendMedia(kind, file, cap);
+  }
+  function cancelPendingMedia() {
+    if (pendingMedia?.url) URL.revokeObjectURL(pendingMedia.url);
+    setPendingMedia(null); setMediaCaption("");
+  }
 
   // Gravação de áudio (voz) — MediaRecorder. iOS grava em audio/mp4 (aceito pela Cloud API).
   const pickAudioMime = (): string => {
@@ -703,16 +723,22 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     const mine = m.direction === "out";
                     const body = (m.text && m.text.trim()) || mediaLabel(m.type) || "[mensagem]";
                     return (
-                      <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 4 }}>
+                      <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4 }}>
                         <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
                             ? <ThreadImage src={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} caption={m.text} />
                             : !mine && !m.pending && (m.type === "audio" || m.type === "video" || m.type === "document")
-                            ? <MediaContent url={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} type={m.type} caption={m.text} transcription={m.transcription} accent="var(--p-accent)" />
+                            ? <MediaContent url={`/api/portal/${token}/conversations/${sel}/media/${m.id}`} type={m.type} caption={m.text} transcription={m.transcription} accent="var(--p-accent)" incoming />
                             : <span>{body}</span>}
-                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>{mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}{m.pending ? " ⧗" : mine ? " ✓✓" : ""}</span>
+                          <span style={{ float: "right", fontSize: 10, opacity: 0.65, margin: "6px 0 -2px 8px", whiteSpace: "nowrap" }}>
+                            {mine && m.aiGenerated !== undefined ? (m.aiGenerated ? "IA · " : `${m.sentByName || "Equipe"} · `) : ""}{hhmm(m.timestamp)}
+                            {m.pending ? " ⧗" : mine ? <span style={{ marginLeft: 3, opacity: 1, color: m.readAt ? "#9BE1FF" : "inherit", fontWeight: m.readAt ? 700 : 400 }}>{(m.deliveredAt || m.readAt) ? "✓✓" : "✓"}</span> : null}
+                          </span>
+                          {m.reaction && (
+                            <span style={{ position: "absolute", bottom: -12, [mine ? "left" : "right"]: 8, background: "var(--wa-in)", color: "var(--wa-text)", borderRadius: 11, padding: "1px 5px", fontSize: 12, lineHeight: "16px", boxShadow: "0 1px 3px rgba(0,0,0,.2)", border: "1px solid var(--p-border)" }}>{m.reaction}</span>
+                          )}
                         </div>
                       </div>
                     );
@@ -794,6 +820,34 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       </main>
       </div>
       </div>
+
+      {pendingMedia && (
+        <div onClick={cancelPendingMedia} role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--p-surface)", borderRadius: 16, maxWidth: 420, width: "100%", overflow: "hidden", boxShadow: "0 24px 70px rgba(0,0,0,.4)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--p-border)" }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: "var(--p-text)" }}>Enviar {pendingMedia.kind === "image" ? "imagem" : "documento"}</span>
+              <button onClick={cancelPendingMedia} aria-label="Cancelar" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", display: "inline-flex" }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: 16 }}>
+              {pendingMedia.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pendingMedia.url} alt="pré-visualização" style={{ maxWidth: "100%", maxHeight: "50dvh", borderRadius: 10, display: "block", margin: "0 auto" }} />
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, borderRadius: 10, background: "var(--p-bg)", border: "1px solid var(--p-border)" }}>
+                  <Paperclip size={20} style={{ color: "var(--p-accent)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingMedia.file.name}</span>
+                </div>
+              )}
+              <input value={mediaCaption} onChange={(e) => setMediaCaption(e.target.value)} placeholder="Legenda (opcional)…" onKeyDown={(e) => { if (e.key === "Enter") confirmSendMedia(); }}
+                style={{ width: "100%", marginTop: 12, height: 42, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 14, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, padding: "0 16px 16px", justifyContent: "flex-end" }}>
+              <button onClick={cancelPendingMedia} style={{ height: 40, padding: "0 16px", borderRadius: 10, border: "1px solid var(--p-border)", background: "transparent", color: "var(--p-text)", fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
+              <button onClick={confirmSendMedia} disabled={sending} style={{ height: 40, padding: "0 18px", borderRadius: 10, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, opacity: sending ? 0.6 : 1 }}><Send size={15} /> Enviar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

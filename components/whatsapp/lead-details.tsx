@@ -319,7 +319,7 @@ function Timeline({ items, clientId }: { items: Msg[]; clientId: string }) {
                 </div>
                 <div style={{ padding: "7px 10px", borderRadius: 10, background: incoming ? "var(--bg-surface)" : "color-mix(in srgb, #16A34A 10%, var(--bg-surface))", border: `1px solid ${incoming ? "var(--border)" : "color-mix(in srgb, #16A34A 20%, var(--border))"}`, fontSize: 12.5, lineHeight: 1.4, color: "var(--text-primary)" }}>
                   {MEDIA_TYPES.has(m.type)
-                    ? <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} transcription={m.transcription} />
+                    ? <MediaContent clientId={clientId} msgId={m.id} type={m.type} caption={m.text && !m.text.startsWith("[") ? m.text : null} filename={m.filename} transcription={m.transcription} incoming={incoming} />
                     : <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</span>}
                 </div>
               </div>

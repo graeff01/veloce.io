@@ -31,8 +31,8 @@ function fmt(s: number): string {
 
 const SPEEDS = [1, 1.5, 2] as const;
 
-export function WaAudioPlayer({ src, transcription, accent = "var(--accent)" }: {
-  src: string; transcription?: string | null; accent?: string;
+export function WaAudioPlayer({ src, transcription, accent = "var(--accent)", unheard = false }: {
+  src: string; transcription?: string | null; accent?: string; unheard?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -41,8 +41,18 @@ export function WaAudioPlayer({ src, transcription, accent = "var(--accent)" }: 
   const [speedIdx, setSpeedIdx] = useState(0);
   const [failed, setFailed] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [heard, setHeard] = useState(true); // otimista até checar o localStorage (evita "piscar" a bolinha)
   const waveform = useMemo(() => bars(src), [src]);
   const progress = dur > 0 ? cur / dur : 0;
+
+  // Bolinha de "áudio não ouvido" (só inbound): marca como ouvido no 1º play, persiste no navegador.
+  const heardKey = "wa-heard:" + src;
+  useEffect(() => {
+    if (!unheard) return;
+    try { setHeard(!!localStorage.getItem(heardKey)); } catch { /* sem localStorage */ }
+  }, [unheard, heardKey]);
+  const markHeard = () => { setHeard(true); try { localStorage.setItem(heardKey, "1"); } catch { /* ignore */ } };
+  const showDot = unheard && !heard;
 
   useEffect(() => {
     const a = audioRef.current;
@@ -60,7 +70,7 @@ export function WaAudioPlayer({ src, transcription, accent = "var(--accent)" }: 
   const toggle = () => {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) { a.play().then(() => setPlaying(true)).catch(() => setFailed(true)); }
+    if (a.paused) { a.play().then(() => { setPlaying(true); markHeard(); }).catch(() => setFailed(true)); }
     else { a.pause(); setPlaying(false); }
   };
 
@@ -88,10 +98,13 @@ export function WaAudioPlayer({ src, transcription, accent = "var(--accent)" }: 
         </span>
       ) : (
         <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={toggle} aria-label={playing ? "Pausar" : "Tocar"}
-            style={{ flexShrink: 0, width: 36, height: 36, borderRadius: "50%", border: "none", background: accent, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            {playing ? <Pause size={17} /> : <Play size={17} style={{ marginLeft: 2 }} />}
-          </button>
+          <span style={{ position: "relative", flexShrink: 0, display: "inline-flex" }}>
+            <button onClick={toggle} aria-label={playing ? "Pausar" : "Tocar"}
+              style={{ width: 36, height: 36, borderRadius: "50%", border: "none", background: accent, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              {playing ? <Pause size={17} /> : <Play size={17} style={{ marginLeft: 2 }} />}
+            </button>
+            {showDot && <span aria-label="Áudio não ouvido" style={{ position: "absolute", top: -1, right: -1, width: 10, height: 10, borderRadius: "50%", background: "#25D366", border: "2px solid var(--bg-base)" }} />}
+          </span>
           <span style={{ flex: 1, minWidth: 0 }}>
             <span onClick={seek} style={{ display: "flex", alignItems: "center", gap: 2, height: 28, cursor: "pointer" }}>
               {waveform.map((h, i) => {
