@@ -678,10 +678,25 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       const ficha: IntakeData = ctx.mode === "test"
         ? (ctx.testFicha ?? {})
         : (((await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } }))?.data as IntakeData) ?? {});
-      const missing = missingRequired(spec, ficha);
+      const retirada = args.retirada === true;
+      // RETIRADA na fábrica não tem entrega → NÃO exigir a cidade de entrega (senão trava pedindo
+      // uma cidade que não faz sentido no pickup e a IA fica em loop sem gerar o orçamento).
+      const missing = missingRequired(spec, ficha).filter((f) => !(retirada && f.key === "cidade_entrega"));
       if (missing.length) return { result: `Ainda NÃO posso gerar o orçamento — colete antes (use atualizar_ficha): ${missing.map((f) => f.label).join(", ")}.` };
 
-      const retirada = args.retirada === true;
+      // À VISTA (backstop determinístico): o desconto à vista só sai com pagamento='dinheiro',
+      // mas o modelo às vezes esquece de passar isso quando o cliente pede à vista. Se as
+      // mensagens RECENTES do cliente sinalizam à vista/dinheiro (e NÃO parcelamento/cartão),
+      // força o dinheiro — assim o desconto nunca é esquecido por falha do modelo.
+      if (!sel.cash) {
+        const recent = ctx.mode === "test"
+          ? (ctx.recentInboundBlob ?? "")
+          : (await prisma.waMessage.findMany({ where: { contactId: ctx.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, take: 4, select: { text: true } })).map((m) => m.text || "").join(" ");
+        const cashSig = /\b[aà]\s*vista\b|\bavista\b|\b(em|no)\s+dinheiro\b/i;
+        const cardSig = /parcel|cart[aã]o|cr[eé]dito|\bvezes\b|\b\d+\s*x\b/i;
+        if (cashSig.test(recent) && !cardSig.test(recent)) sel.cash = true;
+      }
+
       const r = computeQuote(rules, sel);
       if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
       let q = r.quote;
