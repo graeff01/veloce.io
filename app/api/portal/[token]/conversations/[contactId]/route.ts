@@ -23,12 +23,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   });
   if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
-  const [messages, lead, conv, attendants, me] = await Promise.all([
+  const [messages, lead, conv, attendants, me, contactTags] = await Promise.all([
     prisma.waMessage.findMany({ where: { contactId: contact.id }, orderBy: [{ timestamp: "asc" }, { id: "asc" }], take: 2000, select: { id: true, text: true, direction: true, type: true, timestamp: true, aiGenerated: true, sentByEmail: true, deliveredAt: true, readAt: true, reaction: true, media: { select: { transcription: true } } } }),
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
     getPortalSessionEmail(portal.clientId),
+    prisma.waContactTag.findMany({ where: { contactId: contact.id }, select: { tag: { select: { id: true, name: true, color: true } } } }),
   ]);
   const nameOf = (email: string | null | undefined) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);
 
@@ -57,6 +58,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     lastInboundAt,
     assignedEmail: conv?.assignedEmail ?? null,
     assignedName: nameOf(conv?.assignedEmail),
+    tags: contactTags.map((ct) => ct.tag),
     me,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),

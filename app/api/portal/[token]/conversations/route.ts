@@ -44,13 +44,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const hasMore = rows.length > limit;
   const contacts = hasMore ? rows.slice(0, limit) : rows;
   const ids = contacts.map((c) => c.id);
-  const [leads, convs, attendants] = await Promise.all([
+  const [leads, convs, attendants, contactTags] = await Promise.all([
     prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
+    prisma.waContactTag.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, tag: { select: { id: true, name: true, color: true } } } }),
   ]);
   const leadBy = new Map(leads.map((l) => [l.contactId, l]));
   const convBy = new Map(convs.map((c) => [c.contactId, c]));
+  const tagsBy = new Map<string, { id: string; name: string; color: string }[]>();
+  for (const ct of contactTags) { const arr = tagsBy.get(ct.contactId) ?? []; arr.push(ct.tag); tagsBy.set(ct.contactId, arr); }
   const nameOf = (email: string | null) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);
 
   return NextResponse.json({
@@ -78,6 +81,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         funnelStage: cv?.funnelStage ?? null,
         assignedEmail: cv?.assignedEmail ?? null,
         assignedName: nameOf(cv?.assignedEmail ?? null),
+        tags: tagsBy.get(c.id) ?? [],
       };
     }),
   });

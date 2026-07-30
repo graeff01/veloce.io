@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
-interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
+interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -13,7 +13,9 @@ const adLabelOf = (c: Row) => (c.adModel || c.adTitle || "Sem identificação").
 // "Aguardando resposta": a última mensagem foi do LEAD (entrada) e ninguém respondeu.
 const isWaiting = (c: Row) => c.lastDirection != null && c.lastDirection !== "out";
 interface Msg { id: string; text: string | null; direction: string; type: string; timestamp: string; aiGenerated?: boolean; pending?: boolean; sentByName?: string | null; transcription?: string | null; deliveredAt?: string | null; readAt?: string | null; reaction?: string | null }
-interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null; adStrong?: boolean } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; items: Msg[] }
+interface Conv { contact: { name: string }; lead: { adTitle: string | null; adModel: string | null; adBody: string | null; sourceUrl: string | null; image: string | null; adStrong?: boolean } | null; funnelStage: string | null; funnelEvidence: string | null; windowOpen?: boolean; lastInboundAt?: string | null; assignedEmail?: string | null; assignedName?: string | null; me?: string | null; meName?: string | null; attendants?: Attendant[]; tags?: { id: string; name: string; color: string }[]; items: Msg[] }
+// Paleta pra novas etiquetas (cor rotativa na criação).
+const TAG_COLORS = ["#EF4444", "#F59E0B", "#EAB308", "#10B981", "#14B8A6", "#3B82F6", "#8B5CF6", "#EC4899", "#64748B"];
 
 const STAGE: Record<string, [string, string]> = {
   recebido: ["Recebido", "var(--wa-muted)"], respondido: ["Respondido", "#2563EB"], qualificado: ["Qualificado", "#2563EB"],
@@ -107,6 +109,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [stageMenu, setStageMenu] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando aprovação (badge do atalho Orçamentos)
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]); // etiquetas do cliente
+  const [tagMenu, setTagMenu] = useState(false);
   // Pré-visualização antes de enviar mídia (imagem/documento): confirma com legenda.
   const [pendingMedia, setPendingMedia] = useState<{ kind: "image" | "document"; file: File; url: string | null } | null>(null);
   const [mediaCaption, setMediaCaption] = useState("");
@@ -125,6 +129,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // empresa (accent). Deixa o vendedor trocar o tema aqui dentro das conversas (no mobile
   // a sidebar do painel fica escondida, então este é o único acesso).
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
+  // Etiquetas do cliente (pra o menu de tags). Carrega uma vez.
+  useEffect(() => {
+    fetch(`/api/portal/${token}/tags`).then((r) => (r.ok ? r.json() : [])).then((d) => setAllTags(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [token]);
   // Badge do atalho "Orçamentos": nº aguardando aprovação (mesmo endpoint da sidebar).
   useEffect(() => {
     if (!quotesEnabled) return;
@@ -352,6 +360,34 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       setConv((c) => (c ? { ...c, funnelStage: stage, funnelEvidence: null } : c));
       setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, funnelStage: stage } : row)) : l));
     } finally { setStageSaving(false); }
+  }
+
+  // Aplica/remove uma etiqueta na conversa aberta (otimista — reflete na conversa e na lista).
+  async function toggleTag(tag: { id: string; name: string; color: string }) {
+    if (!sel) return;
+    const has = (conv?.tags ?? []).some((t) => t.id === tag.id);
+    const upd = (tags?: { id: string; name: string; color: string }[]) => (has ? (tags ?? []).filter((t) => t.id !== tag.id) : [...(tags ?? []), tag]);
+    setConv((c) => (c ? { ...c, tags: upd(c.tags) } : c));
+    setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, tags: upd(row.tags) } : row)) : l));
+    try {
+      await fetch(`/api/portal/${token}/conversations/${sel}/tags${has ? `?tagId=${tag.id}` : ""}`, {
+        method: has ? "DELETE" : "POST", headers: { "Content-Type": "application/json" },
+        body: has ? undefined : JSON.stringify({ tagId: tag.id }),
+      });
+    } catch { /* o polling reconcilia */ }
+  }
+
+  // Cria uma etiqueta nova (cor rotativa) e já aplica na conversa.
+  async function createAndApplyTag(name: string) {
+    const nm = name.trim(); if (!nm || !sel) return;
+    const color = TAG_COLORS[allTags.length % TAG_COLORS.length];
+    try {
+      const r = await fetch(`/api/portal/${token}/tags`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nm, color }) });
+      const tag = await r.json().catch(() => null);
+      if (!r.ok || !tag?.id) { alert(tag?.error || "Não foi possível criar a etiqueta."); return; }
+      setAllTags((ts) => (ts.some((t) => t.id === tag.id) ? ts : [...ts, tag].sort((a, b) => a.name.localeCompare(b.name))));
+      await toggleTag(tag);
+    } catch { /* ignora */ }
   }
 
   // Envio de MÍDIA (imagem/documento/áudio) — otimista + reconcile como o texto.
@@ -588,6 +624,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
                       )}
                       <StageBadge stage={c.funnelStage} />
+                      {(c.tags ?? []).map((t) => (
+                        <span key={t.id} title={t.name} style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: t.color, padding: "1px 6px", borderRadius: 20, letterSpacing: 0.2, whiteSpace: "nowrap", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>{t.name}</span>
+                      ))}
                     </div>
                   </div>
                 </button>
@@ -679,6 +718,34 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                       {!isAdmin && conv.assignedEmail === me && (
                         <div style={{ padding: "8px", fontSize: 12, color: "var(--wa-muted)", lineHeight: 1.4 }}>Você é o dono deste lead.</div>
                       )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* Etiquetas (tags) da conversa */}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <button onClick={() => setTagMenu((o) => !o)} title="Etiquetas"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  <TagIcon size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{conv.tags?.length ? String(conv.tags.length) : "Etiquetas"}</span>}
+                </button>
+                {tagMenu && (
+                  <>
+                    <div onClick={() => setTagMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 230, maxHeight: 300, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Etiquetas</div>
+                      {allTags.map((t) => { const on = (conv.tags ?? []).some((x) => x.id === t.id); return (
+                        <button key={t.id} onClick={() => toggleTag(t)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, color: "var(--p-text)" }}>
+                          <span style={{ width: 11, height: 11, borderRadius: 3, background: t.color, flexShrink: 0 }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                          {on && <Check size={14} style={{ color: "var(--p-accent)" }} />}
+                        </button>
+                      ); })}
+                      {allTags.length === 0 && <div style={{ padding: "8px", fontSize: 12, color: "var(--wa-muted)" }}>Nenhuma etiqueta ainda. Crie a primeira abaixo.</div>}
+                      <form onSubmit={(e) => { e.preventDefault(); const inp = (e.currentTarget.elements.namedItem("nt") as HTMLInputElement); createAndApplyTag(inp.value); inp.value = ""; }}
+                        style={{ display: "flex", gap: 6, padding: "6px 4px 2px", marginTop: 4, borderTop: "1px solid var(--p-border)" }}>
+                        <input name="nt" placeholder="Nova etiqueta…" maxLength={40} style={{ flex: 1, minWidth: 0, height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-text)", fontSize: 12.5 }} />
+                        <button type="submit" style={{ height: 30, padding: "0 11px", borderRadius: 8, border: "none", background: "var(--p-accent)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>+</button>
+                      </form>
                     </div>
                   </>
                 )}
