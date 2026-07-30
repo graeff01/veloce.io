@@ -428,25 +428,24 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         term = (lead?.adModel || lead?.adTitle || "").trim();
       }
       if (!term) return { result: "Não sei qual veículo o lead quer ver. Pergunte qual modelo e tente de novo." };
-      // Anti-reenvio (determinístico, à prova de prompt): só manda foto quando FAZ SENTIDO —
-      // no 1º contato, quando o lead PEDE (foto/ver/por dentro/mais) ou quando ele MENCIONA um
-      // modelo agora. No meio do orçamento a IA às vezes rechama enviar_foto (foto duplicada);
-      // aqui a gente barra, a menos que o lead tenha pedido de fato.
-      const inboundN = (ctx.inboundText ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      const pedeFoto = /foto|imagem|\bver\b|\bvejo\b|mostr|por dentro|interior|de novo|outra|mais/.test(inboundN);
-      // Confirmação a uma oferta de foto ("Sim", "pode", "manda", "quero"...) também conta como
-      // pedido — senão a IA oferece "quer que eu envie a foto?" e o "Sim" do cliente cai na trava
-      // anti-reenvio (a foto nunca vai e a IA acaba dizendo que mandou sem ter mandado).
-      const confirma = /^(sim|isso|claro|pode|posso|quero|queria|manda|envia|aham|ok|bora|por favor|beleza|blz)\b/.test(inboundN.trim());
-      const explicitArg = args.interior === true || Number(args.quantidade) > 1;
-      const termToks = term.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
-      const mencionaModelo = termToks.some((t) => inboundN.includes(t));
-      if (!ctx.isFirstTurn && !pedeFoto && !confirma && !explicitArg && !mencionaModelo) {
-        return { result: "A foto desse modelo já apareceu na conversa e o lead NÃO pediu para ver agora — NÃO reenvie imagem. Siga só com o texto/orçamento." };
-      }
+      // Busca o item ANTES da trava (precisamos do título pra checar o reenvio REAL).
       // Busca robusta (tokens + fuzzy) — casa "Taos Highline" mesmo com "1.4" no meio do título.
       const matches = await searchCatalog(ctx.clientId, term);
       const item = (matches.find((i) => i.imageUrl) ?? matches[0]) as (typeof matches)[number] & { images?: string[] } | undefined;
+      // Anti-reenvio (determinístico): bloqueia SÓ quando a foto DESTE modelo JÁ foi enviada de
+      // verdade e o lead não pediu de novo. (Antes era um chute — "mencionou o modelo agora?" —
+      // que barrava a foto legítima enviada JUNTO do orçamento; a Maria pediu a foto no valor.)
+      // Em teste não há histórico → permite (o dedup real vale no ao vivo).
+      const inboundN = (ctx.inboundText ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      const pedeFoto = /foto|imagem|\bver\b|\bvejo\b|mostr|por dentro|interior|de novo|outra|mais/.test(inboundN);
+      // Confirmação a uma oferta de foto ("Sim", "pode", "manda", "quero"...) também conta como pedido.
+      const confirma = /^(sim|isso|claro|pode|posso|quero|queria|manda|envia|aham|ok|bora|por favor|beleza|blz)\b/.test(inboundN.trim());
+      const explicitArg = args.interior === true || Number(args.quantidade) > 1;
+      const jaEnviada = ctx.mode !== "test" && !!item?.title
+        && !!(await prisma.waMessage.findFirst({ where: { contactId: ctx.contactId, direction: "out", type: "image", text: { contains: item.title } }, select: { id: true } }));
+      if (jaEnviada && !pedeFoto && !confirma && !explicitArg) {
+        return { result: "A foto desse modelo JÁ foi enviada nesta conversa e o lead não pediu de novo — NÃO reenvie; siga só com o texto/orçamento." };
+      }
       // Lista de fotos: capa + galeria, sem duplicar. Quantidade limitada (1 na abertura, até 3 sob pedido).
       const gallery = Array.isArray(item?.images) ? item!.images : [];
       const photos = [...new Set([item?.imageUrl, ...gallery].filter(Boolean))] as string[];
