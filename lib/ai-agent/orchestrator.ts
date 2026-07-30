@@ -232,6 +232,23 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: input.clientId } });
   if (mode === "live" && (!cfg || !cfg.enabled)) return { reply: null, status: "skipped", decision: "desligado" };
 
+  // LOOP GUARD (pós-orçamento): se o lead só CONFIRMOU/AGRADECEU e já existe um orçamento em
+  // conferência com o vendedor (pending_review/approved), NÃO responda de novo — senão a IA fica
+  // repetindo "estou finalizando os valores..." a cada "ok". Só responde se ele fizer uma
+  // PERGUNTA ou pedido novo (aí a mensagem tem palavra fora do conjunto de confirmação).
+  if (mode === "live") {
+    const raw = (input.inboundText ?? "").trim();
+    const letters = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const words = letters.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+    const ackWords = new Set(["ok", "okk", "okok", "okay", "blz", "beleza", "aguardo", "aguardando", "ta", "t"/*tá*/, "bom", "tabom", "combinado", "perfeito", "show", "isso", "certo", "certinho", "valeu", "vlw", "obrigado", "obrigada", "brigado", "brigada", "muito", "mto", "sim", "otimo", "massa", "legal", "joia", "fechado", "fechou", "top", "aham", "uhum", "entendi"]);
+    // confirmação = só emoji/pontuação, OU 1-4 palavras e TODAS de confirmação.
+    const ackOnly = raw.length > 0 && ((!/[a-z0-9]/.test(letters)) || (words.length > 0 && words.length <= 4 && words.every((w) => ackWords.has(w))));
+    if (ackOnly) {
+      const pend = await prisma.quote.findFirst({ where: { clientId: input.clientId, contactId: input.contact.id, status: { in: ["pending_review", "approved"] } }, select: { id: true } });
+      if (pend) return { reply: null, status: "skipped", decision: "aguardando_vendedor" };
+    }
+  }
+
   // A loja está ABERTA agora? (a IA pode atender 24h via answerMode) — o handoff depende disso.
   const bh = (cfg?.businessHours as unknown as { weekday: number; start: string; end: string }[]) ?? [];
   const np = nowParts(cfg?.timezone || "America/Sao_Paulo");

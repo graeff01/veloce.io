@@ -812,6 +812,13 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           artifacts: art ? [art] : undefined,
         };
       }
+      // Anti-duplicata: se já existe um orçamento IDÊNTICO (mesmo total e itens) em conferência
+      // (pending_review), NÃO cria outro — o cliente provavelmente só confirmou/agradeceu (é o
+      // loop do "estou finalizando"). Mudança REAL (total/itens diferentes) passa e gera normal.
+      const dup = await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "pending_review", total: q.total }, orderBy: { createdAt: "desc" }, select: { number: true, summary: true } });
+      if (dup && dup.summary === summary) {
+        return { result: `O orçamento Nº ${dup.number} (${brl(q.total, pc.currency)}) é o MESMO que JÁ está em conferência com a equipe — NÃO gere outro nem reenvie. Se o cliente só confirmou/agradeceu, NÃO responda de novo; só responda se ele fizer uma PERGUNTA nova ou pedir MUDANÇA.`, decision: "orcou" };
+      }
       const last = await prisma.quote.findFirst({ where: { clientId: ctx.clientId }, orderBy: { number: "desc" }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
       await prisma.quote.create({ data: {
