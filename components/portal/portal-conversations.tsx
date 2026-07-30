@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
 interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null }
@@ -77,7 +78,7 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: avatarColor(name || "?"), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>{(name || "?")[0]?.toUpperCase()}</div>;
 }
 
-export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, initialContact }: { token: string; brandName: string; logoUrl: string | null; chatBgUrl?: string | null; initialContact?: string | null }) {
+export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, initialContact, quotesEnabled }: { token: string; brandName: string; logoUrl: string | null; chatBgUrl?: string | null; initialContact?: string | null; quotesEnabled?: boolean }) {
   // Marca d'água do chat: imagem própria do cliente (portal-bg) quando houver; senão o logo.
   const chatWatermark = chatBgUrl || logoUrl;
   const [list, setList] = useState<Row[] | null>(null);
@@ -105,6 +106,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [recSecs, setRecSecs] = useState(0);
   const [stageMenu, setStageMenu] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
+  const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando aprovação (badge do atalho Orçamentos)
   // Pré-visualização antes de enviar mídia (imagem/documento): confirma com legenda.
   const [pendingMedia, setPendingMedia] = useState<{ kind: "image" | "document"; file: File; url: string | null } | null>(null);
   const [mediaCaption, setMediaCaption] = useState("");
@@ -123,6 +125,15 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // empresa (accent). Deixa o vendedor trocar o tema aqui dentro das conversas (no mobile
   // a sidebar do painel fica escondida, então este é o único acesso).
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
+  // Badge do atalho "Orçamentos": nº aguardando aprovação (mesmo endpoint da sidebar).
+  useEffect(() => {
+    if (!quotesEnabled) return;
+    let alive = true;
+    const tick = () => fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setReviewCount(d?.pending ?? 0); }).catch(() => {});
+    tick();
+    const id = setInterval(tick, 20000);
+    return () => { alive = false; clearInterval(id); };
+  }, [token, quotesEnabled]);
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -495,6 +506,18 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     );
   };
 
+  // Mesmo visual do bottomItem, mas é um ATALHO que leva a outra tela do portal
+  // (não é filtro). Usado pra "Orçamentos" → tela de Revisão (ver PDF + aprovar).
+  const bottomLink = (href: string, label: string, icon: React.ReactNode, badge = 0) => (
+    <Link key={label} href={href} prefetch style={{ flex: 1, textDecoration: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 4px", borderRadius: 16, color: "var(--wa-muted)", transition: "color .2s ease, background .2s ease" }}>
+      <span style={{ position: "relative", display: "inline-flex", opacity: 0.75 }}>
+        {icon}
+        {badge > 0 && <span style={{ position: "absolute", top: -5, right: -10, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, background: "#1FA855", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{badge > 99 ? "99+" : badge}</span>}
+      </span>
+      <span style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "-0.01em" }}>{label}</span>
+    </Link>
+  );
+
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
       <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}`}</style>
@@ -584,6 +607,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             {bottomItem("all", "Conversas", <MessageCircle size={20} />, 0)}
             {bottomItem("waiting", "Aguardando", <Clock size={20} />, waitingCount)}
             {hasAds && bottomItem("ads", "Anúncios", <Megaphone size={20} />, 0)}
+            {quotesEnabled && bottomLink(`/r/${token}/revisao`, "Orçamentos", <FileText size={20} />, reviewCount)}
           </nav>
         )}
       </aside>
