@@ -696,6 +696,29 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         if (cashSig.test(recent) && !cardSig.test(recent)) sel.cash = true;
       }
 
+      // BLINDAGEM OPCIONAIS (fonte durável = ficha): antes o motor usava SÓ o que o modelo passava
+      // em args.opcionais; se ele esquecia de repassar um opcional já coletado, o item SUMIA do
+      // orçamento (bug real: cliente pediu 5 blocos, saíram 0). Agora os opcionais REGISTRADOS na
+      // ficha entram SEMPRE — o modelo não precisa lembrar de re-passar a cada orçamento. A ficha
+      // guarda "chave" ou "chave:qtd" (ex.: "blocos_concreto:5"); REMOÇÃO = o modelo tira da ficha.
+      // args.opcionais/quantidades ainda somam e a quantidade do arg PREVALECE (última intenção).
+      {
+        const validOpt = new Set((rules.options ?? []).map((o) => o.key));
+        const fichaOpt = String((ficha as Record<string, unknown>).opcionais ?? "");
+        const opts = new Set(sel.options);
+        const qty: Record<string, number> = { ...(sel.quantities ?? {}) };
+        for (const tok of fichaOpt.split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean)) {
+          const [rawKey, rawQty] = tok.split(":");
+          const key = rawKey.trim();
+          if (!validOpt.has(key)) continue; // ignora "nenhum" e texto livre que não é opcional
+          opts.add(key);
+          const n = Number(rawQty);
+          if (Number.isFinite(n) && n > 0 && qty[key] == null) qty[key] = n; // ficha só preenche se o modelo NÃO passou a qtd
+        }
+        sel.options = [...opts];
+        if (Object.keys(qty).length) sel.quantities = qty;
+      }
+
       const r = computeQuote(rules, sel);
       if (!r.ok) return { result: `Chaves inválidas: ${r.unknownKeys.join(", ")}. Use SOMENTE as chaves do catálogo:\n${describeRules(rules)}` };
       let q = r.quote;
