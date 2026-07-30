@@ -60,7 +60,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
         /* conversas abrem no mobile também — a responsividade fica no PortalConversations */
         .cdesk{display:flex}`}</style>
 
-      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} chatBgUrl={chatBgUrl} initialContact={initialContact ?? null} />
+      <PortalConversations token={token} brandName={(client?.name || "Conversas")} logoUrl={client?.logoUrl ?? null} chatBgUrl={chatBgUrl} initialContact={initialContact ?? null} quotesEnabled={shell.quotesEnabled} />
     </main>
   );
 }
