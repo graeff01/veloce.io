@@ -291,6 +291,24 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   //    (linha em branco) — cadência humana. Se a 1ª falhar, deixa a fila re-tentar; se falhar
   //    DEPOIS de já ter enviado algo, para sem re-enfileirar (evita duplicar mensagens ao lead).
   const blocks = voiceSent ? [] : splitBlocks(out.reply);
+  // ── ANTI-DUPLICAÇÃO no ENVIO (trava determinística) ────────────────────────────
+  // Última barreira contra mandar ao lead a MESMA resposta duas vezes: se dois jobs
+  // coalesceram por pouco, ou uma re-execução gerou texto idêntico, aqui a gente pega.
+  // Se TODAS as bolhas desta resposta já foram enviadas (aiGenerated) a este contato nos
+  // últimos ~60s, SUPRIME o envio inteiro. Janela curta de propósito: não bloqueia
+  // repetições legítimas (ex.: dois "oi" com minutos de intervalo).
+  if (blocks.length) {
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    const recent = await prisma.waMessage.findMany({
+      where: { contactId: contact.id, direction: "out", aiGenerated: true, timestamp: { gte: new Date(Date.now() - 60_000) } },
+      select: { text: true },
+    }).catch(() => [] as { text: string | null }[]);
+    const recentSet = new Set(recent.map((m) => norm(m.text || "")).filter(Boolean));
+    if (recentSet.size && blocks.every((b) => recentSet.has(norm(b)))) {
+      await logWaEvent(conn.id, "ai.duplicate_suppressed", contact.id, { blocks: blocks.length }).catch(() => {});
+      return "skipped"; // já respondemos isso agora há pouco — não duplica
+    }
+  }
   // Threading: cita a mensagem do lead SÓ na 1ª bolha e SÓ quando ele fez uma PERGUNTA
   // (passa atenção sem parecer robótico — não cita toda mensagem). Só p/ texto do lead.
   const quoteId = (mediaType === null && isQuestionLike(inboundText) && input.idempotencyKey) ? input.idempotencyKey : undefined;

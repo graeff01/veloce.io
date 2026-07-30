@@ -13,6 +13,7 @@ export type WaEventType =
   | "ai.silenced"
   | "ai.erased"
   | "ai.reengaged"
+  | "ai.duplicate_suppressed"
   | "integration.error";
 
 // Registra um evento. Nunca lança — observabilidade não pode quebrar o fluxo.
