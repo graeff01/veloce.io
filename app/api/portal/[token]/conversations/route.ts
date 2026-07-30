@@ -19,6 +19,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get("limit")) || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const owner = url.searchParams.get("owner"); // "me" → só as conversas da vendedora logada (dona)
+  const user = await getPortalUser(portal.clientId);
+  const me = user?.email ?? null;
+  const isAdmin = isAdminRole(user?.role);
+  // Filtro "Minhas conversas": o dono da conversa é waConversation.assignedEmail.
+  const ownerFilter = owner === "me" && me ? { conversation: { is: { assignedEmail: me } } } : {};
   const digits = q.replace(/\D/g, "");
   const search = q
     ? { OR: [
@@ -29,7 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     : {};
 
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: conn.id, ...search },
+    where: { connectionId: conn.id, ...search, ...ownerFilter },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,
@@ -38,14 +44,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const hasMore = rows.length > limit;
   const contacts = hasMore ? rows.slice(0, limit) : rows;
   const ids = contacts.map((c) => c.id);
-  const [leads, convs, attendants, user] = await Promise.all([
+  const [leads, convs, attendants] = await Promise.all([
     prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
-    getPortalUser(portal.clientId),
   ]);
-  const me = user?.email ?? null;
-  const isAdmin = isAdminRole(user?.role);
   const leadBy = new Map(leads.map((l) => [l.contactId, l]));
   const convBy = new Map(convs.map((c) => [c.contactId, c]));
   const nameOf = (email: string | null) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);

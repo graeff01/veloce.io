@@ -160,6 +160,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     const t = setTimeout(() => {
       const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
       if (q.trim()) sp.set("q", q.trim());
+      if (mineOnly) sp.set("owner", "me"); // "Minhas conversas" no SERVIDOR (pega todas, não só a página)
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
@@ -167,14 +168,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q]);
+  }, [token, q, mineOnly]);
 
   // Auto-atualização (novas conversas/mensagens) — só na 1ª página e fora de busca, para NÃO
   // resetar o histórico já carregado com "Carregar mais".
   useEffect(() => {
     const reload = () => {
       if (document.hidden || qRef.current || loadedMoreRef.current) return;
-      fetch(`/api/portal/${token}/conversations?limit=${PAGE}&offset=0`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      fetch(`/api/portal/${token}/conversations?limit=${PAGE}&offset=0${mineOnly ? "&owner=me" : ""}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
         setHasMore(!!d.hasMore); setList(d.conversations ?? []);
@@ -184,7 +185,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token]);
+  }, [token, mineOnly]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -192,6 +193,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     loadedMoreRef.current = true;
     const sp = new URLSearchParams({ limit: String(PAGE), offset: String(list?.length ?? 0) });
     if (q.trim()) sp.set("q", q.trim());
+    if (mineOnly) sp.set("owner", "me");
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
