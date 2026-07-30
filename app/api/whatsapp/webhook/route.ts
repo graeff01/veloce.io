@@ -312,7 +312,18 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
 // grava na ficha (p/ o motor resolver a ZONA por bairro) e enfileira o agente com um texto
 // claro. Fora do caminho do 200 do webhook (chamada de rede) — fire-and-forget.
 async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIncomingMessage) {
-  let text = "[O cliente compartilhou a localização — se precisar, peça o bairro/cidade por texto.]";
+  const enqueue = (text: string) => enqueueAgentJob({
+    clientId: conn.clientId, connectionId: conn.id, contactId,
+    idempotencyKey: m.id, payload: { text, type: "location" },
+  }).catch(() => {});
+
+  // Enfileira o atendimento JÁ, ANTES do geocode. Se o geocode (chamada de rede) viesse
+  // primeiro, ele ATRASAVA o enqueue e o pin perdia a janela de agrupamento com o texto que
+  // o cliente mandou junto (ex.: o bairro) → dois jobs → RESPOSTA DUPLICADA. Agora o pin
+  // coalesce na hora com o texto (1 turno só); o geocode roda depois e RE-enfileira o MESMO
+  // job (upsert por contato) com o endereço — como o debounce dá 8s, chega a tempo.
+  await enqueue("[O cliente compartilhou a localização — estou identificando o endereço; se não der certo, peça o bairro/cidade por texto.]");
+
   const lat = m.location?.latitude, lng = m.location?.longitude;
   if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
     try {
@@ -329,17 +340,12 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
         }).catch(() => {});
         // A divergência (cidade informada × cidade do GPS) é checada no gerar_orcamento
         // (determinístico). Aqui só registra o GPS e deixa a IA seguir para o orçamento.
-        text = `[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada. IMPORTANTE: NÃO afirme ao cliente de qual cidade/bairro é a localização (pode não bater com o que ele te informou) — apenas siga para o orçamento; o motor valida e, se divergir, te avisa.]`;
+        await enqueue(`[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada. IMPORTANTE: NÃO afirme ao cliente de qual cidade/bairro é a localização (pode não bater com o que ele te informou) — apenas siga para o orçamento; o motor valida e, se divergir, te avisa.]`);
       } else {
-        text = "[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]";
+        await enqueue("[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]");
       }
-    } catch { /* mantém o texto de fallback */ }
+    } catch { /* mantém o job genérico já enfileirado */ }
   }
-  await enqueueAgentJob({
-    clientId: conn.clientId, connectionId: conn.id, contactId,
-    idempotencyKey: m.id,
-    payload: { text, type: "location" },
-  }).catch(() => {});
 }
 
 // Pedido montado pelo cliente no CATÁLOGO do WhatsApp (type "order"). NÃO é uma compra
