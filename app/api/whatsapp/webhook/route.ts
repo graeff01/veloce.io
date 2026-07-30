@@ -326,25 +326,25 @@ async function enqueueLocationJob(conn: WaConnection, contactId: string, m: WaIn
 
   const lat = m.location?.latitude, lng = m.location?.longitude;
   if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
-    try {
-      const geo = await reverseGeocode(lat, lng);
-      const addr = [geo.suburb, geo.city].filter(Boolean).join(", ");
-      if (addr) {
-        const prof = await prisma.leadProfile.findUnique({ where: { contactId } }).catch(() => null);
-        const ficha = (prof?.data as Record<string, unknown>) ?? {};
-        const data = { ...ficha, localizacao_gps: addr };
-        await prisma.leadProfile.upsert({
-          where: { contactId },
-          create: { connectionId: conn.id, contactId, data: data as object },
-          update: { data: data as object },
-        }).catch(() => {});
-        // A divergência (cidade informada × cidade do GPS) é checada no gerar_orcamento
-        // (determinístico). Aqui só registra o GPS e deixa a IA seguir para o orçamento.
-        await enqueue(`[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete e valida se a localização corresponde à cidade informada. IMPORTANTE: NÃO afirme ao cliente de qual cidade/bairro é a localização (pode não bater com o que ele te informou) — apenas siga para o orçamento; o motor valida e, se divergir, te avisa.]`);
-      } else {
-        await enqueue("[O cliente compartilhou a localização, mas não consegui identificar o endereço automaticamente. Peça a cidade/bairro por texto.]");
-      }
-    } catch { /* mantém o job genérico já enfileirado */ }
+    // Guarda o lat/lng do pin SEMPRE (mesmo se o geocode do nome falhar). É a base da
+    // blindagem multi-zona: o motor resolve a ZONA por PROXIMIDADE às coordenadas cadastradas,
+    // imune a erro de nome do bairro (ex.: o geocoder devolve um bairro que não bate com o
+    // cadastro). O nome (reverseGeocode) fica como reforço/rótulo.
+    const patch: Record<string, unknown> = { localizacao_gps_lat: lat, localizacao_gps_lng: lng };
+    let addr = "";
+    try { const geo = await reverseGeocode(lat, lng); addr = [geo.suburb, geo.city].filter(Boolean).join(", "); } catch { /* fica só com as coords */ }
+    if (addr) patch.localizacao_gps = addr;
+    const prof = await prisma.leadProfile.findUnique({ where: { contactId } }).catch(() => null);
+    const ficha = (prof?.data as Record<string, unknown>) ?? {};
+    const data = { ...ficha, ...patch };
+    await prisma.leadProfile.upsert({
+      where: { contactId },
+      create: { connectionId: conn.id, contactId, data: data as object },
+      update: { data: data as object },
+    }).catch(() => {});
+    await enqueue(addr
+      ? `[O cliente compartilhou a localização por GPS: ${addr}. Registre na ficha (atualizar_ficha) e gere o orçamento (gerar_orcamento) — o motor resolve a ZONA/frete pela localização e valida se corresponde à cidade informada. IMPORTANTE: NÃO afirme ao cliente de qual cidade/bairro é a localização (pode não bater com o que ele te informou) — apenas siga para o orçamento; o motor valida e, se divergir, te avisa.]`
+      : "[O cliente compartilhou a localização (guardei as coordenadas). Gere o orçamento (gerar_orcamento) — o motor resolve a zona pela localização; se não conseguir, peça o bairro/cidade por texto.]");
   }
 }
 

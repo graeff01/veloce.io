@@ -262,6 +262,33 @@ export function resolveFreight(rules: PricingRules, address: string): FreightRes
   return rules.freightDefault != null ? { label: "Frete", amount: round2(rules.freightDefault) } : { unmatched: true };
 }
 
+// Distância haversine (km) entre dois pontos.
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371, toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+// BLINDAGEM MULTI-ZONA: resolve a ZONA pela LOCALIZAÇÃO (lat/lng do pin do cliente), pela
+// PROXIMIDADE aos bairros cadastrados. Imune a erro de NOME (o geocoder às vezes devolve um
+// bairro que não bate com o cadastro → o resolveFreight por nome cairia em askZone). Só
+// resolve com CONFIANÇA: o bairro cadastrado mais próximo tem que estar dentro de MAX_KM;
+// senão devolve null (a IA escala pro vendedor em vez de chutar a zona errada). Opcionalmente
+// escopa a UMA cidade (cityKey) — recomendado, pra não pegar um ponto de cidade vizinha.
+const FREIGHT_COORD_MAX_KM = 6;
+export function resolveFreightByCoords(rules: PricingRules, lat: number, lng: number, cityKey?: string): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required"; km: number } | null {
+  const list = (rules.freight ?? []).filter((f) => !cityKey || cityKeyOf(f) === cityKey);
+  let best: { zone: FreightRegion; km: number } | null = null;
+  for (const f of list) for (const nb of f.neighborhoods ?? []) {
+    if (typeof nb.lat !== "number" || typeof nb.lng !== "number") continue;
+    const km = haversineKm({ lat, lng }, { lat: nb.lat, lng: nb.lng });
+    if (!best || km < best.km) best = { zone: f, km };
+  }
+  if (best && best.km <= FREIGHT_COORD_MAX_KM) return { ...resolvedLine(best.zone), km: best.km };
+  return null;
+}
+
 // Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.
 export function appendFeeLine(quote: ComputedQuote, line: { label: string; amount: number; code?: string | null }): ComputedQuote {
   const amount = round2(line.amount);

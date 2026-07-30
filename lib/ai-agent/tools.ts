@@ -8,7 +8,7 @@ import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/port
 import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppDocumentByUrl, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
 import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
-import { computeQuote, describeRules, resolveFreight, appendFeeLine, type PricingRules } from "./pricing";
+import { computeQuote, describeRules, resolveFreight, resolveFreightByCoords, baseCityName, cityKeyOf, normText, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
 import { renderQuotePdf, type QuoteDocData } from "@/lib/quote-pdf";
 
@@ -762,13 +762,30 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           inboundBlob = ctx.recentInboundBlob ?? ""; // simulação: vem do transcript (não do banco)
         }
         const addressBlob = `${fichaBlob} ${inboundBlob}`.trim();
-        const fr = resolveFreight(rules, addressBlob);
+        // Pin (lat/lng) que o cliente compartilhou — base da blindagem multi-zona.
+        const gLat = Number((ficha as Record<string, unknown>).localizacao_gps_lat);
+        const gLng = Number((ficha as Record<string, unknown>).localizacao_gps_lng);
+        const temPin = Number.isFinite(gLat) && Number.isFinite(gLng);
+        let fr = resolveFreight(rules, addressBlob);
+        // BLINDAGEM MULTI-ZONA por LOCALIZAÇÃO: se o nome não resolveu (askZone/unmatched) mas o
+        // cliente mandou o pin, resolve a ZONA pela PROXIMIDADE às coordenadas cadastradas —
+        // imune a erro de nome do bairro (ex.: geocoder devolve um bairro fora do cadastro).
+        if (temPin && fr && ("askZone" in fr || "unmatched" in fr)) {
+          const askCity = "askZone" in fr ? fr.city : null;
+          const cityZone = askCity ? (rules.freight ?? []).find((f) => normText(baseCityName(f)) === normText(askCity)) : undefined;
+          const byCoord = resolveFreightByCoords(rules, gLat, gLng, cityZone ? cityKeyOf(cityZone) : undefined);
+          if (byCoord) { const { km: _km, ...line } = byCoord; fr = line; }
+        }
         if (fr && "unmatched" in fr) {
           const temEndereco = addressBlob.trim().length > 0;
           if (temEndereco) return { result: "A cidade do lead NÃO está na nossa área de entrega/montagem própria. Envie ESTA mensagem (mantendo o conteúdo): \"Para a sua localidade enviamos via transportadora ou podes retirar direto conosco com frete particular, reboque/camionete. Para realizar a cotação com a transportadora irei precisar de alguns dados: Nome completo, CPF, CEP com endereço da entrega\". Colete Nome/CPF/CEP (atualizar_ficha) e use aprovar_orcamento p/ o vendedor cotar a transportadora. NÃO invente valor de transportadora. ⚠️ TRAVA ANTI-ERRO: para essa cidade NÃO EXISTE entrega com MONTAGEM — a transportadora só ENVIA (não monta), e a montagem é serviço da JR só na nossa área de entrega própria. Se o cliente pedir/insistir em MONTAGEM, NÃO prometa nem afirme que tem: explique com clareza que ali é só envio por transportadora OU retirada (sem montagem) e que, se quiser, o vendedor vê alternativas. NUNCA diga que há 'entrega com montagem via transportadora'." };
           return { result: "Ainda não sei a cidade de entrega. Pergunte a cidade do lead (atualizar_ficha) e gere de novo." };
         }
         if (fr && "askZone" in fr) {
+          // NUNCA PEÇA A ZONA DEPOIS DO PIN: se o cliente já compartilhou a localização e a
+          // coordenada não resolveu com confiança (bairro sem coord/pin longe de tudo), pedir a
+          // zona a ele é péssimo ("mandei minha localização, por que perguntam a zona?"). Escala.
+          if (temPin) return { result: "O cliente compartilhou a localização, mas não consegui identificar a zona de entrega com segurança. NÃO peça a zona/bairro de novo (ele já mandou o pin). Use escalar_humano e diga, de forma natural, que um vendedor vai confirmar o frete certinho da região dele." };
           // TRAVA ANTI-LOOP: se já pedimos a zona/bairro 2x e ainda não casou (bairro fora do
           // cadastro), PARA de repetir → escala pro vendedor. Conta os pedidos recentes de
           // localização/bairro. Sem isso, bairro não-cadastrado → loop infinito de "qual zona?".
