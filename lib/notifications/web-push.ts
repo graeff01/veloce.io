@@ -57,11 +57,13 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
 // Envia para os VENDEDORES do portal de um cliente (PortalPushSubscription). Alcança o
 // vendedor mesmo com o portal fechado. `excludeEmail` evita notificar quem disparou a ação.
+// `onlyEmail` mira UM vendedor específico (ex.: a DONA da conversa recebe o fechamento).
 // Best-effort: inscrição expirada (404/410) é removida; retorna quantos dispositivos ok.
-export async function sendPushToPortalClient(clientId: string, payload: PushPayload, opts?: { excludeEmail?: string }): Promise<number> {
+export async function sendPushToPortalClient(clientId: string, payload: PushPayload, opts?: { excludeEmail?: string; onlyEmail?: string }): Promise<number> {
   if (!ensureConfigured()) return 0;
+  const emailWhere = opts?.onlyEmail ? { email: opts.onlyEmail } : (opts?.excludeEmail ? { email: { not: opts.excludeEmail } } : {});
   const subs = await prisma.portalPushSubscription.findMany({
-    where: { clientId, ...(opts?.excludeEmail ? { email: { not: opts.excludeEmail } } : {}) },
+    where: { clientId, ...emailWhere },
   });
   if (subs.length === 0) return 0;
 

@@ -14,12 +14,14 @@ export async function pushPortalReview(clientId: string, detail?: string): Promi
   }).catch(() => {});
 }
 
-export async function pushPortalFechamento(clientId: string, detail?: string): Promise<void> {
+// `ownerEmail`: se a conversa tem DONA, só ela recebe a notificação de fechamento (o cliente
+// é dela — feedback da Maria). Sem dona, notifica todos os vendedores (fallback).
+export async function pushPortalFechamento(clientId: string, detail?: string, ownerEmail?: string | null): Promise<void> {
   const portal = await prisma.clientPortal.findUnique({ where: { clientId }, select: { token: true } });
   if (!portal) return;
   await sendPushToPortalClient(clientId, {
     title: "🔥 Lead quer fechar",
     body: detail || "Um lead aprovou o orçamento e quer fechar.",
     url: `/r/${portal.token}/fechamento`,
-  }).catch(() => {});
+  }, ownerEmail ? { onlyEmail: ownerEmail } : undefined).catch(() => {});
 }
