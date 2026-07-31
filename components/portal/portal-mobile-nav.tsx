@@ -14,15 +14,16 @@ export function PortalMobileNav({ token, active, quotesEnabled }: {
   active: "conversas" | "aguardando" | "anuncios" | "orcamentos";
   quotesEnabled?: boolean;
 }) {
+  // Badges (Aguardando + Orçamentos) — endpoint leve, pra a barra ficar IGUAL em toda tela.
+  const [waiting, setWaiting] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
   useEffect(() => {
-    if (!quotesEnabled) return;
     let alive = true;
-    const tick = () => fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setReviewCount(d?.pending ?? 0); }).catch(() => {});
+    const tick = () => fetch(`/api/portal/${token}/badges`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive && d) { setWaiting(d.waiting ?? 0); setReviewCount(d.reviews ?? 0); } }).catch(() => {});
     tick();
     const id = setInterval(tick, 20000);
     return () => { alive = false; clearInterval(id); };
-  }, [token, quotesEnabled]);
+  }, [token]);
 
   const item = (key: typeof active, href: string, label: string, icon: React.ReactNode, badge = 0) => {
     const on = active === key;
@@ -44,7 +45,7 @@ export function PortalMobileNav({ token, active, quotesEnabled }: {
         @media(min-width:761px){ .pmobnav{display:none} }`}</style>
       <nav className="pmobnav">
         {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={20} />)}
-        {item("aguardando", `/r/${token}/conversas?tab=waiting`, "Aguardando", <Clock size={20} />)}
+        {item("aguardando", `/r/${token}/conversas?tab=waiting`, "Aguardando", <Clock size={20} />, waiting)}
         {item("anuncios", `/r/${token}/conversas?tab=ads`, "Anúncios", <Megaphone size={20} />)}
         {quotesEnabled && item("orcamentos", `/r/${token}/revisao`, "Orçamentos", <FileText size={20} />, reviewCount)}
       </nav>
