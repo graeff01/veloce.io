@@ -20,6 +20,14 @@ import { redactPII } from "@/lib/redact";
 import { synthesizeVoice } from "@/lib/tts";
 import { Prisma } from "@prisma/client";
 
+// BLINDAGEM: nomes INTERNOS das ferramentas — se o modelo escrever `nome(...)` como TEXTO
+// (em vez de executar), removemos do texto final pra não vazar pro cliente. Não-guloso até o
+// 1º ")" (os args usam chaves JSON, não parênteses). Nomes internos nunca aparecem em prosa.
+const TOOL_CALL_LEAK_RE = /(?:aprovar_orcamento|atualizar_ficha|atualizar_perfil|buscar_estoque|enviar_catalogo|enviar_foto|enviar_localizacao_loja|enviar_opcionais|enviar_orcamento|enviar_video|escalar_humano|gerar_orcamento|pedir_localizacao|reagir)\s*\([^\n]*?\)/g;
+export function stripToolCallLeak(s: string): string {
+  return s.replace(TOOL_CALL_LEAK_RE, "").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 interface RunInput {
   clientId: string;
   connectionId: string;
@@ -628,6 +636,19 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   stages.push({ name: "llm", ms: Date.now() - stageStart });
   stageStart = Date.now();
 
+  // ── BLINDAGEM: vazamento de tool-call no texto ───────────────────────────────
+  // Às vezes o modelo ESCREVE uma chamada de ferramenta como TEXTO (ex.:
+  // `atualizar_ficha({...})`) em vez de executá-la — e isso vazaria cru pro cliente.
+  // Remove qualquer sintaxe de tool-call conhecida do texto final. São nomes INTERNOS
+  // que nunca aparecem em prosa legítima, então o strip é seguro. Se sobrar vazio, cai
+  // no fallback logo abaixo.
+  let toolCallLeak = false;
+  if (final) {
+    const before = final;
+    final = stripToolCallLeak(final);
+    toolCallLeak = final !== before;
+  }
+
   if (!final || !final.trim()) { final = fallback; if (decision === "respondeu_duvida") decision = "sem_fonte"; }
 
   // Handoff DETERMINÍSTICO: se o lead sinalizou que quer FECHAR (pronto_para_comprar no
@@ -638,6 +659,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   if (readyToClose && status === "ok" && decision !== "escalou") decision = "escalou";
 
   const guardrails: string[] = [];
+  if (toolCallLeak) guardrails.push("sanitize:tool_call_leak"); // telemetria: modelo vazou tool-call no texto
 
   // ── F1: anti-alucinação — grounding + verificação ────────────────────────────
   // Fontes legítimas: resultados de ferramentas + conhecimento (RAG) + a conversa
