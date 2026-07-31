@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ShieldCheck, FileText, MapPin, Bell, Check, Loader2, X, Send } from "lucide-react";
+import { PdfModal } from "./pdf-modal";
 
 interface Line { label: string; amount: number }
 interface Review {
@@ -42,6 +43,7 @@ export function PortalRevisao({ token }: { token: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [notif, setNotif] = useState<"default" | "granted" | "denied">("default");
   const [desc, setDesc] = useState<Record<string, string>>({}); // desconto digitado por quote
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null); // PDF aberto no modal in-app (não em nova aba)
   const seen = useRef<Set<string>>(new Set());
   const first = useRef(true);
 
@@ -200,7 +202,7 @@ export function PortalRevisao({ token }: { token: string }) {
                 )}
 
                 <div className="ract">
-                  <a className="rpdf" href={`/api/portal/${token}/quote-reviews/${q.quoteId}/pdf${d > 0 ? `?desconto=${d}` : ""}`} target="_blank" rel="noreferrer"><FileText size={14} /> Ver PDF</a>
+                  <button type="button" className="rpdf" onClick={() => setPdfUrl(`/api/portal/${token}/quote-reviews/${q.quoteId}/pdf${d > 0 ? `?desconto=${d}` : ""}`)} style={{ cursor: "pointer", fontFamily: "inherit" }}><FileText size={14} /> Ver PDF</button>
                   <label className="rdisc">Desconto R$
                     <input inputMode="decimal" placeholder="0" value={desc[q.quoteId] ?? ""} onChange={(e) => setDesc((s) => ({ ...s, [q.quoteId]: e.target.value }))} />
                   </label>
@@ -214,6 +216,7 @@ export function PortalRevisao({ token }: { token: string }) {
           })}
         </div>
       )}
+      <PdfModal url={pdfUrl} title="Orçamento para revisão" onClose={() => setPdfUrl(null)} />
     </div>
   );
 }

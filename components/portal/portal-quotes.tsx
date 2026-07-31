@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FileText, Download, Eye, Search } from "lucide-react";
+import { PdfModal } from "./pdf-modal";
 
 interface Quote {
   id: string;
@@ -33,6 +34,7 @@ export function PortalQuotes({ token }: { token: string }) {
   const [quotes, setQuotes] = useState<Quote[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null); // PDF aberto no modal in-app (não em nova aba)
 
   useEffect(() => {
     let alive = true;
@@ -90,7 +92,7 @@ export function PortalQuotes({ token }: { token: string }) {
                 </div>
                 <b style={{ fontSize: 14, color: "var(--p-text)", whiteSpace: "nowrap" }}>{brl(quote.total, quote.currency)}</b>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <a href={pdfHref(quote.id)} target="_blank" rel="noopener noreferrer" title="Ver PDF" style={iconBtn}><Eye size={16} /></a>
+                  <button type="button" onClick={() => setPdfUrl(pdfHref(quote.id))} title="Ver PDF" style={{ ...iconBtn, cursor: "pointer" }}><Eye size={16} /></button>
                   <a href={pdfHref(quote.id, true)} title="Baixar PDF" style={iconBtn}><Download size={16} /></a>
                 </div>
               </div>
@@ -98,6 +100,7 @@ export function PortalQuotes({ token }: { token: string }) {
           </div>
         )}
       </div>
+      <PdfModal url={pdfUrl} title="Orçamento" onClose={() => setPdfUrl(null)} />
     </div>
   );
 }
