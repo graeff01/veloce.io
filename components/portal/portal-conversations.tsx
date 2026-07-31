@@ -679,7 +679,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         ) : (
           <>
             {/* header do chat */}
-            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 9 : 12, padding: isMobile ? "calc(8px + env(safe-area-inset-top)) 12px 9px" : "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 12, padding: isMobile ? "calc(8px + env(safe-area-inset-top)) 12px 9px" : "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
               {/* Identidade — quem é (hierarquia clara, estilo WhatsApp) */}
               <div style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, minWidth: 0 }}>
                 {isMobile && (
@@ -694,9 +694,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
                 </div>
               </div>
-              {/* Ações — dono, etiquetas, IA, etapa. No mobile viram a 2ª linha, ALINHADAS sob o
-                  nome (mesma margem esquerda do avatar) pra tudo ficar no mesmo prumo. */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", rowGap: 6, justifyContent: "flex-start", paddingLeft: isMobile ? 92 : 0 }}>
+              {/* Ações do topo — só ETIQUETA e DONO (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
@@ -764,21 +763,22 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </>
                 )}
               </div>
-              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 12px", borderRadius: 10, border: "1px solid var(--p-accent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", flexShrink: 0 }}>
-                <Sparkles size={14} /> {aiReplying ? "…" : isMobile ? "IA" : "IA responder"}
-              </button>
+              </div>
+            </div>
+
+            {/* Pílulas flutuantes abaixo do header — ETAPA do funil + IA responder (estilo dos avisos). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: isMobile ? "10px 12px 0" : "10px 8% 0" }}>
               {/* Etapa do funil — clicável: abre menu pra mudar manualmente (trava o automático). */}
-              <div style={{ position: "relative", flexShrink: 0 }}>
+              <div style={{ position: "relative" }}>
                 {(() => { const st = conv.funnelStage; const color = st ? (STAGE[st]?.[1] ?? "var(--wa-muted)") : "var(--wa-muted)"; const label = st ? (STAGE[st]?.[0] ?? st) : "Etapa"; return (
                   <button onClick={() => setStageMenu((o) => !o)} disabled={stageSaving} title="Mudar a etapa do funil"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 32, padding: isMobile ? "0 8px" : "0 10px", borderRadius: 10, border: `1px solid ${st ? color : "var(--p-border)"}`, background: st ? `color-mix(in srgb, ${color} 14%, transparent)` : "var(--p-bg)", color: st ? color : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: stageSaving ? "wait" : "pointer", whiteSpace: "nowrap" }}>
-                    {label} <ChevronDown size={13} style={{ flexShrink: 0 }} />
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 999, border: `1px solid ${st ? `color-mix(in srgb, ${color} 45%, transparent)` : "var(--p-border)"}`, background: st ? `color-mix(in srgb, ${color} 13%, var(--p-surface))` : "var(--p-surface)", color: st ? color : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: stageSaving ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: st ? color : "var(--wa-muted)", flexShrink: 0 }} />{label} <ChevronDown size={13} style={{ flexShrink: 0, opacity: 0.7 }} />
                   </button>
                 ); })()}
                 {stageMenu && (<>
                   <div onClick={() => setStageMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", [isMobile ? "left" : "right"]: 0, zIndex: 41, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.16)", overflow: "hidden", minWidth: 178 }}>
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 41, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.16)", overflow: "hidden", minWidth: 178 }}>
                     {STAGE_ORDER.map((s) => { const [label, color] = STAGE[s]; const active = conv.funnelStage === s; return (
                       <button key={s} onClick={() => changeStage(s)} disabled={stageSaving}
                         style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid var(--p-border)", background: active ? "var(--p-accent-soft)" : "transparent", color: "var(--p-text)", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
@@ -790,7 +790,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </div>
                 </>)}
               </div>
-              </div>
+              {/* IA responder */}
+              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 13px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--p-accent) 45%, transparent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Sparkles size={14} /> {aiReplying ? "…" : "IA responder"}
+              </button>
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
