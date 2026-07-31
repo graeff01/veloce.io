@@ -149,6 +149,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
+  // Filtro inicial via ?tab= — a barra mobile de OUTRAS telas (ex.: Revisão) linka pra cá com
+  // ?tab=waiting/ads pra manter o filtro ao voltar. Só na montagem.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "waiting" || t === "ads") setTab(t);
+  }, []);
+
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 760px)");

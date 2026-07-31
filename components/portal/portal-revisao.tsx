@@ -120,6 +120,7 @@ export function PortalRevisao({ token }: { token: string }) {
     <div className="rwrap">
       <style>{`
         .rwrap{max-width:920px;margin:0 auto;padding:26px 22px 70px}
+        @media(max-width:760px){ .rwrap{padding-bottom:calc(104px + env(safe-area-inset-bottom))} }
         .rhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
         .rhead h1{font-size:20px;margin:0;letter-spacing:-.01em}
         .rcount{background:var(--p-accent);color:var(--p-on-accent);font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;min-width:22px;text-align:center}

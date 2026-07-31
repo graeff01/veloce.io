@@ -5,6 +5,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalRevisao } from "@/components/portal/portal-revisao";
+import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function RevisaoPage({ params }: { params: Promise<{ token:
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%);background-repeat:no-repeat;background-position:center top;background-attachment:fixed}`}</style>
       <PortalRevisao token={token} />
+      <PortalMobileNav token={token} active="orcamentos" quotesEnabled={shell.quotesEnabled} hasAds={shell.sections?.includes("anuncios")} />
     </main>
   );
 }
