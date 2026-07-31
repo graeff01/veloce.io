@@ -109,6 +109,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [stageMenu, setStageMenu] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
   const [reviewCount, setReviewCount] = useState(0); // orçamentos aguardando aprovação (badge do atalho Orçamentos)
+  const [waitingCount, setWaitingCount] = useState(0); // "aguardando" (badge) — via /badges, IGUAL às outras telas
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]); // etiquetas do cliente
   const [tagMenu, setTagMenu] = useState(false);
   // Pré-visualização antes de enviar mídia (imagem/documento): confirma com legenda.
@@ -133,15 +134,16 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   useEffect(() => {
     fetch(`/api/portal/${token}/tags`).then((r) => (r.ok ? r.json() : [])).then((d) => setAllTags(Array.isArray(d) ? d : [])).catch(() => {});
   }, [token]);
-  // Badge do atalho "Orçamentos": nº aguardando aprovação (mesmo endpoint da sidebar).
+  // Badges (Aguardando + Orçamentos): MESMOS counts do /badges que a barra usa nas OUTRAS
+  // telas — assim o número é IDÊNTICO em qualquer aba (antes o "aguardando" era contado na
+  // lista carregada e divergia do total mostrado na tela de Orçamentos).
   useEffect(() => {
-    if (!quotesEnabled) return;
     let alive = true;
-    const tick = () => fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setReviewCount(d?.pending ?? 0); }).catch(() => {});
+    const tick = () => fetch(`/api/portal/${token}/badges`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive && d) { setWaitingCount(d.waiting ?? 0); setReviewCount(d.reviews ?? 0); } }).catch(() => {});
     tick();
     const id = setInterval(tick, 20000);
     return () => { alive = false; clearInterval(id); };
-  }, [token, quotesEnabled]);
+  }, [token]);
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -515,7 +517,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     return false;
   })();
 
-  const waitingCount = (list ?? []).filter(isWaiting).length;
   const tabChip = (k: "all" | "ads" | "waiting", label: string) => {
     const on = tab === k;
     const isWait = k === "waiting";
