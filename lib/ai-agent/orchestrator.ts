@@ -20,10 +20,12 @@ import { redactPII } from "@/lib/redact";
 import { synthesizeVoice } from "@/lib/tts";
 import { Prisma } from "@prisma/client";
 
-// BLINDAGEM: nomes INTERNOS das ferramentas — se o modelo escrever `nome(...)` como TEXTO
-// (em vez de executar), removemos do texto final pra não vazar pro cliente. Não-guloso até o
-// 1º ")" (os args usam chaves JSON, não parênteses). Nomes internos nunca aparecem em prosa.
-const TOOL_CALL_LEAK_RE = /(?:aprovar_orcamento|atualizar_ficha|atualizar_perfil|buscar_estoque|enviar_catalogo|enviar_foto|enviar_localizacao_loja|enviar_opcionais|enviar_orcamento|enviar_video|escalar_humano|gerar_orcamento|pedir_localizacao|reagir)\s*\([^\n]*?\)/g;
+// BLINDAGEM: nomes INTERNOS das ferramentas — se o modelo escrever a chamada como TEXTO
+// (em vez de executar), removemos do texto final pra não vazar pro cliente. O modelo vaza em
+// DOIS formatos (ambos vistos no QA real): `nome(...)` (parênteses) e `nome {...}`/`nome{...}`
+// (chaves JSON, com ou sem espaço). Paren: não-guloso até o 1º ")". Chaves: guloso até a
+// última "}" (captura JSON aninhado). Nomes internos nunca aparecem em prosa → strip seguro.
+const TOOL_CALL_LEAK_RE = /(?:aprovar_orcamento|atualizar_ficha|atualizar_perfil|buscar_estoque|enviar_catalogo|enviar_foto|enviar_localizacao_loja|enviar_opcionais|enviar_orcamento|enviar_video|escalar_humano|gerar_orcamento|pedir_localizacao|reagir)\s*(?:\([^\n]*?\)|\{[^\n]*\})/g;
 export function stripToolCallLeak(s: string): string {
   return s.replace(TOOL_CALL_LEAK_RE, "").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
