@@ -9,10 +9,9 @@ import { MessageCircle, Clock, Megaphone, FileText } from "lucide-react";
 // usuário ia pra tela de Revisão, que NÃO tinha a barra → ela sumia e parecia o navegador.
 // Renderizando esta barra também na Revisão (e afins), a navegação mantém a cara de app.
 // Some no desktop (>=761px), onde a nav é a sidebar.
-export function PortalMobileNav({ token, active, hasAds, quotesEnabled }: {
+export function PortalMobileNav({ token, active, quotesEnabled }: {
   token: string;
   active: "conversas" | "aguardando" | "anuncios" | "orcamentos";
-  hasAds?: boolean;
   quotesEnabled?: boolean;
 }) {
   const [reviewCount, setReviewCount] = useState(0);
@@ -46,7 +45,7 @@ export function PortalMobileNav({ token, active, hasAds, quotesEnabled }: {
       <nav className="pmobnav">
         {item("conversas", `/r/${token}/conversas`, "Conversas", <MessageCircle size={20} />)}
         {item("aguardando", `/r/${token}/conversas?tab=waiting`, "Aguardando", <Clock size={20} />)}
-        {hasAds && item("anuncios", `/r/${token}/conversas?tab=ads`, "Anúncios", <Megaphone size={20} />)}
+        {item("anuncios", `/r/${token}/conversas?tab=ads`, "Anúncios", <Megaphone size={20} />)}
         {quotesEnabled && item("orcamentos", `/r/${token}/revisao`, "Orçamentos", <FileText size={20} />, reviewCount)}
       </nav>
     </>

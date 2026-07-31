@@ -654,7 +654,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           <nav style={{ position: "fixed", left: 16, right: 16, bottom: "calc(12px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", gap: 2, padding: 5, background: "color-mix(in srgb, var(--p-surface) 78%, transparent)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)", border: "1px solid color-mix(in srgb, var(--p-border) 50%, transparent)", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,.10)", animation: "portalBarUp .34s cubic-bezier(.22,1,.36,1) both" }}>
             {bottomItem("all", "Conversas", <MessageCircle size={20} />, 0)}
             {bottomItem("waiting", "Aguardando", <Clock size={20} />, waitingCount)}
-            {hasAds && bottomItem("ads", "Anúncios", <Megaphone size={20} />, 0)}
+            {bottomItem("ads", "Anúncios", <Megaphone size={20} />, 0)}
             {quotesEnabled && bottomLink(`/r/${token}/revisao`, "Orçamentos", <FileText size={20} />, reviewCount)}
           </nav>
         )}
