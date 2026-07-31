@@ -277,16 +277,28 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 // senão devolve null (a IA escala pro vendedor em vez de chutar a zona errada). Opcionalmente
 // escopa a UMA cidade (cityKey) — recomendado, pra não pegar um ponto de cidade vizinha.
 const FREIGHT_COORD_MAX_KM = 6;
-export function resolveFreightByCoords(rules: PricingRules, lat: number, lng: number, cityKey?: string): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required"; km: number } | null {
+// Se as 2 zonas mais próximas estão a menos disso uma da outra, o pin está na DIVISA → ambíguo
+// (não dá pra afirmar a zona com segurança) → a IA escala em vez de chutar.
+const FREIGHT_AMBIGUITY_KM = 0.7;
+export function resolveFreightByCoords(rules: PricingRules, lat: number, lng: number, cityKey?: string): { label: string; amount: number; code?: string | null; assembly?: "optional" | "required"; km: number; ambiguous: boolean } | null {
   const list = (rules.freight ?? []).filter((f) => !cityKey || cityKeyOf(f) === cityKey);
-  let best: { zone: FreightRegion; km: number } | null = null;
-  for (const f of list) for (const nb of f.neighborhoods ?? []) {
-    if (typeof nb.lat !== "number" || typeof nb.lng !== "number") continue;
-    const km = haversineKm({ lat, lng }, { lat: nb.lat, lng: nb.lng });
-    if (!best || km < best.km) best = { zone: f, km };
+  // Menor distância POR ZONA (não só o ponto global) — pra comparar as duas zonas mais próximas
+  // e detectar fronteira.
+  const perZone: { zone: FreightRegion; km: number }[] = [];
+  for (const f of list) {
+    let bz = Infinity;
+    for (const nb of f.neighborhoods ?? []) {
+      if (typeof nb.lat !== "number" || typeof nb.lng !== "number") continue;
+      bz = Math.min(bz, haversineKm({ lat, lng }, { lat: nb.lat, lng: nb.lng }));
+    }
+    if (bz < Infinity) perZone.push({ zone: f, km: bz });
   }
-  if (best && best.km <= FREIGHT_COORD_MAX_KM) return { ...resolvedLine(best.zone), km: best.km };
-  return null;
+  perZone.sort((a, b) => a.km - b.km);
+  const nearest = perZone[0];
+  if (!nearest || nearest.km > FREIGHT_COORD_MAX_KM) return null; // longe de tudo → não resolve (escala)
+  const second = perZone[1];
+  const ambiguous = !!second && second.km - nearest.km < FREIGHT_AMBIGUITY_KM;
+  return { ...resolvedLine(nearest.zone), km: nearest.km, ambiguous };
 }
 
 // Anexa uma linha de taxa já resolvida (ex.: frete) a um orçamento calculado.

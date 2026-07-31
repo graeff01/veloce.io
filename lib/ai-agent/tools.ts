@@ -8,7 +8,7 @@ import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/port
 import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppDocumentByUrl, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
 import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
-import { computeQuote, describeRules, resolveFreight, resolveFreightByCoords, baseCityName, cityKeyOf, normText, appendFeeLine, type PricingRules } from "./pricing";
+import { computeQuote, describeRules, resolveFreight, resolveFreightByCoords, baseCityName, cityKeyOf, normText, wordHit, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
 import { renderQuotePdf, type QuoteDocData } from "@/lib/quote-pdf";
 
@@ -737,9 +737,12 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const statedCity = String(ficha.cidade_entrega ?? ficha.cidade ?? "").trim();
         const gpsCity = String(ficha.localizacao_gps ?? "").split(",").pop()?.trim() ?? "";
         if (statedCity && gpsCity && citiesDiffer(statedCity, gpsCity)) {
-          if (ctx.mode === "test") { if (ctx.testFicha) delete (ctx.testFicha as Record<string, unknown>).localizacao_gps; }
+          // Limpa NOME e COORDENADAS do pin: como a coordenada agora MANDA na resolução do
+          // frete (coord-primeiro), deixar o lat/lng velho (da cidade errada) faria a correção
+          // por texto ser sobrescrita por um pin obsoleto. Zera tudo.
+          if (ctx.mode === "test") { if (ctx.testFicha) { const t = ctx.testFicha as Record<string, unknown>; delete t.localizacao_gps; delete t.localizacao_gps_lat; delete t.localizacao_gps_lng; } }
           else {
-            const nf = { ...(ficha as Record<string, unknown>) }; delete nf.localizacao_gps;
+            const nf = { ...(ficha as Record<string, unknown>) }; delete nf.localizacao_gps; delete nf.localizacao_gps_lat; delete nf.localizacao_gps_lng;
             await prisma.leadProfile.update({ where: { contactId: ctx.contactId }, data: { data: nf as object } }).catch(() => {});
           }
           return { result: `A LOCALIZAÇÃO que o cliente compartilhou é de ${gpsCity}, mas ele informou a entrega em ${statedCity}. NÃO gere orçamento e NÃO peça a localização de novo (pedir_localizacao). Avise de um jeito humano que a localização NÃO corresponde à cidade que ele informou e peça o ENDEREÇO COMPLETO POR ESCRITO (cidade, bairro e rua). Ex.: "Opa, a localização que você mandou é de ${gpsCity}, mas você tinha me falado ${statedCity} 😊 — me manda o endereço completo por escrito pra eu acertar o frete certinho?". Só volte a orçar quando ele mandar o endereço/bairro por escrito.` };
@@ -767,14 +770,34 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         const gLng = Number((ficha as Record<string, unknown>).localizacao_gps_lng);
         const temPin = Number.isFinite(gLat) && Number.isFinite(gLng);
         let fr = resolveFreight(rules, addressBlob);
-        // BLINDAGEM MULTI-ZONA por LOCALIZAÇÃO: se o nome não resolveu (askZone/unmatched) mas o
-        // cliente mandou o pin, resolve a ZONA pela PROXIMIDADE às coordenadas cadastradas —
-        // imune a erro de nome do bairro (ex.: geocoder devolve um bairro fora do cadastro).
-        if (temPin && fr && ("askZone" in fr || "unmatched" in fr)) {
-          const askCity = "askZone" in fr ? fr.city : null;
-          const cityZone = askCity ? (rules.freight ?? []).find((f) => normText(baseCityName(f)) === normText(askCity)) : undefined;
+        let freightMethod = "nome"; // telemetria: como a zona foi decidida
+        // ── BLINDAGEM DE FRETE: a COORDENADA manda ─────────────────────────────────────
+        // Quando o cliente compartilhou o pin, a localização EXATA é a fonte da verdade da
+        // ZONA — não o NOME do bairro (o geocoder erra o nome; a coordenada, não). Resolve a
+        // zona pela PROXIMIDADE às coords cadastradas, ESCOPADA à cidade conhecida (ficha ou
+        // GPS) pra a coord decidir só a zona DENTRO da cidade certa (nunca pular de cidade).
+        // Isso corrige o caso clássico: nome do geocoder aponta a zona errada numa cidade
+        // multi-zona (ex.: Porto Alegre) — a coord ignora o nome e acerta a zona.
+        if (temPin) {
+          const knownCity = statedCity || gpsCity;
+          const cityZone = knownCity
+            ? (rules.freight ?? []).find((f) => { const bc = normText(baseCityName(f)); const kc = normText(knownCity); return !!bc && !!kc && (bc === kc || wordHit(kc, bc) || wordHit(bc, kc)); })
+            : undefined;
           const byCoord = resolveFreightByCoords(rules, gLat, gLng, cityZone ? cityKeyOf(cityZone) : undefined);
-          if (byCoord) { const { km: _km, ...line } = byCoord; fr = line; }
+          const nameResolved = !!fr && !("askZone" in fr) && !("unmatched" in fr); // nome deu zona limpa
+          if (byCoord && !byCoord.ambiguous) {
+            // Coordenada resolveu com FOLGA → é a verdade. Ignora o nome (mesmo se discordar).
+            const { km: _km, ambiguous: _a, ...line } = byCoord; fr = line; freightMethod = "coord";
+          } else if (byCoord && byCoord.ambiguous && !nameResolved) {
+            // Pin na DIVISA de duas zonas com fretes diferentes e o nome NÃO desempata →
+            // ESCALA. Nunca chuta a zona numa fronteira (é aqui que morava o "amadorismo").
+            if (ctx.mode !== "test") console.log(`[frete] contact=${ctx.contactId} method=escala-fronteira pin=${gLat},${gLng} km=${byCoord.km.toFixed(2)}`);
+            return { result: "O cliente compartilhou a localização, mas o ponto está bem na DIVISA de duas zonas com fretes diferentes — não dá pra afirmar o valor com segurança. NÃO peça a zona/bairro de novo (ele já mandou o pin). Use escalar_humano e diga, de forma natural, que um vendedor vai confirmar o frete certinho da região dele." };
+          } else if (byCoord && byCoord.ambiguous && nameResolved) {
+            freightMethod = "coord-fronteira→nome"; // pin na divisa, mas o nome digitado desempata → mantém o nome
+          }
+          // byCoord == null (pin longe de tudo/sem coords) → mantém o resultado do nome
+          // (askZone/unmatched trata abaixo — e com pin, escala em vez de re-perguntar).
         }
         if (fr && "unmatched" in fr) {
           const temEndereco = addressBlob.trim().length > 0;
@@ -785,7 +808,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           // NUNCA PEÇA A ZONA DEPOIS DO PIN: se o cliente já compartilhou a localização e a
           // coordenada não resolveu com confiança (bairro sem coord/pin longe de tudo), pedir a
           // zona a ele é péssimo ("mandei minha localização, por que perguntam a zona?"). Escala.
-          if (temPin) return { result: "O cliente compartilhou a localização, mas não consegui identificar a zona de entrega com segurança. NÃO peça a zona/bairro de novo (ele já mandou o pin). Use escalar_humano e diga, de forma natural, que um vendedor vai confirmar o frete certinho da região dele." };
+          if (temPin) { if (ctx.mode !== "test") console.log(`[frete] contact=${ctx.contactId} method=escala-pin-longe pin=${gLat},${gLng} cidade="${fr.city}"`); return { result: "O cliente compartilhou a localização, mas não consegui identificar a zona de entrega com segurança. NÃO peça a zona/bairro de novo (ele já mandou o pin). Use escalar_humano e diga, de forma natural, que um vendedor vai confirmar o frete certinho da região dele." }; }
           // TRAVA ANTI-LOOP: se já pedimos a zona/bairro 2x e ainda não casou (bairro fora do
           // cadastro), PARA de repetir → escala pro vendedor. Conta os pedidos recentes de
           // localização/bairro. Sem isso, bairro não-cadastrado → loop infinito de "qual zona?".
@@ -807,6 +830,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           return { result: `A cidade ${fr.city} tem zonas com fretes diferentes: ${opts}. Peça a LOCALIZAÇÃO do cliente com pedir_localizacao (jeito mais fácil e certeiro de achar a zona) — ou, se ele preferir, o BAIRRO por texto. Registre na ficha (atualizar_ficha) e gere o orçamento de novo. NÃO escolha a zona por conta própria; se mesmo assim não casar, use escalar_humano.` };
         }
         if (fr) {
+          if (ctx.mode !== "test") console.log(`[frete] contact=${ctx.contactId} method=${freightMethod} pin=${temPin ? `${gLat},${gLng}` : "nao"} zona="${fr.label}" valor=${fr.amount}`);
           // Regra JR: zona com montagem OBRIGATÓRIA (assembly required OU frete acima do
           // limite) → a montagem entra SOZINHA, sem perguntar ao lead.
           const thr = rules.policies?.freightAssemblyThreshold;
