@@ -6,9 +6,22 @@ import { stripToolCallLeak } from "../lib/ai-agent/orchestrator";
 // executá-la; isso não pode vazar pro cliente. stripToolCallLeak remove só sintaxe de
 // tool-call conhecida, sem tocar em prosa legítima.
 
-test("remove atualizar_ficha({...}) vazado (caso real do QA)", () => {
+test("remove atualizar_ficha({...}) vazado — formato parênteses (caso real do QA)", () => {
   const r = stripToolCallLeak(`atualizar_ficha({"campos":{"nome":"joão"}})\nPrazer, João! Garantia de 1 ano.`);
   assert.equal(r, "Prazer, João! Garantia de 1 ano.");
+});
+
+test("remove atualizar_ficha {...} vazado — formato CHAVES com espaço (2º caso real, pós-deploy)", () => {
+  assert.equal(stripToolCallLeak(`atualizar_ficha {"campos":{"nome":"joão"}}`), "");
+});
+
+test("remove formato chaves SEM espaço", () => {
+  assert.equal(stripToolCallLeak(`atualizar_ficha{"campos":{"nome":"x"}} Oi!`), "Oi!");
+});
+
+test("NÃO toca em chaves soltas em prosa (sem nome de ferramenta antes)", () => {
+  const s = "Uso {carvão} às vezes, tá?";
+  assert.equal(stripToolCallLeak(s), s);
 });
 
 test("remove chamada de args vazios (escalar_humano())", () => {
