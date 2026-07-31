@@ -679,18 +679,23 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         ) : (
           <>
             {/* header do chat */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "8px 12px calc(8px + env(safe-area-inset-top))" : "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
-              {isMobile && (
-                <button onClick={() => setSel(null)} aria-label="Voltar para a lista" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, marginLeft: -6, borderRadius: 10, border: "none", background: "transparent", color: "var(--p-text)", cursor: "pointer", flexShrink: 0 }}>
-                  <ArrowLeft size={22} />
-                </button>
-              )}
-              <Avatar name={conv.contact.name} size={40} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--p-text)" }}>{conv.contact.name}</div>
-                {(() => { const wa = list?.find((r) => r.contactId === sel)?.waId ?? ""; const ph = formatPhone(wa); return ph && !nameIsNumber(conv.contact.name, wa) ? <div style={{ fontSize: 11.5, color: "var(--wa-muted)" }}>{ph}</div> : null; })()}
-                {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 9 : 12, padding: isMobile ? "calc(8px + env(safe-area-inset-top)) 12px 9px" : "9px 18px", background: "var(--p-surface)", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
+              {/* Identidade — quem é (hierarquia clara, estilo WhatsApp) */}
+              <div style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, minWidth: 0 }}>
+                {isMobile && (
+                  <button onClick={() => setSel(null)} aria-label="Voltar para a lista" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, marginLeft: -6, borderRadius: 10, border: "none", background: "transparent", color: "var(--p-text)", cursor: "pointer", flexShrink: 0 }}>
+                    <ArrowLeft size={22} />
+                  </button>
+                )}
+                <Avatar name={conv.contact.name} size={isMobile ? 42 : 40} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: isMobile ? 16 : 14.5, fontWeight: 700, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.25 }}>{conv.contact.name}</div>
+                  {(() => { const wa = list?.find((r) => r.contactId === sel)?.waId ?? ""; const ph = formatPhone(wa); return ph && !nameIsNumber(conv.contact.name, wa) ? <div style={{ fontSize: 12, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ph}</div> : null; })()}
+                  {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
+                </div>
               </div>
+              {/* Ações — dono, etiquetas, IA, etapa. No mobile viram a 2ª linha, alinhadas à direita. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, justifyContent: isMobile ? "flex-end" : "flex-start" }}>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
@@ -783,6 +788,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     ); })}
                   </div>
                 </>)}
+              </div>
               </div>
             </div>
 
