@@ -694,8 +694,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
                 </div>
               </div>
-              {/* Ações — dono, etiquetas, IA, etapa. No mobile viram a 2ª linha, alinhadas à direita. */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, justifyContent: isMobile ? "flex-end" : "flex-start" }}>
+              {/* Ações — dono, etiquetas, IA, etapa. No mobile viram a 2ª linha, ALINHADAS sob o
+                  nome (mesma margem esquerda do avatar) pra tudo ficar no mesmo prumo. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", rowGap: 6, justifyContent: "flex-start", paddingLeft: isMobile ? 92 : 0 }}>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
@@ -707,7 +708,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 {ownerMenu && (
                   <>
                     <div onClick={() => setOwnerMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                    <div style={{ position: "absolute", [isMobile ? "left" : "right"]: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Dono do lead</div>
                       {/* Assumir (você): atendente só pode em lead LIVRE; admin sempre. */}
                       {me && conv.assignedEmail !== me && (isAdmin || !conv.assignedEmail) && (
@@ -744,7 +745,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 {tagMenu && (
                   <>
                     <div onClick={() => setTagMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 230, maxHeight: 300, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                    <div style={{ position: "absolute", [isMobile ? "left" : "right"]: 0, top: 38, zIndex: 41, width: 230, maxHeight: 300, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Etiquetas</div>
                       {allTags.map((t) => { const on = (conv.tags ?? []).some((x) => x.id === t.id); return (
                         <button key={t.id} onClick={() => toggleTag(t)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, color: "var(--p-text)" }}>
@@ -777,7 +778,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 ); })()}
                 {stageMenu && (<>
                   <div onClick={() => setStageMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 41, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.16)", overflow: "hidden", minWidth: 178 }}>
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", [isMobile ? "left" : "right"]: 0, zIndex: 41, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,.16)", overflow: "hidden", minWidth: 178 }}>
                     {STAGE_ORDER.map((s) => { const [label, color] = STAGE[s]; const active = conv.funnelStage === s; return (
                       <button key={s} onClick={() => changeStage(s)} disabled={stageSaving}
                         style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid var(--p-border)", background: active ? "var(--p-accent-soft)" : "transparent", color: "var(--p-text)", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
