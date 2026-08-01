@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 
 interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
@@ -149,6 +149,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     setTheme(next);
     document.documentElement.setAttribute("data-pt", next);
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
+  }
+  // Sair da conta (no mobile a sidebar do painel — que tem o "Sair" — fica escondida, então
+  // este é o único acesso pra sair / trocar de conta pelo telefone).
+  async function logout() {
+    if (!confirm("Sair da conta?")) return;
+    await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
+    window.location.href = `/r/${token}`;
   }
 
   // Filtro inicial via ?tab= — a barra mobile de OUTRAS telas (ex.: Revisão) linka pra cá com
@@ -574,6 +581,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", cursor: "pointer", flexShrink: 0 }}>
           {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
         </button>
+        {/* Sair / trocar de conta — no mobile (no desktop o "Sair" fica na sidebar do painel). */}
+        {isMobile && me && (
+          <button onClick={logout} title="Sair da conta" aria-label="Sair da conta"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+            <LogOut size={16} /> Sair
+          </button>
+        )}
       </header>
 
       {/* Viewer preenche toda a área interna (ao lado da sidebar do shell) */}
