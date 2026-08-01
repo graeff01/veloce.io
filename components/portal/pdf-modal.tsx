@@ -8,6 +8,9 @@ import { X, ExternalLink } from "lucide-react";
 // o iframe de PDF às vezes não renderiza inline).
 export function PdfModal({ url, title, onClose }: { url: string | null; title?: string; onClose: () => void }) {
   if (!url) return null;
+  // Parâmetros de abertura do PDF: FitH = ajusta à LARGURA da tela (sem arrastar pro lado);
+  // esconde toolbar/painéis. O ARQUIVO continua A4 original — só a VISUALIZAÇÃO se adapta.
+  const viewerUrl = `${url}${url.includes("#") ? "&" : "#"}toolbar=0&navpanes=0&view=FitH`;
   return (
     <div
       onClick={onClose}
@@ -23,7 +26,7 @@ export function PdfModal({ url, title, onClose }: { url: string | null; title?: 
             <button onClick={onClose} aria-label="Fechar" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--p-text, #111)", display: "inline-flex", padding: 4 }}><X size={22} /></button>
           </div>
         </div>
-        <iframe src={url} title={title || "PDF do orçamento"} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
+        <iframe src={viewerUrl} title={title || "PDF do orçamento"} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
       </div>
     </div>
   );
