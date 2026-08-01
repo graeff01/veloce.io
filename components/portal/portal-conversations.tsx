@@ -707,7 +707,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 {ownerMenu && (
                   <>
                     <div onClick={() => setOwnerMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                    <div style={{ position: "absolute", [isMobile ? "left" : "right"]: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 210, maxHeight: 260, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Dono do lead</div>
                       {/* Assumir (você): atendente só pode em lead LIVRE; admin sempre. */}
                       {me && conv.assignedEmail !== me && (isAdmin || !conv.assignedEmail) && (
@@ -744,7 +744,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 {tagMenu && (
                   <>
                     <div onClick={() => setTagMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                    <div style={{ position: "absolute", [isMobile ? "left" : "right"]: 0, top: 38, zIndex: 41, width: 230, maxHeight: 300, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
+                    <div style={{ position: "absolute", right: 0, top: 38, zIndex: 41, width: 230, maxHeight: 300, overflowY: "auto", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.18)", padding: 6 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px" }}>Etiquetas</div>
                       {allTags.map((t) => { const on = (conv.tags ?? []).some((x) => x.id === t.id); return (
                         <button key={t.id} onClick={() => toggleTag(t)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "7px 8px", border: "none", background: "transparent", cursor: "pointer", borderRadius: 8, fontSize: 13, color: "var(--p-text)" }}>
