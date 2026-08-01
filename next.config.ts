@@ -20,7 +20,10 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          { key: "X-Frame-Options", value: "DENY" },
+          // SAMEORIGIN (não DENY): permite o PRÓPRIO site embutir seu conteúdo em iframe
+          // (ex.: o modal que mostra o PDF do orçamento dentro do PWA). Outros sites seguem
+          // bloqueados (anti-clickjacking preservado).
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
