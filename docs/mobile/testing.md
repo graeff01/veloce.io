@@ -26,6 +26,7 @@ npx tsx --test tests/*.test.ts
 | testes web | 278/280 | 307/309 |
 | typecheck mobile | — | exit 0 |
 | testes mobile | — | 58/58 |
+| E2E contra backend real | — | 30/30 |
 
 **As 2 falhas do web são pré-existentes e fora de escopo** —
 `debounce.test.ts` (heurística do motor de IA mudou sem o teste acompanhar) e
@@ -53,7 +54,7 @@ rede caindo não desloga, logout limpa mesmo offline.
 **`apps/mobile/tests/deep-link.test.ts`** (7) — payload de push é entrada
 externa: rota desconhecida não navega, travessia de caminho recusada.
 
-## Integração contra o backend REAL (18 testes)
+## Integração contra o backend REAL (30 testes)
 
 `tests/e2e/portal-mobile.e2e.ts` — roda contra `next dev` + Postgres local.
 Fora do glob de `npm test` de propósito: a suíte unitária continua hermética.
@@ -63,8 +64,12 @@ npm run dev          # terminal 1
 npm run test:e2e     # terminal 2
 ```
 
-Ver `docs/mobile/dev-local.md` para subir o banco. Verificado: **18/18, três
-execuções seguidas**.
+Ver `docs/mobile/dev-local.md` para subir o banco.
+
+- `portal-mobile.e2e.ts` (18): autenticação, sessão, isolamento entre tenants.
+- `portal-contracts.e2e.ts` (12): os **parsers do app** rodando em cima do JSON
+  real do servidor. É o que amarra os dois clientes — se o backend mudar de forma,
+  quebra aqui, no CI, e não na tela da vendedora.
 
 Cobre, contra o servidor de verdade:
 
@@ -90,5 +95,19 @@ Cobre, contra o servidor de verdade:
 - **E2E mobile** (Maestro): precisa do app rodando — logo, Xcode/simulador ou
   aparelho.
 - **Envio APNs real**: precisa de conta Apple Developer e aparelho físico.
-- **Upload de mídia e fluxo de orçamento ponta a ponta**: exigem um `WaConnection`
-  com token válido da Meta (envio real) — fora do que é seguro exercitar.
+- **Envio real ao lead** (texto, mídia, áudio): exige `WaConnection` com token
+  válido da Meta. Testamos até a borda: o `send` autentica e chega à validação de
+  negócio, mas nada é enviado.
+
+## Achados registrados durante a construção
+
+1. **Contrato errado, pego pelo teste**: `Quote.number` é `Int` no banco, não
+   texto. O parser do app devolveria `null` e a tela mostraria o orçamento sem
+   número. Corrigido em `contracts.ts`.
+2. **`setAssignment` devolve `ok:true` afetando zero linhas** quando o contato não
+   tem `WaConversation` (`lib/ai-agent/respond.ts:539`, `updateMany`). Em produção
+   todo contato com mensagem tem essa linha (criada no webhook), então não é
+   alcançável hoje — mas o silêncio é frágil. **Não alterado: fora do escopo.**
+3. **Proteção contra força bruta é real** e barrou a primeira versão da suíte.
+4. **Espelho em memória do rate limit** curto-circuita antes do banco: limpar
+   `RateBucket` não basta, é preciso reiniciar o servidor.

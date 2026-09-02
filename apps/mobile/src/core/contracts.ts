@@ -101,7 +101,8 @@ export interface QuoteLine { label: string; amount: number }
 /** Espelha `reviews[]` de app/api/portal/[token]/quote-reviews/route.ts. */
 export interface QuoteReview {
   quoteId: string;
-  number: string | null;
+  /** Sequencial por cliente. É Int no banco (Quote.number), não texto. */
+  number: number | null;
   contactId: string | null;
   /** Nome do lead já resolvido pelo servidor (displayName → name → waId). */
   name: string;
@@ -296,7 +297,7 @@ export function parseQuoteReviews(input: unknown): QuoteReview[] {
       if (!quoteId) return null;
       return {
         quoteId,
-        number: str(q.number),
+        number: num(q.number),
         contactId: str(q.contactId),
         name: str(q.name) || "Lead",
         total: num(q.total),
