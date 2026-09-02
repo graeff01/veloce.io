@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
 // Tags (etiquetas coloridas) do cliente, no PORTAL — token-scoped. As vendedoras criam e
 // aplicam nas conversas. Espelha a API admin (clients/[id]/whatsapp/tags), mas via token.
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json([]);
   const tags = await prisma.waTag.findMany({ where: { connectionId: conn.id }, orderBy: { name: "asc" } });
@@ -22,8 +22,8 @@ const postSchema = z.object({ name: z.string().trim().min(1).max(40), color: z.s
 // Cria (ou atualiza a cor de) uma etiqueta. Idempotente por nome (evita duplicata).
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 

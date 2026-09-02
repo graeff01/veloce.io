@@ -22,7 +22,9 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
-    id: string;
-    role: Role;
+    id?: string;
+    role?: Role;
+    /** Instante da última revalidação do usuário contra o banco (ms). Ver lib/auth.ts. */
+    rv?: number;
   }
 }

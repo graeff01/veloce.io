@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { runAgentJob, type JobPayload } from "./respond";
 import { createEscalationTask } from "./escalation";
+import { consume, LIMITS } from "./security/quota";
+import { emitSecurityEventAsync } from "./security/events";
+import { securityMode } from "./security/policy";
 
 // Fila DURÁVEL do agente (tabela AiJob). Garante "nenhum lead no vácuo" mesmo com
 // deploy/restart no meio de uma rajada, e serializa por contato em multi-instância.
@@ -45,6 +48,15 @@ export async function enqueueAgentJob(job: {
   idempotencyKey?: string;
   payload: JobPayload;
 }): Promise<void> {
+  // ── Segurança · Anel 0: admission control (C-02) ────────────────────────────
+  // Teto de MENSAGENS por contato. A mensagem já está persistida em WaMessage — o
+  // que fica de fora é o TURNO DE IA (o que custa). Ao estourar, o lead NÃO fica no
+  // vácuo: vira tarefa de atendimento humano (fail-safe do RFC §P4).
+  if (!(await admit("msg", job.clientId, job.contactId, LIMITS.inboundPerContact))) {
+    await escalateThrottled(job.clientId, job.contactId, "volume de mensagens acima do normal");
+    return;
+  }
+
   const delay = debounceFor((job.payload as unknown as JobPayload)?.text ?? "");
   const runAfter = new Date(Date.now() + delay);
   await prisma.aiJob.upsert({
@@ -69,6 +81,49 @@ export async function enqueueAgentJob(job: {
   }, delay + 250));
 }
 
+// ── Segurança · admissão ──────────────────────────────────────────────────────
+// Consome a cota e devolve se pode seguir. Em shadow apenas registra (sempre admite).
+// FAIL-OPEN: erro no controle nunca barra atendimento.
+async function admit(
+  kind: "msg" | "turn",
+  clientId: string,
+  key: string,
+  limit: { limit: number; windowMs: number },
+): Promise<boolean> {
+  try {
+    const d = await consume(`agent:${kind}`, key, limit.limit, limit.windowMs);
+    if (d.allowed) return true;
+    const enforce = securityMode() === "enforce";
+    emitSecurityEventAsync({
+      clientId, contactId: kind === "msg" || kind === "turn" ? key : null,
+      ring: "admission", control: "C-02", severity: "high",
+      action: enforce ? "blocked" : "observed",
+      labels: [`quota:${kind}`, `count:${d.count}/${d.limit}`, ...(d.degraded ? ["degraded"] : [])],
+      evidence: `${kind} acima do teto (${d.count}/${d.limit} na janela)`,
+      shadow: !enforce,
+    });
+    return !enforce;
+  } catch {
+    return true;
+  }
+}
+
+// Tarefa de atendimento humano quando a cota corta a IA — no máximo 1 por hora
+// por contato (a própria cota serve de dedupe).
+async function escalateThrottled(clientId: string, contactId: string, reason: string): Promise<void> {
+  try {
+    const once = await consume("agent:abuse-task", contactId, 1, 3_600_000);
+    if (!once.allowed) return;
+    const contact = await prisma.waContact.findUnique({ where: { id: contactId }, select: { name: true, waId: true } });
+    if (!contact) return;
+    await createEscalationTask({
+      clientId, contactId, contactName: contact.name, waId: contact.waId,
+      reason: `A IA foi pausada neste contato por proteção (${reason}). Atenda manualmente.`,
+      kind: "failure",
+    });
+  } catch { /* nunca propaga */ }
+}
+
 // Claim atômico de um job específico: vence quem conseguir marcar processing.
 async function claim(contactId: string): Promise<boolean> {
   const staleBefore = new Date(Date.now() - STALE_LOCK_MS);
@@ -87,6 +142,17 @@ async function runOneContact(contactId: string): Promise<void> {
   if (!(await claim(contactId))) return; // outro worker pegou, ou ainda não venceu o debounce
   const job = await prisma.aiJob.findUnique({ where: { contactId } });
   if (!job) return;
+
+  // Cota de TURNOS de IA (o que efetivamente custa) — por contato e por cliente.
+  // Estourou: descarta o job (não fica reciclando) e joga para o humano.
+  const okContact = await admit("turn", job.clientId, contactId, LIMITS.agentTurnsPerContactHour);
+  const okClient = await admit("turn", job.clientId, job.clientId, LIMITS.agentTurnsPerClientHour);
+  if (!okContact || !okClient) {
+    await prisma.aiJob.delete({ where: { contactId } }).catch(() => {});
+    await escalateThrottled(job.clientId, contactId, okContact ? "volume do cliente acima do teto" : "muitos turnos de IA neste contato");
+    return;
+  }
+
   try {
     const outcome = await runAgentJob({
       clientId: job.clientId, connectionId: job.connectionId, contactId: job.contactId,

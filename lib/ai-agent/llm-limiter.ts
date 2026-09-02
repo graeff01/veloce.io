@@ -62,8 +62,10 @@ export async function withLLMLimits<T>(tenantKey: string | undefined, fn: () => 
     return r;
   } catch (e) {
     // Conta como falha do circuito apenas erros de servidor/limite (não erros de input).
-    const msg = String(e);
-    if (/\b(429|500|502|503|504|ETIMEDOUT|ECONNRESET|fetch failed)\b/i.test(msg)) breaker.recordFailure();
+    // Inclui ABORT/TIMEOUT: com o timeout do C-18, a conexão pendurada agora VIRA erro —
+    // e precisa alimentar o breaker, senão a degradação da OpenAI passa despercebida.
+    const msg = String(e) + " " + String((e as { name?: string })?.name ?? "");
+    if (/\b(429|500|502|503|504|ETIMEDOUT|ECONNRESET|fetch failed|TimeoutError|AbortError|aborted|timed?\s?out)\b/i.test(msg)) breaker.recordFailure();
     throw e;
   } finally {
     if (tSem) tSem.release();

@@ -897,8 +897,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     case "enviar_orcamento": {
       // No modo teste o PDF já foi exibido junto do gerar_orcamento (test não grava Quote).
       if (ctx.mode === "test") return { result: "(teste) O PDF do orçamento já foi enviado ao lead. Confirme que chegou e ofereça seguir pra fechar.", decision: "orcou" };
+      // Escopo de CONTATO obrigatório: sem `contactId` no where, um quoteId induzido
+      // pelo lead poderia enviar o PDF de OUTRO lead do mesmo cliente (nome, cidade,
+      // valores). O fluxo legítimo é inalterado — o orçamento é sempre do contato.
       const quote = args.quoteId
-        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId, contactId: ctx.contactId } })
         : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId, status: "draft" }, orderBy: { createdAt: "desc" } });
       if (!quote) {
         // Já pode ter ido pra revisão (não é mais "draft") — não trate como erro nem gere outro.
@@ -947,8 +950,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
 
     // ── Orçamento aprovado → aciona vendedor (reusa o escalation da master) ─────
     case "aprovar_orcamento": {
+      // Escopo de CONTATO obrigatório (idem enviar_orcamento): aprovar o orçamento de
+      // outro lead mudaria estado comercial alheio.
       const quote = args.quoteId
-        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId } })
+        ? await prisma.quote.findFirst({ where: { id: String(args.quoteId), clientId: ctx.clientId, contactId: ctx.contactId } })
         : await prisma.quote.findFirst({ where: { clientId: ctx.clientId, contactId: ctx.contactId }, orderBy: { createdAt: "desc" } });
       if (ctx.mode === "test") return { result: "(teste) Acionaria o vendedor (orçamento aprovado).", decision: "escalou" };
       const detalhe = quote ? ` Orçamento Nº ${quote.number} — ${brl(quote.total, quote.currency)}.` : "";

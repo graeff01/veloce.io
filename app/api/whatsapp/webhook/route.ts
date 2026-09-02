@@ -19,17 +19,29 @@ import { decryptSecret, DecryptError } from "@/lib/crypto";
 import { createHash } from "crypto";
 import type { WaConnection } from "@prisma/client";
 import { persistWaMedia } from "@/lib/wa-media-store";
+import { consume, LIMITS } from "@/lib/ai-agent/security/quota";
+import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
+import { securityMode } from "@/lib/ai-agent/security/policy";
 
 export const runtime = "nodejs";
 
 // Todos os phone_number_id referidos no payload (para achar a conexão dona da
 // entrega e validar a assinatura com o secret dela). Set dedupe entradas repetidas.
+// Teto de ids distintos por entrega: antes da assinatura conferir, um POST anônimo
+// com milhares de phone_number_id forjados gerava uma query por id (amplificação de
+// DoS contra o banco). Entrega real da Meta tem 1 id; 8 é folga generosa.
+const MAX_PNIDS = Number(process.env.SEC_WEBHOOK_MAX_PNIDS || 8);
+// Corpo máximo do webhook. O limite global do app é 30MB (elevado para o upload de
+// áudio de reunião) — o webhook da Meta tem alguns KB.
+const MAX_WEBHOOK_BYTES = Number(process.env.SEC_WEBHOOK_MAX_BYTES || 512 * 1024);
+
 function collectPhoneNumberIds(body: WaWebhookBody): string[] {
   const ids = new Set<string>();
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const pnid = change.value?.metadata?.phone_number_id;
       if (pnid) ids.add(pnid);
+      if (ids.size >= MAX_PNIDS) return [...ids];
     }
   }
   return [...ids];
@@ -51,7 +63,13 @@ export async function GET(req: Request) {
 // POST — recebe eventos (mensagens + status) da Meta. Somente leitura: nunca
 // responde nem altera nada no WhatsApp da loja.
 export async function POST(req: Request) {
+  // Guarda de recurso ANTES de qualquer trabalho: sem isto, um POST anônimo podia
+  // custar um JSON.parse de até 30MB de CPU por requisição.
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_WEBHOOK_BYTES) return new NextResponse("payload grande demais", { status: 413 });
+
   const raw = await req.text();
+  if (raw.length > MAX_WEBHOOK_BYTES) return new NextResponse("payload grande demais", { status: 413 });
   const signature = req.headers.get("x-hub-signature-256");
 
   // Parse antes de validar: o webhook é multi-tenant e cada cliente pode estar num
@@ -82,12 +100,13 @@ export async function POST(req: Request) {
   }
 
   if (!verified && signature) {
-    for (const pnid of collectPhoneNumberIds(body)) {
-      const conn = await prisma.waConnection.findUnique({
-        where: { phoneNumberId: pnid },
-        select: { appSecret: true },
-      });
-      if (!conn?.appSecret) continue;
+    // UMA query para todos os ids (era um findUnique por id, dentro de um laço sem teto).
+    const pnids = collectPhoneNumberIds(body);
+    const conns = pnids.length
+      ? await prisma.waConnection.findMany({ where: { phoneNumberId: { in: pnids } }, select: { appSecret: true } })
+      : [];
+    for (const conn of conns) {
+      if (!conn.appSecret) continue;
       hadSecret = true;
       try {
         if (verifySignature(raw, signature, decryptSecret(conn.appSecret))) { verified = true; break; }
@@ -105,6 +124,22 @@ export async function POST(req: Request) {
       // dev sem secret: segue sem validação
     } else {
       return new NextResponse("invalid signature", { status: 401 });
+    }
+  }
+
+  // Rate limit por CONEXÃO, já autenticado. Ao estourar devolvemos 429 (e não 200):
+  // a Meta reentrega com backoff, então nada se perde — o pico é apenas diferido.
+  for (const pnid of collectPhoneNumberIds(body)) {
+    const d = await consume("wa:webhook", pnid, LIMITS.webhookPerConnection.limit, LIMITS.webhookPerConnection.windowMs);
+    if (d.allowed) continue;
+    emitSecurityEventAsync({
+      clientId: "-", ring: "admission", control: "C-01", severity: "high",
+      action: securityMode() === "enforce" ? "blocked" : "observed",
+      labels: ["webhook_flood", `pnid:${pnid}`, `count:${d.count}/${d.limit}`],
+      evidence: `webhook acima do teto na janela`, shadow: securityMode() !== "enforce",
+    });
+    if (securityMode() === "enforce") {
+      return new NextResponse("rate limited", { status: 429, headers: { "Retry-After": String(Math.ceil(d.retryAfterMs / 1000)) } });
     }
   }
 

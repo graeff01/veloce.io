@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isWithin24h } from "@/lib/wa-window";
-import { getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { isStrongAd } from "@/lib/wa-leads";
 
 export const runtime = "nodejs";
 
 // GET — histórico de mensagens de uma conversa (token-scoped, SOMENTE LEITURA).
-export async function GET(_: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
@@ -28,7 +27,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     prisma.waLead.findUnique({ where: { contactId: contact.id }, select: { adId: true, adTitle: true, adModel: true, adBody: true, sourceUrl: true, adImageUrl: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findUnique({ where: { contactId: contact.id }, select: { funnelStage: true, funnelEvidence: true, funnelManual: true, assignedEmail: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
-    getPortalSessionEmail(portal.clientId),
+    Promise.resolve(portal.email),
     prisma.waContactTag.findMany({ where: { contactId: contact.id }, select: { tag: { select: { id: true, name: true, color: true } } } }),
   ]);
   const nameOf = (email: string | null | undefined) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);

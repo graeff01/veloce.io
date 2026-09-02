@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 import { downloadWhatsAppMedia, ALLOWED_MEDIA_MIME } from "@/lib/whatsapp-media";
 import { mediaIdFromRaw, storeMediaBytes } from "@/lib/wa-media-store";
 
@@ -15,10 +15,10 @@ const HEADERS = (mime: string) => ({
 // Proxy de mídia RECEBIDA (o lead mandou foto/áudio/doc). PRIMEIRO serve do banco (WaMedia,
 // persistido no webhook — permanente). Só baixa da Meta se ainda não foi persistido (mensagem
 // antiga), e nesse caso faz backfill. Escopo: token→conexão→contato→mensagem (isolamento).
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string; contactId: string; messageId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string; contactId: string; messageId: string }> }) {
   const { token, contactId, messageId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return new NextResponse("link inválido", { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true, accessToken: true } });
   if (!conn) return new NextResponse("sem conexão", { status: 404 });

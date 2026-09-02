@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +8,9 @@ export const dynamic = "force-dynamic";
 // POST — salva/atualiza a inscrição de push do dispositivo do vendedor (clientId+email).
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  const email = await getPortalSessionEmail(portal.clientId);
+  const { error, portal } = await guardPortal(req, token);
+  if (error) return error;
+  const email = portal.email;
   if (!email) return NextResponse.json({ error: "Faça login para ativar os avisos." }, { status: 401 });
 
   const body = await req.json().catch(() => null);
@@ -33,8 +32,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 // DELETE — remove a inscrição deste dispositivo (desativar).
 export async function DELETE(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  // Desinscrever é anônimo de propósito: o `endpoint` é a URL única do dispositivo
+  // (só quem tem o aparelho a conhece) e o efeito é apenas parar de receber avisos.
+  const { error, portal } = await guardPortal(req, token, { anonymous: true });
+  if (error) return error;
   const endpoint = new URL(req.url).searchParams.get("endpoint");
   if (endpoint) await prisma.portalPushSubscription.deleteMany({ where: { endpoint, clientId: portal.clientId } });
   return NextResponse.json({ ok: true });

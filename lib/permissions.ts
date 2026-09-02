@@ -54,8 +54,11 @@ const rolePermissions: Record<Role, Permission[] | ["*"]> = {
   MANAGER: [] as Permission[],
 };
 
-export function hasPermission(role: Role, permission: Permission): boolean {
-  const perms = rolePermissions[role] as (Permission | "*")[];
+export function hasPermission(role: Role | null | undefined, permission: Permission): boolean {
+  // Papel ausente/desconhecido (ex.: sessão revogada pela revalidação do JWT) → NEGA.
+  // Antes, um role indefinido estourava em `perms.includes` e virava erro 500.
+  const perms = (role ? rolePermissions[role] : undefined) as (Permission | "*")[] | undefined;
+  if (!perms) return false;
   if (perms.includes("*")) return true;
   return (perms as Permission[]).includes(permission);
 }

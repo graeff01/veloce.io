@@ -1430,6 +1430,7 @@ model AiInteraction {
   promptVariant    String?  // chave da variante A/B aplicada (null = padrão do cliente)
   contextUsed      Json?    // trechos de conhecimento (RAG) usados na resposta
   idempotencyKey   String?  // chave de dedupe (ex: waMessageId) — contrato p/ fila durável futura
+  turnId           String?  // correlação forense: liga este turno aos AiSecurityEvent dele
   inboundMediaType String?  // text|audio|image|document|... — proveniência da entrada
   stages     Json?    // timeline por etapa: [{name,ms}] (context|rag|llm|guardrail) — logs avançados
   guardrails Json?    // guardrails acionados nesta resposta: string[] (motivos) — logs avançados
@@ -1977,4 +1978,40 @@ model GeocodeCache {
   lng       Float
   label     String?  // geocoding REVERSO (coordenada→endereço): JSON {city,suburb} cacheado
   createdAt DateTime @default(now())
+}
+
+// ── Camada de segurança da IA (docs/rfc-camada-seguranca-ia.md) ───────────────
+
+// Trilha append-only dos controles de segurança. `shadow=true` = o controle apenas
+// observou (não agiu). `evidence` passa por redactPII + teto de 500 chars: a trilha
+// de segurança não pode virar um novo repositório de dado pessoal.
+model AiSecurityEvent {
+  id        String   @id @default(cuid())
+  clientId  String
+  contactId String?
+  turnId    String?  // correlaciona com AiInteraction.turnId (um turno completo)
+  ring      String   // admission | input | context | tool | egress | anomaly | auth
+  control   String   // C-05 | C-11 | C-12 ...
+  severity  String   // info | low | medium | high | critical
+  score     Float?
+  labels    Json?    // string[] — rótulos do detector
+  action    String   // observed | rigor | toolset_reduced | contained | blocked | sanitized
+  evidence  String?  // trecho REDIGIDO e truncado
+  shadow    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([control, severity, createdAt])
+}
+
+// Contador de janela fixa para rate limiting/quotas. Fica no BANCO (e não em memória)
+// de propósito: com mais de uma instância, contador em processo afrouxa em silêncio.
+model RateBucket {
+  key       String   @id // "<escopo>:<chave>:<inicioDaJanela>"
+  scope     String
+  count     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }

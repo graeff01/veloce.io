@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 
@@ -11,8 +11,9 @@ const STAGES = ["recebido", "respondido", "qualificado", "negociacao", "converti
 // (não envia nada no WhatsApp). Escopo por token.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  // ESCRITA (move a etapa e trava manualmente): exige sessão quando o painel é protegido.
+  const { error, portal } = await guardPortal(req, token, { section: "funil" });
+  if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });

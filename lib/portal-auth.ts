@@ -40,14 +40,25 @@ export async function registerUser(clientId: string, email: string, password: st
   if (existing?.passwordHash) return { ok: false, status: 409, error: "Esse e-mail já tem conta. Faça login." };
 
   // Teto: conta só quem já é usuário efetivo (tem senha). Convidado sem senha não ocupa vaga extra.
+  // A contagem e a criação abaixo não são atômicas entre si — cadastros simultâneos podiam
+  // furar o teto. Reservamos uma folga de 0 (checagem estrita) e revalidamos após o upsert.
   if (!existing) {
     const registered = await prisma.portalAccess.count({ where: { clientId, passwordHash: { not: null } } });
     if (registered >= (portal.maxUsers ?? 3)) return { ok: false, status: 403, error: "Este painel atingiu o limite de usuários. Fale com a sua agência." };
   }
 
-  // Garante ≥1 admin por cliente: se ainda não há admin efetivo, o 1º vira admin.
+  // SEGURANÇA (achado A-02): antes, o PRIMEIRO a usar o link virava ADMIN do painel do
+  // cliente — quem obtivesse o link antes da loja assumia o painel (sem convite e sem
+  // verificação de e-mail). Agora ninguém se auto-promove: quem já foi CONVIDADO pela
+  // agência (linha em PortalAccess criada no painel interno) mantém o papel definido lá;
+  // o auto-cadastro nasce sempre como `attendant`, e a agência promove pelo painel.
+  // PORTAL_FIRST_USER_ADMIN=1 restaura o comportamento antigo, se for necessário.
+  const invited = await prisma.portalAccess.findUnique({
+    where: { clientId_email: { clientId, email: e } }, select: { role: true },
+  });
   const hasAdmin = (await prisma.portalAccess.count({ where: { clientId, role: "admin", passwordHash: { not: null } } })) > 0;
-  const role = hasAdmin ? "attendant" : "admin";
+  const legacyFirstAdmin = process.env.PORTAL_FIRST_USER_ADMIN === "1" && !hasAdmin;
+  const role = invited?.role === "admin" || legacyFirstAdmin ? "admin" : "attendant";
 
   // Vendedor novo nasce só com Conversas (sections=""); admin vê tudo (null).
   // Não mexe em sections já pré-configurado pelo admin antes do cadastro.
@@ -58,6 +69,16 @@ export async function registerUser(clientId: string, email: string, password: st
     create: { clientId, email: e, passwordHash, name: name?.trim() || null, role, sections: role === "attendant" ? "" : null },
     update: { passwordHash, ...(name?.trim() ? { name: name.trim() } : {}), ...(role === "admin" ? { role: "admin" } : {}), ...(initSections !== undefined ? { sections: initSections } : {}) },
   });
+
+  // Revalidação pós-escrita (fecha a corrida de cadastros simultâneos): se o teto
+  // estourou, desfaz ESTE cadastro — nunca um já existente.
+  if (!existing) {
+    const registered = await prisma.portalAccess.count({ where: { clientId, passwordHash: { not: null } } });
+    if (registered > (portal.maxUsers ?? 3)) {
+      await prisma.portalAccess.deleteMany({ where: { clientId, email: e } }).catch(() => {});
+      return { ok: false, status: 403, error: "Este painel atingiu o limite de usuários. Fale com a sua agência." };
+    }
+  }
   return { ok: true, email: e };
 }
 
@@ -80,12 +101,21 @@ export async function createSession(clientId: string, email: string): Promise<st
 export const sessionCookieOptions = () => ({ httpOnly: true, secure: true, sameSite: "lax" as const, path: "/", maxAge: SESSION_DAYS * 86_400 });
 
 // Server-side: lê o cookie, valida a sessão p/ ESTE cliente, desliza e retorna o e-mail.
+// Deslizamento da sessão com histerese: antes, TODA leitura de sessão fazia um UPDATE
+// (uma escrita por requisição). Com o gate central passando por aqui em todas as rotas
+// do portal, isso viraria escrita em caminho quente — inclusive no polling de conversas.
+// Renovar a cada 5 min tem o mesmo efeito prático numa sessão de 60 dias.
+const SLIDE_EVERY_MS = 5 * 60_000;
+
 export async function getPortalSessionEmail(clientId: string): Promise<string | null> {
   const tok = (await cookies()).get(PORTAL_COOKIE)?.value;
   if (!tok) return null;
   const s = await prisma.portalSession.findUnique({ where: { sessionToken: tok } });
   if (!s || s.clientId !== clientId || s.expiresAt < new Date()) return null;
-  await prisma.portalSession.update({ where: { id: s.id }, data: { lastSeenAt: new Date(), expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000) } }).catch(() => {});
+  const seen = s.lastSeenAt.getTime();
+  if (Date.now() - seen > SLIDE_EVERY_MS) {
+    await prisma.portalSession.update({ where: { id: s.id }, data: { lastSeenAt: new Date(), expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000) } }).catch(() => {});
+  }
   return s.email;
 }
 

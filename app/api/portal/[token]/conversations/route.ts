@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { getPortalUser, isAdminRole } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { isStrongAd } from "@/lib/wa-leads";
 
 export const runtime = "nodejs";
@@ -9,8 +8,8 @@ export const runtime = "nodejs";
 // GET — lista de conversas do cliente (token-scoped). Devolve { conversations, me, attendants }.
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId } });
   if (!conn) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
@@ -20,9 +19,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get("limit")) || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
   const owner = url.searchParams.get("owner"); // "me" → só as conversas da vendedora logada (dona)
-  const user = await getPortalUser(portal.clientId);
-  const me = user?.email ?? null;
-  const isAdmin = isAdminRole(user?.role);
+  const me = portal.email;
+  const isAdmin = portal.isAdmin;
   // Filtro "Minhas conversas": o dono da conversa é waConversation.assignedEmail.
   const ownerFilter = owner === "me" && me ? { conversation: { is: { assignedEmail: me } } } : {};
   const digits = q.replace(/\D/g, "");

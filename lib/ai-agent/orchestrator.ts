@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
-import { toolsForConfig, executeTool, type ToolCtx, type ToolArtifact } from "./tools";
+import { toolsForConfig, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
 import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
@@ -19,6 +19,28 @@ import { nowParts } from "@/lib/tz";
 import { redactPII } from "@/lib/redact";
 import { synthesizeVoice } from "@/lib/tts";
 import { Prisma } from "@prisma/client";
+// ── Camada de segurança (docs/rfc-camada-seguranca-ia.md) ────────────────────
+// Nada abaixo altera prompt, persona ou fluxo. Ver AI_SECURITY_MODE (shadow|enforce|off).
+import { randomUUID } from "crypto";
+import { detectInjection, stripInstructionLines } from "./security/detect";
+import { decidePolicy, securityMode, severityForProfile, actionForProfile } from "./security/policy";
+import { ToolFirewall } from "./security/tool-firewall";
+import { scanEgress, scanThirdPartyPii } from "./security/egress";
+import { emitSecurityEventAsync } from "./security/events";
+import { clampText } from "./security/sanitize";
+
+// Tetos do bloco dinâmico (C-08). Calibrados MUITO acima do p99 real: hoje esses
+// campos entram no prompt sem nenhum limite, então um perfil/memória envenenado
+// infla o contexto de todos os turnos seguintes.
+const CTX_LIMITS = {
+  memory: Number(process.env.SEC_CTX_MEMORY || 1200),
+  perfil: Number(process.env.SEC_CTX_PERFIL || 800),
+  knowledge: Number(process.env.SEC_CTX_KNOWLEDGE || 4000),
+  vehicle: Number(process.env.SEC_CTX_VEHICLE || 400),
+};
+// Orçamento de tempo do turno inteiro (C-18): o laço de tools × chatWithRetry(3×)
+// não tinha teto algum. Estourou → cai no caminho de fallback que já existe.
+const TURN_BUDGET_MS = Number(process.env.AI_TURN_BUDGET_MS || 90_000);
 
 // BLINDAGEM: nomes INTERNOS das ferramentas — se o modelo escrever a chamada como TEXTO
 // (em vez de executar), removemos do texto final pra não vazar pro cliente. O modelo vaza em
@@ -216,7 +238,24 @@ function applyQualFinVariant(base: string): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfil: string, knowledge: string, memory: string, qualif: string, vehicle: string, firstNote: string, storeOpen: boolean | null, returning: string): string {
+function buildDynamicContext(cfg: PromptCfg, perfilRaw: string, knowledgeRaw: string, memoryRaw: string, qualif: string, vehicleRaw: string, firstNote: string, storeOpen: boolean | null, returning: string, sec?: { clientId: string; contactId: string; turnId: string }): string {
+  // C-08: teto por bloco. Em shadow os tetos NÃO são aplicados (byte-idêntico);
+  // em enforce, cortam apenas o que passar de limites muito acima do uso real.
+  const enforce = securityMode() === "enforce";
+  const cap = (s: string, max: number, name: string) => {
+    if (s.length <= max) return s;
+    if (sec) emitSecurityEventAsync({
+      clientId: sec.clientId, contactId: sec.contactId, turnId: sec.turnId,
+      ring: "context", control: "C-08", severity: "medium",
+      action: enforce ? "sanitized" : "observed", labels: ["ctx_overflow", name],
+      evidence: `${name}: ${s.length} chars (teto ${max})`, shadow: !enforce,
+    });
+    return enforce ? clampText(s, max) : s;
+  };
+  const perfil = cap(perfilRaw, CTX_LIMITS.perfil, "perfil");
+  const knowledge = cap(knowledgeRaw, CTX_LIMITS.knowledge, "knowledge");
+  const memory = cap(memoryRaw, CTX_LIMITS.memory, "memory");
+  const vehicle = cap(vehicleRaw, CTX_LIMITS.vehicle, "vehicle");
   return [
     returning || "",
     firstNote || "",
@@ -241,6 +280,23 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
   const start = Date.now();
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: input.clientId } });
   if (mode === "live" && (!cfg || !cfg.enabled)) return { reply: null, status: "skipped", decision: "desligado" };
+
+  // ── Segurança · Anel 1: detecção + política graduada ────────────────────────
+  // O detector NÃO altera o texto e NÃO fala com o modelo. A política decide o
+  // PERFIL do turno reduzindo capacidade (ferramentas/rigor), nunca instruindo.
+  // Em AI_SECURITY_MODE=shadow (padrão) nada é aplicado — só observado.
+  const turnId = randomUUID();
+  const detection = detectInjection(input.inboundText);
+  const policy = decidePolicy(detection);
+  if (detection.score > 0) {
+    emitSecurityEventAsync({
+      clientId: input.clientId, contactId: input.contact.id, turnId,
+      ring: "input", control: "C-05", severity: severityForProfile(policy.profile),
+      score: detection.score, labels: detection.labels, action: actionForProfile(policy.profile),
+      evidence: detection.matched.join(" | ") || input.inboundText.slice(0, 200),
+      shadow: securityMode() !== "enforce",
+    });
+  }
 
   // LOOP GUARD (pós-orçamento): se o lead só CONFIRMOU/AGRADECEU e já existe um orçamento em
   // conferência com o vendedor (pending_review/approved), NÃO responda de novo — senão a IA fica
@@ -284,6 +340,7 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
       decision: fields.decision, model, tokensIn: fields.tokensIn ?? 0, tokensOut: fields.tokensOut ?? 0,
       latencyMs: Date.now() - start, status: fields.status,
       promptVersion: PROMPT_VERSION, promptVariant: promptVariant ?? undefined, idempotencyKey: input.idempotencyKey ?? undefined,
+      turnId, // correlação forense com AiSecurityEvent
       inboundMediaType: input.inboundMediaType ?? undefined,
       contextUsed: fields.contextUsed ? (fields.contextUsed as Prisma.InputJsonValue) : undefined,
       stages: fields.stages?.length ? (fields.stages as unknown as Prisma.InputJsonValue) : undefined,
@@ -466,6 +523,24 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
         ].filter(Boolean).join("; ")
       : "";
     memory = convo?.agentMemory ?? "";
+    // ── Segurança · Anel 2: quarentena de LEITURA da memória (C-07) ───────────
+    // A memória é resumida por um LLM a partir do texto do LEAD e volta como bloco
+    // `system` em TODO turno seguinte. Linha com cara de INSTRUÇÃO nunca aparece num
+    // resumo factual legítimo (o sumarizador pede tópicos de fatos) — então é sinal
+    // de injeção persistente. Em shadow apenas registra; em enforce, remove a linha.
+    if (memory) {
+      const q = stripInstructionLines(memory);
+      if (q.removed > 0) {
+        emitSecurityEventAsync({
+          clientId: input.clientId, contactId: input.contact.id, turnId,
+          ring: "context", control: "C-07", severity: "high",
+          action: securityMode() === "enforce" ? "sanitized" : "observed",
+          labels: ["memory_instruction", `linhas:${q.removed}`], evidence: memory,
+          shadow: securityMode() !== "enforce",
+        });
+        if (securityMode() === "enforce") memory = q.text;
+      }
+    }
 
     // LEAD RECORRENTE (opt-in recurringMemory): o mesmo número voltou depois de um tempo →
     // reconhece e retoma o contexto ("oi de novo, você tinha visto a Tradição"). Só quando
@@ -538,7 +613,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning, { clientId: input.clientId, contactId: input.contact.id, turnId }) },
     ...(dnaBlock ? [{ role: "system", content: dnaBlock } as ChatMessage] : []),
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
     ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
@@ -607,8 +682,23 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
+  // Segurança · Anel 3: firewall de ferramentas. Envolve o executeTool sem reescrevê-lo
+  // (valida parâmetros, aplica allowlist do turno, quota, dedupe de efeito externo e
+  // timeout por ferramenta). Uma instância por TURNO.
+  const firewall = new ToolFirewall(ctx, { turnId, blockedTools: policy.blockedTools, enforce: securityMode() === "enforce" });
+
   try {
     for (let i = 0; i < 5; i++) {
+      // C-18: orçamento de tempo do turno. Sem isto, 5 iterações × 3 retries sem
+      // timeout podiam pendurar o turno indefinidamente segurando pool e semáforo.
+      if (Date.now() - start > TURN_BUDGET_MS) {
+        emitSecurityEventAsync({
+          clientId: input.clientId, contactId: input.contact.id, turnId,
+          ring: "tool", control: "C-18", severity: "medium", action: "blocked",
+          labels: ["turn_budget"], evidence: `turno excedeu ${TURN_BUDGET_MS}ms`, shadow: false,
+        });
+        break; // cai no fallback logo abaixo (caminho já existente)
+      }
       // seed: reprodutibilidade só na SIMULAÇÃO (mode test) — derruba o ruído do modelo p/
       // a validação de equivalência. Produção NUNCA passa seed (comportamento intocado).
       const seed = mode === "test" ? Number(process.env.AI_CHAT_SEED ?? 7) : undefined;
@@ -620,7 +710,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
           let args: Record<string, unknown> = {};
           try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* args vazios */ }
           const tcStart = Date.now();
-          const r = await executeTool(tc.function.name, args, ctx);
+          const r = await firewall.run(tc.function.name, args);
           if (r.decision) decision = r.decision;
           if (r.artifacts?.length) artifacts.push(...r.artifacts);
           toolLog.push({ name: tc.function.name, args, result: r.result, ms: Date.now() - tcStart });
@@ -671,16 +761,21 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   // Grounding determinístico: preço sem fonte = alucinação. MODO MONITOR por padrão
   // (só registra em guardrails); só ABSTÉM quando o cliente liga groundingEnforce.
+  // Segurança · C-06: sob suspeita, o turno roda com RIGOR ELEVADO — liga o mesmo
+  // grounding/verify que já existem, só neste turno. Não muda o prompt nem o texto.
+  const groundingOn = !!cfg?.groundingEnforce || policy.forceGrounding;
+  const verifyOn = !!cfg?.verifyReplies || policy.forceVerify;
+
   if (status === "ok") {
     const gr = checkGrounding(final, sources);
     if (!gr.grounded) {
-      guardrails.push(cfg?.groundingEnforce ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
-      if (cfg?.groundingEnforce) { final = fallback; decision = "abster"; }
+      guardrails.push(groundingOn ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
+      if (groundingOn) { final = fallback; decision = "abster"; }
     }
   }
 
   // Chain-of-verification por LLM (opt-in): confere afirmações factuais contra as fontes.
-  if (status === "ok" && decision !== "abster" && cfg?.verifyReplies) {
+  if (status === "ok" && decision !== "abster" && verifyOn) {
     const v = await verifyReply({ clientId: input.clientId, model, sources, reply: final });
     if (!v.ok) { guardrails.push("verify:unsupported"); final = fallback; decision = "abster"; }
   }
@@ -689,6 +784,41 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
+
+  // ── Segurança · Anel 4: DLP de saída (C-12) ─────────────────────────────────
+  // Última barreira antes do lead. Complementa o stripToolCallLeak cobrindo segredo,
+  // internals, estrutura de prompt e PII de TERCEIRO (o cenário mais grave de uma
+  // injeção bem-sucedida: a IA repetir dado de outro lead). Em tráfego legítimo não
+  // casa nada. Quando casa, usa o MESMO caminho do guardrail: troca pelo fallback.
+  if (final) {
+    const eg = scanEgress(final);
+    const pii = scanThirdPartyPii(final, { contactWaId: input.contact.waId, sources });
+    const findings = [...eg.findings, ...pii];
+    if (findings.length) {
+      const critical = eg.mustBlock || pii.length > 0;
+      guardrails.push(`egress:${findings.map((f) => f.kind).join(",")}`);
+      emitSecurityEventAsync({
+        clientId: input.clientId, contactId: input.contact.id, turnId,
+        ring: "egress", control: "C-12", severity: critical ? "critical" : "medium",
+        action: securityMode() === "enforce" ? (critical ? "blocked" : "sanitized") : "observed",
+        labels: findings.map((f) => f.kind), evidence: findings.map((f) => f.sample).join(" | "),
+        shadow: securityMode() !== "enforce",
+      });
+      if (securityMode() === "enforce") {
+        if (critical) { final = fallback; status = "blocked"; decision = "bloqueado"; }
+        else final = eg.redacted || fallback;
+      }
+    }
+  }
+
+  // C-06 nível CONTENÇÃO: entrega o fallback do cliente e marca `blocked` — o respond.ts
+  // já trata isso acionando o vendedor (handoffToOperators + task de escalação). O lead
+  // não fica no vácuo: ele passa a ser atendido por humano (fail-safe do RFC §P4).
+  if (policy.contain && status !== "blocked") {
+    final = fallback; status = "blocked"; decision = "bloqueado";
+    guardrails.push(`security:contained:${policy.score}`);
+  }
+
   stages.push({ name: "guardrail", ms: Date.now() - stageStart });
 
   final = withDisclosure(final);
