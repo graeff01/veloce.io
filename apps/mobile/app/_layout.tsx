@@ -5,11 +5,14 @@ import { StatusBar } from "expo-status-bar";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { SessionProvider, useSession } from "../src/ui/session";
 import { buildTheme } from "../src/ui/theme";
+import { configurarApresentacao, ouvirNotificacoes, registrarPush } from "../src/ui/push";
+
+configurarApresentacao();
 
 // Guardião de navegação: mantém a rota coerente com o estado de sessão.
 // É conveniência de UX — a autorização real acontece no servidor a cada chamada.
 function Guard() {
-  const { status, me } = useSession();
+  const { status, me, client } = useSession();
   const segments = useSegments();
   const router = useRouter();
   const systemDark = useColorScheme() === "dark";
@@ -21,6 +24,19 @@ function Guard() {
     if (status === "sem-sessao" && dentro) router.replace("/vincular");
     if (status === "logado" && !dentro) router.replace("/(app)/conversas");
   }, [status, segments, router]);
+
+  // Push só depois de logado: o registro precisa de sessão para saber de qual
+  // cliente e de qual vendedor é o aparelho.
+  useEffect(() => {
+    if (status !== "logado" || !client) return;
+    void registrarPush(client);
+  }, [status, client]);
+
+  // Tocar na notificação abre a conversa certa — inclusive em cold start.
+  useEffect(() => {
+    if (status !== "logado") return;
+    return ouvirNotificacoes((rota) => router.push(rota as never));
+  }, [status, router]);
 
   if (status === "carregando") {
     return (

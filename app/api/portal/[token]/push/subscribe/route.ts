@@ -14,6 +14,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!email) return NextResponse.json({ error: "Faça login para ativar os avisos." }, { status: 401 });
 
   const body = await req.json().catch(() => null);
+
+  // ── App nativo (APNs) ───────────────────────────────────────────────────────
+  // Ramo ADITIVO: o corpo do PWA (endpoint + keys) não passa por aqui e segue
+  // idêntico logo abaixo. O aparelho manda `apnsToken` + `deviceId`.
+  const apnsToken = typeof body?.apnsToken === "string" ? body.apnsToken.trim() : "";
+  if (apnsToken) {
+    const deviceId = typeof body?.deviceId === "string" ? body.deviceId.trim() : "";
+    // Device token do APNs é hexadecimal (64 chars hoje, mas o tamanho já mudou:
+    // valida formato e faixa, não um número exato).
+    if (!/^[0-9a-fA-F]{60,200}$/.test(apnsToken) || !/^[A-Za-z0-9_.:-]{8,128}$/.test(deviceId)) {
+      return NextResponse.json({ error: "Inscrição inválida" }, { status: 400 });
+    }
+    const environment = body?.environment === "sandbox" ? "sandbox" : "production";
+    await prisma.deviceToken.upsert({
+      where: { token: apnsToken },
+      create: { clientId: portal.clientId, email, deviceId, token: apnsToken, platform: "ios", environment },
+      update: { clientId: portal.clientId, email, deviceId, environment, lastUsedAt: new Date(), failureCount: 0 },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
   const endpoint = body?.endpoint;
   const p256dh = body?.keys?.p256dh;
   const auth = body?.keys?.auth;

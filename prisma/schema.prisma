@@ -1899,6 +1899,26 @@ model PortalPushSubscription {
   @@index([clientId, email])
 }
 
+// Aparelho iOS do vendedor (app nativo). IRMÃO de PortalPushSubscription, não
+// substituto: o PWA continua no Web Push (VAPID) exatamente como hoje, e o app
+// recebe pelo APNs. Mesma decisão de QUANDO notificar; só muda o transporte.
+model DeviceToken {
+  id           String   @id @default(cuid())
+  clientId     String
+  email        String   // vendedor (PortalAccess.email)
+  deviceId     String   // mesmo id da PortalSession — permite revogar junto
+  token        String   @unique // device token do APNs
+  platform     String   @default("ios")
+  environment  String   @default("production") // production | sandbox (build de dev)
+  failureCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([clientId, email])
+  @@index([deviceId])
+}
+
 // Código OTP temporário (guardado como hash), enviado por e-mail.
 model PortalOtp {
   id        String   @id @default(cuid())
