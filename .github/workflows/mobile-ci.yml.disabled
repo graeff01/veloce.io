@@ -1,0 +1,47 @@
+# CI do app iOS — PREPARADO, NÃO HABILITADO.
+#
+# Extensão `.disabled` de propósito: o GitHub só reconhece `.yml`/`.yaml` em
+# .github/workflows, então este arquivo NÃO é executado nem se a branch for
+# enviada. Para ligar: renomear para `mobile-ci.yml` (decisão consciente, com o
+# projeto já autorizado).
+#
+# Também não há `push:` — só disparo manual — para que ligar não vire deploy
+# acidental em cima de um SaaS em produção.
+
+name: Mobile CI
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  qualidade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar (raiz)
+        run: npm ci
+
+      # Backend + web: a linha de base tem 2 falhas pré-existentes fora do
+      # escopo do app (debounce, freight-resolve). Ver docs/mobile/testing.md.
+      - name: Typecheck (web)
+        run: npx tsc --noEmit
+      - name: Testes (web)
+        run: npx tsx --test tests/**/*.test.ts
+
+      - name: Instalar (app)
+        working-directory: apps/mobile
+        run: npm ci
+      - name: Typecheck (app)
+        working-directory: apps/mobile
+        run: npx tsc --noEmit
+      - name: Testes (app)
+        working-directory: apps/mobile
+        run: npx tsx --test tests/*.test.ts
+
+  # Ainda NÃO existe: E2E mobile (precisa de simulador) e build EAS (precisa de
+  # conta Apple). Entram quando houver Mac com Xcode e conta de desenvolvedor.
