@@ -1922,8 +1922,16 @@ model PortalSession {
   lastSeenAt   DateTime @default(now())
   createdAt    DateTime @default(now())
 
+  // Sessão de APARELHO (app iOS). null = sessão de navegador (cookie), como sempre foi.
+  // Existe para revogar UM celular perdido sem derrubar as demais sessões do usuário —
+  // o cookie do navegador não precisava disso, uma credencial de 30 dias num aparelho precisa.
+  deviceId       String?
+  deviceName     String?
+  devicePlatform String?
+
   @@index([clientId])
   @@index([email])
+  @@index([clientId, email, deviceId])
 }
 
 // ── Shadow do classificador de funil (LLM lê contexto) ─────────────────────────

@@ -1,0 +1,14 @@
+{
+  "name": "@veloce/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "expo": "~57.0.0"
+  }
+}

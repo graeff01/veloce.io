@@ -50,3 +50,10 @@ public/catalogo/*.pdf
 # saída das simulações de replay (offline; nunca versionar)
 sim-jr/
 sim-*/
+
+# app mobile (Expo/RN)
+apps/mobile/node_modules/
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/dist/

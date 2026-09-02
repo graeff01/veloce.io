@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { loginUser, createSession, PORTAL_COOKIE, sessionCookieOptions, normEmail } from "@/lib/portal-auth";
+import { loginUser, createSession, parseDevice, PORTAL_COOKIE, sessionCookieOptions, normEmail } from "@/lib/portal-auth";
 import { consume, LIMITS, clientIp } from "@/lib/ai-agent/security/quota";
 import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
 
@@ -17,9 +18,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const portal = await resolvePortal(token);
   if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
 
-  const { email, password } = await req.json().catch(() => ({}));
+  const { email, password, device } = await req.json().catch(() => ({}));
   const e = normEmail(String(email || ""));
   const ip = clientIp(req);
+
+  // Sessão de APARELHO (app nativo): o cliente se identifica mandando `device`.
+  // Sem `device`, nada muda — o navegador continua recebendo só o cookie httpOnly.
+  const dev = parseDevice(device);
 
   const [byId, byIp] = await Promise.all([
     consume("portal:login:id", `${portal.clientId}|${e}`, LIMITS.portalLoginPerIdentity.limit, LIMITS.portalLoginPerIdentity.windowMs),
@@ -47,7 +52,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     return NextResponse.json({ error: r.error }, { status: r.status ?? 401 });
   }
 
-  const sess = await createSession(portal.clientId, r.email);
+  const sess = await createSession(portal.clientId, r.email, dev);
+
+  // App nativo: devolve o token no corpo e NÃO seta cookie. O token vai direto para o
+  // Keychain do aparelho. Deliberadamente só acontece quando o cliente pede uma sessão
+  // de aparelho — assim a resposta vista pelo navegador continua sendo `{ ok: true }`
+  // e o segredo de sessão do PWA segue inacessível ao JavaScript (httpOnly preservado).
+  if (dev) {
+    const s = await prisma.portalSession.findUnique({ where: { sessionToken: sess }, select: { expiresAt: true } });
+    return NextResponse.json({ ok: true, sessionToken: sess, expiresAt: s?.expiresAt ?? null });
+  }
+
   const res = NextResponse.json({ ok: true });
   res.cookies.set(PORTAL_COOKIE, sess, sessionCookieOptions());
   return res;

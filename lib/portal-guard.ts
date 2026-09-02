@@ -11,8 +11,9 @@
 // exatamente como hoje. O gate só exige sessão de quem ativou login+senha.
 
 import { NextResponse } from "next/server";
-import { resolvePortal, effectiveSections, type PortalSection } from "@/lib/notifications/client-portal";
-import { getPortalUser, isProtected, isAdminRole } from "@/lib/portal-auth";
+import { createHash } from "crypto";
+import { resolvePortal, effectiveSections, SESSION_SCOPED, type PortalSection } from "@/lib/notifications/client-portal";
+import { getPortalUser, isProtected, isAdminRole, bearerFromHeader } from "@/lib/portal-auth";
 import { consume, LIMITS, clientIp } from "@/lib/ai-agent/security/quota";
 import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
 import { securityMode } from "@/lib/ai-agent/security/policy";
@@ -46,6 +47,16 @@ export interface PortalGuardOptions {
 
 const SECTION_ENFORCE = process.env.PORTAL_SECTION_ENFORCE === "1";
 
+// Discriminante do rate limit. Web: prefixo do token do portal (comportamento atual).
+// App: hash do token de sessão — o sentinela `_session` não distingue aparelhos, e o
+// segredo em claro jamais deve ser persistido em RateBucket.key.
+export function rateIdentity(token: string, req: Request): string {
+  if (token !== SESSION_SCOPED) return token.slice(0, 24);
+  const bearer = bearerFromHeader(req.headers.get("authorization"));
+  if (!bearer) return SESSION_SCOPED; // sem credencial: balde comum, some no 404 adiante
+  return `dev:${createHash("sha256").update(bearer).digest("base64url").slice(0, 20)}`;
+}
+
 const deny = (status: number, error: string): PortalGuardResult => ({
   ok: false, error: NextResponse.json({ error }, { status }), portal: null,
 });
@@ -58,7 +69,11 @@ export async function guardPortal(
   // 1) Rate limit por token+IP — antes de tocar o banco de verdade.
   if (!opts.noRateLimit) {
     const limit = opts.cost === "llm" ? LIMITS.portalLlm : opts.cost === "stream" ? LIMITS.portalStream : LIMITS.portalRequests;
-    const key = `${token.slice(0, 24)}|${clientIp(req)}`;
+    // Com o sentinela do app (`_session`) o token é o MESMO para todo mundo: sem isto,
+    // todos os aparelhos dividiriam um único balde e um cliente derrubaria os outros.
+    // Discrimina-se pelo HASH do token de sessão — nunca pelo token em claro, que não
+    // pode acabar gravado na tabela RateBucket.
+    const key = `${rateIdentity(token, req)}|${clientIp(req)}`;
     const d = await consume(`portal:${opts.cost ?? "default"}`, key, limit.limit, limit.windowMs);
     if (!d.allowed) {
       emitSecurityEventAsync({
