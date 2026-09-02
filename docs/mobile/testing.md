@@ -53,11 +53,42 @@ rede caindo não desloga, logout limpa mesmo offline.
 **`apps/mobile/tests/deep-link.test.ts`** (7) — payload de push é entrada
 externa: rota desconhecida não navega, travessia de caminho recusada.
 
+## Integração contra o backend REAL (18 testes)
+
+`tests/e2e/portal-mobile.e2e.ts` — roda contra `next dev` + Postgres local.
+Fora do glob de `npm test` de propósito: a suíte unitária continua hermética.
+
+```bash
+npm run dev          # terminal 1
+npm run test:e2e     # terminal 2
+```
+
+Ver `docs/mobile/dev-local.md` para subir o banco. Verificado: **18/18, três
+execuções seguidas**.
+
+Cobre, contra o servidor de verdade:
+
+- **PWA intacto**: login sem `device` seta cookie `HttpOnly` e **não** devolve
+  token; cookie continua autenticando.
+- **App**: login com `device` devolve token e **não** seta cookie; TTL de ~30
+  dias (contra 60 do navegador).
+- **Paridade**: cookie e Bearer devolvem a MESMA lista de conversas.
+- **Isolamento entre tenants** — o cenário que motivou a arquitetura: o MESMO
+  e-mail cadastrado em duas lojas; cada sessão enxerga só a sua. A senha de uma
+  não entra na outra. Sessão da loja A não alcança contato da B (404). Bearer da
+  A com o token da B na URL não vaza nada (401).
+- **Credencial**: ausente → 401; inventada → 404; **revogada no servidor → para
+  de funcionar na hora**; logout apaga a sessão daquele aparelho.
+- **Branding**: `/me` devolve nome e cor do cliente certo.
+- **Push**: `push/subscribe` grava o `DeviceToken`; token APNs malformado → 400.
+- **`send`**: sem credencial → 401; com Bearer **atravessa a rota de checagem
+  manual** e chega à validação de negócio (400 com texto vazio). É a prova de que
+  as 22 rotas manuais funcionam sem terem sido editadas.
+
 ## Ainda não existe
 
-- **E2E mobile** (Maestro): precisa de app rodando — logo, de Xcode/simulador ou
-  aparelho. Fase seguinte.
-- **Teste de integração contra o backend de verdade**: precisa de um ambiente
-  local com banco. Não há `.env` nem Postgres nesta máquina, e usar produção é
-  proibido.
+- **E2E mobile** (Maestro): precisa do app rodando — logo, Xcode/simulador ou
+  aparelho.
 - **Envio APNs real**: precisa de conta Apple Developer e aparelho físico.
+- **Upload de mídia e fluxo de orçamento ponta a ponta**: exigem um `WaConnection`
+  com token válido da Meta (envio real) — fora do que é seguro exercitar.
