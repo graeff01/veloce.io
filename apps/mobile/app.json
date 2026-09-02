@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Veloce",
+    "slug": "veloce-portal",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "veloce",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "io.veloce.portal",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Para enviar fotos ao lead na conversa.",
+        "NSPhotoLibraryUsageDescription": "Para enviar imagens da galeria ao lead.",
+        "NSMicrophoneUsageDescription": "Para gravar e enviar áudios ao lead.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      ["expo-notifications", { "iosDisplayInForeground": true }],
+      ["expo-image-picker", { "photosPermission": "Enviar imagens da galeria ao lead.", "cameraPermission": "Enviar fotos ao lead." }],
+      ["expo-audio", { "microphonePermission": "Gravar e enviar áudios ao lead." }]
+    ],
+    "extra": {
+      "//": "apiUrl NUNCA tem valor de producao aqui. Vem de EXPO_PUBLIC_API_URL.",
+      "appEnv": "development"
+    }
+  }
+}
