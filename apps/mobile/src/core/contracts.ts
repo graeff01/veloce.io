@@ -96,14 +96,23 @@ export interface Conversation {
   items: Message[];
 }
 
+export interface QuoteLine { label: string; amount: number }
+
+/** Espelha `reviews[]` de app/api/portal/[token]/quote-reviews/route.ts. */
 export interface QuoteReview {
   quoteId: string;
   number: string | null;
-  contactName: string | null;
+  contactId: string | null;
+  /** Nome do lead já resolvido pelo servidor (displayName → name → waId). */
+  name: string;
   total: number | null;
-  currency: string | null;
-  createdAt: string | null;
-  status: string | null;
+  currency: string;
+  summary: string | null;
+  /** "instalação: … · opcionais: …" — montado no servidor a partir do intake. */
+  resumo: string | null;
+  city: string | null;
+  lines: QuoteLine[];
+  submittedAt: string | null;
 }
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
@@ -269,22 +278,34 @@ export function parseConversation(input: unknown): Conversation {
   };
 }
 
+function parseQuoteLine(v: unknown): QuoteLine | null {
+  if (!v || typeof v !== "object") return null;
+  const l = v as Record<string, unknown>;
+  const label = str(l.label);
+  if (!label) return null;
+  return { label, amount: num(l.amount) ?? 0 };
+}
+
 export function parseQuoteReviews(input: unknown): QuoteReview[] {
   const d = obj(input, "revisões de orçamento");
-  const list = Array.isArray(d.reviews) ? d.reviews : Array.isArray(d.quotes) ? d.quotes : arr(input);
-  return list
+  return arr(d.reviews)
     .map((v) => {
-      const q = v && typeof v === "object" ? (v as Record<string, unknown>) : null;
-      const quoteId = q ? str(q.quoteId) ?? str(q.id) : null;
+      if (!v || typeof v !== "object") return null;
+      const q = v as Record<string, unknown>;
+      const quoteId = str(q.quoteId);
       if (!quoteId) return null;
       return {
         quoteId,
-        number: str(q!.number),
-        contactName: str(q!.contactName) ?? str(q!.name),
-        total: num(q!.total),
-        currency: str(q!.currency),
-        createdAt: iso(q!.createdAt),
-        status: str(q!.status),
+        number: str(q.number),
+        contactId: str(q.contactId),
+        name: str(q.name) || "Lead",
+        total: num(q.total),
+        currency: str(q.currency) || "BRL",
+        summary: str(q.summary),
+        resumo: str(q.resumo),
+        city: str(q.city),
+        lines: arr(q.lines).map(parseQuoteLine).filter((l): l is QuoteLine => l !== null),
+        submittedAt: iso(q.submittedAt),
       } satisfies QuoteReview;
     })
     .filter((q): q is QuoteReview => q !== null);
