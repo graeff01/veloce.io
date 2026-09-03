@@ -19,7 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Haptics from "expo-haptics";
-import { User } from "lucide-react-native";
+import { SIMBOLO, Simbolo } from "./simbolo";
+import { TIPO } from "./tipografia";
 import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
@@ -149,11 +150,13 @@ export function ListaConversas() {
     const esperando = aguardandoResposta(item);
     const nova = naoLida(item, lidas);
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
-    const marcadores: { texto: string; cor: string }[] = [];
-    if (etapa) marcadores.push({ texto: etapa.label, cor: etapa.color });
-    if (item.fromAd) marcadores.push({ texto: campanhaDe(item), cor: theme.accent });
-    if (item.assignedName) marcadores.push({ texto: item.assignedName, cor: theme.muted });
-    for (const t of item.tags) marcadores.push({ texto: t.name, cor: t.color });
+    // UM marcador, não quatro. Três rótulos coloridos empilhados sob cada linha
+    // é pensamento de tabela de dados — nenhum app de mensagem faz isso, e era o
+    // que mais dava cara de painel web à caixa de entrada.
+    //
+    // A etapa fica (é o sinal de negócio que a vendedora lê de relance). Campanha
+    // e dono saem da lista: a campanha já aparece no topo da conversa, e o dono é
+    // exatamente o que o filtro "Minhas" resolve.
 
     return (
       <Pressable
@@ -179,19 +182,10 @@ export function ListaConversas() {
             {esperando ? <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" /> : null}
           </View>
 
-          {marcadores.length > 0 ? (
-            <View style={s.marcadores}>
-              {marcadores.slice(0, 3).map((m, i) => (
-                <Text
-                  key={`${item.contactId}-m${i}`}
-                  style={[s.marcador, { color: m.cor }]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1.4}
-                >
-                  {m.texto}
-                </Text>
-              ))}
-            </View>
+          {etapa ? (
+            <Text style={[s.marcador, { color: etapa.color }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+              {etapa.label}
+            </Text>
           ) : null}
         </View>
       </Pressable>
@@ -257,7 +251,7 @@ export function ListaConversas() {
               accessibilityRole="button"
               accessibilityLabel="Perfil e conta"
             >
-              <User size={22} color={theme.accent} strokeWidth={2.2} />
+              <Simbolo nome={SIMBOLO.pessoa as never} tamanho={26} cor={theme.accent} />
             </Pressable>
           ),
           // Busca do SISTEMA: aparece sob o título grande, com "Cancelar" e
@@ -286,7 +280,16 @@ export function ListaConversas() {
           // Faz o título grande encolher e a busca se comportar como no sistema.
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={visiveis.length === 0 ? s.vazioBox : { paddingBottom: insets.bottom + 92 }}
-          ListEmptyComponent={<Text style={s.vazio}>{vazio}</Text>}
+          ListEmptyComponent={
+            <View style={s.vazioBox}>
+              <Simbolo
+                nome={(filtro === "aguardando" ? SIMBOLO.relogio : SIMBOLO.caixaVazia) as never}
+                tamanho={48}
+                cor={theme.border}
+              />
+              <Text style={s.vazio}>{vazio}</Text>
+            </View>
+          }
           keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
@@ -314,33 +317,32 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       borderRadius: 20, borderWidth: 1, borderColor: t.border,
       paddingHorizontal: 11, paddingVertical: 4, maxWidth: 190, backgroundColor: t.bg,
     },
-    campanhaTexto: { fontSize: 12, fontWeight: "600", color: t.muted },
+    campanhaTexto: { ...TIPO.legenda, fontWeight: "600", color: t.muted },
 
     linha: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 16 },
     avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
     // A linha cresce por PADDING, não por altura fixa: com fonte grande ela
     // acompanha em vez de cortar o texto.
-    avatarTexto: { color: "#fff", fontWeight: "600", fontSize: 21 },
+    avatarTexto: { color: "#fff", fontWeight: "500", fontSize: 22 },
     corpo: { flex: 1, gap: 2 },
     topo: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-    nome: { flex: 1, fontSize: 17, fontWeight: "600", color: t.text, letterSpacing: -0.2 },
+    nome: { ...TIPO.destaque, flex: 1, color: t.text },
     // Peso = "você ainda não abriu". Cor do ponto = "o lead está esperando".
     // Dois sinais distintos, um de cada tipo — em vez de dois pontos brigando.
     nomeNaoLida: { fontWeight: "800" },
     previaNaoLida: { color: t.text, fontWeight: "500" },
-    hora: { fontSize: 12.5, color: t.waMuted },
+    hora: { ...TIPO.nota, color: t.waMuted },
     meio: { flexDirection: "row", alignItems: "center", gap: 8 },
-    previa: { flex: 1, fontSize: 15, color: t.waMuted, letterSpacing: -0.1 },
+    previa: { ...TIPO.subtitulo, flex: 1, color: t.waMuted },
     pontoEspera: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: VERDE_ESPERA },
-    marcadores: { flexDirection: "row", gap: 10, marginTop: 1 },
-    marcador: { fontSize: 11, fontWeight: "600", opacity: 0.85, maxWidth: 120 },
+    marcador: { ...TIPO.nota, fontWeight: "600", marginTop: 1 },
 
     separador: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 80 },
     centro: { flex: 1, alignItems: "center", justifyContent: "center" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-    vazio: { color: t.muted, fontSize: 15, textAlign: "center" },
+    vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", marginTop: 14 },
     rodape: { paddingVertical: 16 },
     erroCaixa: { padding: 12, backgroundColor: t.critSoft, borderRadius: 10, gap: 4 },
-    erroTexto: { color: t.crit, fontSize: 13 },
-    tentar: { color: t.accent, fontSize: 13, fontWeight: "700" },
+    erroTexto: { ...TIPO.nota, color: t.crit },
+    tentar: { ...TIPO.nota, color: t.accent, fontWeight: "600" },
   });

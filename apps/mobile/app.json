@@ -50,7 +50,8 @@
             "backgroundColor": "#ffffff"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "//": "apiUrl NUNCA tem valor de producao aqui. Vem de EXPO_PUBLIC_API_URL.",

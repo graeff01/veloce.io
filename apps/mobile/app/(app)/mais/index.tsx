@@ -1,10 +1,8 @@
 import { ScrollView, StyleSheet, Text, useColorScheme, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
-import {
-  BookOpen, ChevronRight, Gauge, GraduationCap, Layers, MessageSquareWarning,
-  Sparkles, Truck, User, Users,
-} from "lucide-react-native";
+import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
+import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
 import type { PortalSection } from "../../../src/core/contracts";
@@ -16,16 +14,17 @@ import type { PortalSection } from "../../../src/core/contracts";
 // Os que ainda não têm tela no app aparecem marcados como "em breve" em vez de
 // virar link morto — assim a estrutura já cresce sem enganar o usuário.
 
-const CATALOGO: { chave: PortalSection; rotulo: string; Icone: typeof Gauge; rota?: string }[] = [
-  { chave: "painel", rotulo: "Painel", Icone: Gauge },
-  { chave: "funil", rotulo: "Funil", Icone: Layers },
-  { chave: "fechamento", rotulo: "Fechamento", Icone: Sparkles },
-  { chave: "equipe", rotulo: "Equipe", Icone: Users },
-  { chave: "ia", rotulo: "IA", Icone: Sparkles },
-  { chave: "aprendizado", rotulo: "Aprendizado", Icone: GraduationCap },
-  { chave: "objecoes", rotulo: "Objeções", Icone: MessageSquareWarning },
-  { chave: "consumo", rotulo: "Consumo", Icone: BookOpen },
-  { chave: "frete", rotulo: "Frete", Icone: Truck },
+// Símbolo do sistema por ferramenta — o mesmo vocabulário visual dos Ajustes.
+const CATALOGO: { chave: PortalSection; rotulo: string; simbolo: string; rota?: string }[] = [
+  { chave: "painel", rotulo: "Painel", simbolo: "chart.bar.fill" },
+  { chave: "funil", rotulo: "Funil", simbolo: "line.3.horizontal.decrease" },
+  { chave: "fechamento", rotulo: "Fechamento", simbolo: "flame.fill" },
+  { chave: "equipe", rotulo: "Equipe", simbolo: "person.2.fill" },
+  { chave: "ia", rotulo: "IA", simbolo: "sparkles" },
+  { chave: "aprendizado", rotulo: "Aprendizado", simbolo: "graduationcap.fill" },
+  { chave: "objecoes", rotulo: "Objeções", simbolo: "exclamationmark.bubble.fill" },
+  { chave: "consumo", rotulo: "Consumo", simbolo: "gauge.medium" },
+  { chave: "frete", rotulo: "Frete", simbolo: "shippingbox.fill" },
 ];
 
 export default function Mais() {
@@ -44,31 +43,41 @@ export default function Mais() {
       {me?.brand.name ? <Text style={s.sub}>{me.brand.name}</Text> : null}
 
       <Text style={s.secao}>Conta</Text>
-      <Pressable style={s.item} onPress={() => router.push("/perfil")} accessibilityRole="button">
-        <User size={19} color={theme.accent} strokeWidth={2.2} />
-        <Text style={s.itemTexto}>{me?.user?.name ?? me?.user?.email ?? "Perfil"}</Text>
-        <ChevronRight size={17} color={theme.muted} strokeWidth={2.2} />
-      </Pressable>
+      <View style={s.grupo}>
+        <Pressable style={s.item} onPress={() => router.push("/perfil")} accessibilityRole="button">
+          <View style={[s.icone, { backgroundColor: theme.accent }]}>
+            <Simbolo nome={SIMBOLO.pessoa as never} tamanho={17} cor="#fff" />
+          </View>
+          <Text style={s.itemTexto}>{me?.user?.name ?? me?.user?.email ?? "Perfil"}</Text>
+          <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+        </Pressable>
+      </View>
 
       {modulos.length > 0 ? (
         <>
           <Text style={s.secao}>Ferramentas</Text>
-          {modulos.map(({ chave, rotulo, Icone, rota }) => (
-            <Pressable
-              key={chave}
-              disabled={!rota}
-              onPress={() => rota && router.push(rota as never)}
-              style={[s.item, !rota && s.itemInativo]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !rota }}
-            >
-              <Icone size={19} color={rota ? theme.accent : theme.muted} strokeWidth={2.2} />
-              <Text style={[s.itemTexto, !rota && { color: theme.muted }]}>{rotulo}</Text>
-              {rota
-                ? <ChevronRight size={17} color={theme.muted} strokeWidth={2.2} />
-                : <Text style={s.emBreve}>em breve</Text>}
-            </Pressable>
-          ))}
+          <View style={s.grupo}>
+            {modulos.map(({ chave, rotulo, simbolo, rota }, i) => (
+              <View key={chave}>
+                {i > 0 ? <View style={s.divisor} /> : null}
+                <Pressable
+                  disabled={!rota}
+                  onPress={() => rota && router.push(rota as never)}
+                  style={[s.item, !rota && s.itemInativo]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !rota }}
+                >
+                  <View style={[s.icone, { backgroundColor: rota ? theme.accent : theme.muted }]}>
+                    <Simbolo nome={simbolo as never} tamanho={16} cor="#fff" />
+                  </View>
+                  <Text style={[s.itemTexto, !rota && { color: theme.muted }]}>{rotulo}</Text>
+                  {rota
+                    ? <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+                    : <Text style={s.emBreve}>em breve</Text>}
+                </Pressable>
+              </View>
+            ))}
+          </View>
           <Text style={s.nota}>
             As ferramentas disponíveis são definidas pela sua agência. As marcadas como
             &quot;em breve&quot; já existem no painel web e chegarão ao aplicativo.
@@ -82,19 +91,23 @@ export default function Mais() {
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
-    sub: { fontSize: 13, color: t.muted, marginHorizontal: 16, marginTop: 2 },
+    sub: { ...TIPO.nota, color: t.muted, marginHorizontal: 16, marginTop: 2 },
     secao: {
-      fontSize: 11, fontWeight: "700", letterSpacing: 0.9, textTransform: "uppercase",
-      color: t.muted, marginTop: 22, marginBottom: 7, marginHorizontal: 16,
+      ...CABECALHO_SECAO, color: t.muted,
+      marginTop: 26, marginBottom: 7, marginHorizontal: 32,
     },
-    item: {
-      flexDirection: "row", alignItems: "center", gap: 12,
-      paddingHorizontal: 16, paddingVertical: 14, backgroundColor: t.surface,
-      borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: t.border,
-      marginBottom: -StyleSheet.hairlineWidth,
+    // Lista AGRUPADA com recuo, como nos Ajustes: cartão arredondado sobre o
+    // fundo, não linhas de ponta a ponta. É o que separa "tela de app" de
+    // "lista de página web".
+    grupo: {
+      marginHorizontal: 16, borderRadius: 10, overflow: "hidden", backgroundColor: t.surface,
     },
-    itemInativo: { opacity: 0.65 },
-    itemTexto: { flex: 1, fontSize: 16, color: t.text },
-    emBreve: { fontSize: 11.5, fontWeight: "600", color: t.muted },
-    nota: { fontSize: 12, color: t.muted, lineHeight: 17, margin: 16, marginTop: 12 },
+    item: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+    itemInativo: { opacity: 0.55 },
+    // Ícone em quadradinho colorido — vocabulário dos Ajustes do iOS.
+    icone: { width: 29, height: 29, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+    itemTexto: { ...TIPO.corpo, flex: 1, color: t.text },
+    emBreve: { ...TIPO.nota, color: t.muted },
+    divisor: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 55 },
+    nota: { ...TIPO.nota, color: t.muted, marginHorizontal: 32, marginTop: 10 },
   });

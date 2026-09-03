@@ -11,7 +11,8 @@ import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
   useAudioPlayer, useAudioPlayerStatus, useAudioRecorder,
 } from "expo-audio";
-import { Camera, Megaphone, Mic, Pause, Paperclip, Play, Send, Square, UserRound, X } from "lucide-react-native";
+import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
+import { TIPO } from "../../../src/ui/tipografia";
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
@@ -266,8 +267,7 @@ export default function Thread() {
                   {conversa.assignedName ? (
                     <>
                       {etapa ? <Text style={s.subtitulo}>·</Text> : null}
-                      <UserRound size={10} color={theme.muted} strokeWidth={2.4} />
-                      <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
+                              <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
                     </>
                   ) : null}
                 </View>
@@ -294,7 +294,7 @@ export default function Thread() {
         ListHeaderComponent={
           conversa.lead ? (
             <View style={s.origem}>
-              <Megaphone size={11} color={theme.accent} strokeWidth={2.4} />
+              <Simbolo nome={SIMBOLO.anuncios as never} tamanho={12} cor={theme.accent} />
               <Text style={s.origemTexto} numberOfLines={1}>
                 {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
               </Text>
@@ -327,10 +327,10 @@ export default function Thread() {
 
       <View style={[s.barra, { paddingBottom: insets.bottom + 9 }]}>
         <Pressable onPress={() => void enviarImagem(false)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Anexar da galeria">
-          <Paperclip size={22} color={theme.muted} strokeWidth={2} style={!podeEnviar && s.off} />
+          <View style={!podeEnviar && s.off}><Simbolo nome={SIMBOLO.anexo as never} tamanho={25} cor={theme.muted} /></View>
         </Pressable>
         <Pressable onPress={() => void enviarImagem(true)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Câmera">
-          <Camera size={22} color={theme.muted} strokeWidth={2} style={!podeEnviar && s.off} />
+          <View style={!podeEnviar && s.off}><Simbolo nome={SIMBOLO.camera as never} tamanho={24} cor={theme.muted} /></View>
         </Pressable>
 
         <TextInput
@@ -347,21 +347,23 @@ export default function Thread() {
           <Pressable
             onPress={() => void enviarTexto()}
             disabled={!podeEnviar}
-            style={[s.enviar, { backgroundColor: theme.accent }, !podeEnviar && s.off]}
+            style={[s.enviar, !podeEnviar && s.off]}
             accessibilityLabel="Enviar"
           >
-            <Send size={18} color={theme.onAccent} strokeWidth={2.4} />
+            <Simbolo nome={SIMBOLO.enviar as never} tamanho={30} cor={theme.onAccent} />
           </Pressable>
         ) : (
           <Pressable
             onPress={() => void alternarGravacao()}
             disabled={!podeEnviar}
-            style={[s.enviar, { backgroundColor: gravando ? theme.crit : theme.accent }, !podeEnviar && s.off]}
+            style={[s.enviar, { backgroundColor: gravando ? theme.crit : theme.accent }, gravando && s.gravando, !podeEnviar && s.off]}
             accessibilityLabel={gravando ? "Parar gravação" : "Gravar áudio"}
           >
-            {gravando
-              ? <Square size={16} color="#fff" strokeWidth={2.6} fill="#fff" />
-              : <Mic size={18} color={theme.onAccent} strokeWidth={2.4} />}
+            <Simbolo
+              nome={(gravando ? SIMBOLO.parar : SIMBOLO.microfone) as never}
+              tamanho={gravando ? 26 : 22}
+              cor={gravando ? "#fff" : theme.onAccent}
+            />
           </Pressable>
         )}
       </View>
@@ -370,7 +372,7 @@ export default function Thread() {
       <Modal visible={!!imagemAberta} transparent animationType="fade" onRequestClose={() => setImagemAberta(null)}>
         <Pressable style={s.visor} onPress={() => setImagemAberta(null)} accessibilityLabel="Fechar foto">
           <View style={[s.visorFechar, { top: insets.top + 10 }]}>
-            <X size={26} color="#fff" strokeWidth={2.4} />
+            <Simbolo nome={SIMBOLO.fechar as never} tamanho={24} cor="#fff" peso="semibold" />
           </View>
           {imagemAberta ? (
             <Image source={{ uri: imagemAberta }} style={s.visorImagem} resizeMode="contain" />
@@ -413,9 +415,7 @@ function BolhaAudio({ uri, cor, corMeta, duracaoTexto }: {
       <View style={[audioStyles.botao, { borderColor: cor }]}>
         {!uri
           ? <ActivityIndicator size="small" color={cor} />
-          : status.playing
-          ? <Pause size={15} color={cor} strokeWidth={2.6} fill={cor} />
-          : <Play size={15} color={cor} strokeWidth={2.6} fill={cor} />}
+          : <Simbolo nome={(status.playing ? SIMBOLO.pausar : SIMBOLO.tocar) as never} tamanho={14} cor={cor} />}
       </View>
       <View style={audioStyles.trilhaWrap}>
         <View style={[audioStyles.trilha, { backgroundColor: corMeta }]}>
@@ -523,10 +523,10 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     tituloNavCorpo: { flexShrink: 1 },
     avatarPeq: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
     avatarPeqTexto: { color: "#fff", fontWeight: "700", fontSize: 13.6 },
-    nome: { fontSize: 16, fontWeight: "700", color: t.text },
+    nome: { ...TIPO.destaque, color: t.text },
     subLinha: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 },
-    subtitulo: { fontSize: 11.5, color: t.muted },
-    assumirTexto: { color: t.accent, fontSize: 16, fontWeight: "600" },
+    subtitulo: { ...TIPO.legenda, color: t.muted },
+    assumirTexto: { ...TIPO.corpo, color: t.accent, fontWeight: "600" },
 
     origem: {
       flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "center",
@@ -534,14 +534,14 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       backgroundColor: t.surface, borderRadius: 20,
       shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
-    origemTexto: { fontSize: 11.5, color: t.muted, maxWidth: 240 },
+    origemTexto: { ...TIPO.legenda, color: t.muted, maxWidth: 240 },
 
     chat: { flex: 1, backgroundColor: t.waChat },
     chatConteudo: { paddingHorizontal: 10, paddingVertical: 10 },
 
     diaLinha: { alignItems: "center", marginVertical: 9 },
     diaTexto: {
-      fontSize: 11, fontWeight: "600", color: t.waMuted, backgroundColor: t.surface,
+      ...TIPO.legenda2, fontWeight: "600", color: t.waMuted, backgroundColor: t.surface,
       paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, overflow: "hidden",
       shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
@@ -555,11 +555,11 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       elevation: 1,
     },
     balaoPendente: { opacity: 0.75 },
-    textoBalao: { fontSize: 13.5, lineHeight: 19 },
-    transcricao: { fontSize: 12.5, fontStyle: "italic", marginTop: 2 },
+    textoBalao: { fontSize: 16, lineHeight: 21, letterSpacing: -0.3 },
+    transcricao: { ...TIPO.nota, fontStyle: "italic", marginTop: 2 },
     imagem: { width: 220, height: 165, borderRadius: 6, marginBottom: 4 },
     meta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
-    metaTexto: { fontSize: 10, opacity: 0.65 },
+    metaTexto: { fontSize: 11, opacity: 0.7 },
 
     visor: { flex: 1, backgroundColor: "rgba(0,0,0,0.94)", alignItems: "center", justifyContent: "center" },
     visorImagem: { width: "100%", height: "82%" },
@@ -569,7 +569,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       paddingHorizontal: 16, paddingVertical: 8,
       backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border,
     },
-    janelaTexto: { fontSize: 11.5, color: t.muted, textAlign: "center" },
+    janelaTexto: { ...TIPO.legenda, color: t.muted, textAlign: "center" },
 
     barra: {
       flexDirection: "row", alignItems: "flex-end", gap: 10,
@@ -580,11 +580,14 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       flex: 1, minHeight: 38, maxHeight: 120,
       backgroundColor: t.bg, borderRadius: 19, borderWidth: 1, borderColor: t.border,
       paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9,
-      fontSize: 14.5, color: t.text,
+      fontSize: 16, color: t.text,
     },
+    // O símbolo de enviar já vem preenchido e circular: um fundo atrás dele seria
+    // um círculo dentro de outro. O de gravar é vazado, então esse mantém o disco.
     enviar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+    gravando: { backgroundColor: t.crit },
     off: { opacity: 0.35 },
 
-    erroTexto: { color: t.crit, fontSize: 14, textAlign: "center" },
-    tentar: { color: t.accent, fontSize: 14, fontWeight: "700" },
+    erroTexto: { ...TIPO.subtitulo, color: t.crit, textAlign: "center" },
+    tentar: { ...TIPO.corpo, color: t.accent, fontWeight: "600" },
   });

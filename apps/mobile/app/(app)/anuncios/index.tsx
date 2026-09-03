@@ -5,7 +5,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
-import { Megaphone, TrendingDown, TrendingUp } from "lucide-react-native";
+import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
+import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
@@ -99,7 +100,7 @@ export default function Anuncios() {
                     <Image source={{ uri: c.image }} style={s.criativo} resizeMode="cover" />
                   ) : (
                     <View style={[s.criativo, s.criativoVazio]}>
-                      <Megaphone size={18} color={theme.muted} strokeWidth={2} />
+                      <Simbolo nome={SIMBOLO.semAnuncio as never} tamanho={22} cor={theme.muted} />
                     </View>
                   )}
                   <Text style={s.campanhaNome} numberOfLines={3}>{c.name}</Text>
@@ -130,7 +131,7 @@ function Metrica({ rotulo, valor, delta, theme, maiorEhMelhor }: {
   const cor = delta == null || maiorEhMelhor === undefined
     ? theme.muted
     : sobe === maiorEhMelhor ? theme.good : theme.crit;
-  const Icone = sobe ? TrendingUp : TrendingDown;
+  const simbolo = sobe ? SIMBOLO.subindo : SIMBOLO.descendo;
 
   return (
     <View style={s.metrica}>
@@ -140,7 +141,7 @@ function Metrica({ rotulo, valor, delta, theme, maiorEhMelhor }: {
         <Text style={s.metricaDelta}>—</Text>
       ) : (
         <View style={s.deltaLinha}>
-          <Icone size={11} color={cor} strokeWidth={2.6} />
+          <Simbolo nome={simbolo as never} tamanho={11} cor={cor} peso="bold" />
           <Text style={[s.metricaDelta, { color: cor }]}>{sobe ? "+" : ""}{delta}%</Text>
         </View>
       )}
@@ -162,32 +163,32 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
     centro: { alignItems: "center", justifyContent: "center" },
-    periodo: { fontSize: 13, color: t.muted, marginHorizontal: 16, marginBottom: 6 },
+    periodo: { ...TIPO.nota, color: t.muted, marginHorizontal: 16, marginBottom: 6 },
 
     metricas: { flexDirection: "row", backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border },
     metrica: { flex: 1, padding: 14, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border },
-    metricaRotulo: { fontSize: 11, fontWeight: "600", color: t.muted },
-    metricaValor: { fontSize: 20, fontWeight: "800", color: t.text, marginTop: 6, letterSpacing: -0.5 },
+    metricaRotulo: { ...TIPO.legenda, fontWeight: "500", color: t.muted },
+    metricaValor: { ...TIPO.titulo3, fontWeight: "700", color: t.text, marginTop: 5, fontVariant: ["tabular-nums"] },
     deltaLinha: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 5 },
-    metricaDelta: { fontSize: 11, fontWeight: "700", color: t.muted, marginTop: 5 },
+    metricaDelta: { ...TIPO.legenda2, fontWeight: "600", color: t.muted, marginTop: 5 },
 
-    secao: { fontSize: 11, fontWeight: "700", letterSpacing: 0.9, textTransform: "uppercase", color: t.muted, margin: 16, marginBottom: 8 },
+    secao: { ...CABECALHO_SECAO, color: t.muted, marginHorizontal: 32, marginTop: 24, marginBottom: 7 },
     cartao: {
-      backgroundColor: t.surface, marginHorizontal: 16, marginBottom: 10, borderRadius: 14,
-      borderWidth: StyleSheet.hairlineWidth, borderColor: t.border, padding: 14, gap: 10,
+      backgroundColor: t.surface, marginHorizontal: 16, marginBottom: 10, borderRadius: 10,
+      padding: 14, gap: 10,
     },
     campanhaTopo: { flexDirection: "row", alignItems: "center", gap: 12 },
     criativo: { width: 64, height: 64, borderRadius: 10, backgroundColor: t.raise },
     criativoVazio: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: t.border },
-    campanhaNome: { flex: 1, fontSize: 15.5, fontWeight: "700", color: t.text, lineHeight: 20 },
+    campanhaNome: { ...TIPO.destaque, flex: 1, color: t.text },
     linhaMetricas: { flexDirection: "row", gap: 14 },
     coluna: { flex: 1 },
-    colunaRotulo: { fontSize: 10.5, fontWeight: "600", color: t.muted },
-    colunaValor: { fontSize: 15, fontWeight: "700", color: t.text, marginTop: 2 },
+    colunaRotulo: { ...TIPO.legenda2, fontWeight: "500", color: t.muted },
+    colunaValor: { ...TIPO.subtitulo, fontWeight: "600", color: t.text, marginTop: 2, fontVariant: ["tabular-nums"] },
     verLeads: { alignSelf: "flex-start", borderRadius: 10, borderWidth: 1, borderColor: t.accent, paddingHorizontal: 14, paddingVertical: 7 },
-    verLeadsTexto: { color: t.accent, fontSize: 13, fontWeight: "700" },
+    verLeadsTexto: { ...TIPO.nota, color: t.accent, fontWeight: "600" },
 
-    vazio: { color: t.muted, fontSize: 14.5, textAlign: "center", padding: 32 },
+    vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", padding: 32 },
     erroCaixa: { padding: 14, backgroundColor: t.critSoft, gap: 4 },
     erroTexto: { color: t.crit, fontSize: 13 },
     tentar: { color: t.accent, fontSize: 13, fontWeight: "700" },

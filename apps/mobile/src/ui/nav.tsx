@@ -15,18 +15,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { Ellipsis, FileText, Megaphone, MessageCircle } from "lucide-react-native";
+import { SIMBOLO, Simbolo } from "./simbolo";
+import { TIPO } from "./tipografia";
 import { useSession } from "./session";
 import { accentAlpha, buildTheme, VERDE_ESPERA } from "./theme";
 import { modulosPara, type ModuloRota } from "../core/inbox";
 
 type NomeRota = ModuloRota;
 
-const MODULOS: { rota: NomeRota; rotulo: string; Icone: typeof MessageCircle }[] = [
-  { rota: "conversas", rotulo: "Conversas", Icone: MessageCircle },
-  { rota: "anuncios", rotulo: "Anúncios", Icone: Megaphone },
-  { rota: "revisao", rotulo: "Orçamentos", Icone: FileText },
-  { rota: "mais", rotulo: "Mais", Icone: Ellipsis },
+const MODULOS: { rota: NomeRota; rotulo: string; simbolo: string }[] = [
+  { rota: "conversas", rotulo: "Conversas", simbolo: SIMBOLO.conversas },
+  { rota: "anuncios", rotulo: "Anúncios", simbolo: SIMBOLO.anuncios },
+  { rota: "revisao", rotulo: "Orçamentos", simbolo: SIMBOLO.orcamentos },
+  { rota: "mais", rotulo: "Mais", simbolo: SIMBOLO.mais },
 ];
 
 /** Contadores da barra — mesmo endpoint e cadência do PWA. */
@@ -115,7 +116,7 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
       ]}
     >
       <BlurView intensity={40} tint={theme.dark ? "dark" : "light"} style={s.blur}>
-        {MODULOS.filter((m) => visiveis.includes(m.rota)).map(({ rota, rotulo, Icone }) => {
+        {MODULOS.filter((m) => visiveis.includes(m.rota)).map(({ rota, rotulo, simbolo }) => {
           const alvo = state.routes.find((r) => r.name === rota);
           if (!alvo) return null;
           const on = state.routes[state.index]?.name === rota;
@@ -138,7 +139,12 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
               ]}
             >
               <View style={[s.iconeBox, !on && s.iconeInativo]}>
-                <Icone size={20} color={on ? theme.accent : theme.waMuted} strokeWidth={on ? 2.4 : 2} />
+                <Simbolo
+                  nome={simbolo as never}
+                  tamanho={23}
+                  cor={on ? theme.accent : theme.waMuted}
+                  peso={on ? "semibold" : "regular"}
+                />
                 {badge > 0 ? (
                   <View style={s.badge}>
                     <Text style={s.badgeTexto} maxFontSizeMultiplier={1.1}>{badge > 99 ? "99+" : badge}</Text>
@@ -165,9 +171,14 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     wrap: {
       position: "absolute", left: 16, right: 16, zIndex: 30,
       borderRadius: 22, overflow: "hidden",
-      borderWidth: 1, borderColor: t.border,
-      shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 4 },
-      elevation: 8,
+      // Fio de cabelo em vez de 1px cheio: no iOS a borda de vidro é sutil.
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: t.dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)",
+      // Sombra em duas camadas: uma rente que dá o recorte, outra ampla que
+      // levanta a pílula do conteúdo.
+      shadowColor: "#000", shadowOpacity: t.dark ? 0.5 : 0.16,
+      shadowRadius: 24, shadowOffset: { width: 0, height: 8 },
+      elevation: 12,
       backgroundColor: t.dark ? "rgba(20,23,29,0.78)" : "rgba(255,255,255,0.78)",
     },
     blur: { flexDirection: "row", gap: 2, padding: 5 },
@@ -180,5 +191,5 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       alignItems: "center", justifyContent: "center",
     },
     badgeTexto: { color: "#fff", fontSize: 9.5, fontWeight: "800" },
-    rotulo: { fontSize: 10.5, letterSpacing: -0.1 },
+    rotulo: { ...TIPO.legenda2, fontSize: 10.5 },
   });

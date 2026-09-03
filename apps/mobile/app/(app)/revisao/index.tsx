@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
+import { TIPO } from "../../../src/ui/tipografia";
 import * as Sharing from "expo-sharing";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
@@ -160,21 +161,21 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     sub: { fontSize: 13, color: t.muted, marginTop: 2 },
     cartao: { backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border, padding: 14, gap: 6 },
     cartaoTopo: { flexDirection: "row", alignItems: "center", gap: 10 },
-    lead: { flex: 1, fontSize: 16.5, fontWeight: "700", color: t.text },
-    total: { fontSize: 16, fontWeight: "800", color: t.accent },
-    numero: { fontSize: 12, color: t.muted },
-    resumo: { fontSize: 13, color: t.muted },
+    lead: { ...TIPO.destaque, flex: 1, color: t.text },
+    total: { ...TIPO.destaque, fontWeight: "700", color: t.accent, fontVariant: ["tabular-nums"] },
+    numero: { ...TIPO.nota, color: t.muted },
+    resumo: { ...TIPO.nota, color: t.muted },
     linhaItem: { flexDirection: "row", gap: 8, marginTop: 2 },
-    linhaLabel: { flex: 1, fontSize: 13, color: t.text },
-    linhaValor: { fontSize: 13, color: t.muted },
+    linhaLabel: { ...TIPO.subtitulo, flex: 1, color: t.text },
+    linhaValor: { ...TIPO.subtitulo, color: t.muted, fontVariant: ["tabular-nums"] },
     acoes: { flexDirection: "row", gap: 8, marginTop: 10 },
     botaoNeutro: { flex: 1, borderWidth: 1, borderColor: t.border, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
-    botaoNeutroTexto: { color: t.text, fontWeight: "600", fontSize: 14 },
+    botaoNeutroTexto: { ...TIPO.subtitulo, color: t.text, fontWeight: "500" },
     botaoRejeitar: { flex: 1, borderWidth: 1, borderColor: t.crit, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
-    botaoRejeitarTexto: { color: t.crit, fontWeight: "700", fontSize: 14 },
+    botaoRejeitarTexto: { ...TIPO.subtitulo, color: t.crit, fontWeight: "500" },
     botaoAprovar: { flex: 1.2, backgroundColor: t.accent, borderRadius: 10, paddingVertical: 11, alignItems: "center", justifyContent: "center", minHeight: 42 },
-    botaoAprovarTexto: { color: t.onAccent, fontWeight: "800", fontSize: 14 },
+    botaoAprovarTexto: { ...TIPO.subtitulo, color: t.onAccent, fontWeight: "600" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-    vazio: { color: t.muted, fontSize: 15, textAlign: "center" },
+    vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center" },
     erro: { color: t.crit, fontSize: 13, padding: 16 },
   });
