@@ -65,6 +65,13 @@ interface NavegacaoAbas {
   navigate(nome: string): void;
 }
 
+/**
+ * Telas de DETALHE, empurradas de dentro de um módulo. A barra some nelas, como
+ * manda a convenção do iOS — e porque na thread ela ficaria exatamente por cima
+ * do compositor de mensagem.
+ */
+const DETALHE = new Set(["conversas/[contactId]", "perfil"]);
+
 export function BarraInferior({ state, navigation }: { state: EstadoAbas; navigation: NavegacaoAbas }) {
   const { me } = useSession();
   const insets = useSafeAreaInsets();
@@ -72,6 +79,7 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
   const badges = useBadges();
   const visiveis = useModulosVisiveis();
   const s = styles(theme);
+  const rotaAtual = state.routes[state.index]?.name ?? "";
 
   // Entra deslizando UMA vez, ao montar. Como a barra pertence ao layout de abas,
   // ela não remonta ao trocar de módulo — nada de piscar entre telas.
@@ -87,6 +95,8 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
     if (rota === "revisao") return badges.reviews;
     return 0;
   }, [badges]);
+
+  if (DETALHE.has(rotaAtual)) return null;
 
   return (
     <Animated.View
