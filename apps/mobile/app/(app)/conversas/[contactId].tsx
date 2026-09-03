@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable,
-  StyleSheet, Text, TextInput, useColorScheme, View,
+  ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
+  Pressable, StyleSheet, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
-import { ArrowLeft, Camera, Megaphone, Mic, Paperclip, Send, Square, UserRound } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+import {
+  RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
+  useAudioPlayer, useAudioPlayerStatus, useAudioRecorder,
+} from "expo-audio";
+import { ArrowLeft, Camera, Megaphone, Mic, Pause, Paperclip, Play, Send, Square, UserRound, X } from "lucide-react-native";
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
@@ -15,12 +19,13 @@ import { ApiError } from "../../../src/core/errors";
 import type { Conversation, Message } from "../../../src/core/contracts";
 
 // ── Thread ────────────────────────────────────────────────────────────────────
-// Visual portado do portal: fundo do chat na cor do WhatsApp (--wa-chat), balão
-// recebido branco com o canto superior-ESQUERDO reto, balão enviado na cor da
-// marca com o canto superior-DIREITO reto, raio 8, texto 13.5. Hora e ticks no
-// rodapé do balão; tick de lido em azul.
+// Visual portado do portal: fundo do chat na cor do WhatsApp, balão recebido
+// branco com o canto superior-ESQUERDO reto, enviado na cor da marca com o
+// canto superior-DIREITO reto, raio 8, texto 13.5.
 
-type Item = { tipo: "dia"; id: string; rotulo: string } | { tipo: "msg"; id: string; msg: Message };
+type Item =
+  | { tipo: "dia"; id: string; rotulo: string }
+  | { tipo: "msg"; id: string; msg: Message; pendente?: boolean };
 
 function rotuloDoDia(iso: string): string {
   const d = new Date(iso);
@@ -34,6 +39,16 @@ function rotuloDoDia(iso: string): string {
 
 const hhmm = (iso: string) =>
   new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+const mmss = (s: number) => {
+  const seg = Math.max(0, Math.floor(s));
+  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")}`;
+};
+
+/** Vibração curta. Best-effort: nunca pode atrapalhar a ação em si. */
+const vibrar = (estilo: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
+  void Haptics.impactAsync(estilo).catch(() => {});
+};
 
 export default function Thread() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
@@ -49,6 +64,9 @@ export default function Thread() {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [gravando, setGravando] = useState(false);
+  // Mensagens que JÁ apareceram na tela mas ainda não voltaram do servidor.
+  const [pendentes, setPendentes] = useState<Message[]>([]);
+  const [imagemAberta, setImagemAberta] = useState<string | null>(null);
   const lista = useRef<FlatList<Item>>(null);
 
   const gravador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -58,6 +76,7 @@ export default function Thread() {
     if (!silencioso) setCarregando(true);
     try {
       setConversa(await client.conversation(contactId));
+      setPendentes([]); // o servidor já devolveu o que estava pendente
       setErro(null);
     } catch (e) {
       if (e instanceof ApiError && !e.requiresLogout) setErro(e.message);
@@ -70,37 +89,55 @@ export default function Thread() {
   useEffect(() => { void carregar(); }, [carregar]);
   useFocusEffect(useCallback(() => { void carregar(true); }, [carregar]));
 
-  // Agrupa por dia, como o portal.
+  // Agrupa por dia, como o portal. As pendentes entram no fim, já visíveis.
   const itens = useMemo<Item[]>(() => {
     if (!conversa) return [];
+    const todas = [...conversa.items, ...pendentes];
     const out: Item[] = [];
     let diaAtual = "";
-    for (const m of conversa.items) {
+    for (const m of todas) {
       const dia = new Date(m.timestamp).toDateString();
       if (dia !== diaAtual) {
         diaAtual = dia;
         out.push({ tipo: "dia", id: `dia-${dia}`, rotulo: rotuloDoDia(m.timestamp) });
       }
-      out.push({ tipo: "msg", id: m.id, msg: m });
+      out.push({ tipo: "msg", id: m.id, msg: m, pendente: m.id.startsWith("local-") });
     }
     return out;
-  }, [conversa]);
+  }, [conversa, pendentes]);
 
+  // ── Envio otimista ──────────────────────────────────────────────────────────
+  // A mensagem aparece na hora, esmaecida e com relógio; some se o envio falhar.
+  // Antes o app esperava o servidor e só então recarregava — em rede ruim parecia
+  // travado, e a vendedora não sabia se tinha enviado.
   const enviarTexto = useCallback(async () => {
     const t = texto.trim();
     if (!client || !contactId || !t || enviando) return;
-    setEnviando(true);
+
+    const local: Message = {
+      id: `local-${Date.now()}`,
+      text: t, direction: "out", type: "text",
+      timestamp: new Date().toISOString(),
+      aiGenerated: false, sentByName: conversa?.meName ?? null,
+      transcription: null, deliveredAt: null, readAt: null, reaction: null,
+    };
+
+    vibrar();
     setTexto("");
+    setPendentes((p) => [...p, local]);
+    setEnviando(true);
     try {
       await client.sendText(contactId, t);
       await carregar(true);
     } catch (e) {
+      setPendentes((p) => p.filter((m) => m.id !== local.id));
       setTexto(t); // devolve o que a pessoa escreveu — nada se perde
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
     } finally {
       setEnviando(false);
     }
-  }, [client, contactId, texto, enviando, carregar]);
+  }, [client, contactId, texto, enviando, conversa, carregar]);
 
   const enviarImagem = useCallback(async (daCamera: boolean) => {
     if (!client || !contactId) return;
@@ -123,6 +160,7 @@ export default function Thread() {
     } as unknown as Blob);
     form.append("kind", "image");
 
+    vibrar();
     setEnviando(true);
     try {
       await client.sendMedia(contactId, form);
@@ -137,6 +175,7 @@ export default function Thread() {
   const alternarGravacao = useCallback(async () => {
     if (!client || !contactId) return;
     if (gravando) {
+      vibrar(Haptics.ImpactFeedbackStyle.Medium);
       setGravando(false);
       await gravador.stop();
       const uri = gravador.uri;
@@ -166,6 +205,7 @@ export default function Thread() {
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await gravador.prepareToRecordAsync();
     gravador.record();
+    vibrar(Haptics.ImpactFeedbackStyle.Medium);
     setGravando(true);
   }, [client, contactId, gravando, gravador, carregar]);
 
@@ -173,6 +213,7 @@ export default function Thread() {
     if (!client || !contactId || !conversa?.me) return;
     try {
       await client.assign(contactId, conversa.me);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await carregar(true);
     } catch (e) {
       Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
@@ -199,7 +240,6 @@ export default function Thread() {
 
   return (
     <KeyboardAvoidingView style={s.tela} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {/* Cabeçalho */}
       <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Voltar">
           <ArrowLeft size={23} color={theme.accent} strokeWidth={2.2} />
@@ -230,7 +270,6 @@ export default function Thread() {
         ) : null}
       </View>
 
-      {/* Origem do anúncio */}
       {conversa.lead ? (
         <View style={s.origem}>
           <Megaphone size={11} color={theme.accent} strokeWidth={2.4} />
@@ -240,20 +279,24 @@ export default function Thread() {
         </View>
       ) : null}
 
-      {/* Mensagens */}
       <FlatList
         ref={lista}
         data={itens}
         keyExtractor={(i) => i.id}
         style={s.chat}
         contentContainerStyle={s.chatConteudo}
+        keyboardDismissMode="interactive"
         renderItem={({ item }) =>
           item.tipo === "dia" ? (
-            <View style={s.diaLinha}>
-              <Text style={s.diaTexto}>{item.rotulo}</Text>
-            </View>
+            <View style={s.diaLinha}><Text style={s.diaTexto}>{item.rotulo}</Text></View>
           ) : (
-            <Balao msg={item.msg} theme={theme} contactId={String(contactId)} />
+            <Balao
+              msg={item.msg}
+              pendente={!!item.pendente}
+              theme={theme}
+              contactId={String(contactId)}
+              aoAbrirImagem={setImagemAberta}
+            />
           )
         }
         onContentSizeChange={() => lista.current?.scrollToEnd({ animated: false })}
@@ -267,7 +310,6 @@ export default function Thread() {
         </View>
       ) : null}
 
-      {/* Compositor */}
       <View style={[s.barra, { paddingBottom: insets.bottom + 9 }]}>
         <Pressable onPress={() => void enviarImagem(false)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Anexar da galeria">
           <Paperclip size={22} color={theme.muted} strokeWidth={2} style={!podeEnviar && s.off} />
@@ -308,24 +350,102 @@ export default function Thread() {
           </Pressable>
         )}
       </View>
+
+      {/* Foto em tela cheia — tocar na miniatura abre aqui. */}
+      <Modal visible={!!imagemAberta} transparent animationType="fade" onRequestClose={() => setImagemAberta(null)}>
+        <Pressable style={s.visor} onPress={() => setImagemAberta(null)} accessibilityLabel="Fechar foto">
+          <View style={[s.visorFechar, { top: insets.top + 10 }]}>
+            <X size={26} color="#fff" strokeWidth={2.4} />
+          </View>
+          {imagemAberta ? (
+            <Image source={{ uri: imagemAberta }} style={s.visorImagem} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
-function Balao({ msg, theme, contactId }: { msg: Message; theme: ReturnType<typeof buildTheme>; contactId: string }) {
+// ── Áudio recebido ────────────────────────────────────────────────────────────
+// A nota de voz do lead toca DENTRO do app. Antes só aparecia a transcrição — e
+// nem todo áudio tem uma. O arquivo é baixado com credencial e tocado do cache.
+function BolhaAudio({ uri, cor, corMeta, duracaoTexto }: {
+  uri: string | null; cor: string; corMeta: string; duracaoTexto: string;
+}) {
+  const player = useAudioPlayer(uri ?? undefined);
+  const status = useAudioPlayerStatus(player);
+
+  const alternar = useCallback(() => {
+    if (!uri) return;
+    vibrar();
+    if (status.playing) { player.pause(); return; }
+    if (status.didJustFinish) void player.seekTo(0);
+    void setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    player.play();
+  }, [uri, status.playing, status.didJustFinish, player]);
+
+  const total = status.duration || 0;
+  const progresso = total > 0 ? Math.min(1, status.currentTime / total) : 0;
+
+  return (
+    <Pressable
+      onPress={alternar}
+      disabled={!uri}
+      accessibilityRole="button"
+      accessibilityLabel={status.playing ? "Pausar áudio" : "Tocar áudio"}
+      style={audioStyles.linha}
+    >
+      <View style={[audioStyles.botao, { borderColor: cor }]}>
+        {!uri
+          ? <ActivityIndicator size="small" color={cor} />
+          : status.playing
+          ? <Pause size={15} color={cor} strokeWidth={2.6} fill={cor} />
+          : <Play size={15} color={cor} strokeWidth={2.6} fill={cor} />}
+      </View>
+      <View style={audioStyles.trilhaWrap}>
+        <View style={[audioStyles.trilha, { backgroundColor: corMeta }]}>
+          <View style={[audioStyles.preenchida, { backgroundColor: cor, width: `${progresso * 100}%` }]} />
+        </View>
+        <Text style={[audioStyles.tempo, { color: corMeta }]}>
+          {status.playing || status.currentTime > 0 ? mmss(status.currentTime) : duracaoTexto}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+const audioStyles = StyleSheet.create({
+  linha: { flexDirection: "row", alignItems: "center", gap: 9, minWidth: 168, paddingVertical: 2 },
+  trilhaWrap: { flex: 1, gap: 4 },
+  botao: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  trilha: { height: 3, borderRadius: 2, opacity: 0.45, overflow: "hidden" },
+  preenchida: { height: 3, borderRadius: 2 },
+  tempo: { fontSize: 10.5, fontVariant: ["tabular-nums"] },
+});
+
+function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
+  msg: Message;
+  pendente: boolean;
+  theme: ReturnType<typeof buildTheme>;
+  contactId: string;
+  aoAbrirImagem: (uri: string) => void;
+}) {
   const { client } = useSession();
-  const [imagem, setImagem] = useState<string | null>(null);
+  const [midia, setMidia] = useState<string | null>(null);
   const s = styles(theme);
   const saiu = msg.direction === "out";
 
+  const ehImagem = msg.type === "image" || msg.type === "sticker";
+  const ehAudio = msg.type === "audio";
+
   useEffect(() => {
-    if (msg.type !== "image" || !client) return;
+    if (pendente || !client || (!ehImagem && !ehAudio)) return;
     let vivo = true;
-    void midiaDaMensagem(client, contactId, msg.id, "image")
-      .then((uri) => { if (vivo) setImagem(uri); })
-      .catch(() => { /* miniatura falhou: o rótulo abaixo continua legível */ });
+    void midiaDaMensagem(client, contactId, msg.id, ehAudio ? "audio" : "image")
+      .then((uri) => { if (vivo) setMidia(uri); })
+      .catch(() => { /* falhou: o rótulo/transcrição abaixo seguem legíveis */ });
     return () => { vivo = false; };
-  }, [client, contactId, msg.id, msg.type]);
+  }, [client, contactId, msg.id, ehImagem, ehAudio, pendente]);
 
   const corTexto = saiu ? theme.onAccent : theme.waText;
   const corMeta = saiu ? theme.onAccent : theme.waMuted;
@@ -339,14 +459,17 @@ function Balao({ msg, theme, contactId }: { msg: Message; theme: ReturnType<type
           saiu
             ? { backgroundColor: theme.accent, borderTopLeftRadius: 8, borderTopRightRadius: 0 }
             : { backgroundColor: theme.waIn, borderTopLeftRadius: 0, borderTopRightRadius: 8 },
+          pendente && s.balaoPendente,
         ]}
       >
-        {msg.type === "image" && imagem ? (
-          <Image source={{ uri: imagem }} style={s.imagem} resizeMode="cover" />
+        {ehImagem && midia ? (
+          <Pressable onPress={() => aoAbrirImagem(midia)} accessibilityRole="imagebutton" accessibilityLabel="Abrir foto">
+            <Image source={{ uri: midia }} style={s.imagem} resizeMode="cover" />
+          </Pressable>
         ) : null}
 
-        {msg.type === "audio" ? (
-          <Text style={[s.rotuloMidia, { color: corTexto }]}>🎤 Áudio</Text>
+        {ehAudio ? (
+          <BolhaAudio uri={midia} cor={corTexto} corMeta={corMeta} duracaoTexto="áudio" />
         ) : null}
 
         {msg.transcription ? (
@@ -366,7 +489,7 @@ function Balao({ msg, theme, contactId }: { msg: Message; theme: ReturnType<type
                 { color: msg.readAt ? AZUL_LIDO : corMeta, fontWeight: msg.readAt ? "700" : "400", marginLeft: 3 },
               ]}
             >
-              {msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
+              {pendente ? "🕘" : msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
             </Text>
           ) : null}
         </View>
@@ -419,12 +542,16 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
       elevation: 1,
     },
+    balaoPendente: { opacity: 0.75 },
     textoBalao: { fontSize: 13.5, lineHeight: 19 },
-    rotuloMidia: { fontSize: 13.5 },
     transcricao: { fontSize: 12.5, fontStyle: "italic", marginTop: 2 },
     imagem: { width: 220, height: 165, borderRadius: 6, marginBottom: 4 },
     meta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
     metaTexto: { fontSize: 10, opacity: 0.65 },
+
+    visor: { flex: 1, backgroundColor: "rgba(0,0,0,0.94)", alignItems: "center", justifyContent: "center" },
+    visorImagem: { width: "100%", height: "82%" },
+    visorFechar: { position: "absolute", right: 18, zIndex: 2 },
 
     janelaFechada: {
       paddingHorizontal: 16, paddingVertical: 8,
