@@ -1,0 +1,68 @@
+// ── Regras da caixa de entrada e da navegação ─────────────────────────────────
+// PURO, sem React Native: é o que permite testar navegação e filtros sem
+// simulador. As telas importam daqui; nada de duplicar regra na UI.
+
+import type { ConversationRow, Me } from "./contracts";
+
+/** Módulos da barra inferior, na ordem de exibição. */
+export type ModuloRota = "conversas/index" | "anuncios" | "revisao" | "mais";
+
+/**
+ * Quais MÓDULOS este tenant/usuário enxerga.
+ *
+ * Derivado de `sections` + `quotesEnabled` do /me — nunca de nome de cliente.
+ * Conversas e Mais são sempre visíveis: a primeira é a seção obrigatória do
+ * portal, a segunda é o escape para o resto do produto.
+ */
+export function modulosPara(me: Me | null): ModuloRota[] {
+  const secoes = me?.sections ?? [];
+  const out: ModuloRota[] = ["conversas/index"];
+  if (secoes.includes("anuncios")) out.push("anuncios");
+  // Orçamentos exige a seção E a funcionalidade ligada no cliente.
+  if (secoes.includes("revisao") && me?.quotesEnabled === true) out.push("revisao");
+  out.push("mais");
+  return out;
+}
+
+// ── Filtros da caixa de entrada ───────────────────────────────────────────────
+
+export type Filtro = "todas" | "aguardando" | "minhas";
+
+/**
+ * "Aguardando resposta": a última mensagem foi do LEAD e ninguém respondeu.
+ * Mesma regra do portal (`isWaiting`) — não foi reinterpretada.
+ */
+export const aguardandoResposta = (c: ConversationRow): boolean =>
+  c.lastDirection != null && c.lastDirection !== "out";
+
+/** Rótulo da campanha do lead — mesma chave de agrupamento do portal. */
+export const campanhaDe = (c: ConversationRow): string =>
+  (c.adModel || c.adTitle || "Sem identificação").trim();
+
+/**
+ * Campanhas presentes na lista carregada, ordenadas por nome.
+ *
+ * SEM CONTAGEM de propósito: o backend não agrega por campanha, e contar só o
+ * que foi paginado produziria um total falso — o defeito dos chips do portal.
+ */
+export function campanhasDe(linhas: ConversationRow[]): string[] {
+  const set = new Set<string>();
+  for (const c of linhas) if (c.fromAd) set.add(campanhaDe(c));
+  return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+/**
+ * Filtro local da lista. "minhas" NÃO entra aqui: é filtro de SERVIDOR
+ * (`owner=me`), como no portal — a lista já chega restrita.
+ */
+export function filtrarConversas(
+  linhas: ConversationRow[],
+  filtro: Filtro,
+  campanha: string | null,
+): ConversationRow[] {
+  return linhas.filter((c) => {
+    if (filtro === "aguardando" && !aguardandoResposta(c)) return false;
+    if (campanha && (!c.fromAd || campanhaDe(c) !== campanha)) return false;
+    return true;
+  });
+}

@@ -1,32 +1,35 @@
-// ── Lista de conversas ────────────────────────────────────────────────────────
-// Porte do visual de components/portal/portal-conversations.tsx: linha com borda
-// esquerda de 3px (marca quando selecionada, verde quando aguardando resposta),
-// avatar colorido pelo hash do NOME, nome em negrito quando o lead espera.
-// Mesmas medidas e mesma hierarquia de informação do PWA.
+// ── Caixa de entrada ──────────────────────────────────────────────────────────
+// Referência de composição: WhatsApp iOS (densidade, hierarquia, padrão de lista).
+// Nada de marca, ícone ou asset de terceiros — só a lógica visual.
+//
+// Hierarquia: NOME + ÚLTIMA MENSAGEM + HORÁRIO dominam. Os dados que só o Veloce
+// tem (etapa do funil, origem de anúncio, dono, etiquetas) continuam, mas em
+// segundo plano: uma linha de marcadores pequenos e de peso baixo.
+//
+// Os filtros (Todas/Aguardando/Minhas + campanha) pertencem a ESTE módulo — não
+// à barra inferior.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet,
+  ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet,
   Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
-import { Megaphone, Search, User, UserRound } from "lucide-react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Search, User } from "lucide-react-native";
 import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
+import { aguardandoResposta, campanhaDe, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
 import type { ConversationRow } from "../core/contracts";
 
 const PAGINA = 30;
 
-export type Filtro = "todas" | "aguardando" | "anuncios";
-
-/** "Aguardando resposta": a última mensagem foi do LEAD e ninguém respondeu. */
-const aguardando = (c: ConversationRow) => c.lastDirection != null && c.lastDirection !== "out";
+export type { Filtro };
 
 const ROTULO_MIDIA: Record<string, string> = {
-  image: "📷 Foto", audio: "🎤 Áudio", video: "🎬 Vídeo",
-  document: "📎 Documento", sticker: "Figurinha", location: "📍 Localização",
+  image: "Foto", audio: "Áudio", video: "Vídeo",
+  document: "Documento", sticker: "Figurinha", location: "Localização",
 };
 
 const previa = (c: ConversationRow) =>
@@ -42,19 +45,23 @@ function horaCurta(iso: string | null): string {
   const ontem = new Date(agora);
   ontem.setDate(agora.getDate() - 1);
   if (d.toDateString() === ontem.toDateString()) return "Ontem";
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: string }) {
+export function ListaConversas() {
   const { client, me } = useSession();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
 
+  // Campanha pode chegar de fora (módulo Anúncios → "Ver leads").
+  const { campanha } = useLocalSearchParams<{ campanha?: string }>();
+
   const [linhas, setLinhas] = useState<ConversationRow[]>([]);
   const [busca, setBusca] = useState("");
-  const [soMinhas, setSoMinhas] = useState(false);
+  const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [campanhaSel, setCampanhaSel] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
@@ -62,6 +69,9 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
   const [erro, setErro] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
+  useEffect(() => { if (campanha) setCampanhaSel(campanha); }, [campanha]);
+
+  // "Minhas" é filtro de SERVIDOR (owner=me), como no portal. Os demais são locais.
   const carregar = useCallback(async (opts: { offset?: number; silencioso?: boolean } = {}) => {
     if (!client) return;
     const offset = opts.offset ?? 0;
@@ -73,7 +83,9 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
     if (offset > 0) setCarregandoMais(true);
 
     try {
-      const r = await client.conversations({ limit: PAGINA, offset, q: busca, onlyMine: soMinhas, signal: ctrl.signal });
+      const r = await client.conversations({
+        limit: PAGINA, offset, q: busca, onlyMine: filtro === "minhas", signal: ctrl.signal,
+      });
       setLinhas((antes) => (offset === 0 ? r.conversations : [...antes, ...r.conversations]));
       setTemMais(r.hasMore);
       setErro(null);
@@ -86,73 +98,78 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
       setAtualizando(false);
       setCarregandoMais(false);
     }
-  }, [client, busca, soMinhas]);
+  }, [client, busca, filtro]);
 
   useEffect(() => {
     const t = setTimeout(() => { void carregar(); }, busca ? 350 : 0);
     return () => clearTimeout(t);
   }, [carregar, busca]);
 
+  // Voltar do background ou de outro módulo reconcilia com o servidor, sem perder
+  // filtro, busca nem posição — a tela permanece montada nas abas.
   useFocusEffect(useCallback(() => { void carregar({ silencioso: true }); }, [carregar]));
 
-  // Os filtros da barra são os mesmos do PWA (?tab=waiting / ?tab=ads).
-  const visiveis = linhas.filter((c) =>
-    filtro === "aguardando" ? aguardando(c) : filtro === "anuncios" ? c.fromAd : true,
-  );
+  // Campanhas presentes no que já foi carregado. SEM CONTAGEM: o backend não
+  // agrega por campanha, e um número parcial mentiria (é o defeito dos chips do
+  // portal, que contam só a página carregada).
+  const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
+
+  useEffect(() => {
+    if (campanhaSel && !campanhas.includes(campanhaSel)) setCampanhaSel(null);
+  }, [campanhas, campanhaSel]);
+
+  const visiveis = filtrarConversas(linhas, filtro, campanhaSel);
 
   const vazio =
     busca ? "Nenhuma conversa encontrada."
+    : campanhaSel ? "Nenhum lead desta campanha."
     : filtro === "aguardando" ? "Nenhum lead esperando resposta."
-    : filtro === "anuncios" ? "Nenhum lead vindo de anúncio."
-    : soMinhas ? "Você ainda não é dona de nenhuma conversa."
+    : filtro === "minhas" ? "Você ainda não é dona de nenhuma conversa."
     : "Nenhuma conversa ainda.";
 
   const renderItem = ({ item }: { item: ConversationRow }) => {
-    const esperando = aguardando(item);
+    const esperando = aguardandoResposta(item);
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
+    // Marcadores do Veloce: presentes, porém discretos e num só lugar.
+    const marcadores: { texto: string; cor: string }[] = [];
+    if (etapa) marcadores.push({ texto: etapa.label, cor: etapa.color });
+    if (item.fromAd) marcadores.push({ texto: campanhaDe(item), cor: theme.accent });
+    if (item.assignedName) marcadores.push({ texto: item.assignedName, cor: theme.muted });
+    for (const t of item.tags) marcadores.push({ texto: t.name, cor: t.color });
 
     return (
       <Pressable
         onPress={() => router.push(`/(app)/conversas/${item.contactId}`)}
         accessibilityRole="button"
         accessibilityLabel={`Conversa com ${item.name}`}
-        style={({ pressed }) => [
-          s.linha,
-          { borderLeftColor: esperando ? VERDE_ESPERA : "transparent" },
-          esperando && { backgroundColor: "rgba(31,168,85,0.05)" },
-          pressed && { backgroundColor: theme.accentSoft },
-        ]}
+        style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
       >
         <View style={[s.avatar, { backgroundColor: avatarColor(item.name) }]}>
           <Text style={s.avatarTexto}>{(item.name || "?").charAt(0).toUpperCase()}</Text>
         </View>
 
         <View style={s.corpo}>
-          <View style={s.linhaTopo}>
-            <Text style={[s.nome, esperando && s.nomeEsperando]} numberOfLines={1}>{item.name}</Text>
+          <View style={s.topo}>
+            <Text style={s.nome} numberOfLines={1}>{item.name}</Text>
             <Text style={s.hora}>{horaCurta(item.lastMessageAt)}</Text>
           </View>
 
-          <Text style={s.previa} numberOfLines={1}>{previa(item)}</Text>
+          <View style={s.meio}>
+            <Text style={s.previa} numberOfLines={1}>
+              {item.lastDirection === "out" ? "✓ " : ""}{previa(item)}
+            </Text>
+            {esperando ? (
+              <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" />
+            ) : null}
+          </View>
 
-          {(etapa || item.fromAd || item.assignedName || item.tags.length > 0) ? (
-            <View style={s.chips}>
-              {etapa ? <Chip texto={etapa.label} cor={etapa.color} /> : null}
-              {item.fromAd ? (
-                <Chip
-                  texto={item.adModel || item.adTitle || "Anúncio"}
-                  cor={theme.accent}
-                  icone={<Megaphone size={9} color={theme.accent} strokeWidth={2.6} />}
-                />
-              ) : null}
-              {item.assignedName ? (
-                <Chip
-                  texto={item.assignedName}
-                  cor={theme.muted}
-                  icone={<UserRound size={9} color={theme.muted} strokeWidth={2.6} />}
-                />
-              ) : null}
-              {item.tags.map((t) => <Chip key={t.id} texto={t.name} cor={t.color} />)}
+          {marcadores.length > 0 ? (
+            <View style={s.marcadores}>
+              {marcadores.slice(0, 3).map((m, i) => (
+                <Text key={`${item.contactId}-m${i}`} style={[s.marcador, { color: m.cor }]} numberOfLines={1}>
+                  {m.texto}
+                </Text>
+              ))}
             </View>
           ) : null}
         </View>
@@ -162,10 +179,9 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
 
   return (
     <View style={s.tela}>
-      <View style={[s.cabecalho, { paddingTop: insets.top + 10 }]}>
+      <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
         <View style={s.tituloLinha}>
-          <Text style={s.titulo} numberOfLines={1}>{titulo}</Text>
-          {/* Perfil/sair: no PWA fica na casca, não na barra inferior. */}
+          <Text style={s.titulo}>Conversas</Text>
           <Pressable
             onPress={() => router.push("/(app)/perfil")}
             hitSlop={10}
@@ -178,29 +194,64 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
         </View>
 
         <View style={s.buscaBox}>
-          <Search size={15} color={theme.muted} strokeWidth={2.2} />
+          <Search size={16} color={theme.waMuted} strokeWidth={2.2} />
           <TextInput
             style={s.busca}
             value={busca}
             onChangeText={setBusca}
-            placeholder="Buscar por nome ou telefone"
-            placeholderTextColor={theme.muted}
+            placeholder="Pesquisar"
+            placeholderTextColor={theme.waMuted}
             autoCapitalize="none"
             autoCorrect={false}
             clearButtonMode="while-editing"
+            returnKeyType="search"
           />
         </View>
 
-        {me?.user ? (
-          <Pressable
-            onPress={() => setSoMinhas((v) => !v)}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: soMinhas }}
-            style={[s.filtro, soMinhas && { backgroundColor: theme.accent, borderColor: theme.accent }]}
-          >
-            <UserRound size={12} color={soMinhas ? theme.onAccent : theme.muted} strokeWidth={2.4} />
-            <Text style={[s.filtroTexto, soMinhas && { color: theme.onAccent, fontWeight: "700" }]}>Minhas</Text>
-          </Pressable>
+        {/* Filtros da caixa de entrada — não da barra inferior. */}
+        <View style={s.segmentos}>
+          {(["todas", "aguardando", "minhas"] as Filtro[]).map((f) => {
+            const on = filtro === f;
+            const rotulo = f === "todas" ? "Todas" : f === "aguardando" ? "Aguardando" : "Minhas";
+            return (
+              <Pressable
+                key={f}
+                onPress={() => setFiltro(f)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={[s.segmento, on && { backgroundColor: theme.accent, borderColor: theme.accent }]}
+              >
+                <Text style={[s.segmentoTexto, on && { color: theme.onAccent, fontWeight: "700" }]}>{rotulo}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {campanhas.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.campanhas}>
+            <Pressable
+              onPress={() => setCampanhaSel(null)}
+              style={[s.campanha, !campanhaSel && { borderColor: theme.accent }]}
+            >
+              <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]}>
+                Todas as campanhas
+              </Text>
+            </Pressable>
+            {campanhas.map((c) => {
+              const on = campanhaSel === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setCampanhaSel(on ? null : c)}
+                  style={[s.campanha, on && { borderColor: theme.accent }]}
+                >
+                  <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1}>
+                    {c}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         ) : null}
       </View>
 
@@ -218,10 +269,10 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
           data={visiveis}
           keyExtractor={(c) => c.contactId}
           renderItem={renderItem}
-          contentContainerStyle={
-            visiveis.length === 0 ? s.vazioBox : { paddingBottom: insets.bottom + 92 }
-          }
+          ItemSeparatorComponent={() => <View style={s.separador} />}
+          contentContainerStyle={visiveis.length === 0 ? s.vazioBox : { paddingBottom: insets.bottom + 92 }}
           ListEmptyComponent={<Text style={s.vazio}>{vazio}</Text>}
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={atualizando}
@@ -238,68 +289,60 @@ export function ListaConversas({ filtro, titulo }: { filtro: Filtro; titulo: str
   );
 }
 
-function Chip({ texto, cor, icone }: { texto: string; cor: string; icone?: React.ReactNode }) {
-  return (
-    <View style={[chipStyles.box, { borderColor: cor }]}>
-      {icone}
-      <Text style={[chipStyles.texto, { color: cor }]} numberOfLines={1}>{texto}</Text>
-    </View>
-  );
-}
-
-const chipStyles = StyleSheet.create({
-  box: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    borderRadius: 20, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 1.5,
-  },
-  texto: { fontSize: 10.5, fontWeight: "700" },
-});
-
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.surface },
+
     cabecalho: {
-      paddingHorizontal: 16, paddingBottom: 11, gap: 9,
-      backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border,
+      paddingHorizontal: 16, paddingBottom: 10, gap: 10,
+      backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
     },
     tituloLinha: { flexDirection: "row", alignItems: "center", gap: 10 },
-    titulo: { flex: 1, fontSize: 21, fontWeight: "800", color: t.text, letterSpacing: -0.4 },
+    // Título forte, como o "Conversas" grande do iOS.
+    titulo: { flex: 1, fontSize: 32, fontWeight: "800", color: t.text, letterSpacing: -0.8 },
     perfilBotao: {
       width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center",
-      borderWidth: 1, borderColor: t.border, backgroundColor: t.bg,
+      borderWidth: StyleSheet.hairlineWidth, borderColor: t.border, backgroundColor: t.bg,
     },
+    // Busca larga e com destaque, padrão iOS.
     buscaBox: {
       flexDirection: "row", alignItems: "center", gap: 7,
-      backgroundColor: t.bg, borderRadius: 10, borderWidth: 1, borderColor: t.border,
-      paddingHorizontal: 11,
+      backgroundColor: t.raise, borderRadius: 11, paddingHorizontal: 10, height: 38,
     },
-    busca: { flex: 1, paddingVertical: 9, fontSize: 14.5, color: t.text },
-    filtro: {
-      flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
-      borderRadius: 20, borderWidth: 1, borderColor: t.border, paddingHorizontal: 11, paddingVertical: 4.5,
-    },
-    filtroTexto: { fontSize: 12, fontWeight: "600", color: t.muted },
+    busca: { flex: 1, fontSize: 16, color: t.text, padding: 0 },
 
-    // Linha: mesmas medidas do PWA (padding 13/16, borda esquerda de 3px).
-    linha: {
-      flexDirection: "row", alignItems: "center", gap: 12,
-      paddingVertical: 13, paddingHorizontal: 16,
-      borderBottomWidth: 1, borderBottomColor: t.border,
-      borderLeftWidth: 3,
+    segmentos: { flexDirection: "row", gap: 7 },
+    segmento: {
+      borderRadius: 20, borderWidth: 1, borderColor: t.border,
+      paddingHorizontal: 13, paddingVertical: 5.5, backgroundColor: t.bg,
     },
-    avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-    avatarTexto: { color: "#fff", fontWeight: "700", fontSize: 17.6 },
+    segmentoTexto: { fontSize: 13, fontWeight: "600", color: t.muted },
+
+    campanhas: { gap: 6, paddingRight: 8 },
+    campanha: {
+      borderRadius: 20, borderWidth: 1, borderColor: t.border,
+      paddingHorizontal: 11, paddingVertical: 4, maxWidth: 190, backgroundColor: t.bg,
+    },
+    campanhaTexto: { fontSize: 12, fontWeight: "600", color: t.muted },
+
+    // Linha da conversa: nome/mensagem/hora dominam; marcadores em terceiro nível.
+    linha: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 16 },
+    avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+    avatarTexto: { color: "#fff", fontWeight: "600", fontSize: 21 },
     corpo: { flex: 1, gap: 2 },
-    linhaTopo: { flexDirection: "row", alignItems: "center", gap: 8 },
-    nome: { flex: 1, fontSize: 14.5, fontWeight: "600", color: t.text },
-    nomeEsperando: { fontWeight: "800" },
-    hora: { fontSize: 11.5, color: t.muted },
-    previa: { fontSize: 13, color: t.muted },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 3 },
+    topo: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+    nome: { flex: 1, fontSize: 17, fontWeight: "600", color: t.text, letterSpacing: -0.2 },
+    hora: { fontSize: 12.5, color: t.waMuted },
+    meio: { flexDirection: "row", alignItems: "center", gap: 8 },
+    previa: { flex: 1, fontSize: 15, color: t.waMuted, letterSpacing: -0.1 },
+    pontoEspera: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: VERDE_ESPERA },
+    marcadores: { flexDirection: "row", gap: 10, marginTop: 1 },
+    marcador: { fontSize: 11, fontWeight: "600", opacity: 0.85, maxWidth: 120 },
 
+    separador: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 80 },
     centro: { flex: 1, alignItems: "center", justifyContent: "center" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-    vazio: { color: t.muted, fontSize: 14.5, textAlign: "center" },
+    vazio: { color: t.muted, fontSize: 15, textAlign: "center" },
     rodape: { paddingVertical: 16 },
     erroCaixa: { padding: 12, backgroundColor: t.critSoft, gap: 4 },
     erroTexto: { color: t.crit, fontSize: 13 },

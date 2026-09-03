@@ -12,8 +12,8 @@ import { ApiError, apiErrorFrom, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
-  parseConversation, parseConversationList, parseMe, parseQuoteReviews,
-  type Conversation, type ConversationList, type Me, type QuoteReview,
+  parseAdsPerformance, parseConversation, parseConversationList, parseMe, parseQuoteReviews,
+  type AdsPerformance, type Conversation, type ConversationList, type Me, type QuoteReview,
 } from "./contracts";
 
 export interface StoredSession {
@@ -227,6 +227,12 @@ export class VeloceClient {
   async authHeaders(): Promise<Record<string, string>> {
     const s = await this.store.read();
     return s?.token ? { Authorization: `Bearer ${s.token}` } : {};
+  }
+
+  // ── anúncios (desempenho de mídia) ──────────────────────────────────────────
+
+  async adsPerformance(periodo = "month"): Promise<AdsPerformance> {
+    return parseAdsPerformance(await this.request(`${portalPath("/ads")}?p=${encodeURIComponent(periodo)}`));
   }
 
   // ── orçamentos ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
-import { useSession } from "../../../src/ui/session";
 import { ListaConversas } from "../../../src/ui/lista-conversas";
 
+// Módulo Conversas. Os filtros (Todas/Aguardando/Minhas/campanha) vivem DENTRO
+// dele — deixaram de ser abas da barra inferior.
 export default function Conversas() {
-  const { me } = useSession();
-  return <ListaConversas filtro="todas" titulo={me?.brand.name ?? "Conversas"} />;
+  return <ListaConversas />;
 }

@@ -116,6 +116,19 @@ export interface QuoteReview {
   submittedAt: string | null;
 }
 
+/** Desempenho de mídia (módulo Anúncios). Espelha ClientAds de lib/notifications/client-ads.ts. */
+export interface AdsCampaign { name: string; spend: number; leads: number; cpl: number | null; pctSpend: number }
+export interface AdsPerformance {
+  hasMeta: boolean;
+  periodLabel: string;
+  currency: string;
+  spend: number;
+  leads: number;
+  cpl: number | null;
+  deltas: { spend: number | null; leads: number | null; cpl: number | null };
+  topCampaigns: AdsCampaign[];
+}
+
 // ── Parsers ───────────────────────────────────────────────────────────────────
 
 export class ContractError extends Error {
@@ -310,4 +323,33 @@ export function parseQuoteReviews(input: unknown): QuoteReview[] {
       } satisfies QuoteReview;
     })
     .filter((q): q is QuoteReview => q !== null);
+}
+
+export function parseAdsPerformance(input: unknown): AdsPerformance {
+  const d = obj(input, "desempenho de anúncios");
+  const del = d.deltas && typeof d.deltas === "object" ? (d.deltas as Record<string, unknown>) : {};
+  return {
+    hasMeta: bool(d.hasMeta),
+    periodLabel: str(d.periodLabel) || "",
+    currency: str(d.currency) || "BRL",
+    spend: num(d.spend) ?? 0,
+    leads: num(d.leads) ?? 0,
+    cpl: num(d.cpl),
+    deltas: { spend: num(del.spend), leads: num(del.leads), cpl: num(del.cpl) },
+    topCampaigns: arr(d.topCampaigns)
+      .map((v) => {
+        if (!v || typeof v !== "object") return null;
+        const c = v as Record<string, unknown>;
+        const name = str(c.name);
+        if (!name) return null;
+        return {
+          name,
+          spend: num(c.spend) ?? 0,
+          leads: num(c.leads) ?? 0,
+          cpl: num(c.cpl),
+          pctSpend: num(c.pctSpend) ?? 0,
+        } satisfies AdsCampaign;
+      })
+      .filter((c): c is AdsCampaign => c !== null),
+  };
 }
