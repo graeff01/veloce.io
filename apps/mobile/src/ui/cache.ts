@@ -78,6 +78,14 @@ export function marcarLida(contactId: string): MapaLidas {
   return mapa;
 }
 
+/** Marca como NÃO lida: esquece a visita, e a conversa volta a destacar. */
+export function marcarNaoLida(contactId: string): MapaLidas {
+  const mapa = lerLidas();
+  delete mapa[contactId];
+  escreverJson(LIDAS, mapa);
+  return mapa;
+}
+
 /**
  * Não lida = chegou coisa depois da última visita. Conversa nunca aberta só
  * conta como não lida se a última mensagem for DO LEAD — senão toda conversa

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { SessionProvider, useSession } from "../src/ui/session";
@@ -67,10 +68,14 @@ function Guard() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <SessionProvider>
-        <Guard />
-      </SessionProvider>
-    </SafeAreaProvider>
+    // GestureHandlerRootView na raiz: sem ela o deslizar da lista não recebe
+    // os toques. Precisa envolver TUDO, inclusive os modais.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <SessionProvider>
+          <Guard />
+        </SessionProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

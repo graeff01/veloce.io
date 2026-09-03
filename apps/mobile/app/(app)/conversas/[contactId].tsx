@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
-  Pressable, StyleSheet, Text, TextInput, useColorScheme, View,
+  ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal,
+  Platform, Pressable, StyleSheet, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as Sharing from "expo-sharing";
 import * as Haptics from "expo-haptics";
 import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
@@ -19,7 +21,8 @@ import { midiaDaMensagem } from "../../../src/ui/media";
 import { useConversaAoVivo } from "../../../src/ui/stream";
 import { marcarLida } from "../../../src/ui/cache";
 import { ApiError } from "../../../src/core/errors";
-import type { Conversation, Message } from "../../../src/core/contracts";
+import type { Conversation, Message, Tag } from "../../../src/core/contracts";
+import { lerLidas } from "../../../src/ui/cache";
 
 // ── Thread ────────────────────────────────────────────────────────────────────
 // Visual portado do portal: fundo do chat na cor do WhatsApp, balão recebido
@@ -28,6 +31,7 @@ import type { Conversation, Message } from "../../../src/core/contracts";
 
 type Item =
   | { tipo: "dia"; id: string; rotulo: string }
+  | { tipo: "naolidas"; id: string }
   | { tipo: "msg"; id: string; msg: Message; pendente?: boolean };
 
 function rotuloDoDia(iso: string): string {
@@ -70,9 +74,30 @@ export default function Thread() {
   // Mensagens que JÁ apareceram na tela mas ainda não voltaram do servidor.
   const [pendentes, setPendentes] = useState<Message[]>([]);
   const [imagemAberta, setImagemAberta] = useState<string | null>(null);
+  const [longe, setLonge] = useState(false);   // rolado para cima
   const lista = useRef<FlatList<Item>>(null);
+  // A última visita é lida ANTES de marcar como lida — senão o divisor nunca
+  // apareceria, porque abrir a conversa já a marcaria.
+  const visitaAnterior = useRef<string | undefined>(
+    contactId ? lerLidas()[String(contactId)] : undefined,
+  );
 
   const gravador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  /** Folha de ações do iOS. Nativa: é o menu que a pessoa já conhece. */
+  const folha = useCallback((titulo: string, opcoes: string[], aoEscolher: (i: number) => void, destrutivo?: number) => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: titulo,
+        options: [...opcoes, "Cancelar"],
+        cancelButtonIndex: opcoes.length,
+        destructiveButtonIndex: destrutivo,
+        userInterfaceStyle: theme.dark ? "dark" : "light",
+      },
+      (i) => { if (i < opcoes.length) aoEscolher(i); },
+    );
+  }, [theme.dark]);
+
 
   const carregar = useCallback(async (silencioso = false) => {
     if (!client || !contactId) return;
@@ -103,6 +128,8 @@ export default function Thread() {
   const itens = useMemo<Item[]>(() => {
     if (!conversa) return [];
     const todas = [...conversa.items, ...pendentes];
+    const corte = visitaAnterior.current ? Date.parse(visitaAnterior.current) : null;
+    let divisorPosto = false;
     const out: Item[] = [];
     let diaAtual = "";
     for (const m of todas) {
@@ -110,6 +137,12 @@ export default function Thread() {
       if (dia !== diaAtual) {
         diaAtual = dia;
         out.push({ tipo: "dia", id: `dia-${dia}`, rotulo: rotuloDoDia(m.timestamp) });
+      }
+      // Divisor antes da primeira mensagem do LEAD que chegou depois da última
+      // visita — a linha que o WhatsApp usa para você saber onde parou.
+      if (!divisorPosto && corte && m.direction === "in" && Date.parse(m.timestamp) > corte) {
+        divisorPosto = true;
+        out.push({ tipo: "naolidas", id: "divisor-naolidas" });
       }
       out.push({ tipo: "msg", id: m.id, msg: m, pendente: m.id.startsWith("local-") });
     }
@@ -182,6 +215,39 @@ export default function Thread() {
     }
   }, [client, contactId, carregar]);
 
+  const enviarDocumento = useCallback(async () => {
+    if (!client || !contactId) return;
+    const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true }).catch(() => null);
+    if (!r || r.canceled || !r.assets?.[0]) return;
+    const a = r.assets[0];
+
+    const form = new FormData();
+    form.append("file", {
+      uri: a.uri, name: a.name || "documento", type: a.mimeType || "application/octet-stream",
+    } as unknown as Blob);
+    form.append("kind", "document");
+
+    vibrar();
+    setEnviando(true);
+    try {
+      await client.sendMedia(String(contactId), form);
+      await carregar(true);
+    } catch (e) {
+      Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
+    } finally {
+      setEnviando(false);
+    }
+  }, [client, contactId, carregar]);
+
+  /** O clipe abre a escolha: foto ou arquivo. */
+  const escolherAnexo = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    folha("Anexar", ["Foto da galeria", "Documento"], (i) => {
+      if (i === 0) void enviarImagem(false);
+      else void enviarDocumento();
+    });
+  }, [folha, enviarImagem, enviarDocumento]);
+
   const alternarGravacao = useCallback(async () => {
     if (!client || !contactId) return;
     if (gravando) {
@@ -218,6 +284,94 @@ export default function Thread() {
     vibrar(Haptics.ImpactFeedbackStyle.Medium);
     setGravando(true);
   }, [client, contactId, gravando, gravador, carregar]);
+
+  const mudarEtapa = useCallback(() => {
+    const chaves = Object.keys(STAGE);
+    folha("Etapa do funil", chaves.map((k) => STAGE[k]!.label), async (i) => {
+      if (!client || !contactId) return;
+      try {
+        await client.setFunnelStage(String(contactId), chaves[i]!);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await carregar(true);
+      } catch (e) {
+        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
+      }
+    });
+  }, [folha, client, contactId, carregar]);
+
+  const transferir = useCallback(() => {
+    if (!conversa?.attendants.length) return;
+    const pessoas = conversa.attendants;
+    folha("Dono da conversa", [...pessoas.map((a) => a.name), "Remover dono"], async (i) => {
+      if (!client || !contactId) return;
+      const alvo = i < pessoas.length ? pessoas[i]!.email : null;
+      try {
+        await client.assign(String(contactId), alvo);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await carregar(true);
+      } catch (e) {
+        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
+      }
+    }, pessoas.length);
+  }, [folha, conversa, client, contactId, carregar]);
+
+  const editarEtiquetas = useCallback(async () => {
+    if (!client || !contactId || !conversa) return;
+    let disponiveis: Tag[] = [];
+    try { disponiveis = await client.tags(); } catch { return; }
+    if (!disponiveis.length) { Alert.alert("Sem etiquetas", "Crie etiquetas no painel web primeiro."); return; }
+
+    const aplicadas = new Set(conversa.tags.map((t) => t.id));
+    folha("Etiquetas", disponiveis.map((t) => `${aplicadas.has(t.id) ? "✓  " : ""}${t.name}`), async (i) => {
+      const t = disponiveis[i]!;
+      try {
+        if (aplicadas.has(t.id)) await client.removeTag(String(contactId), t.id);
+        else await client.addTag(String(contactId), t.id);
+        void Haptics.selectionAsync().catch(() => {});
+        await carregar(true);
+      } catch (e) {
+        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
+      }
+    });
+  }, [folha, client, contactId, conversa, carregar]);
+
+  const pedirIa = useCallback(() => {
+    Alert.alert(
+      "A IA responde este lead?",
+      "Ela vai redigir e ENVIAR a próxima resposta no WhatsApp.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Pode responder",
+          onPress: async () => {
+            if (!client || !contactId) return;
+            setEnviando(true);
+            try {
+              await client.aiReply(String(contactId));
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              await carregar(true);
+            } catch (e) {
+              Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
+            } finally {
+              setEnviando(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [client, contactId, carregar]);
+
+  const menu = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    folha(conversa?.contact.name ?? "Conversa",
+      ["IA responder este lead", "Etapa do funil", "Etiquetas", "Dono da conversa"],
+      (i) => {
+        if (i === 0) pedirIa();
+        else if (i === 1) mudarEtapa();
+        else if (i === 2) void editarEtiquetas();
+        else transferir();
+      });
+  }, [folha, conversa, pedirIa, mudarEtapa, editarEtiquetas, transferir]);
 
   const assumir = useCallback(async () => {
     if (!client || !contactId || !conversa?.me) return;
@@ -274,12 +428,18 @@ export default function Thread() {
               </View>
             </View>
           ),
-          headerRight: () =>
-            !minha && conversa.me ? (
-              <Pressable onPress={() => void assumir()} hitSlop={8} accessibilityRole="button">
-                <Text style={s.assumirTexto}>Assumir</Text>
+          headerRight: () => (
+            <View style={s.acoesTopo}>
+              {!minha && conversa.me ? (
+                <Pressable onPress={() => void assumir()} hitSlop={8} accessibilityRole="button">
+                  <Text style={s.assumirTexto}>Assumir</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={menu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Mais ações">
+                <Simbolo nome={"ellipsis.circle" as never} tamanho={24} cor={theme.accent} />
               </Pressable>
-            ) : null,
+            </View>
+          ),
         }}
       />
 
@@ -301,9 +461,22 @@ export default function Thread() {
             </View>
           ) : null
         }
+        onScroll={(e) => {
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          setLonge(contentSize.height - contentOffset.y - layoutMeasurement.height > 260);
+        }}
+        scrollEventThrottle={64}
         renderItem={({ item }) =>
           item.tipo === "dia" ? (
-            <View style={s.diaLinha}><Text style={s.diaTexto}>{item.rotulo}</Text></View>
+            <View style={s.diaLinha}>
+              <Text style={s.diaTexto} maxFontSizeMultiplier={1.3}>{item.rotulo}</Text>
+            </View>
+          ) : item.tipo === "naolidas" ? (
+            <View style={s.naoLidasLinha}>
+              <View style={s.naoLidasRisco} />
+              <Text style={s.naoLidasTexto} maxFontSizeMultiplier={1.3}>MENSAGENS NÃO LIDAS</Text>
+              <View style={s.naoLidasRisco} />
+            </View>
           ) : (
             <Balao
               msg={item.msg}
@@ -317,6 +490,17 @@ export default function Thread() {
         onContentSizeChange={() => lista.current?.scrollToEnd({ animated: false })}
       />
 
+      {longe ? (
+        <Pressable
+          style={s.descer}
+          onPress={() => lista.current?.scrollToEnd({ animated: true })}
+          accessibilityRole="button"
+          accessibilityLabel="Ir para a última mensagem"
+        >
+          <Simbolo nome={"chevron.down" as never} tamanho={16} cor={theme.text} peso="semibold" />
+        </Pressable>
+      ) : null}
+
       {!conversa.windowOpen ? (
         <View style={s.janelaFechada}>
           <Text style={s.janelaTexto}>
@@ -326,7 +510,7 @@ export default function Thread() {
       ) : null}
 
       <View style={[s.barra, { paddingBottom: insets.bottom + 9 }]}>
-        <Pressable onPress={() => void enviarImagem(false)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Anexar da galeria">
+        <Pressable onPress={escolherAnexo} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Anexar">
           <View style={!podeEnviar && s.off}><Simbolo nome={SIMBOLO.anexo as never} tamanho={25} cor={theme.muted} /></View>
         </Pressable>
         <Pressable onPress={() => void enviarImagem(true)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Câmera">
@@ -452,6 +636,7 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
 
   const ehImagem = msg.type === "image" || msg.type === "sticker";
   const ehAudio = msg.type === "audio";
+  const ehArquivo = msg.type === "document" || msg.type === "video";
 
   useEffect(() => {
     if (pendente || !client || (!ehImagem && !ehAudio)) return;
@@ -467,7 +652,7 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
   const autor = saiu ? (msg.aiGenerated ? "IA" : msg.sentByName || "Equipe") : null;
 
   return (
-    <View style={[s.balaoLinha, { justifyContent: saiu ? "flex-end" : "flex-start" }]}>
+    <View style={[s.balaoLinha, msg.reaction && s.balaoComReacao, { justifyContent: saiu ? "flex-end" : "flex-start" }]}>
       <View
         style={[
           s.balao,
@@ -487,11 +672,44 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
           <BolhaAudio uri={midia} cor={corTexto} corMeta={corMeta} duracaoTexto="áudio" />
         ) : null}
 
+        {/* Documento e vídeo: antes viravam só a palavra "Documento". Agora
+            abrem no visualizador do sistema. */}
+        {ehArquivo ? (
+          <Pressable
+            onPress={async () => {
+              if (!client) return;
+              try {
+                const uri = await midiaDaMensagem(client, contactId, msg.id, msg.type);
+                if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+              } catch {
+                Alert.alert("Arquivo indisponível", "Não foi possível abrir agora.");
+              }
+            }}
+            style={s.arquivo}
+            accessibilityRole="button"
+          >
+            <Simbolo
+              nome={(msg.type === "video" ? "play.rectangle.fill" : "doc.fill") as never}
+              tamanho={22}
+              cor={corTexto}
+            />
+            <Text style={[s.arquivoTexto, { color: corTexto }]} numberOfLines={1}>
+              {msg.text?.trim() || (msg.type === "video" ? "Vídeo" : "Documento")}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {msg.transcription ? (
           <Text style={[s.transcricao, { color: corMeta }]}>“{msg.transcription}”</Text>
         ) : null}
 
-        {msg.text ? <Text style={[s.textoBalao, { color: corTexto }]}>{msg.text}</Text> : null}
+        {msg.text && !ehArquivo ? <Text style={[s.textoBalao, { color: corTexto }]}>{msg.text}</Text> : null}
+
+        {msg.reaction ? (
+          <View style={[s.reacao, saiu ? { left: 8 } : { right: 8 }, { backgroundColor: theme.waIn, borderColor: theme.border }]}>
+            <Text style={s.reacaoTexto}>{msg.reaction}</Text>
+          </View>
+        ) : null}
 
         <View style={s.meta}>
           <Text style={[s.metaTexto, { color: corMeta }]} maxFontSizeMultiplier={1.3}>
@@ -519,7 +737,8 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     tela: { flex: 1, backgroundColor: t.waChat },
     centro: { alignItems: "center", justifyContent: "center" },
 
-    tituloNav: { flexDirection: "row", alignItems: "center", gap: 9, maxWidth: 230 },
+    acoesTopo: { flexDirection: "row", alignItems: "center", gap: 14 },
+    tituloNav: { flexDirection: "row", alignItems: "center", gap: 9, maxWidth: 200 },
     tituloNavCorpo: { flexShrink: 1 },
     avatarPeq: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
     avatarPeqTexto: { color: "#fff", fontWeight: "700", fontSize: 13.6 },
@@ -547,6 +766,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     },
 
     balaoLinha: { flexDirection: "row", marginBottom: 4 },
+    balaoComReacao: { marginBottom: 15 },
     balao: {
       maxWidth: "82%",
       paddingTop: 6, paddingHorizontal: 9, paddingBottom: 5,
@@ -555,6 +775,15 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       elevation: 1,
     },
     balaoPendente: { opacity: 0.75 },
+    // Reação pendurada na borda inferior do balão — posição do WhatsApp.
+    reacao: {
+      position: "absolute", bottom: -12, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth,
+      paddingHorizontal: 5, paddingVertical: 1,
+      shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    },
+    reacaoTexto: { fontSize: 12, lineHeight: 16 },
+    arquivo: { flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 3, minWidth: 150 },
+    arquivoTexto: { ...TIPO.subtitulo, flex: 1, fontWeight: "500" },
     textoBalao: { fontSize: 16, lineHeight: 21, letterSpacing: -0.3 },
     transcricao: { ...TIPO.nota, fontStyle: "italic", marginTop: 2 },
     imagem: { width: 220, height: 165, borderRadius: 6, marginBottom: 4 },
@@ -565,6 +794,16 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     visorImagem: { width: "100%", height: "82%" },
     visorFechar: { position: "absolute", right: 18, zIndex: 2 },
 
+    naoLidasLinha: { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 10 },
+    naoLidasRisco: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: t.crit, opacity: 0.5 },
+    naoLidasTexto: { ...TIPO.legenda2, fontWeight: "700", color: t.crit, letterSpacing: 0.6 },
+    // Voltar ao fim: só aparece quando você já subiu bastante.
+    descer: {
+      position: "absolute", right: 14, bottom: 96, width: 38, height: 38, borderRadius: 19,
+      alignItems: "center", justifyContent: "center", backgroundColor: t.surface,
+      borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
+      shadowColor: "#000", shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    },
     janelaFechada: {
       paddingHorizontal: 16, paddingVertical: 8,
       backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border,

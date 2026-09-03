@@ -12,9 +12,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet,
-  Text, useColorScheme, View,
+  ActionSheetIOS, ActivityIndicator, AppState, FlatList, Pressable, RefreshControl,
+  ScrollView, StyleSheet, Text, useColorScheme, View,
 } from "react-native";
+import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import * as Notifications from "expo-notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
@@ -25,7 +27,7 @@ import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
 import { aguardandoResposta, campanhaDe, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
-import { guardarLista, lerLidas, lerLista, naoLida } from "./cache";
+import { guardarLista, lerLidas, lerLista, marcarLida, marcarNaoLida, naoLida } from "./cache";
 import type { ConversationRow } from "../core/contracts";
 
 export type { Filtro };
@@ -76,6 +78,7 @@ export function ListaConversas() {
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [temMais, setTemMais] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [meuEmail, setMeuEmail] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => { if (campanha) setCampanhaSel(campanha); }, [campanha]);
@@ -98,6 +101,7 @@ export function ListaConversas() {
       // Só a primeira página vira cache — é o que a próxima abertura precisa.
       if (offset === 0 && !busca && filtro === "todas") guardarLista(r.conversations);
       setTemMais(r.hasMore);
+      setMeuEmail(r.me);
       setErro(null);
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -120,6 +124,22 @@ export function ListaConversas() {
     void carregar({ silencioso: true });
   }, [carregar]));
 
+  // A lista se atualiza sozinha enquanto está visível. Não há SSE de lista no
+  // servidor, então é uma verificação a cada 20s — bem mais leve que o polling
+  // de 6s do portal, e só com o app em primeiro plano.
+  useFocusEffect(useCallback(() => {
+    const tick = () => { if (AppState.currentState === "active") void carregar({ silencioso: true }); };
+    const id = setInterval(tick, 20_000);
+    return () => clearInterval(id);
+  }, [carregar]));
+
+  // Contador no ÍCONE do app: o número de conversas por ler aparece na tela
+  // inicial, como em qualquer app de mensagem.
+  useEffect(() => {
+    const n = linhas.reduce((acc, c) => acc + (naoLida(c, lidas) ? 1 : 0), 0);
+    void Notifications.setBadgeCountAsync(n).catch(() => {});
+  }, [linhas, lidas]);
+
   const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
 
   useEffect(() => {
@@ -138,6 +158,39 @@ export function ListaConversas() {
     void Haptics.selectionAsync().catch(() => {});
     setCampanhaSel(c);
   }, []);
+
+  const alternarLeitura = useCallback((c: ConversationRow, lida: boolean) => {
+    void Haptics.selectionAsync().catch(() => {});
+    setLidas(lida ? marcarLida(c.contactId) : marcarNaoLida(c.contactId));
+  }, []);
+
+  /** Pressionar e segurar: as mesmas ações do deslizar, para quem prefere o menu. */
+  const menuDaLinha = useCallback((c: ConversationRow) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const nova = naoLida(c, lidas);
+    const souDona = !!c.assignedEmail && c.assignedEmail === meuEmail;
+    const opcoes = [nova ? "Marcar como lida" : "Marcar como não lida"];
+    if (!souDona) opcoes.push("Assumir conversa");
+
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: c.name,
+        options: [...opcoes, "Cancelar"],
+        cancelButtonIndex: opcoes.length,
+        userInterfaceStyle: theme.dark ? "dark" : "light",
+      },
+      async (i) => {
+        if (i === 0) { alternarLeitura(c, nova); return; }
+        if (i === 1 && client && meuEmail) {
+          try {
+            await client.assign(c.contactId, meuEmail);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            await carregar({ silencioso: true });
+          } catch { /* silencioso: o menu já fechou */ }
+        }
+      },
+    );
+  }, [lidas, meuEmail, theme.dark, alternarLeitura, client, carregar]);
 
   const vazio =
     busca ? "Nenhuma conversa encontrada."
@@ -158,9 +211,42 @@ export function ListaConversas() {
     // e dono saem da lista: a campanha já aparece no topo da conversa, e o dono é
     // exatamente o que o filtro "Minhas" resolve.
 
+    const souDona = !!item.assignedEmail && item.assignedEmail === meuEmail;
+
+    // Deslizar revela as ações — o gesto que todo app de caixa de entrada tem.
+    const acoes = () => (
+      <View style={s.acoes}>
+        <Pressable
+          style={[s.acao, { backgroundColor: "#2563EB" }]}
+          onPress={() => alternarLeitura(item, nova)}
+          accessibilityRole="button"
+        >
+          <Simbolo nome={(nova ? "envelope.open.fill" : "envelope.badge.fill") as never} tamanho={20} cor="#fff" />
+          <Text style={s.acaoTexto}>{nova ? "Lida" : "Não lida"}</Text>
+        </Pressable>
+        {!souDona ? (
+          <Pressable
+            style={[s.acao, { backgroundColor: theme.accent }]}
+            onPress={async () => {
+              if (!client || !meuEmail) return;
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              try { await client.assign(item.contactId, meuEmail); await carregar({ silencioso: true }); } catch { /* silencioso */ }
+            }}
+            accessibilityRole="button"
+          >
+            <Simbolo nome={"person.fill.checkmark" as never} tamanho={20} cor={theme.onAccent} />
+            <Text style={[s.acaoTexto, { color: theme.onAccent }]}>Assumir</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+
     return (
+      <Swipeable renderRightActions={acoes} friction={1.6} rightThreshold={38} overshootRight={false}>
       <Pressable
         onPress={() => router.push(`/(app)/conversas/${item.contactId}`)}
+        onLongPress={() => menuDaLinha(item)}
+        delayLongPress={340}
         accessibilityRole="button"
         accessibilityLabel={`Conversa com ${item.name}`}
         style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
@@ -189,6 +275,7 @@ export function ListaConversas() {
           ) : null}
         </View>
       </Pressable>
+      </Swipeable>
     );
   };
 
@@ -338,6 +425,9 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     marcador: { ...TIPO.nota, fontWeight: "600", marginTop: 1 },
 
     separador: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 80 },
+    acoes: { flexDirection: "row" },
+    acao: { width: 78, alignItems: "center", justifyContent: "center", gap: 3 },
+    acaoTexto: { ...TIPO.legenda2, color: "#fff", fontWeight: "600" },
     centro: { flex: 1, alignItems: "center", justifyContent: "center" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", marginTop: 14 },

@@ -63,6 +63,14 @@ export default function Vincular() {
         <Text style={s.marca}>Veloce</Text>
         <Text style={s.sub}>Atendimento dos seus leads no WhatsApp.</Text>
 
+        <View style={s.explica}>
+          <Text style={s.explicaTitulo}>Primeiro acesso</Text>
+          <Text style={s.explicaTexto}>
+            Cole abaixo o link do painel que a sua agência enviou — o mesmo que você
+            abre no navegador. Ele identifica a sua loja e só é pedido desta vez.
+          </Text>
+        </View>
+
         {configError ? (
           <View style={s.aviso}>
             <Text style={s.avisoTexto}>{configError}</Text>
@@ -81,7 +89,7 @@ export default function Vincular() {
           keyboardType="url"
           textContentType="URL"
         />
-        <Text style={s.dica}>É o mesmo link que você já usa no navegador. Só é pedido nesta primeira vez.</Text>
+        <Text style={s.dica}>Começa com https:// e tem /r/ no meio.</Text>
 
         <Text style={s.rotulo}>E-mail</Text>
         <TextInput
@@ -135,6 +143,11 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       paddingHorizontal: 14, paddingVertical: 14, fontSize: 16, color: t.text,
     },
     dica: { fontSize: 12, color: t.muted, marginTop: 6 },
+    explica: {
+      backgroundColor: t.surface, borderRadius: 10, padding: 14, marginTop: 4, gap: 5,
+    },
+    explicaTitulo: { fontSize: 13, fontWeight: "600", color: t.text },
+    explicaTexto: { fontSize: 13, lineHeight: 18, color: t.muted },
     erro: { color: t.crit, fontSize: 14, marginTop: 16 },
     aviso: { backgroundColor: t.surface, borderColor: t.crit, borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
     avisoTexto: { color: t.crit, fontSize: 13 },

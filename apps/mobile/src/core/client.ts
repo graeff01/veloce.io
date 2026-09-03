@@ -12,8 +12,8 @@ import { ApiError, apiErrorFrom, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
-  parseAdsPerformance, parseConversation, parseConversationList, parseMe, parseQuoteReviews,
-  type AdsPerformance, type Conversation, type ConversationList, type Me, type QuoteReview,
+  parseAdsPerformance, parseConversation, parseConversationList, parseMe, parseQuoteReviews, parseTags,
+  type AdsPerformance, type Conversation, type ConversationList, type Me, type QuoteReview, type Tag,
 } from "./contracts";
 
 export interface StoredSession {
@@ -218,6 +218,37 @@ export class VeloceClient {
 
   async addTag(contactId: string, tagId: string): Promise<void> {
     await this.request(portalPath(`/conversations/${contactId}/tags`), { method: "POST", body: { tagId } });
+  }
+
+  async removeTag(contactId: string, tagId: string): Promise<void> {
+    await this.request(portalPath(`/conversations/${contactId}/tags?tagId=${encodeURIComponent(tagId)}`), {
+      method: "DELETE",
+    });
+  }
+
+  /** Etiquetas do cliente (para o menu de aplicar). */
+  async tags(): Promise<Tag[]> {
+    return parseTags(await this.request(portalPath("/tags")));
+  }
+
+  async criarTag(name: string, color: string): Promise<Tag | null> {
+    const d = await this.request(portalPath("/tags"), { method: "POST", body: { name, color } });
+    const t = d && typeof d === "object" ? (d as Record<string, unknown>) : null;
+    return t && typeof t.id === "string" && typeof t.name === "string"
+      ? { id: t.id, name: t.name, color: typeof t.color === "string" ? t.color : "#64748B" }
+      : null;
+  }
+
+  /** Move a etapa do funil. As etapas válidas são as do servidor. */
+  async setFunnelStage(contactId: string, stage: string): Promise<void> {
+    await this.request(portalPath(`/funnel/${contactId}`), { method: "POST", body: { stage } });
+  }
+
+  /** Pede à IA que redija e ENVIE a próxima resposta ao lead. Gasta modelo. */
+  async aiReply(contactId: string): Promise<string | null> {
+    const d = await this.request(portalPath(`/conversations/${contactId}/ai-reply`), { method: "POST" });
+    const o = d && typeof d === "object" ? (d as Record<string, unknown>) : {};
+    return typeof o.reply === "string" ? o.reply : null;
   }
 
   /**

@@ -166,7 +166,7 @@ function parseTag(v: unknown): Tag | null {
   return { id, name, color: (t && str(t.color)) || "#64748B" };
 }
 
-const parseTags = (v: unknown): Tag[] => arr(v).map(parseTag).filter((t): t is Tag => t !== null);
+export const parseTags = (v: unknown): Tag[] => arr(v).map(parseTag).filter((t): t is Tag => t !== null);
 
 function parseAttendant(v: unknown): Attendant | null {
   const a = v && typeof v === "object" ? (v as Record<string, unknown>) : null;
