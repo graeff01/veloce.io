@@ -16,6 +16,7 @@ import {
   ScrollView, StyleSheet, Text, useColorScheme, View,
 } from "react-native";
 import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
 import * as Notifications from "expo-notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -23,6 +24,7 @@ import SegmentedControl from "@react-native-segmented-control/segmented-control"
 import * as Haptics from "expo-haptics";
 import { SIMBOLO, Simbolo } from "./simbolo";
 import { TIPO } from "./tipografia";
+import { CURVA, ESP, RAIO } from "./forma";
 import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
@@ -199,7 +201,7 @@ export function ListaConversas() {
     : filtro === "minhas" ? "Você ainda não é dona de nenhuma conversa."
     : "Nenhuma conversa ainda.";
 
-  const renderItem = ({ item }: { item: ConversationRow }) => {
+  const renderItem = ({ item, index: indice }: { item: ConversationRow; index: number }) => {
     const esperando = aguardandoResposta(item);
     const nova = naoLida(item, lidas);
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
@@ -242,6 +244,9 @@ export function ListaConversas() {
     );
 
     return (
+      // Entrada escalonada: a lista assenta em vez de aparecer seca. O atraso
+      // para no 8º item — além disso vira espera, não elegância.
+      <Animated.View entering={FadeInDown.duration(230).delay(Math.min(indice, 8) * 26)}>
       <Swipeable renderRightActions={acoes} friction={1.6} rightThreshold={38} overshootRight={false}>
       <Pressable
         onPress={() => router.push(`/(app)/conversas/${item.contactId}`)}
@@ -276,6 +281,7 @@ export function ListaConversas() {
         </View>
       </Pressable>
       </Swipeable>
+      </Animated.View>
     );
   };
 
@@ -358,10 +364,11 @@ export function ListaConversas() {
       {carregando ? (
         <View style={s.centro}><ActivityIndicator color={theme.accent} /></View>
       ) : (
-        <FlatList
+        <Animated.FlatList
           data={visiveis}
           keyExtractor={(c) => c.contactId}
           renderItem={renderItem}
+          itemLayoutAnimation={LinearTransition.duration(240)}
           ListHeaderComponent={cabecalhoDaLista}
           ItemSeparatorComponent={() => <View style={s.separador} />}
           // Faz o título grande encolher e a busca se comportar como no sistema.
@@ -398,16 +405,16 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.surface },
 
-    filtros: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10, gap: 10, backgroundColor: t.surface },
+    filtros: { paddingHorizontal: ESP.gutter, paddingTop: ESP.xs, paddingBottom: ESP.md, gap: ESP.md, backgroundColor: t.surface },
     campanhas: { gap: 6, paddingRight: 8 },
     campanha: {
-      borderRadius: 20, borderWidth: 1, borderColor: t.border,
-      paddingHorizontal: 11, paddingVertical: 4, maxWidth: 190, backgroundColor: t.bg,
+      borderRadius: RAIO.pilula, borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
+      paddingHorizontal: 13, paddingVertical: 6, maxWidth: 190, backgroundColor: t.bg,
     },
     campanhaTexto: { ...TIPO.legenda, fontWeight: "600", color: t.muted },
 
-    linha: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 16 },
-    avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+    linha: { flexDirection: "row", alignItems: "center", gap: ESP.md, paddingVertical: 10, paddingHorizontal: ESP.gutter, backgroundColor: t.surface },
+    avatar: { width: 52, height: 52, borderRadius: 26, ...CURVA, alignItems: "center", justifyContent: "center" },
     // A linha cresce por PADDING, não por altura fixa: com fonte grande ela
     // acompanha em vez de cortar o texto.
     avatarTexto: { color: "#fff", fontWeight: "500", fontSize: 22 },
@@ -432,7 +439,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", marginTop: 14 },
     rodape: { paddingVertical: 16 },
-    erroCaixa: { padding: 12, backgroundColor: t.critSoft, borderRadius: 10, gap: 4 },
+    erroCaixa: { padding: ESP.md, backgroundColor: t.critSoft, borderRadius: RAIO.peq, ...CURVA, gap: ESP.xs },
     erroTexto: { ...TIPO.nota, color: t.crit },
     tentar: { ...TIPO.nota, color: t.accent, fontWeight: "600" },
   });

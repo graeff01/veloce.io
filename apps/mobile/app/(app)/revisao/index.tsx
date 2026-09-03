@@ -6,6 +6,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
 import { TIPO } from "../../../src/ui/tipografia";
+import { CURVA, ESP, RAIO, cartao } from "../../../src/ui/forma";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Sharing from "expo-sharing";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
@@ -115,8 +117,8 @@ export default function Revisao() {
         refreshControl={
           <RefreshControl refreshing={atualizando} onRefresh={() => { setAtualizando(true); void carregar(); }} tintColor={theme.accent} />
         }
-        renderItem={({ item }) => (
-          <View style={s.cartao}>
+        renderItem={({ item, index }) => (
+          <Animated.View style={s.cartao} entering={FadeInDown.duration(240).delay(Math.min(index, 6) * 55)}>
             <View style={s.cartaoTopo}>
               <Text style={s.lead} numberOfLines={1}>{item.name}</Text>
               <Text style={s.total}>{moeda(item.total, item.currency)}</Text>
@@ -145,7 +147,7 @@ export default function Revisao() {
                   : <Text style={s.botaoAprovarTexto}>Aprovar</Text>}
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         )}
       />
     </View>
@@ -169,11 +171,11 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     linhaLabel: { ...TIPO.subtitulo, flex: 1, color: t.text },
     linhaValor: { ...TIPO.subtitulo, color: t.muted, fontVariant: ["tabular-nums"] },
     acoes: { flexDirection: "row", gap: 8, marginTop: 10 },
-    botaoNeutro: { flex: 1, borderWidth: 1, borderColor: t.border, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
+    botaoNeutro: { flex: 1, backgroundColor: t.raise, borderRadius: RAIO.peq, ...CURVA, paddingVertical: 12, alignItems: "center" },
     botaoNeutroTexto: { ...TIPO.subtitulo, color: t.text, fontWeight: "500" },
-    botaoRejeitar: { flex: 1, borderWidth: 1, borderColor: t.crit, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
+    botaoRejeitar: { flex: 1, backgroundColor: t.critSoft, borderRadius: RAIO.peq, ...CURVA, paddingVertical: 12, alignItems: "center" },
     botaoRejeitarTexto: { ...TIPO.subtitulo, color: t.crit, fontWeight: "500" },
-    botaoAprovar: { flex: 1.2, backgroundColor: t.accent, borderRadius: 10, paddingVertical: 11, alignItems: "center", justifyContent: "center", minHeight: 42 },
+    botaoAprovar: { flex: 1.2, backgroundColor: t.accent, borderRadius: RAIO.peq, ...CURVA, paddingVertical: 12, alignItems: "center", justifyContent: "center", minHeight: 44 },
     botaoAprovarTexto: { ...TIPO.subtitulo, color: t.onAccent, fontWeight: "600" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center" },

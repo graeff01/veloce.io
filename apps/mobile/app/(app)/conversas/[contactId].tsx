@@ -15,6 +15,7 @@ import {
 } from "expo-audio";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
 import { TIPO } from "../../../src/ui/tipografia";
+import { CURVA, ESP, RAIO } from "../../../src/ui/forma";
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
@@ -285,93 +286,15 @@ export default function Thread() {
     setGravando(true);
   }, [client, contactId, gravando, gravador, carregar]);
 
-  const mudarEtapa = useCallback(() => {
-    const chaves = Object.keys(STAGE);
-    folha("Etapa do funil", chaves.map((k) => STAGE[k]!.label), async (i) => {
-      if (!client || !contactId) return;
-      try {
-        await client.setFunnelStage(String(contactId), chaves[i]!);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        await carregar(true);
-      } catch (e) {
-        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
-      }
-    });
-  }, [folha, client, contactId, carregar]);
 
-  const transferir = useCallback(() => {
-    if (!conversa?.attendants.length) return;
-    const pessoas = conversa.attendants;
-    folha("Dono da conversa", [...pessoas.map((a) => a.name), "Remover dono"], async (i) => {
-      if (!client || !contactId) return;
-      const alvo = i < pessoas.length ? pessoas[i]!.email : null;
-      try {
-        await client.assign(String(contactId), alvo);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        await carregar(true);
-      } catch (e) {
-        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
-      }
-    }, pessoas.length);
-  }, [folha, conversa, client, contactId, carregar]);
 
-  const editarEtiquetas = useCallback(async () => {
-    if (!client || !contactId || !conversa) return;
-    let disponiveis: Tag[] = [];
-    try { disponiveis = await client.tags(); } catch { return; }
-    if (!disponiveis.length) { Alert.alert("Sem etiquetas", "Crie etiquetas no painel web primeiro."); return; }
 
-    const aplicadas = new Set(conversa.tags.map((t) => t.id));
-    folha("Etiquetas", disponiveis.map((t) => `${aplicadas.has(t.id) ? "✓  " : ""}${t.name}`), async (i) => {
-      const t = disponiveis[i]!;
-      try {
-        if (aplicadas.has(t.id)) await client.removeTag(String(contactId), t.id);
-        else await client.addTag(String(contactId), t.id);
-        void Haptics.selectionAsync().catch(() => {});
-        await carregar(true);
-      } catch (e) {
-        Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
-      }
-    });
-  }, [folha, client, contactId, conversa, carregar]);
 
-  const pedirIa = useCallback(() => {
-    Alert.alert(
-      "A IA responde este lead?",
-      "Ela vai redigir e ENVIAR a próxima resposta no WhatsApp.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Pode responder",
-          onPress: async () => {
-            if (!client || !contactId) return;
-            setEnviando(true);
-            try {
-              await client.aiReply(String(contactId));
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-              await carregar(true);
-            } catch (e) {
-              Alert.alert("Não deu", e instanceof ApiError ? e.message : "Tente de novo.");
-            } finally {
-              setEnviando(false);
-            }
-          },
-        },
-      ],
-    );
-  }, [client, contactId, carregar]);
-
+  // Uma folha com tudo à vista, em vez de menu que abre outro menu.
   const menu = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
-    folha(conversa?.contact.name ?? "Conversa",
-      ["IA responder este lead", "Etapa do funil", "Etiquetas", "Dono da conversa"],
-      (i) => {
-        if (i === 0) pedirIa();
-        else if (i === 1) mudarEtapa();
-        else if (i === 2) void editarEtiquetas();
-        else transferir();
-      });
-  }, [folha, conversa, pedirIa, mudarEtapa, editarEtiquetas, transferir]);
+    router.push({ pathname: "/acoes", params: { contactId: String(contactId) } });
+  }, [router, contactId]);
 
   const assumir = useCallback(async () => {
     if (!client || !contactId || !conversa?.me) return;
@@ -657,8 +580,8 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
         style={[
           s.balao,
           saiu
-            ? { backgroundColor: theme.accent, borderTopLeftRadius: 8, borderTopRightRadius: 0 }
-            : { backgroundColor: theme.waIn, borderTopLeftRadius: 0, borderTopRightRadius: 8 },
+            ? { backgroundColor: theme.accent, borderTopLeftRadius: 12, borderTopRightRadius: 3 }
+            : { backgroundColor: theme.waIn, borderTopLeftRadius: 3, borderTopRightRadius: 12 },
           pendente && s.balaoPendente,
         ]}
       >
@@ -749,8 +672,8 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
 
     origem: {
       flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "center",
-      paddingHorizontal: 12, paddingVertical: 5, marginBottom: 8,
-      backgroundColor: t.surface, borderRadius: 20,
+      paddingHorizontal: 12, paddingVertical: 5, marginBottom: ESP.sm,
+      backgroundColor: t.surface, borderRadius: RAIO.pilula,
       shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
     origemTexto: { ...TIPO.legenda, color: t.muted, maxWidth: 240 },
@@ -761,7 +684,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     diaLinha: { alignItems: "center", marginVertical: 9 },
     diaTexto: {
       ...TIPO.legenda2, fontWeight: "600", color: t.waMuted, backgroundColor: t.surface,
-      paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, overflow: "hidden",
+      paddingHorizontal: 12, paddingVertical: 5, borderRadius: RAIO.peq, overflow: "hidden",
       shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
 
@@ -769,8 +692,8 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     balaoComReacao: { marginBottom: 15 },
     balao: {
       maxWidth: "82%",
-      paddingTop: 6, paddingHorizontal: 9, paddingBottom: 5,
-      borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+      paddingTop: 7, paddingHorizontal: 10, paddingBottom: 6,
+      borderBottomLeftRadius: 12, borderBottomRightRadius: 12, ...CURVA,
       shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
       elevation: 1,
     },
@@ -786,7 +709,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     arquivoTexto: { ...TIPO.subtitulo, flex: 1, fontWeight: "500" },
     textoBalao: { fontSize: 16, lineHeight: 21, letterSpacing: -0.3 },
     transcricao: { ...TIPO.nota, fontStyle: "italic", marginTop: 2 },
-    imagem: { width: 220, height: 165, borderRadius: 6, marginBottom: 4 },
+    imagem: { width: 232, height: 174, borderRadius: RAIO.peq, ...CURVA, marginBottom: 4 },
     meta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
     metaTexto: { fontSize: 11, opacity: 0.7 },
 
@@ -799,7 +722,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     naoLidasTexto: { ...TIPO.legenda2, fontWeight: "700", color: t.crit, letterSpacing: 0.6 },
     // Voltar ao fim: só aparece quando você já subiu bastante.
     descer: {
-      position: "absolute", right: 14, bottom: 96, width: 38, height: 38, borderRadius: 19,
+      position: "absolute", right: ESP.gutter, bottom: 96, width: 40, height: 40, borderRadius: 20, ...CURVA,
       alignItems: "center", justifyContent: "center", backgroundColor: t.surface,
       borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
       shadowColor: "#000", shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
@@ -817,7 +740,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     },
     entrada: {
       flex: 1, minHeight: 38, maxHeight: 120,
-      backgroundColor: t.bg, borderRadius: 19, borderWidth: 1, borderColor: t.border,
+      backgroundColor: t.bg, borderRadius: 19, ...CURVA, borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
       paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9,
       fontSize: 16, color: t.text,
     },

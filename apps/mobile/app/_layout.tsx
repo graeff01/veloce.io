@@ -60,7 +60,26 @@ function Guard() {
         <Stack.Screen name="(app)" />
         {/* Perfil é MODAL: sobe de baixo e fecha arrastando, como no iOS. Assim
             é alcançável de Conversas e de Mais sem existir duas vezes. */}
-        <Stack.Screen name="perfil" options={{ presentation: "modal" }} />
+        <Stack.Screen
+          name="perfil"
+          options={{
+            // Folha que sobe até 60% e pode ser arrastada até o topo. Modal de
+            // tela cheia para uma tela curta é desperdício de contexto.
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.6, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 20,
+          }}
+        />
+        <Stack.Screen
+          name="acoes"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.62, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 20,
+          }}
+        />
       </Stack>
     </>
   );

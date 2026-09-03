@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
 import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
+import { CURVA, ESP, RAIO, cartao } from "../../../src/ui/forma";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
@@ -92,8 +94,8 @@ export default function Anuncios() {
           {dados.topCampaigns.length === 0 ? (
             <Text style={s.vazio}>Nenhuma campanha com investimento no período.</Text>
           ) : (
-            dados.topCampaigns.map((c) => (
-              <View key={c.name} style={s.cartao}>
+            dados.topCampaigns.map((c, i) => (
+              <Animated.View key={c.name} style={s.cartao} entering={FadeInDown.duration(240).delay(i * 60)}>
                 {/* Peça do anúncio ao lado do nome: o número ganha rosto. */}
                 <View style={s.campanhaTopo}>
                   {c.image ? (
@@ -110,10 +112,14 @@ export default function Anuncios() {
                   <Coluna rotulo="Leads" valor={String(c.leads)} theme={theme} />
                   <Coluna rotulo="CPL" valor={c.cpl == null ? "—" : moeda(c.cpl, dados.currency)} theme={theme} />
                 </View>
-                <Pressable onPress={() => verLeads(c.name)} style={s.verLeads} accessibilityRole="button">
+                <Pressable
+                  onPress={() => verLeads(c.name)}
+                  style={({ pressed }) => [s.verLeads, pressed && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                >
                   <Text style={s.verLeadsTexto}>Ver leads</Text>
                 </Pressable>
-              </View>
+              </Animated.View>
             ))
           )}
         </>
@@ -166,26 +172,23 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     periodo: { ...TIPO.nota, color: t.muted, marginHorizontal: 16, marginBottom: 6 },
 
     metricas: { flexDirection: "row", backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border },
-    metrica: { flex: 1, padding: 14, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border },
+    metrica: { flex: 1, padding: ESP.gutter, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border },
     metricaRotulo: { ...TIPO.legenda, fontWeight: "500", color: t.muted },
     metricaValor: { ...TIPO.titulo3, fontWeight: "700", color: t.text, marginTop: 5, fontVariant: ["tabular-nums"] },
     deltaLinha: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 5 },
     metricaDelta: { ...TIPO.legenda2, fontWeight: "600", color: t.muted, marginTop: 5 },
 
     secao: { ...CABECALHO_SECAO, color: t.muted, marginHorizontal: 32, marginTop: 24, marginBottom: 7 },
-    cartao: {
-      backgroundColor: t.surface, marginHorizontal: 16, marginBottom: 10, borderRadius: 10,
-      padding: 14, gap: 10,
-    },
+    cartao: { ...cartao(t.surface), marginHorizontal: ESP.gutter, marginBottom: ESP.md, padding: ESP.gutter, gap: ESP.md },
     campanhaTopo: { flexDirection: "row", alignItems: "center", gap: 12 },
-    criativo: { width: 64, height: 64, borderRadius: 10, backgroundColor: t.raise },
-    criativoVazio: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: t.border },
+    criativo: { width: 68, height: 68, borderRadius: RAIO.peq, ...CURVA, backgroundColor: t.raise },
+    criativoVazio: { alignItems: "center", justifyContent: "center" },
     campanhaNome: { ...TIPO.destaque, flex: 1, color: t.text },
     linhaMetricas: { flexDirection: "row", gap: 14 },
     coluna: { flex: 1 },
     colunaRotulo: { ...TIPO.legenda2, fontWeight: "500", color: t.muted },
     colunaValor: { ...TIPO.subtitulo, fontWeight: "600", color: t.text, marginTop: 2, fontVariant: ["tabular-nums"] },
-    verLeads: { alignSelf: "flex-start", borderRadius: 10, borderWidth: 1, borderColor: t.accent, paddingHorizontal: 14, paddingVertical: 7 },
+    verLeads: { alignSelf: "flex-start", borderRadius: RAIO.pilula, backgroundColor: t.accentSoft, paddingHorizontal: ESP.gutter, paddingVertical: 8 },
     verLeadsTexto: { ...TIPO.nota, color: t.accent, fontWeight: "600" },
 
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", padding: 32 },

@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
 import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
+import { CURVA, ESP, RAIO } from "../../../src/ui/forma";
 import { useSession } from "../../../src/ui/session";
 import { buildTheme } from "../../../src/ui/theme";
 import type { PortalSection } from "../../../src/core/contracts";
@@ -100,12 +101,12 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     // fundo, não linhas de ponta a ponta. É o que separa "tela de app" de
     // "lista de página web".
     grupo: {
-      marginHorizontal: 16, borderRadius: 10, overflow: "hidden", backgroundColor: t.surface,
+      marginHorizontal: ESP.gutter, borderRadius: RAIO.medio, ...CURVA, overflow: "hidden", backgroundColor: t.surface,
     },
-    item: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+    item: { flexDirection: "row", alignItems: "center", gap: ESP.md, paddingHorizontal: ESP.gutter, paddingVertical: 12 },
     itemInativo: { opacity: 0.55 },
     // Ícone em quadradinho colorido — vocabulário dos Ajustes do iOS.
-    icone: { width: 29, height: 29, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+    icone: { width: 29, height: 29, borderRadius: 7, ...CURVA, alignItems: "center", justifyContent: "center" },
     itemTexto: { ...TIPO.corpo, flex: 1, color: t.text },
     emBreve: { ...TIPO.nota, color: t.muted },
     divisor: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 55 },
