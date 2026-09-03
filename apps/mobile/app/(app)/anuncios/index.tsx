@@ -4,12 +4,12 @@ import {
   StyleSheet, Text, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Megaphone, TrendingDown, TrendingUp } from "lucide-react-native";
-import { useSession } from "../../src/ui/session";
-import { buildTheme } from "../../src/ui/theme";
-import { ApiError } from "../../src/core/errors";
-import type { AdsPerformance } from "../../src/core/contracts";
+import { useSession } from "../../../src/ui/session";
+import { buildTheme } from "../../../src/ui/theme";
+import { ApiError } from "../../../src/core/errors";
+import type { AdsPerformance } from "../../../src/core/contracts";
 
 // ── Módulo ANÚNCIOS: desempenho de mídia ──────────────────────────────────────
 // NÃO é o antigo "Anúncios" da barra do portal (aquele era um filtro de leads e
@@ -60,15 +60,14 @@ export default function Anuncios() {
   return (
     <ScrollView
       style={s.tela}
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
       refreshControl={
         <RefreshControl refreshing={atualizando} onRefresh={() => { setAtualizando(true); void carregar(); }} tintColor={theme.accent} />
       }
     >
-      <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
-        <Text style={s.titulo}>Anúncios</Text>
-        {dados?.periodLabel ? <Text style={s.periodo}>{dados.periodLabel}</Text> : null}
-      </View>
+      <Stack.Screen options={{ title: "Anúncios", headerLargeTitle: true }} />
+      {dados?.periodLabel ? <Text style={s.periodo}>{dados.periodLabel}</Text> : null}
 
       {erro ? (
         <View style={s.erroCaixa}>
@@ -163,12 +162,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
     centro: { alignItems: "center", justifyContent: "center" },
-    cabecalho: {
-      paddingHorizontal: 16, paddingBottom: 12, backgroundColor: t.surface,
-      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
-    },
-    titulo: { fontSize: 32, fontWeight: "800", color: t.text, letterSpacing: -0.8 },
-    periodo: { fontSize: 13, color: t.muted, marginTop: 2 },
+    periodo: { fontSize: 13, color: t.muted, marginHorizontal: 16, marginBottom: 6 },
 
     metricas: { flexDirection: "row", backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border },
     metrica: { flex: 1, padding: 14, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border },

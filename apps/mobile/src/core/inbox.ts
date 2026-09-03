@@ -5,7 +5,7 @@
 import type { ConversationRow, Me } from "./contracts";
 
 /** Módulos da barra inferior, na ordem de exibição. */
-export type ModuloRota = "conversas/index" | "anuncios" | "revisao" | "mais";
+export type ModuloRota = "conversas" | "anuncios" | "revisao" | "mais";
 
 /**
  * Quais MÓDULOS este tenant/usuário enxerga.
@@ -16,7 +16,7 @@ export type ModuloRota = "conversas/index" | "anuncios" | "revisao" | "mais";
  */
 export function modulosPara(me: Me | null): ModuloRota[] {
   const secoes = me?.sections ?? [];
-  const out: ModuloRota[] = ["conversas/index"];
+  const out: ModuloRota[] = ["conversas"];
   if (secoes.includes("anuncios")) out.push("anuncios");
   // Orçamentos exige a seção E a funcionalidade ligada no cliente.
   if (secoes.includes("revisao") && me?.quotesEnabled === true) out.push("revisao");

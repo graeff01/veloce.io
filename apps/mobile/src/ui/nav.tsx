@@ -23,7 +23,7 @@ import { modulosPara, type ModuloRota } from "../core/inbox";
 type NomeRota = ModuloRota;
 
 const MODULOS: { rota: NomeRota; rotulo: string; Icone: typeof MessageCircle }[] = [
-  { rota: "conversas/index", rotulo: "Conversas", Icone: MessageCircle },
+  { rota: "conversas", rotulo: "Conversas", Icone: MessageCircle },
   { rota: "anuncios", rotulo: "Anúncios", Icone: Megaphone },
   { rota: "revisao", rotulo: "Orçamentos", Icone: FileText },
   { rota: "mais", rotulo: "Mais", Icone: Ellipsis },
@@ -58,7 +58,7 @@ export function useModulosVisiveis(): NomeRota[] {
   return modulosPara(me);
 }
 
-interface Rota { key: string; name: string }
+interface Rota { key: string; name: string; state?: { index?: number } }
 interface EstadoAbas { index: number; routes: Rota[] }
 interface NavegacaoAbas {
   emit(e: { type: "tabPress"; target: string; canPreventDefault: true }): { defaultPrevented: boolean };
@@ -70,7 +70,8 @@ interface NavegacaoAbas {
  * manda a convenção do iOS — e porque na thread ela ficaria exatamente por cima
  * do compositor de mensagem.
  */
-const DETALHE = new Set(["conversas/[contactId]", "perfil"]);
+// Nada aqui: toda aba é uma pilha, e a profundidade é quem decide.
+const DETALHE = new Set<string>();
 
 export function BarraInferior({ state, navigation }: { state: EstadoAbas; navigation: NavegacaoAbas }) {
   const { me } = useSession();
@@ -79,7 +80,11 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
   const badges = useBadges();
   const visiveis = useModulosVisiveis();
   const s = styles(theme);
-  const rotaAtual = state.routes[state.index]?.name ?? "";
+  const atual = state.routes[state.index];
+  const rotaAtual = atual?.name ?? "";
+  // Dentro de uma pilha aprofundada (conversa aberta) a barra sai de cena, como
+  // manda a convenção do iOS — e porque cobriria o campo de mensagem.
+  const emDetalhe = DETALHE.has(rotaAtual) || (atual?.state?.index ?? 0) > 0;
 
   // Entra deslizando UMA vez, ao montar. Como a barra pertence ao layout de abas,
   // ela não remonta ao trocar de módulo — nada de piscar entre telas.
@@ -91,12 +96,12 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
   }, [sobe]);
 
   const contagem = useCallback((rota: NomeRota) => {
-    if (rota === "conversas/index") return badges.waiting;
+    if (rota === "conversas") return badges.waiting;
     if (rota === "revisao") return badges.reviews;
     return 0;
   }, [badges]);
 
-  if (DETALHE.has(rotaAtual)) return null;
+  if (emDetalhe) return null;
 
   return (
     <Animated.View

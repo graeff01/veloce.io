@@ -21,21 +21,21 @@ const conversa = (over: Partial<ConversationRow> = {}): ConversationRow => ({
 // ── Navegação: a barra lista MÓDULOS, decididos pelo tenant ───────────────────
 
 test("barra sempre tem Conversas e Mais", () => {
-  assert.deepEqual(modulosPara(me([])), ["conversas/index", "mais"]);
-  assert.deepEqual(modulosPara(null), ["conversas/index", "mais"]);
+  assert.deepEqual(modulosPara(me([])), ["conversas", "mais"]);
+  assert.deepEqual(modulosPara(null), ["conversas", "mais"]);
 });
 
 test("cliente COM anúncios e COM orçamento vê os quatro módulos", () => {
   assert.deepEqual(
     modulosPara(me(["conversas", "anuncios", "revisao"], true)),
-    ["conversas/index", "anuncios", "revisao", "mais"],
+    ["conversas", "anuncios", "revisao", "mais"],
   );
 });
 
 test("cliente sem orçamento NÃO vê Orçamentos", () => {
   const m = modulosPara(me(["conversas", "anuncios", "revisao"], false));
   assert.ok(!m.includes("revisao"), "quotesEnabled=false precisa esconder o módulo");
-  assert.deepEqual(m, ["conversas/index", "anuncios", "mais"]);
+  assert.deepEqual(m, ["conversas", "anuncios", "mais"]);
 });
 
 test("seção revisao sem quotesEnabled não basta, e quotesEnabled sem seção também não", () => {
@@ -52,7 +52,7 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
     modulosPara(me(["anuncios", "revisao", "conversas"], true)),
-    ["conversas/index", "anuncios", "revisao", "mais"],
+    ["conversas", "anuncios", "revisao", "mais"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });

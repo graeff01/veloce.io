@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSession } from "../../src/ui/session";
-import { buildTheme } from "../../src/ui/theme";
-import { limparCacheDeMidia } from "../../src/ui/media";
+import { Stack, useRouter } from "expo-router";
+import { useSession } from "../src/ui/session";
+import { buildTheme } from "../src/ui/theme";
+import { limparCacheDeMidia } from "../src/ui/media";
 
 export default function Perfil() {
   const { me, sair, recarregar } = useSession();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
@@ -41,7 +43,23 @@ export default function Perfil() {
   };
 
   return (
-    <ScrollView style={s.tela} contentContainerStyle={[s.conteudo, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}>
+    <ScrollView style={s.tela} contentContainerStyle={[s.conteudo, { paddingBottom: insets.bottom + 32 }]}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "Perfil",
+          headerTransparent: false,
+          headerStyle: { backgroundColor: theme.surface },
+          headerTitleStyle: { color: theme.text },
+          // Modal fecha por botão E arrastando para baixo — as duas formas que o
+          // usuário de iPhone já tenta por instinto.
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={10} accessibilityRole="button">
+              <Text style={{ color: theme.accent, fontSize: 16, fontWeight: "600" }}>Fechar</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <View style={s.marcaBox}>
         {me?.brand.logoUrl ? (
           <Image source={{ uri: me.brand.logoUrl }} style={s.logo} resizeMode="contain" />

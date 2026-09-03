@@ -9,6 +9,7 @@
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@react-native-segmented-control/segmented-control": "2.5.7",
     "expo": "~57.0.0",
     "expo-asset": "~57.0.16",
     "expo-audio": "~57.0.4",

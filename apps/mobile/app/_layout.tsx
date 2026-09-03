@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { Slot, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { SessionProvider, useSession } from "../src/ui/session";
 import { buildTheme } from "../src/ui/theme";
 import { configurarApresentacao, ouvirNotificacoes, registrarPush } from "../src/ui/push";
@@ -53,7 +53,14 @@ function Guard() {
   return (
     <>
       <StatusBar style={theme.dark ? "light" : "dark"} />
-      <Slot />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="vincular" />
+        <Stack.Screen name="(app)" />
+        {/* Perfil é MODAL: sobe de baixo e fecha arrastando, como no iOS. Assim
+            é alcançável de Conversas e de Mais sem existir duas vezes. */}
+        <Stack.Screen name="perfil" options={{ presentation: "modal" }} />
+      </Stack>
     </>
   );
 }

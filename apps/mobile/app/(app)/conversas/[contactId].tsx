@@ -4,14 +4,14 @@ import {
   Pressable, StyleSheet, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
   useAudioPlayer, useAudioPlayerStatus, useAudioRecorder,
 } from "expo-audio";
-import { ArrowLeft, Camera, Megaphone, Mic, Pause, Paperclip, Play, Send, Square, UserRound, X } from "lucide-react-native";
+import { Camera, Megaphone, Mic, Pause, Paperclip, Play, Send, Square, UserRound, X } from "lucide-react-native";
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
@@ -240,44 +240,39 @@ export default function Thread() {
 
   return (
     <KeyboardAvoidingView style={s.tela} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Voltar">
-          <ArrowLeft size={23} color={theme.accent} strokeWidth={2.2} />
-        </Pressable>
-
-        <View style={[s.avatarPeq, { backgroundColor: avatarColor(conversa.contact.name) }]}>
-          <Text style={s.avatarPeqTexto}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
-        </View>
-
-        <View style={s.cabecalhoCorpo}>
-          <Text style={s.nome} numberOfLines={1}>{conversa.contact.name}</Text>
-          <View style={s.subLinha}>
-            {etapa ? <Text style={[s.subtitulo, { color: etapa.color, fontWeight: "700" }]}>{etapa.label}</Text> : null}
-            {conversa.assignedName ? (
-              <>
-                <Text style={s.subtitulo}>·</Text>
-                <UserRound size={10} color={theme.muted} strokeWidth={2.4} />
-                <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
-              </>
-            ) : null}
-          </View>
-        </View>
-
-        {!minha && conversa.me ? (
-          <Pressable style={s.assumir} onPress={() => void assumir()} accessibilityRole="button">
-            <Text style={s.assumirTexto}>Assumir</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {conversa.lead ? (
-        <View style={s.origem}>
-          <Megaphone size={11} color={theme.accent} strokeWidth={2.4} />
-          <Text style={s.origemTexto} numberOfLines={1}>
-            {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
-          </Text>
-        </View>
-      ) : null}
+      {/* Header NATIVO: o botão voltar e o gesto de arrastar da borda vêm da
+          pilha, não de um botão desenhado. É o que faz a tela parecer empurrada
+          e não trocada. */}
+      <Stack.Screen
+        options={{
+          headerTitle: () => (
+            <View style={s.tituloNav}>
+              <View style={[s.avatarPeq, { backgroundColor: avatarColor(conversa.contact.name) }]}>
+                <Text style={s.avatarPeqTexto}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={s.tituloNavCorpo}>
+                <Text style={s.nome} numberOfLines={1}>{conversa.contact.name}</Text>
+                <View style={s.subLinha}>
+                  {etapa ? <Text style={[s.subtitulo, { color: etapa.color, fontWeight: "700" }]}>{etapa.label}</Text> : null}
+                  {conversa.assignedName ? (
+                    <>
+                      {etapa ? <Text style={s.subtitulo}>·</Text> : null}
+                      <UserRound size={10} color={theme.muted} strokeWidth={2.4} />
+                      <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
+                    </>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          ),
+          headerRight: () =>
+            !minha && conversa.me ? (
+              <Pressable onPress={() => void assumir()} hitSlop={8} accessibilityRole="button">
+                <Text style={s.assumirTexto}>Assumir</Text>
+              </Pressable>
+            ) : null,
+        }}
+      />
 
       <FlatList
         ref={lista}
@@ -286,6 +281,17 @@ export default function Thread() {
         style={s.chat}
         contentContainerStyle={s.chatConteudo}
         keyboardDismissMode="interactive"
+        contentInsetAdjustmentBehavior="automatic"
+        ListHeaderComponent={
+          conversa.lead ? (
+            <View style={s.origem}>
+              <Megaphone size={11} color={theme.accent} strokeWidth={2.4} />
+              <Text style={s.origemTexto} numberOfLines={1}>
+                {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
+              </Text>
+            </View>
+          ) : null
+        }
         renderItem={({ item }) =>
           item.tipo === "dia" ? (
             <View style={s.diaLinha}><Text style={s.diaTexto}>{item.rotulo}</Text></View>
@@ -503,26 +509,22 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     tela: { flex: 1, backgroundColor: t.waChat },
     centro: { alignItems: "center", justifyContent: "center" },
 
-    cabecalho: {
-      flexDirection: "row", alignItems: "center", gap: 10,
-      paddingHorizontal: 12, paddingBottom: 9,
-      backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border,
-    },
+    tituloNav: { flexDirection: "row", alignItems: "center", gap: 9, maxWidth: 230 },
+    tituloNavCorpo: { flexShrink: 1 },
     avatarPeq: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
     avatarPeqTexto: { color: "#fff", fontWeight: "700", fontSize: 13.6 },
-    cabecalhoCorpo: { flex: 1 },
     nome: { fontSize: 16, fontWeight: "700", color: t.text },
     subLinha: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 },
     subtitulo: { fontSize: 11.5, color: t.muted },
-    assumir: { borderWidth: 1, borderColor: t.accent, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 },
-    assumirTexto: { color: t.accent, fontSize: 12.5, fontWeight: "700" },
+    assumirTexto: { color: t.accent, fontSize: 16, fontWeight: "600" },
 
     origem: {
-      flexDirection: "row", alignItems: "center", gap: 5,
-      paddingHorizontal: 16, paddingVertical: 6,
-      backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border,
+      flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "center",
+      paddingHorizontal: 12, paddingVertical: 5, marginBottom: 8,
+      backgroundColor: t.surface, borderRadius: 20,
+      shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
-    origemTexto: { fontSize: 11.5, color: t.muted, flex: 1 },
+    origemTexto: { fontSize: 11.5, color: t.muted, maxWidth: 240 },
 
     chat: { flex: 1, backgroundColor: t.waChat },
     chatConteudo: { paddingHorizontal: 10, paddingVertical: 10 },

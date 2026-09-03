@@ -1,13 +1,13 @@
 import { ScrollView, StyleSheet, Text, useColorScheme, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import {
   BookOpen, ChevronRight, Gauge, GraduationCap, Layers, MessageSquareWarning,
   Sparkles, Truck, User, Users,
 } from "lucide-react-native";
-import { useSession } from "../../src/ui/session";
-import { buildTheme } from "../../src/ui/theme";
-import type { PortalSection } from "../../src/core/contracts";
+import { useSession } from "../../../src/ui/session";
+import { buildTheme } from "../../../src/ui/theme";
+import type { PortalSection } from "../../../src/core/contracts";
 
 // ── Mais ──────────────────────────────────────────────────────────────────────
 // Escape do produto: módulos adicionais que o TENANT tem, derivados de `sections`
@@ -39,14 +39,12 @@ export default function Mais() {
   const modulos = CATALOGO.filter((m) => can(m.chave));
 
   return (
-    <ScrollView style={s.tela} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}>
-      <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
-        <Text style={s.titulo}>Mais</Text>
-        {me?.brand.name ? <Text style={s.sub}>{me.brand.name}</Text> : null}
-      </View>
+    <ScrollView style={s.tela} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}>
+      <Stack.Screen options={{ title: "Mais", headerLargeTitle: true }} />
+      {me?.brand.name ? <Text style={s.sub}>{me.brand.name}</Text> : null}
 
       <Text style={s.secao}>Conta</Text>
-      <Pressable style={s.item} onPress={() => router.push("/(app)/perfil")} accessibilityRole="button">
+      <Pressable style={s.item} onPress={() => router.push("/perfil")} accessibilityRole="button">
         <User size={19} color={theme.accent} strokeWidth={2.2} />
         <Text style={s.itemTexto}>{me?.user?.name ?? me?.user?.email ?? "Perfil"}</Text>
         <ChevronRight size={17} color={theme.muted} strokeWidth={2.2} />
@@ -84,12 +82,7 @@ export default function Mais() {
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
-    cabecalho: {
-      paddingHorizontal: 16, paddingBottom: 12, backgroundColor: t.surface,
-      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
-    },
-    titulo: { fontSize: 32, fontWeight: "800", color: t.text, letterSpacing: -0.8 },
-    sub: { fontSize: 13, color: t.muted, marginTop: 2 },
+    sub: { fontSize: 13, color: t.muted, marginHorizontal: 16, marginTop: 2 },
     secao: {
       fontSize: 11, fontWeight: "700", letterSpacing: 0.9, textTransform: "uppercase",
       color: t.muted, marginTop: 22, marginBottom: 7, marginHorizontal: 16,

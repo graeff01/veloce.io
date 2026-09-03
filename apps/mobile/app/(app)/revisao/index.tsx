@@ -4,12 +4,13 @@ import {
   StyleSheet, Text, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Stack } from "expo-router";
 import * as Sharing from "expo-sharing";
-import { useSession } from "../../src/ui/session";
-import { buildTheme } from "../../src/ui/theme";
-import { pdfDoOrcamento } from "../../src/ui/media";
-import { ApiError } from "../../src/core/errors";
-import type { QuoteReview } from "../../src/core/contracts";
+import { useSession } from "../../../src/ui/session";
+import { buildTheme } from "../../../src/ui/theme";
+import { pdfDoOrcamento } from "../../../src/ui/media";
+import { ApiError } from "../../../src/core/errors";
+import type { QuoteReview } from "../../../src/core/contracts";
 
 // ── Revisão de orçamento ──────────────────────────────────────────────────────
 // O PDF continua sendo gerado no SERVIDOR (lib/quote-pdf.ts, mesmo layout que a
@@ -96,17 +97,18 @@ export default function Revisao() {
   }
 
   return (
-    <View style={[s.tela, { paddingTop: insets.top }]}>
-      <View style={s.cabecalho}>
-        <Text style={s.titulo}>Revisão</Text>
-        <Text style={s.sub}>{itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`}</Text>
-      </View>
+    <View style={s.tela}>
+      <Stack.Screen options={{ title: "Revisão", headerLargeTitle: true }} />
 
       {erro ? <Text style={s.erro}>{erro}</Text> : null}
 
       <FlatList
         data={itens}
         keyExtractor={(q) => q.quoteId}
+        contentInsetAdjustmentBehavior="automatic"
+        ListHeaderComponent={
+          <Text style={s.sub}>{itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`}</Text>
+        }
         contentContainerStyle={itens.length === 0 ? s.vazioBox : { padding: 16, gap: 12, paddingBottom: insets.bottom + 24 }}
         ListEmptyComponent={<Text style={s.vazio}>Nenhum orçamento aguardando revisão.</Text>}
         refreshControl={

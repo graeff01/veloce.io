@@ -1,31 +1,36 @@
 // ── Caixa de entrada ──────────────────────────────────────────────────────────
-// Referência de composição: WhatsApp iOS (densidade, hierarquia, padrão de lista).
-// Nada de marca, ícone ou asset de terceiros — só a lógica visual.
+// Composição de app iOS, não de página. O cabeçalho é o header NATIVO
+// (react-native-screens): título grande que encolhe ao rolar, barra de busca do
+// sistema com "Cancelar", fundo translúcido com o conteúdo passando por baixo.
 //
-// Hierarquia: NOME + ÚLTIMA MENSAGEM + HORÁRIO dominam. Os dados que só o Veloce
-// tem (etapa do funil, origem de anúncio, dono, etiquetas) continuam, mas em
-// segundo plano: uma linha de marcadores pequenos e de peso baixo.
+// Antes eu desenhava tudo isso à mão — título fixo de 32px e uma caixa cinza de
+// busca. Parecia site porque era: uma imitação estática de um comportamento que
+// o sistema entrega pronto e animado.
 //
-// Os filtros (Todas/Aguardando/Minhas + campanha) pertencem a ESTE módulo — não
-// à barra inferior.
+// Os filtros rolam JUNTO com a lista (padrão da plataforma) e usam o segmented
+// control nativo.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet,
-  Text, TextInput, useColorScheme, View,
+  Text, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Search, User } from "lucide-react-native";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import SegmentedControl from "@react-native-segmented-control/segmented-control";
+import * as Haptics from "expo-haptics";
+import { User } from "lucide-react-native";
 import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
 import { aguardandoResposta, campanhaDe, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
 import type { ConversationRow } from "../core/contracts";
 
-const PAGINA = 30;
-
 export type { Filtro };
+
+const PAGINA = 30;
+const FILTROS: Filtro[] = ["todas", "aguardando", "minhas"];
+const ROTULOS = ["Todas", "Aguardando", "Minhas"];
 
 const ROTULO_MIDIA: Record<string, string> = {
   image: "Foto", audio: "Áudio", video: "Vídeo",
@@ -55,7 +60,6 @@ export function ListaConversas() {
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
 
-  // Campanha pode chegar de fora (módulo Anúncios → "Ver leads").
   const { campanha } = useLocalSearchParams<{ campanha?: string }>();
 
   const [linhas, setLinhas] = useState<ConversationRow[]>([]);
@@ -71,7 +75,6 @@ export function ListaConversas() {
 
   useEffect(() => { if (campanha) setCampanhaSel(campanha); }, [campanha]);
 
-  // "Minhas" é filtro de SERVIDOR (owner=me), como no portal. Os demais são locais.
   const carregar = useCallback(async (opts: { offset?: number; silencioso?: boolean } = {}) => {
     if (!client) return;
     const offset = opts.offset ?? 0;
@@ -105,13 +108,8 @@ export function ListaConversas() {
     return () => clearTimeout(t);
   }, [carregar, busca]);
 
-  // Voltar do background ou de outro módulo reconcilia com o servidor, sem perder
-  // filtro, busca nem posição — a tela permanece montada nas abas.
   useFocusEffect(useCallback(() => { void carregar({ silencioso: true }); }, [carregar]));
 
-  // Campanhas presentes no que já foi carregado. SEM CONTAGEM: o backend não
-  // agrega por campanha, e um número parcial mentiria (é o defeito dos chips do
-  // portal, que contam só a página carregada).
   const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
 
   useEffect(() => {
@@ -119,6 +117,17 @@ export function ListaConversas() {
   }, [campanhas, campanhaSel]);
 
   const visiveis = filtrarConversas(linhas, filtro, campanhaSel);
+
+  const trocarFiltro = useCallback((i: number) => {
+    void Haptics.selectionAsync().catch(() => {});
+    setFiltro(FILTROS[i] ?? "todas");
+    setCampanhaSel(null);
+  }, []);
+
+  const selecionarCampanha = useCallback((c: string | null) => {
+    void Haptics.selectionAsync().catch(() => {});
+    setCampanhaSel(c);
+  }, []);
 
   const vazio =
     busca ? "Nenhuma conversa encontrada."
@@ -130,7 +139,6 @@ export function ListaConversas() {
   const renderItem = ({ item }: { item: ConversationRow }) => {
     const esperando = aguardandoResposta(item);
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
-    // Marcadores do Veloce: presentes, porém discretos e num só lugar.
     const marcadores: { texto: string; cor: string }[] = [];
     if (etapa) marcadores.push({ texto: etapa.label, cor: etapa.color });
     if (item.fromAd) marcadores.push({ texto: campanhaDe(item), cor: theme.accent });
@@ -158,9 +166,7 @@ export function ListaConversas() {
             <Text style={s.previa} numberOfLines={1}>
               {item.lastDirection === "out" ? "✓ " : ""}{previa(item)}
             </Text>
-            {esperando ? (
-              <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" />
-            ) : null}
+            {esperando ? <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" /> : null}
           </View>
 
           {marcadores.length > 0 ? (
@@ -177,83 +183,42 @@ export function ListaConversas() {
     );
   };
 
-  return (
-    <View style={s.tela}>
-      <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
-        <View style={s.tituloLinha}>
-          <Text style={s.titulo}>Conversas</Text>
+  // Filtros rolam com a lista — padrão iOS. Não são cabeçalho fixo.
+  const cabecalhoDaLista = (
+    <View style={s.filtros}>
+      <SegmentedControl
+        values={ROTULOS}
+        selectedIndex={FILTROS.indexOf(filtro)}
+        onChange={(e) => trocarFiltro(e.nativeEvent.selectedSegmentIndex)}
+        appearance={theme.dark ? "dark" : "light"}
+      />
+
+      {campanhas.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.campanhas}>
           <Pressable
-            onPress={() => router.push("/(app)/perfil")}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Perfil e conta"
-            style={s.perfilBotao}
+            onPress={() => selecionarCampanha(null)}
+            style={[s.campanha, !campanhaSel && { borderColor: theme.accent }]}
           >
-            <User size={18} color={theme.muted} strokeWidth={2.2} />
+            <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]}>
+              Todas as campanhas
+            </Text>
           </Pressable>
-        </View>
-
-        <View style={s.buscaBox}>
-          <Search size={16} color={theme.waMuted} strokeWidth={2.2} />
-          <TextInput
-            style={s.busca}
-            value={busca}
-            onChangeText={setBusca}
-            placeholder="Pesquisar"
-            placeholderTextColor={theme.waMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* Filtros da caixa de entrada — não da barra inferior. */}
-        <View style={s.segmentos}>
-          {(["todas", "aguardando", "minhas"] as Filtro[]).map((f) => {
-            const on = filtro === f;
-            const rotulo = f === "todas" ? "Todas" : f === "aguardando" ? "Aguardando" : "Minhas";
+          {campanhas.map((c) => {
+            const on = campanhaSel === c;
             return (
               <Pressable
-                key={f}
-                onPress={() => setFiltro(f)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: on }}
-                style={[s.segmento, on && { backgroundColor: theme.accent, borderColor: theme.accent }]}
+                key={c}
+                onPress={() => selecionarCampanha(on ? null : c)}
+                style={[s.campanha, on && { borderColor: theme.accent }]}
               >
-                <Text style={[s.segmentoTexto, on && { color: theme.onAccent, fontWeight: "700" }]}>{rotulo}</Text>
+                <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1}>
+                  {c}
+                </Text>
               </Pressable>
             );
           })}
-        </View>
-
-        {campanhas.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.campanhas}>
-            <Pressable
-              onPress={() => setCampanhaSel(null)}
-              style={[s.campanha, !campanhaSel && { borderColor: theme.accent }]}
-            >
-              <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]}>
-                Todas as campanhas
-              </Text>
-            </Pressable>
-            {campanhas.map((c) => {
-              const on = campanhaSel === c;
-              return (
-                <Pressable
-                  key={c}
-                  onPress={() => setCampanhaSel(on ? null : c)}
-                  style={[s.campanha, on && { borderColor: theme.accent }]}
-                >
-                  <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1}>
-                    {c}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        ) : null}
-      </View>
+        </ScrollView>
+      ) : null}
 
       {erro ? (
         <View style={s.erroCaixa}>
@@ -261,6 +226,38 @@ export function ListaConversas() {
           <Pressable onPress={() => void carregar()}><Text style={s.tentar}>Tentar de novo</Text></Pressable>
         </View>
       ) : null}
+    </View>
+  );
+
+  return (
+    <View style={s.tela}>
+      <Stack.Screen
+        options={{
+          title: "Conversas",
+          headerLargeTitle: true,
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push("/perfil")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Perfil e conta"
+            >
+              <User size={22} color={theme.accent} strokeWidth={2.2} />
+            </Pressable>
+          ),
+          // Busca do SISTEMA: aparece sob o título grande, com "Cancelar" e
+          // teclado próprio — não é uma caixa de texto imitando uma.
+          headerSearchBarOptions: {
+            placeholder: "Pesquisar",
+            hideWhenScrolling: false,
+            autoCapitalize: "none",
+            textColor: theme.text,
+            tintColor: theme.accent,
+            onChangeText: (e) => setBusca(e.nativeEvent.text),
+            onCancelButtonPress: () => setBusca(""),
+          },
+        }}
+      />
 
       {carregando ? (
         <View style={s.centro}><ActivityIndicator color={theme.accent} /></View>
@@ -269,7 +266,10 @@ export function ListaConversas() {
           data={visiveis}
           keyExtractor={(c) => c.contactId}
           renderItem={renderItem}
+          ListHeaderComponent={cabecalhoDaLista}
           ItemSeparatorComponent={() => <View style={s.separador} />}
+          // Faz o título grande encolher e a busca se comportar como no sistema.
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={visiveis.length === 0 ? s.vazioBox : { paddingBottom: insets.bottom + 92 }}
           ListEmptyComponent={<Text style={s.vazio}>{vazio}</Text>}
           keyboardDismissMode="on-drag"
@@ -293,31 +293,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.surface },
 
-    cabecalho: {
-      paddingHorizontal: 16, paddingBottom: 10, gap: 10,
-      backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
-    },
-    tituloLinha: { flexDirection: "row", alignItems: "center", gap: 10 },
-    // Título forte, como o "Conversas" grande do iOS.
-    titulo: { flex: 1, fontSize: 32, fontWeight: "800", color: t.text, letterSpacing: -0.8 },
-    perfilBotao: {
-      width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center",
-      borderWidth: StyleSheet.hairlineWidth, borderColor: t.border, backgroundColor: t.bg,
-    },
-    // Busca larga e com destaque, padrão iOS.
-    buscaBox: {
-      flexDirection: "row", alignItems: "center", gap: 7,
-      backgroundColor: t.raise, borderRadius: 11, paddingHorizontal: 10, height: 38,
-    },
-    busca: { flex: 1, fontSize: 16, color: t.text, padding: 0 },
-
-    segmentos: { flexDirection: "row", gap: 7 },
-    segmento: {
-      borderRadius: 20, borderWidth: 1, borderColor: t.border,
-      paddingHorizontal: 13, paddingVertical: 5.5, backgroundColor: t.bg,
-    },
-    segmentoTexto: { fontSize: 13, fontWeight: "600", color: t.muted },
-
+    filtros: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10, gap: 10, backgroundColor: t.surface },
     campanhas: { gap: 6, paddingRight: 8 },
     campanha: {
       borderRadius: 20, borderWidth: 1, borderColor: t.border,
@@ -325,7 +301,6 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     },
     campanhaTexto: { fontSize: 12, fontWeight: "600", color: t.muted },
 
-    // Linha da conversa: nome/mensagem/hora dominam; marcadores em terceiro nível.
     linha: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 16 },
     avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
     avatarTexto: { color: "#fff", fontWeight: "600", fontSize: 21 },
@@ -344,7 +319,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { color: t.muted, fontSize: 15, textAlign: "center" },
     rodape: { paddingVertical: 16 },
-    erroCaixa: { padding: 12, backgroundColor: t.critSoft, gap: 4 },
+    erroCaixa: { padding: 12, backgroundColor: t.critSoft, borderRadius: 10, gap: 4 },
     erroTexto: { color: t.crit, fontSize: 13 },
     tentar: { color: t.accent, fontSize: 13, fontWeight: "700" },
   });
