@@ -135,7 +135,7 @@ function Metrica({ rotulo, valor, delta, theme, maiorEhMelhor }: {
   return (
     <View style={s.metrica}>
       <Text style={s.metricaRotulo}>{rotulo}</Text>
-      <Text style={s.metricaValor}>{valor}</Text>
+      <Text style={s.metricaValor} maxFontSizeMultiplier={1.4} numberOfLines={1} adjustsFontSizeToFit>{valor}</Text>
       {delta == null ? (
         <Text style={s.metricaDelta}>—</Text>
       ) : (
@@ -153,7 +153,7 @@ function Coluna({ rotulo, valor, theme }: { rotulo: string; valor: string; theme
   return (
     <View style={s.coluna}>
       <Text style={s.colunaRotulo}>{rotulo}</Text>
-      <Text style={s.colunaValor}>{valor}</Text>
+      <Text style={s.colunaValor} maxFontSizeMultiplier={1.4} numberOfLines={1} adjustsFontSizeToFit>{valor}</Text>
     </View>
   );
 }

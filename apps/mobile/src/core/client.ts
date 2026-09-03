@@ -211,6 +211,11 @@ export class VeloceClient {
     await this.request(portalPath(`/conversations/${contactId}/assign`), { method: "POST", body: { email } });
   }
 
+  /** URL do stream de uma conversa (SSE). Consumida por src/ui/stream.ts. */
+  streamPath(contactId: string): string {
+    return `${this.baseUrl}${portalPath(`/conversations/${contactId}/stream`)}`;
+  }
+
   async addTag(contactId: string, tagId: string): Promise<void> {
     await this.request(portalPath(`/conversations/${contactId}/tags`), { method: "POST", body: { tagId } });
   }

@@ -14,7 +14,8 @@
         "NSPhotoLibraryUsageDescription": "Para enviar imagens da galeria ao lead.",
         "NSMicrophoneUsageDescription": "Para gravar e enviar áudios ao lead.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "icon": "./assets/icon.png"
     },
     "plugins": [
       "expo-router",
@@ -37,11 +38,24 @@
         {
           "microphonePermission": "Gravar e enviar áudios ao lead."
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#ffffff"
+          }
+        }
       ]
     ],
     "extra": {
       "//": "apiUrl NUNCA tem valor de producao aqui. Vem de EXPO_PUBLIC_API_URL.",
       "appEnv": "development"
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

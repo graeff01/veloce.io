@@ -11,6 +11,7 @@ import { ApiError } from "../core/errors";
 import { parseInviteLink } from "../core/link";
 import { log } from "../core/redact";
 import { KeychainSessionStore, apiBaseStore, deviceId } from "../storage/session-store";
+import { limparCache } from "./cache";
 import { apiBase } from "../config/env";
 
 type Status = "carregando" | "sem-sessao" | "logado";
@@ -109,6 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const sair = useCallback(async () => {
     await client?.logout().catch(() => {});
     await store.clear();
+    limparCache(); // lista e histórico de leitura saem junto com a credencial
     setMe(null);
     setStatus("sem-sessao");
   }, [client, store]);

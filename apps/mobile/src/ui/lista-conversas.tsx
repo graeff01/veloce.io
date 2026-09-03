@@ -24,6 +24,7 @@ import { useSession } from "./session";
 import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
 import { aguardandoResposta, campanhaDe, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
+import { guardarLista, lerLidas, lerLista, naoLida } from "./cache";
 import type { ConversationRow } from "../core/contracts";
 
 export type { Filtro };
@@ -62,11 +63,14 @@ export function ListaConversas() {
 
   const { campanha } = useLocalSearchParams<{ campanha?: string }>();
 
-  const [linhas, setLinhas] = useState<ConversationRow[]>([]);
+  // Primeira pintura SEM esperar a rede: a última lista conhecida aparece na
+  // hora e é substituída quando o servidor responde. Antes era um spinner.
+  const [linhas, setLinhas] = useState<ConversationRow[]>(() => lerLista());
+  const [lidas, setLidas] = useState(() => lerLidas());
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [campanhaSel, setCampanhaSel] = useState<string | null>(null);
-  const [carregando, setCarregando] = useState(true);
+  const [carregando, setCarregando] = useState(() => lerLista().length === 0);
   const [atualizando, setAtualizando] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [temMais, setTemMais] = useState(false);
@@ -90,6 +94,8 @@ export function ListaConversas() {
         limit: PAGINA, offset, q: busca, onlyMine: filtro === "minhas", signal: ctrl.signal,
       });
       setLinhas((antes) => (offset === 0 ? r.conversations : [...antes, ...r.conversations]));
+      // Só a primeira página vira cache — é o que a próxima abertura precisa.
+      if (offset === 0 && !busca && filtro === "todas") guardarLista(r.conversations);
       setTemMais(r.hasMore);
       setErro(null);
     } catch (e) {
@@ -108,7 +114,10 @@ export function ListaConversas() {
     return () => clearTimeout(t);
   }, [carregar, busca]);
 
-  useFocusEffect(useCallback(() => { void carregar({ silencioso: true }); }, [carregar]));
+  useFocusEffect(useCallback(() => {
+    setLidas(lerLidas()); // voltar de uma conversa atualiza o "não lida"
+    void carregar({ silencioso: true });
+  }, [carregar]));
 
   const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
 
@@ -138,6 +147,7 @@ export function ListaConversas() {
 
   const renderItem = ({ item }: { item: ConversationRow }) => {
     const esperando = aguardandoResposta(item);
+    const nova = naoLida(item, lidas);
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
     const marcadores: { texto: string; cor: string }[] = [];
     if (etapa) marcadores.push({ texto: etapa.label, cor: etapa.color });
@@ -158,12 +168,12 @@ export function ListaConversas() {
 
         <View style={s.corpo}>
           <View style={s.topo}>
-            <Text style={s.nome} numberOfLines={1}>{item.name}</Text>
-            <Text style={s.hora}>{horaCurta(item.lastMessageAt)}</Text>
+            <Text style={[s.nome, nova && s.nomeNaoLida]} numberOfLines={1}>{item.name}</Text>
+            <Text style={s.hora} maxFontSizeMultiplier={1.3}>{horaCurta(item.lastMessageAt)}</Text>
           </View>
 
           <View style={s.meio}>
-            <Text style={s.previa} numberOfLines={1}>
+            <Text style={[s.previa, nova && s.previaNaoLida]} numberOfLines={1}>
               {item.lastDirection === "out" ? "✓ " : ""}{previa(item)}
             </Text>
             {esperando ? <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" /> : null}
@@ -172,7 +182,12 @@ export function ListaConversas() {
           {marcadores.length > 0 ? (
             <View style={s.marcadores}>
               {marcadores.slice(0, 3).map((m, i) => (
-                <Text key={`${item.contactId}-m${i}`} style={[s.marcador, { color: m.cor }]} numberOfLines={1}>
+                <Text
+                  key={`${item.contactId}-m${i}`}
+                  style={[s.marcador, { color: m.cor }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.4}
+                >
                   {m.texto}
                 </Text>
               ))}
@@ -199,7 +214,7 @@ export function ListaConversas() {
             onPress={() => selecionarCampanha(null)}
             style={[s.campanha, !campanhaSel && { borderColor: theme.accent }]}
           >
-            <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]}>
+            <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]} maxFontSizeMultiplier={1.3}>
               Todas as campanhas
             </Text>
           </Pressable>
@@ -211,7 +226,7 @@ export function ListaConversas() {
                 onPress={() => selecionarCampanha(on ? null : c)}
                 style={[s.campanha, on && { borderColor: theme.accent }]}
               >
-                <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1}>
+                <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
                   {c}
                 </Text>
               </Pressable>
@@ -303,10 +318,16 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
 
     linha: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 16 },
     avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+    // A linha cresce por PADDING, não por altura fixa: com fonte grande ela
+    // acompanha em vez de cortar o texto.
     avatarTexto: { color: "#fff", fontWeight: "600", fontSize: 21 },
     corpo: { flex: 1, gap: 2 },
     topo: { flexDirection: "row", alignItems: "baseline", gap: 8 },
     nome: { flex: 1, fontSize: 17, fontWeight: "600", color: t.text, letterSpacing: -0.2 },
+    // Peso = "você ainda não abriu". Cor do ponto = "o lead está esperando".
+    // Dois sinais distintos, um de cada tipo — em vez de dois pontos brigando.
+    nomeNaoLida: { fontWeight: "800" },
+    previaNaoLida: { color: t.text, fontWeight: "500" },
     hora: { fontSize: 12.5, color: t.waMuted },
     meio: { flexDirection: "row", alignItems: "center", gap: 8 },
     previa: { flex: 1, fontSize: 15, color: t.waMuted, letterSpacing: -0.1 },

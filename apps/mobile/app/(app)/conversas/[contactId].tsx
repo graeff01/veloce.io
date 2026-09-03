@@ -15,6 +15,8 @@ import { Camera, Megaphone, Mic, Pause, Paperclip, Play, Send, Square, UserRound
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
+import { useConversaAoVivo } from "../../../src/ui/stream";
+import { marcarLida } from "../../../src/ui/cache";
 import { ApiError } from "../../../src/core/errors";
 import type { Conversation, Message } from "../../../src/core/contracts";
 
@@ -87,7 +89,14 @@ export default function Thread() {
   }, [client, contactId]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+  // Abrir a conversa é o que a marca como lida.
+  useEffect(() => { if (contactId) marcarLida(String(contactId)); }, [contactId]);
   useFocusEffect(useCallback(() => { void carregar(true); }, [carregar]));
+
+  // Mensagem nova do lead chega SOZINHA na tela, sem sair e voltar.
+  useConversaAoVivo(client, contactId ? String(contactId) : null, useCallback(() => {
+    void carregar(true);
+  }, [carregar]));
 
   // Agrupa por dia, como o portal. As pendentes entram no fim, já visíveis.
   const itens = useMemo<Item[]>(() => {
@@ -248,7 +257,7 @@ export default function Thread() {
           headerTitle: () => (
             <View style={s.tituloNav}>
               <View style={[s.avatarPeq, { backgroundColor: avatarColor(conversa.contact.name) }]}>
-                <Text style={s.avatarPeqTexto}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
+                <Text style={s.avatarPeqTexto} maxFontSizeMultiplier={1.2}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={s.tituloNavCorpo}>
                 <Text style={s.nome} numberOfLines={1}>{conversa.contact.name}</Text>
@@ -485,7 +494,7 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
         {msg.text ? <Text style={[s.textoBalao, { color: corTexto }]}>{msg.text}</Text> : null}
 
         <View style={s.meta}>
-          <Text style={[s.metaTexto, { color: corMeta }]}>
+          <Text style={[s.metaTexto, { color: corMeta }]} maxFontSizeMultiplier={1.3}>
             {autor ? `${autor} · ` : ""}{hhmm(msg.timestamp)}
           </Text>
           {saiu ? (
@@ -494,6 +503,7 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
                 s.metaTexto,
                 { color: msg.readAt ? AZUL_LIDO : corMeta, fontWeight: msg.readAt ? "700" : "400", marginLeft: 3 },
               ]}
+              maxFontSizeMultiplier={1.3}
             >
               {pendente ? "🕘" : msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
             </Text>

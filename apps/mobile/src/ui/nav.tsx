@@ -141,11 +141,15 @@ export function BarraInferior({ state, navigation }: { state: EstadoAbas; naviga
                 <Icone size={20} color={on ? theme.accent : theme.waMuted} strokeWidth={on ? 2.4 : 2} />
                 {badge > 0 ? (
                   <View style={s.badge}>
-                    <Text style={s.badgeTexto}>{badge > 99 ? "99+" : badge}</Text>
+                    <Text style={s.badgeTexto} maxFontSizeMultiplier={1.1}>{badge > 99 ? "99+" : badge}</Text>
                   </View>
                 ) : null}
               </View>
-              <Text style={[s.rotulo, { color: on ? theme.accent : theme.waMuted, fontWeight: on ? "700" : "500" }]}>
+              <Text
+                style={[s.rotulo, { color: on ? theme.accent : theme.waMuted, fontWeight: on ? "700" : "500" }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+              >
                 {rotulo}
               </Text>
             </Pressable>
