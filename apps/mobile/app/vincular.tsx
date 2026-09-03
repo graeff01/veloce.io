@@ -117,7 +117,7 @@ export default function Vincular() {
           accessibilityRole="button"
           accessibilityLabel="Entrar"
         >
-          {enviando ? <ActivityIndicator color={theme.accentText} /> : <Text style={s.botaoTexto}>Entrar</Text>}
+          {enviando ? <ActivityIndicator color={theme.onAccent} /> : <Text style={s.botaoTexto}>Entrar</Text>}
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -135,13 +135,13 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       paddingHorizontal: 14, paddingVertical: 14, fontSize: 16, color: t.text,
     },
     dica: { fontSize: 12, color: t.muted, marginTop: 6 },
-    erro: { color: t.danger, fontSize: 14, marginTop: 16 },
-    aviso: { backgroundColor: t.surface, borderColor: t.danger, borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
-    avisoTexto: { color: t.danger, fontSize: 13 },
+    erro: { color: t.crit, fontSize: 14, marginTop: 16 },
+    aviso: { backgroundColor: t.surface, borderColor: t.crit, borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
+    avisoTexto: { color: t.crit, fontSize: 13 },
     botao: {
       backgroundColor: t.accent, borderRadius: 14, paddingVertical: 16,
       alignItems: "center", justifyContent: "center", marginTop: 28, minHeight: 54,
     },
     botaoOff: { opacity: 0.4 },
-    botaoTexto: { color: t.accentText, fontSize: 16, fontWeight: "700" },
+    botaoTexto: { color: t.onAccent, fontSize: 16, fontWeight: "700" },
   });

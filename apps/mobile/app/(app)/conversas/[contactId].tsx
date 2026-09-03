@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable,
   StyleSheet, Text, TextInput, useColorScheme, View,
@@ -7,11 +7,33 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
+import { ArrowLeft, Camera, Megaphone, Mic, Paperclip, Send, Square, UserRound } from "lucide-react-native";
 import { useSession } from "../../../src/ui/session";
-import { STAGE_LABEL, buildTheme } from "../../../src/ui/theme";
+import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { midiaDaMensagem } from "../../../src/ui/media";
 import { ApiError } from "../../../src/core/errors";
 import type { Conversation, Message } from "../../../src/core/contracts";
+
+// ── Thread ────────────────────────────────────────────────────────────────────
+// Visual portado do portal: fundo do chat na cor do WhatsApp (--wa-chat), balão
+// recebido branco com o canto superior-ESQUERDO reto, balão enviado na cor da
+// marca com o canto superior-DIREITO reto, raio 8, texto 13.5. Hora e ticks no
+// rodapé do balão; tick de lido em azul.
+
+type Item = { tipo: "dia"; id: string; rotulo: string } | { tipo: "msg"; id: string; msg: Message };
+
+function rotuloDoDia(iso: string): string {
+  const d = new Date(iso);
+  const hoje = new Date();
+  if (d.toDateString() === hoje.toDateString()) return "HOJE";
+  const ontem = new Date(hoje);
+  ontem.setDate(hoje.getDate() - 1);
+  if (d.toDateString() === ontem.toDateString()) return "ONTEM";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
+}
+
+const hhmm = (iso: string) =>
+  new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 export default function Thread() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
@@ -27,7 +49,7 @@ export default function Thread() {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [gravando, setGravando] = useState(false);
-  const lista = useRef<FlatList<Message>>(null);
+  const lista = useRef<FlatList<Item>>(null);
 
   const gravador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -46,10 +68,23 @@ export default function Thread() {
   }, [client, contactId]);
 
   useEffect(() => { void carregar(); }, [carregar]);
-
-  // Voltar do background reconcilia com o servidor. Sem polling contínuo — o push
-  // é o que avisa de mensagem nova (e o iOS suspenderia o polling de qualquer forma).
   useFocusEffect(useCallback(() => { void carregar(true); }, [carregar]));
+
+  // Agrupa por dia, como o portal.
+  const itens = useMemo<Item[]>(() => {
+    if (!conversa) return [];
+    const out: Item[] = [];
+    let diaAtual = "";
+    for (const m of conversa.items) {
+      const dia = new Date(m.timestamp).toDateString();
+      if (dia !== diaAtual) {
+        diaAtual = dia;
+        out.push({ tipo: "dia", id: `dia-${dia}`, rotulo: rotuloDoDia(m.timestamp) });
+      }
+      out.push({ tipo: "msg", id: m.id, msg: m });
+    }
+    return out;
+  }, [conversa]);
 
   const enviarTexto = useCallback(async () => {
     const t = texto.trim();
@@ -83,11 +118,8 @@ export default function Thread() {
 
     const asset = r.assets[0];
     const form = new FormData();
-    // O endpoint existente espera multipart { file, kind }.
     form.append("file", {
-      uri: asset.uri,
-      name: asset.fileName ?? "foto.jpg",
-      type: asset.mimeType ?? "image/jpeg",
+      uri: asset.uri, name: asset.fileName ?? "foto.jpg", type: asset.mimeType ?? "image/jpeg",
     } as unknown as Blob);
     form.append("kind", "image");
 
@@ -110,8 +142,8 @@ export default function Thread() {
       const uri = gravador.uri;
       if (!uri) return;
       const form = new FormData();
-      // HIGH_QUALITY no iOS grava em .m4a (audio/mp4) — formato que a Cloud API aceita
-      // e o mesmo que o Safari produzia no PWA. Confirmar em aparelho antes da V1.
+      // HIGH_QUALITY no iOS grava .m4a (audio/mp4) — aceito pela Cloud API e o
+      // mesmo contêiner que o Safari produzia no PWA.
       form.append("file", { uri, name: "audio.m4a", type: "audio/mp4" } as unknown as Blob);
       form.append("kind", "audio");
       setEnviando(true);
@@ -153,34 +185,44 @@ export default function Thread() {
 
   if (erro || !conversa) {
     return (
-      <View style={[s.tela, s.centro, { padding: 24 }]}>
+      <View style={[s.tela, s.centro, { padding: 24, gap: 12 }]}>
         <Text style={s.erroTexto}>{erro ?? "Conversa indisponível."}</Text>
         <Pressable onPress={() => void carregar()}><Text style={s.tentar}>Tentar de novo</Text></Pressable>
-        <Pressable onPress={() => router.back()}><Text style={s.voltarTexto}>Voltar</Text></Pressable>
+        <Pressable onPress={() => router.back()}><Text style={s.tentar}>Voltar</Text></Pressable>
       </View>
     );
   }
 
-  const minha = conversa.assignedEmail && conversa.assignedEmail === conversa.me;
+  const minha = !!conversa.assignedEmail && conversa.assignedEmail === conversa.me;
   const podeEnviar = conversa.windowOpen && !enviando;
+  const etapa = conversa.funnelStage ? STAGE[conversa.funnelStage] : null;
 
   return (
-    <KeyboardAvoidingView
-      style={s.tela}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
-    >
+    <KeyboardAvoidingView style={s.tela} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* Cabeçalho */}
       <View style={[s.cabecalho, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Voltar">
-          <Text style={s.voltar}>‹</Text>
+          <ArrowLeft size={23} color={theme.accent} strokeWidth={2.2} />
         </Pressable>
+
+        <View style={[s.avatarPeq, { backgroundColor: avatarColor(conversa.contact.name) }]}>
+          <Text style={s.avatarPeqTexto}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
+        </View>
+
         <View style={s.cabecalhoCorpo}>
           <Text style={s.nome} numberOfLines={1}>{conversa.contact.name}</Text>
-          <Text style={s.subtitulo} numberOfLines={1}>
-            {conversa.funnelStage ? (STAGE_LABEL[conversa.funnelStage] ?? conversa.funnelStage) : "—"}
-            {conversa.assignedName ? ` · ${conversa.assignedName}` : ""}
-          </Text>
+          <View style={s.subLinha}>
+            {etapa ? <Text style={[s.subtitulo, { color: etapa.color, fontWeight: "700" }]}>{etapa.label}</Text> : null}
+            {conversa.assignedName ? (
+              <>
+                <Text style={s.subtitulo}>·</Text>
+                <UserRound size={10} color={theme.muted} strokeWidth={2.4} />
+                <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
+              </>
+            ) : null}
+          </View>
         </View>
+
         {!minha && conversa.me ? (
           <Pressable style={s.assumir} onPress={() => void assumir()} accessibilityRole="button">
             <Text style={s.assumirTexto}>Assumir</Text>
@@ -188,22 +230,32 @@ export default function Thread() {
         ) : null}
       </View>
 
+      {/* Origem do anúncio */}
       {conversa.lead ? (
         <View style={s.origem}>
+          <Megaphone size={11} color={theme.accent} strokeWidth={2.4} />
           <Text style={s.origemTexto} numberOfLines={1}>
-            📣 {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
+            {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
           </Text>
         </View>
       ) : null}
 
+      {/* Mensagens */}
       <FlatList
         ref={lista}
-        data={conversa.items}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => (
-          <Balao msg={item} theme={theme} contactId={String(contactId)} />
-        )}
-        contentContainerStyle={s.listaConteudo}
+        data={itens}
+        keyExtractor={(i) => i.id}
+        style={s.chat}
+        contentContainerStyle={s.chatConteudo}
+        renderItem={({ item }) =>
+          item.tipo === "dia" ? (
+            <View style={s.diaLinha}>
+              <Text style={s.diaTexto}>{item.rotulo}</Text>
+            </View>
+          ) : (
+            <Balao msg={item.msg} theme={theme} contactId={String(contactId)} />
+          )
+        }
         onContentSizeChange={() => lista.current?.scrollToEnd({ animated: false })}
       />
 
@@ -215,31 +267,44 @@ export default function Thread() {
         </View>
       ) : null}
 
-      <View style={[s.barra, { paddingBottom: insets.bottom + 10 }]}>
-        <Pressable onPress={() => void enviarImagem(false)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Galeria">
-          <Text style={[s.icone, !podeEnviar && s.iconeOff]}>📎</Text>
+      {/* Compositor */}
+      <View style={[s.barra, { paddingBottom: insets.bottom + 9 }]}>
+        <Pressable onPress={() => void enviarImagem(false)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Anexar da galeria">
+          <Paperclip size={22} color={theme.muted} strokeWidth={2} style={!podeEnviar && s.off} />
         </Pressable>
         <Pressable onPress={() => void enviarImagem(true)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Câmera">
-          <Text style={[s.icone, !podeEnviar && s.iconeOff]}>📷</Text>
+          <Camera size={22} color={theme.muted} strokeWidth={2} style={!podeEnviar && s.off} />
         </Pressable>
+
         <TextInput
           style={s.entrada}
           value={texto}
           onChangeText={setTexto}
           placeholder={conversa.windowOpen ? "Mensagem" : "Janela fechada"}
-          placeholderTextColor={theme.muted}
+          placeholderTextColor={theme.waMuted}
           editable={podeEnviar}
           multiline
         />
+
         {texto.trim() ? (
-          <Pressable onPress={() => void enviarTexto()} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Enviar">
-            <Text style={[s.icone, !podeEnviar && s.iconeOff]}>➤</Text>
+          <Pressable
+            onPress={() => void enviarTexto()}
+            disabled={!podeEnviar}
+            style={[s.enviar, { backgroundColor: theme.accent }, !podeEnviar && s.off]}
+            accessibilityLabel="Enviar"
+          >
+            <Send size={18} color={theme.onAccent} strokeWidth={2.4} />
           </Pressable>
         ) : (
-          <Pressable onPress={() => void alternarGravacao()} disabled={!podeEnviar} hitSlop={8} accessibilityLabel={gravando ? "Parar gravação" : "Gravar áudio"}>
-            <Text style={[s.icone, gravando && { color: theme.danger }, !podeEnviar && s.iconeOff]}>
-              {gravando ? "⏹" : "🎤"}
-            </Text>
+          <Pressable
+            onPress={() => void alternarGravacao()}
+            disabled={!podeEnviar}
+            style={[s.enviar, { backgroundColor: gravando ? theme.crit : theme.accent }, !podeEnviar && s.off]}
+            accessibilityLabel={gravando ? "Parar gravação" : "Gravar áudio"}
+          >
+            {gravando
+              ? <Square size={16} color="#fff" strokeWidth={2.6} fill="#fff" />
+              : <Mic size={18} color={theme.onAccent} strokeWidth={2.4} />}
           </Pressable>
         )}
       </View>
@@ -262,27 +327,49 @@ function Balao({ msg, theme, contactId }: { msg: Message; theme: ReturnType<type
     return () => { vivo = false; };
   }, [client, contactId, msg.id, msg.type]);
 
+  const corTexto = saiu ? theme.onAccent : theme.waText;
+  const corMeta = saiu ? theme.onAccent : theme.waMuted;
+  const autor = saiu ? (msg.aiGenerated ? "IA" : msg.sentByName || "Equipe") : null;
+
   return (
-    <View style={[s.balao, saiu ? s.balaoSaiu : s.balaoEntrou]}>
-      {msg.type === "image" && imagem ? (
-        <Image source={{ uri: imagem }} style={s.imagem} resizeMode="cover" />
-      ) : null}
-      {msg.type === "audio" ? (
-        <Text style={[s.rotuloMidia, saiu && s.textoSaiu]}>
-          🎤 Áudio{msg.transcription ? "" : " (sem transcrição)"}
-        </Text>
-      ) : null}
-      {msg.transcription ? (
-        <Text style={[s.transcricao, saiu && s.textoSaiu]}>“{msg.transcription}”</Text>
-      ) : null}
-      {msg.text ? <Text style={[s.textoBalao, saiu && s.textoSaiu]}>{msg.text}</Text> : null}
-      <View style={s.rodapeBalao}>
-        {msg.aiGenerated ? <Text style={[s.marcaIa, saiu && s.textoSaiu]}>IA</Text> : null}
-        {msg.sentByName ? <Text style={[s.autor, saiu && s.textoSaiu]}>{msg.sentByName}</Text> : null}
-        <Text style={[s.hora, saiu && s.textoSaiu]}>
-          {new Date(msg.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-        </Text>
-        {saiu ? <Text style={[s.hora, s.textoSaiu]}>{msg.readAt ? "✓✓" : msg.deliveredAt ? "✓" : "·"}</Text> : null}
+    <View style={[s.balaoLinha, { justifyContent: saiu ? "flex-end" : "flex-start" }]}>
+      <View
+        style={[
+          s.balao,
+          saiu
+            ? { backgroundColor: theme.accent, borderTopLeftRadius: 8, borderTopRightRadius: 0 }
+            : { backgroundColor: theme.waIn, borderTopLeftRadius: 0, borderTopRightRadius: 8 },
+        ]}
+      >
+        {msg.type === "image" && imagem ? (
+          <Image source={{ uri: imagem }} style={s.imagem} resizeMode="cover" />
+        ) : null}
+
+        {msg.type === "audio" ? (
+          <Text style={[s.rotuloMidia, { color: corTexto }]}>🎤 Áudio</Text>
+        ) : null}
+
+        {msg.transcription ? (
+          <Text style={[s.transcricao, { color: corMeta }]}>“{msg.transcription}”</Text>
+        ) : null}
+
+        {msg.text ? <Text style={[s.textoBalao, { color: corTexto }]}>{msg.text}</Text> : null}
+
+        <View style={s.meta}>
+          <Text style={[s.metaTexto, { color: corMeta }]}>
+            {autor ? `${autor} · ` : ""}{hhmm(msg.timestamp)}
+          </Text>
+          {saiu ? (
+            <Text
+              style={[
+                s.metaTexto,
+                { color: msg.readAt ? AZUL_LIDO : corMeta, fontWeight: msg.readAt ? "700" : "400", marginLeft: 3 },
+              ]}
+            >
+              {msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -290,46 +377,75 @@ function Balao({ msg, theme, contactId }: { msg: Message; theme: ReturnType<type
 
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
-    tela: { flex: 1, backgroundColor: t.bg },
-    centro: { alignItems: "center", justifyContent: "center", gap: 12 },
+    tela: { flex: 1, backgroundColor: t.waChat },
+    centro: { alignItems: "center", justifyContent: "center" },
+
     cabecalho: {
-      flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, paddingBottom: 10,
+      flexDirection: "row", alignItems: "center", gap: 10,
+      paddingHorizontal: 12, paddingBottom: 9,
       backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border,
     },
+    avatarPeq: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+    avatarPeqTexto: { color: "#fff", fontWeight: "700", fontSize: 13.6 },
     cabecalhoCorpo: { flex: 1 },
-    voltar: { fontSize: 32, color: t.accent, lineHeight: 34, marginTop: -4 },
-    voltarTexto: { color: t.accent, fontSize: 14, fontWeight: "600" },
-    nome: { fontSize: 17, fontWeight: "700", color: t.text },
-    subtitulo: { fontSize: 12, color: t.muted },
+    nome: { fontSize: 16, fontWeight: "700", color: t.text },
+    subLinha: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 },
+    subtitulo: { fontSize: 11.5, color: t.muted },
     assumir: { borderWidth: 1, borderColor: t.accent, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 },
     assumirTexto: { color: t.accent, fontSize: 12.5, fontWeight: "700" },
-    origem: { paddingHorizontal: 16, paddingVertical: 6, backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border },
-    origemTexto: { fontSize: 12, color: t.muted },
-    listaConteudo: { padding: 12, gap: 8 },
-    balao: { maxWidth: "82%", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, gap: 4 },
-    balaoEntrou: { alignSelf: "flex-start", backgroundColor: t.bubbleIn, borderWidth: 1, borderColor: t.border },
-    balaoSaiu: { alignSelf: "flex-end", backgroundColor: t.bubbleOut },
-    textoBalao: { fontSize: 15.5, color: t.text, lineHeight: 21 },
-    textoSaiu: { color: t.accentText },
-    transcricao: { fontSize: 14, fontStyle: "italic", color: t.muted },
-    rotuloMidia: { fontSize: 14, color: t.text },
-    imagem: { width: 220, height: 165, borderRadius: 10 },
-    rodapeBalao: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end" },
-    hora: { fontSize: 10.5, color: t.muted },
-    autor: { fontSize: 10.5, color: t.muted, fontWeight: "600" },
-    marcaIa: { fontSize: 9.5, color: t.muted, fontWeight: "800" },
-    janelaFechada: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border },
-    janelaTexto: { fontSize: 12, color: t.muted, textAlign: "center" },
+
+    origem: {
+      flexDirection: "row", alignItems: "center", gap: 5,
+      paddingHorizontal: 16, paddingVertical: 6,
+      backgroundColor: t.surface, borderBottomWidth: 1, borderBottomColor: t.border,
+    },
+    origemTexto: { fontSize: 11.5, color: t.muted, flex: 1 },
+
+    chat: { flex: 1, backgroundColor: t.waChat },
+    chatConteudo: { paddingHorizontal: 10, paddingVertical: 10 },
+
+    diaLinha: { alignItems: "center", marginVertical: 9 },
+    diaTexto: {
+      fontSize: 11, fontWeight: "600", color: t.waMuted, backgroundColor: t.surface,
+      paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, overflow: "hidden",
+      shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
+    },
+
+    balaoLinha: { flexDirection: "row", marginBottom: 4 },
+    balao: {
+      maxWidth: "82%",
+      paddingTop: 6, paddingHorizontal: 9, paddingBottom: 5,
+      borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+      shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    textoBalao: { fontSize: 13.5, lineHeight: 19 },
+    rotuloMidia: { fontSize: 13.5 },
+    transcricao: { fontSize: 12.5, fontStyle: "italic", marginTop: 2 },
+    imagem: { width: 220, height: 165, borderRadius: 6, marginBottom: 4 },
+    meta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
+    metaTexto: { fontSize: 10, opacity: 0.65 },
+
+    janelaFechada: {
+      paddingHorizontal: 16, paddingVertical: 8,
+      backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border,
+    },
+    janelaTexto: { fontSize: 11.5, color: t.muted, textAlign: "center" },
+
     barra: {
-      flexDirection: "row", alignItems: "flex-end", gap: 10, paddingHorizontal: 12, paddingTop: 10,
+      flexDirection: "row", alignItems: "flex-end", gap: 10,
+      paddingHorizontal: 12, paddingTop: 9,
       backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border,
     },
     entrada: {
-      flex: 1, minHeight: 40, maxHeight: 120, backgroundColor: t.bg, borderRadius: 20, borderWidth: 1,
-      borderColor: t.border, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, fontSize: 15.5, color: t.text,
+      flex: 1, minHeight: 38, maxHeight: 120,
+      backgroundColor: t.bg, borderRadius: 19, borderWidth: 1, borderColor: t.border,
+      paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9,
+      fontSize: 14.5, color: t.text,
     },
-    icone: { fontSize: 22, color: t.accent },
-    iconeOff: { opacity: 0.3 },
-    erroTexto: { color: t.danger, fontSize: 14, textAlign: "center" },
+    enviar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+    off: { opacity: 0.35 },
+
+    erroTexto: { color: t.crit, fontSize: 14, textAlign: "center" },
     tentar: { color: t.accent, fontSize: 14, fontWeight: "700" },
   });

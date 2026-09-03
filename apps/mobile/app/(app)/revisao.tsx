@@ -138,7 +138,7 @@ export default function Revisao() {
               </Pressable>
               <Pressable style={s.botaoAprovar} onPress={() => decidir(item, true)} disabled={ocupado === item.quoteId}>
                 {ocupado === item.quoteId
-                  ? <ActivityIndicator color={theme.accentText} />
+                  ? <ActivityIndicator color={theme.onAccent} />
                   : <Text style={s.botaoAprovarTexto}>Aprovar</Text>}
               </Pressable>
             </View>
@@ -168,11 +168,11 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     acoes: { flexDirection: "row", gap: 8, marginTop: 10 },
     botaoNeutro: { flex: 1, borderWidth: 1, borderColor: t.border, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
     botaoNeutroTexto: { color: t.text, fontWeight: "600", fontSize: 14 },
-    botaoRejeitar: { flex: 1, borderWidth: 1, borderColor: t.danger, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
-    botaoRejeitarTexto: { color: t.danger, fontWeight: "700", fontSize: 14 },
+    botaoRejeitar: { flex: 1, borderWidth: 1, borderColor: t.crit, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
+    botaoRejeitarTexto: { color: t.crit, fontWeight: "700", fontSize: 14 },
     botaoAprovar: { flex: 1.2, backgroundColor: t.accent, borderRadius: 10, paddingVertical: 11, alignItems: "center", justifyContent: "center", minHeight: 42 },
-    botaoAprovarTexto: { color: t.accentText, fontWeight: "800", fontSize: 14 },
+    botaoAprovarTexto: { color: t.onAccent, fontWeight: "800", fontSize: 14 },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { color: t.muted, fontSize: 15, textAlign: "center" },
-    erro: { color: t.danger, fontSize: 13, padding: 16 },
+    erro: { color: t.crit, fontSize: 13, padding: 16 },
   });

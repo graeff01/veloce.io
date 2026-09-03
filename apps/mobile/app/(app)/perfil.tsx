@@ -47,7 +47,7 @@ export default function Perfil() {
           <Image source={{ uri: me.brand.logoUrl }} style={s.logo} resizeMode="contain" />
         ) : (
           <View style={[s.logoVazio, { backgroundColor: theme.accent }]}>
-            <Text style={[s.logoLetra, { color: theme.accentText }]}>
+            <Text style={[s.logoLetra, { color: theme.onAccent }]}>
               {(me?.brand.name ?? "V").slice(0, 1).toUpperCase()}
             </Text>
           </View>
@@ -114,7 +114,7 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     nota: { fontSize: 12, color: t.muted, lineHeight: 17 },
     botaoNeutro: { borderWidth: 1, borderColor: t.border, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 6 },
     botaoNeutroTexto: { color: t.text, fontWeight: "600", fontSize: 15 },
-    botaoSair: { borderWidth: 1, borderColor: t.danger, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-    botaoSairTexto: { color: t.danger, fontWeight: "700", fontSize: 15 },
+    botaoSair: { borderWidth: 1, borderColor: t.crit, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+    botaoSairTexto: { color: t.crit, fontWeight: "700", fontSize: 15 },
     excluir: { color: t.muted, fontSize: 13, textAlign: "center", marginTop: 8, textDecorationLine: "underline" },
   });

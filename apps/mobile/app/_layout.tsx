@@ -21,7 +21,11 @@ function Guard() {
   useEffect(() => {
     if (status === "carregando") return;
     const dentro = segments[0] === "(app)";
-    if (status === "sem-sessao" && dentro) router.replace("/vincular");
+    const emVincular = segments[0] === "vincular";
+    // Sem sessão: manda para o vínculo de QUALQUER lugar que não seja ele mesmo.
+    // A versão anterior só agia quando já estávamos dentro de (app) — então na
+    // rota raiz nada acontecia e o app ficava preso na tela de rota inexistente.
+    if (status === "sem-sessao" && !emVincular) router.replace("/vincular");
     if (status === "logado" && !dentro) router.replace("/(app)/conversas");
   }, [status, segments, router]);
 

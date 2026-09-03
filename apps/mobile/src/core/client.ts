@@ -172,6 +172,14 @@ export class VeloceClient {
     return parseMe(await this.request(portalPath("/me")));
   }
 
+  /** Contadores da barra inferior (aguardando resposta / orçamentos a revisar). */
+  async badges(): Promise<{ waiting: number; reviews: number }> {
+    const d = await this.request(portalPath("/badges"));
+    const o = d && typeof d === "object" ? (d as Record<string, unknown>) : {};
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+    return { waiting: n(o.waiting), reviews: n(o.reviews) };
+  }
+
   // ── conversas ───────────────────────────────────────────────────────────────
 
   async conversations(params: {
