@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator, Pressable, RefreshControl, ScrollView,
+  ActivityIndicator, Image, Pressable, RefreshControl, ScrollView,
   StyleSheet, Text, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { TrendingDown, TrendingUp } from "lucide-react-native";
+import { Megaphone, TrendingDown, TrendingUp } from "lucide-react-native";
 import { useSession } from "../../src/ui/session";
 import { buildTheme } from "../../src/ui/theme";
 import { ApiError } from "../../src/core/errors";
@@ -94,7 +94,17 @@ export default function Anuncios() {
           ) : (
             dados.topCampaigns.map((c) => (
               <View key={c.name} style={s.cartao}>
-                <Text style={s.campanhaNome} numberOfLines={2}>{c.name}</Text>
+                {/* Peça do anúncio ao lado do nome: o número ganha rosto. */}
+                <View style={s.campanhaTopo}>
+                  {c.image ? (
+                    <Image source={{ uri: c.image }} style={s.criativo} resizeMode="cover" />
+                  ) : (
+                    <View style={[s.criativo, s.criativoVazio]}>
+                      <Megaphone size={18} color={theme.muted} strokeWidth={2} />
+                    </View>
+                  )}
+                  <Text style={s.campanhaNome} numberOfLines={3}>{c.name}</Text>
+                </View>
                 <View style={s.linhaMetricas}>
                   <Coluna rotulo="Investimento" valor={moeda(c.spend, dados.currency)} theme={theme} />
                   <Coluna rotulo="Leads" valor={String(c.leads)} theme={theme} />
@@ -172,7 +182,10 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       backgroundColor: t.surface, marginHorizontal: 16, marginBottom: 10, borderRadius: 14,
       borderWidth: StyleSheet.hairlineWidth, borderColor: t.border, padding: 14, gap: 10,
     },
-    campanhaNome: { fontSize: 15.5, fontWeight: "700", color: t.text },
+    campanhaTopo: { flexDirection: "row", alignItems: "center", gap: 12 },
+    criativo: { width: 64, height: 64, borderRadius: 10, backgroundColor: t.raise },
+    criativoVazio: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: t.border },
+    campanhaNome: { flex: 1, fontSize: 15.5, fontWeight: "700", color: t.text, lineHeight: 20 },
     linhaMetricas: { flexDirection: "row", gap: 14 },
     coluna: { flex: 1 },
     colunaRotulo: { fontSize: 10.5, fontWeight: "600", color: t.muted },

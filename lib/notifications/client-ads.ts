@@ -17,7 +17,9 @@ export interface ClientAds {
   leads: number;
   cpl: number | null;
   deltas: { spend: number | null; leads: number | null; cpl: number | null };
-  topCampaigns: { name: string; spend: number; leads: number; cpl: number | null; pctSpend: number }[];
+  // `image`: thumbnail de um criativo da campanha. Existe para o módulo Anúncios do
+  // APP mostrar a peça ao lado do número; a tela do PWA ignora o campo.
+  topCampaigns: { name: string; spend: number; leads: number; cpl: number | null; pctSpend: number; image: string | null }[];
   bestCreative: { campaignName: string; leads: number; image: string | null; creativeId: string | null; videoId: string | null } | null;
   series: { day: string; spend: number; leads: number }[];
 }
@@ -78,10 +80,27 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
     ? new Map((await prisma.metaCampaign.findMany({ where: { connectionId: metaConn.id, campaignId: { in: campIds } }, select: { campaignId: true, name: true } })).map((c) => [c.campaignId, c.name]))
     : new Map<string, string>();
 
+  // Criativo representativo de cada campanha: o 1º anúncio dela que tenha criativo.
+  // Uma consulta em lote — nada de N+1 por campanha.
+  const campCriativo = new Map<string, string>();
+  for (const [adId, campId] of adToCamp) {
+    if (campCriativo.has(campId)) continue;
+    const cr = adToCreative.get(adId);
+    if (cr) campCriativo.set(campId, cr);
+  }
+  const criativoIds = [...new Set(campCriativo.values())];
+  const imagemPorCriativo = criativoIds.length
+    ? new Map((await prisma.metaCreative.findMany({
+        where: { connectionId: metaConn.id, creativeId: { in: criativoIds } },
+        select: { creativeId: true, thumbnailUrl: true, imageUrl: true },
+      })).map((c) => [c.creativeId, c.imageUrl || c.thumbnailUrl || null]))
+    : new Map<string, string | null>();
+
   const topCampaigns = campIds.map((id) => {
     const s = campSpend.get(id) ?? 0;
     const l = campLeads.get(id) ?? 0;
-    return { name: campNames.get(id) ?? "Campanha", spend: Math.round(s * 100) / 100, leads: l, cpl: l > 0 ? Math.round((s / l) * 100) / 100 : null, pctSpend: spend > 0 ? Math.round((s / spend) * 100) : 0 };
+    const cr = campCriativo.get(id);
+    return { name: campNames.get(id) ?? "Campanha", spend: Math.round(s * 100) / 100, leads: l, cpl: l > 0 ? Math.round((s / l) * 100) / 100 : null, pctSpend: spend > 0 ? Math.round((s / spend) * 100) : 0, image: (cr && imagemPorCriativo.get(cr)) || null };
   }).sort((a, b) => b.spend - a.spend).slice(0, 5);
 
   // Melhor criativo: anúncio com mais leads no período → thumbnail.

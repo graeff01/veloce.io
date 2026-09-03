@@ -117,7 +117,11 @@ export interface QuoteReview {
 }
 
 /** Desempenho de mídia (módulo Anúncios). Espelha ClientAds de lib/notifications/client-ads.ts. */
-export interface AdsCampaign { name: string; spend: number; leads: number; cpl: number | null; pctSpend: number }
+export interface AdsCampaign {
+  name: string; spend: number; leads: number; cpl: number | null; pctSpend: number;
+  /** Thumbnail de um criativo da campanha. null quando o anúncio não tem peça. */
+  image: string | null;
+}
 export interface AdsPerformance {
   hasMeta: boolean;
   periodLabel: string;
@@ -348,6 +352,7 @@ export function parseAdsPerformance(input: unknown): AdsPerformance {
           leads: num(c.leads) ?? 0,
           cpl: num(c.cpl),
           pctSpend: num(c.pctSpend) ?? 0,
+          image: str(c.image),
         } satisfies AdsCampaign;
       })
       .filter((c): c is AdsCampaign => c !== null),
