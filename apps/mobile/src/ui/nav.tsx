@@ -27,7 +27,6 @@ const MODULOS: { rota: NomeRota; rotulo: string; simbolo: string }[] = [
   { rota: "conversas", rotulo: "Conversas", simbolo: SIMBOLO.conversas },
   { rota: "anuncios", rotulo: "Anúncios", simbolo: SIMBOLO.anuncios },
   { rota: "revisao", rotulo: "Orçamentos", simbolo: SIMBOLO.orcamentos },
-  { rota: "mais", rotulo: "Mais", simbolo: SIMBOLO.mais },
 ];
 
 /** Contadores da barra — mesmo endpoint e cadência do PWA. */

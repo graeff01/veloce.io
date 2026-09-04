@@ -5,7 +5,7 @@
 import type { ConversationRow, Me } from "./contracts";
 
 /** Módulos da barra inferior, na ordem de exibição. */
-export type ModuloRota = "conversas" | "anuncios" | "revisao" | "mais";
+export type ModuloRota = "conversas" | "anuncios" | "revisao";
 
 /**
  * Quais MÓDULOS este tenant/usuário enxerga.
@@ -20,7 +20,8 @@ export function modulosPara(me: Me | null): ModuloRota[] {
   if (secoes.includes("anuncios")) out.push("anuncios");
   // Orçamentos exige a seção E a funcionalidade ligada no cliente.
   if (secoes.includes("revisao") && me?.quotesEnabled === true) out.push("revisao");
-  out.push("mais");
+  // "Mais" NÃO entra aqui: virou atalho no cabeçalho. A barra é só para o que
+  // se usa o dia inteiro.
   return out;
 }
 
@@ -49,6 +50,15 @@ export function campanhasDe(linhas: ConversationRow[]): string[] {
   const set = new Set<string>();
   for (const c of linhas) if (c.fromAd) set.add(campanhaDe(c));
   return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+/** Campanhas com quantos leads cada uma trouxe, da maior para a menor. */
+export function campanhasContadas(linhas: ConversationRow[]): { nome: string; total: number }[] {
+  const conta = new Map<string, number>();
+  for (const c of linhas) if (c.fromAd) conta.set(campanhaDe(c), (conta.get(campanhaDe(c)) ?? 0) + 1);
+  return [...conta.entries()]
+    .map(([nome, total]) => ({ nome, total }))
+    .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
 /**

@@ -15,6 +15,7 @@ const KEY_TOKEN = "veloce.session.token";
 const KEY_EXPIRES = "veloce.session.expiresAt";
 const KEY_DEVICE = "veloce.device.id";
 const KEY_BASE = "veloce.api.base";
+const KEY_PORTAL = "veloce.portal.token";
 
 const OPTS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -70,6 +71,35 @@ function fallbackUuid(): string {
 }
 
 /** Origem do backend descoberta no vínculo (do link do painel). */
+/**
+ * Token do painel, guardado para o segundo acesso.
+ *
+ * DECISÃO CONSCIENTE, e uma exceção à regra original do projeto (o token era
+ * descartado após o vínculo). O motivo: sem ele, sair da conta obrigava a pessoa
+ * a achar de novo o link que a agência mandou — atrito grande para quem só
+ * trocou de usuária no mesmo aparelho.
+ *
+ * O que torna aceitável:
+ *  · fica no Keychain, com a MESMA proteção do token de sessão, não em disco claro;
+ *  · para painel com `requireLogin`, o token sozinho não abre dado nenhum — o
+ *    gate do portal exige sessão; ele só diz QUAL loja é;
+ *  · "Usar outro painel" apaga, e é o caminho para trocar de cliente.
+ *
+ * Onde NÃO vale: painel sem `requireLogin`, em que o token é a credencial
+ * inteira. Por isso o app recusa esse caso no vínculo, em vez de guardá-lo.
+ */
+export const portalTokenStore = {
+  async read(): Promise<string | null> {
+    return SecureStore.getItemAsync(KEY_PORTAL, OPTS).catch(() => null);
+  },
+  async write(token: string): Promise<void> {
+    await SecureStore.setItemAsync(KEY_PORTAL, token, OPTS);
+  },
+  async clear(): Promise<void> {
+    await SecureStore.deleteItemAsync(KEY_PORTAL, OPTS).catch(() => {});
+  },
+};
+
 export const apiBaseStore = {
   async read(): Promise<string | null> {
     return SecureStore.getItemAsync(KEY_BASE, OPTS).catch(() => null);

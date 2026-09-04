@@ -32,6 +32,14 @@ export const RAIO = {
 } as const;
 
 /** Aplique junto de qualquer borderRadius: é o que dá a curva do sistema. */
+/**
+ * Altura livre que a barra flutuante exige no fim de qualquer rolagem.
+ * A pílula fica em `insets.bottom + 12` e mede ~63pt; somando uma folga de
+ * respiro dá 96. Estava espalhado como 24, 92 e 96 pelas telas — e o 24 da
+ * Revisão fazia a barra cobrir o último cartão.
+ */
+export const ESPACO_BARRA = 96;
+
 export const CURVA = { borderCurve: "continuous" } as const;
 
 /** Cartão padrão: curva contínua, sombra rente. Sem borda — o tom já separa. */

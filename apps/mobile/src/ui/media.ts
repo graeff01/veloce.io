@@ -53,6 +53,17 @@ export async function midiaDaMensagem(
   return baixarAutenticado(client, client.mediaPath(contactId, messageId), messageId, ext);
 }
 
+/**
+ * Mídia local em `data:` URI. O WKWebView do iOS recusa ler `file://` de fora do
+ * seu próprio sandbox de leitura, e é por isso que embutir o caminho não bastava
+ * para tocar a nota de voz. Embutido no documento, não há acesso a arquivo.
+ * Nota de voz do WhatsApp tem dezenas de KB — cabe sem drama.
+ */
+export async function midiaEmDataUri(caminho: string, mime: string): Promise<string> {
+  const b64 = await new File(caminho).base64();
+  return `data:${mime};base64,${b64}`;
+}
+
 export async function pdfDoOrcamento(client: VeloceClient, quoteId: string): Promise<string> {
   return baixarAutenticado(client, client.quotePdfPath(quoteId), `orcamento-${quoteId}`, ".pdf");
 }

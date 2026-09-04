@@ -10,9 +10,9 @@ import type { Me, PortalSection } from "../core/contracts";
 import { ApiError } from "../core/errors";
 import { parseInviteLink } from "../core/link";
 import { log } from "../core/redact";
-import { KeychainSessionStore, apiBaseStore, deviceId } from "../storage/session-store";
+import { KeychainSessionStore, apiBaseStore, deviceId, portalTokenStore } from "../storage/session-store";
 import { limparCache } from "./cache";
-import { apiBase } from "../config/env";
+import { apiBase, describeEnv } from "../config/env";
 
 type Status = "carregando" | "sem-sessao" | "logado";
 
@@ -22,8 +22,18 @@ interface SessionValue {
   client: VeloceClient | null;
   /** Erro de configuração de ambiente (API não configurada, dev apontando p/ prod). */
   configError: string | null;
+  /** Base pública em uso — para abrir privacidade, termos e exclusão de dados. */
+  base: string | null;
   can: (section: PortalSection) => boolean;
   vincularELogar: (link: string, email: string, senha: string) => Promise<void>;
+  /** Cria o acesso e entra — o "Criar conta" do portal. */
+  vincularECriar: (link: string, email: string, senha: string, nome: string) => Promise<void>;
+  /** Marca do cliente a partir do link, antes de qualquer credencial. */
+  marcaDoLink: (link: string) => Promise<Me | null>;
+  /** Painel já vinculado neste aparelho — pula o passo do link. */
+  painelSalvo: { base: string; token: string } | null;
+  /** Esquece o painel: o próximo acesso volta a pedir o link. */
+  esquecerPainel: () => Promise<void>;
   sair: () => Promise<void>;
   recarregar: () => Promise<void>;
 }
@@ -41,6 +51,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [client, setClient] = useState<VeloceClient | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [painelSalvo, setPainelSalvo] = useState<{ base: string; token: string } | null>(null);
   const store = useRef(new KeychainSessionStore()).current;
 
   /** Cria o cliente HTTP para uma base. `onSessionLost` centraliza o logout. */
@@ -51,6 +62,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         store,
         device: { id: await deviceId(), name: "iPhone", platform: "ios" },
         onSessionLost: () => {
+          // A lista em cache é do tenant ANTERIOR. Sem limpar aqui, a próxima
+          // abertura pinta conversas de outro cliente antes da rede responder —
+          // e se a rede falhar, elas ficam na tela. Isolamento não pode depender
+          // de o usuário lembrar de sair pelo botão.
+          limparCache();
           setMe(null);
           setStatus("sem-sessao");
         },
@@ -66,6 +82,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const c = await buildClient(base);
       setClient(c);
       setConfigError(null);
+
+      if (__DEV__) log.info(`api: ${describeEnv(base)}`); // host, nunca credencial
+
+      // Painel lembrado: quem sai da conta cai direto no login da loja certa,
+      // sem precisar caçar de novo o link que a agência mandou.
+      const tokenSalvo = await portalTokenStore.read();
+      if (tokenSalvo && savedBase) setPainelSalvo({ base, token: tokenSalvo });
 
       const saved = await store.read();
       if (!saved) { setStatus("sem-sessao"); return; }
@@ -97,8 +120,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const c = await buildClient(base);
 
     await c.login(invite.token, email.trim(), senha);
-    // A base fica guardada; o token do portal, não — ele sai de escopo aqui.
     await apiBaseStore.write(base);
+    await portalTokenStore.write(invite.token);
+    setPainelSalvo({ base, token: invite.token });
 
     const perfil = await c.me();
     setClient(c);
@@ -107,8 +131,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     log.info("aparelho vinculado e sessão criada");
   }, [buildClient]);
 
+  const vincularECriar = useCallback(async (link: string, email: string, senha: string, nome: string) => {
+    const invite = parseInviteLink(link);
+    const base = apiBase(invite.baseUrl);
+    const c = await buildClient(base);
+
+    await c.registrar(invite.token, email.trim(), senha, nome);
+    await apiBaseStore.write(base);
+    await portalTokenStore.write(invite.token);
+    setPainelSalvo({ base, token: invite.token });
+
+    const perfil = await c.me();
+    setClient(c);
+    setMe(perfil);
+    setStatus("logado");
+    log.info("acesso criado e aparelho vinculado");
+  }, [buildClient]);
+
+  /** Só identidade visual: falhar aqui não impede entrar. */
+  const marcaDoLink = useCallback(async (link: string): Promise<Me | null> => {
+    try {
+      const invite = parseInviteLink(link);
+      const c = await buildClient(apiBase(invite.baseUrl));
+      return await c.marcaPublica(invite.token);
+    } catch {
+      return null;
+    }
+  }, [buildClient]);
+
+  /** Trocar de loja: some o painel e o próximo acesso pede o link de novo. */
+  const esquecerPainel = useCallback(async () => {
+    await portalTokenStore.clear();
+    setPainelSalvo(null);
+  }, []);
+
   const sair = useCallback(async () => {
     await client?.logout().catch(() => {});
+    // O painel PERMANECE: sair é trocar de usuária, não de loja.
     await store.clear();
     limparCache(); // lista e histórico de leitura saem junto com a credencial
     setMe(null);
@@ -132,8 +191,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SessionValue>(
-    () => ({ status, me, client, configError, can, vincularELogar, sair, recarregar }),
-    [status, me, client, configError, can, vincularELogar, sair, recarregar],
+    () => ({
+      status, me, client, configError, base: client?.base ?? null,
+      can, vincularELogar, vincularECriar, marcaDoLink, sair, recarregar,
+      painelSalvo, esquecerPainel,
+    }),
+    [status, me, client, configError, can, vincularELogar, vincularECriar, marcaDoLink,
+     sair, recarregar, painelSalvo, esquecerPainel],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

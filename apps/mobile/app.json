@@ -13,9 +13,13 @@
         "NSCameraUsageDescription": "Para enviar fotos ao lead na conversa.",
         "NSPhotoLibraryUsageDescription": "Para enviar imagens da galeria ao lead.",
         "NSMicrophoneUsageDescription": "Para gravar e enviar áudios ao lead.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
       },
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "buildNumber": "1"
     },
     "plugins": [
       "expo-router",
@@ -51,7 +55,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ],
     "extra": {
       "//": "apiUrl NUNCA tem valor de producao aqui. Vem de EXPO_PUBLIC_API_URL.",

@@ -131,6 +131,8 @@ export interface AdsPerformance {
   cpl: number | null;
   deltas: { spend: number | null; leads: number | null; cpl: number | null };
   topCampaigns: AdsCampaign[];
+  /** Gasto e leads por dia do período — alimenta a linha de evolução. */
+  series: { day: string; spend: number; leads: number }[];
 }
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
@@ -340,6 +342,14 @@ export function parseAdsPerformance(input: unknown): AdsPerformance {
     leads: num(d.leads) ?? 0,
     cpl: num(d.cpl),
     deltas: { spend: num(del.spend), leads: num(del.leads), cpl: num(del.cpl) },
+    series: arr(d.series)
+      .map((v) => {
+        if (!v || typeof v !== "object") return null;
+        const p = v as Record<string, unknown>;
+        const day = str(p.day);
+        return day ? { day, spend: num(p.spend) ?? 0, leads: num(p.leads) ?? 0 } : null;
+      })
+      .filter((v): v is { day: string; spend: number; leads: number } => v !== null),
     topCampaigns: arr(d.topCampaigns)
       .map((v) => {
         if (!v || typeof v !== "object") return null;

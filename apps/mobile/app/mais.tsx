@@ -1,16 +1,21 @@
 import { ScrollView, StyleSheet, Text, useColorScheme, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
-import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
-import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
-import { CURVA, ESP, RAIO } from "../../../src/ui/forma";
-import { useSession } from "../../../src/ui/session";
-import { buildTheme } from "../../../src/ui/theme";
-import type { PortalSection } from "../../../src/core/contracts";
+import { SIMBOLO, Simbolo } from "../src/ui/simbolo";
+import { CABECALHO_SECAO, TIPO } from "../src/ui/tipografia";
+import { CURVA, ESP, RAIO } from "../src/ui/forma";
+import { useSession } from "../src/ui/session";
+import { buildTheme } from "../src/ui/theme";
+import type { PortalSection } from "../src/core/contracts";
 
 // ── Mais ──────────────────────────────────────────────────────────────────────
 // Escape do produto: módulos adicionais que o TENANT tem, derivados de `sections`
 // do /me. Nada de nome de cliente no código.
+//
+// É FOLHA, não aba. A barra inferior é para os módulos que a pessoa usa o dia
+// inteiro — Conversas, Anúncios, Orçamentos. "Mais" é um escape ocasional, e
+// gastar um quarto da barra com ele empobrecia os três que importam. Fica no
+// cabeçalho, do lado oposto ao perfil.
 //
 // Os que ainda não têm tela no app aparecem marcados como "em breve" em vez de
 // virar link morto — assim a estrutura já cresce sem enganar o usuário.
@@ -39,9 +44,25 @@ export default function Mais() {
   const modulos = CATALOGO.filter((m) => can(m.chave));
 
   return (
-    <ScrollView style={s.tela} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}>
-      <Stack.Screen options={{ title: "Mais", headerLargeTitle: true }} />
-      {me?.brand.name ? <Text style={s.sub}>{me.brand.name}</Text> : null}
+    <>
+      <Stack.Screen
+        options={{
+          title: "Mais",
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={10} accessibilityRole="button">
+              <Text style={s.fechar}>Fechar</Text>
+            </Pressable>
+          ),
+        }}
+      />
+      <ScrollView
+        style={s.tela}
+        contentInsetAdjustmentBehavior="automatic"
+        // Rola de novo: "sem rolagem" fazia sentido quando isto era uma aba de
+        // tela cheia. Numa folha de 68% os nove módulos não cabem, e o que não
+        // coubesse simplesmente sumia.
+        contentContainerStyle={{ paddingBottom: insets.bottom + ESP.xl }}
+      >
 
       <Text style={s.secao}>Conta</Text>
       <View style={s.grupo}>
@@ -86,13 +107,14 @@ export default function Mais() {
         </>
       ) : null}
     </ScrollView>
+    </>
   );
 }
 
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
-    sub: { ...TIPO.nota, color: t.muted, marginHorizontal: 16, marginTop: 2 },
+    fechar: { color: t.accent, fontSize: 16, fontWeight: "600" },
     secao: {
       ...CABECALHO_SECAO, color: t.muted,
       marginTop: 26, marginBottom: 7, marginHorizontal: 32,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal,
-  Platform, Pressable, StyleSheet, Text, TextInput, useColorScheme, View,
+  Platform, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -11,14 +11,16 @@ import * as Sharing from "expo-sharing";
 import * as Haptics from "expo-haptics";
 import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
-  useAudioPlayer, useAudioPlayerStatus, useAudioRecorder,
+  useAudioRecorder,
 } from "expo-audio";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
+import { AudioOpus, type ControleAudio, type EstadoAudio } from "../../../src/ui/audio-opus";
+import { Papel } from "../../../src/ui/papel";
 import { TIPO } from "../../../src/ui/tipografia";
 import { CURVA, ESP, RAIO } from "../../../src/ui/forma";
 import { useSession } from "../../../src/ui/session";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
-import { midiaDaMensagem } from "../../../src/ui/media";
+import { midiaDaMensagem, midiaEmDataUri } from "../../../src/ui/media";
 import { useConversaAoVivo } from "../../../src/ui/stream";
 import { marcarLida } from "../../../src/ui/cache";
 import { ApiError } from "../../../src/core/errors";
@@ -59,9 +61,12 @@ const vibrar = (estilo: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyl
 };
 
 export default function Thread() {
-  const { contactId } = useLocalSearchParams<{ contactId: string }>();
+  const { contactId, nome } = useLocalSearchParams<{ contactId: string; nome?: string }>();
+  // A lista manda o nome junto — o cabeçalho não precisa esperar a rede.
+  const nomeProvisorio = (nome ?? "").trim() || "Conversa";
   const { client, me } = useSession();
   const router = useRouter();
+  const { width: larguraJanela } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
@@ -308,12 +313,18 @@ export default function Thread() {
   }, [client, contactId, conversa, carregar]);
 
   if (carregando) {
-    return <View style={[s.tela, s.centro]}><ActivityIndicator color={theme.accent} /></View>;
+    return (
+      <View style={[s.tela, s.centro]}>
+        <Stack.Screen options={{ title: nomeProvisorio }} />
+        <ActivityIndicator color={theme.accent} />
+      </View>
+    );
   }
 
   if (erro || !conversa) {
     return (
       <View style={[s.tela, s.centro, { padding: 24, gap: 12 }]}>
+        <Stack.Screen options={{ title: nomeProvisorio }} />
         <Text style={s.erroTexto}>{erro ?? "Conversa indisponível."}</Text>
         <Pressable onPress={() => void carregar()}><Text style={s.tentar}>Tentar de novo</Text></Pressable>
         <Pressable onPress={() => router.back()}><Text style={s.tentar}>Voltar</Text></Pressable>
@@ -322,29 +333,35 @@ export default function Thread() {
   }
 
   const minha = !!conversa.assignedEmail && conversa.assignedEmail === conversa.me;
+  // O bloco é centralizado na barra: para não encostar em nada, reserva-se o
+  // MAIOR dos dois lados em ambos. Voltar ocupa ~44; a direita, ~44 sozinha e
+  // ~112 quando o "Assumir" aparece.
+  const reserva = Math.max(44, minha ? 44 : 112) + 10;
+  const larguraTitulo = Math.max(130, larguraJanela - reserva * 2);
   const podeEnviar = conversa.windowOpen && !enviando;
   const etapa = conversa.funnelStage ? STAGE[conversa.funnelStage] : null;
 
   return (
     <KeyboardAvoidingView style={s.tela} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Papel cor={theme.dark ? "#cbd3da" : "#6b5f52"} opacidade={theme.dark ? 0.06 : 0.09} />
       {/* Header NATIVO: o botão voltar e o gesto de arrastar da borda vêm da
           pilha, não de um botão desenhado. É o que faz a tela parecer empurrada
           e não trocada. */}
       <Stack.Screen
         options={{
           headerTitle: () => (
-            <View style={s.tituloNav}>
+            <View style={[s.tituloNav, { width: larguraTitulo }]}>
               <View style={[s.avatarPeq, { backgroundColor: avatarColor(conversa.contact.name) }]}>
                 <Text style={s.avatarPeqTexto} maxFontSizeMultiplier={1.2}>{conversa.contact.name.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={s.tituloNavCorpo}>
                 <Text style={s.nome} numberOfLines={1}>{conversa.contact.name}</Text>
                 <View style={s.subLinha}>
-                  {etapa ? <Text style={[s.subtitulo, { color: etapa.color, fontWeight: "700" }]}>{etapa.label}</Text> : null}
+                  {etapa ? <Text style={[s.subtitulo, { color: etapa.color, fontWeight: "700" }]} numberOfLines={1}>{etapa.label}</Text> : null}
                   {conversa.assignedName ? (
                     <>
                       {etapa ? <Text style={s.subtitulo}>·</Text> : null}
-                              <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
+                      <Text style={s.subtitulo} numberOfLines={1}>{conversa.assignedName}</Text>
                     </>
                   ) : null}
                 </View>
@@ -375,12 +392,25 @@ export default function Thread() {
         keyboardDismissMode="interactive"
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
-          conversa.lead ? (
-            <View style={s.origem}>
-              <Simbolo nome={SIMBOLO.anuncios as never} tamanho={12} cor={theme.accent} />
-              <Text style={s.origemTexto} numberOfLines={1}>
-                {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
-              </Text>
+          conversa.lead || conversa.tags.length > 0 ? (
+            <View style={s.faixaTopo}>
+              {conversa.lead ? (
+                <View style={s.origem}>
+                  <Simbolo nome={SIMBOLO.anuncios as never} tamanho={12} cor={theme.accent} />
+                  <Text style={s.origemTexto} numberOfLines={1}>
+                    {conversa.lead.adModel || conversa.lead.adTitle || "Veio de anúncio"}
+                  </Text>
+                </View>
+              ) : null}
+              {conversa.tags.length > 0 ? (
+                <View style={s.etiquetas}>
+                  {conversa.tags.map((t) => (
+                    <View key={t.id} style={[s.etiqueta, { backgroundColor: t.color }]}>
+                      <Text style={s.etiquetaTexto} numberOfLines={1} maxFontSizeMultiplier={1.2}>{t.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null
         }
@@ -491,45 +521,65 @@ export default function Thread() {
 }
 
 // ── Áudio recebido ────────────────────────────────────────────────────────────
-// A nota de voz do lead toca DENTRO do app. Antes só aparecia a transcrição — e
-// nem todo áudio tem uma. O arquivo é baixado com credencial e tocado do cache.
+// Nota de voz do WhatsApp vem em Ogg/Opus. No iOS o AVFoundation — motor do
+// expo-audio — NÃO decodifica esse formato: o player carregava e ficava mudo.
+// O WebKit decodifica, e é por isso que o portal web toca no mesmo iPhone.
+//
+// Então o motor é um WebView invisível (ver src/ui/audio-opus), o mesmo
+// decodificador do portal. A interface segue nativa: o WebView não desenha nada.
 function BolhaAudio({ uri, cor, corMeta, duracaoTexto }: {
   uri: string | null; cor: string; corMeta: string; duracaoTexto: string;
 }) {
-  const player = useAudioPlayer(uri ?? undefined);
-  const status = useAudioPlayerStatus(player);
+  const controle = useRef<ControleAudio>(null);
+  const [estado, setEstado] = useState<EstadoAudio>({ tocando: false, posicao: 0, duracao: 0 });
+  const [falhou, setFalhou] = useState(false);
+  // O arquivo vira `data:` URI: o WKWebView não lê o cache de mídia por caminho.
+  const [dados, setDados] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!uri) return;
+    let vivo = true;
+    midiaEmDataUri(uri, "audio/ogg")
+      .then((d) => { if (vivo) setDados(d); })
+      .catch(() => { if (vivo) setFalhou(true); });
+    return () => { vivo = false; };
+  }, [uri]);
 
   const alternar = useCallback(() => {
-    if (!uri) return;
+    if (!dados || falhou) return;
     vibrar();
-    if (status.playing) { player.pause(); return; }
-    if (status.didJustFinish) void player.seekTo(0);
-    void setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-    player.play();
-  }, [uri, status.playing, status.didJustFinish, player]);
+    if (estado.tocando) controle.current?.pausar();
+    else controle.current?.tocar();
+  }, [dados, falhou, estado.tocando]);
 
-  const total = status.duration || 0;
-  const progresso = total > 0 ? Math.min(1, status.currentTime / total) : 0;
+  const progresso = estado.duracao > 0 ? Math.min(1, estado.posicao / estado.duracao) : 0;
 
   return (
     <Pressable
       onPress={alternar}
-      disabled={!uri}
+      disabled={!dados || falhou}
       accessibilityRole="button"
-      accessibilityLabel={status.playing ? "Pausar áudio" : "Tocar áudio"}
+      accessibilityLabel={estado.tocando ? "Pausar áudio" : "Tocar áudio"}
       style={audioStyles.linha}
     >
+      {dados ? (
+        <AudioOpus ref={controle} dados={dados} onEstado={setEstado} onErro={() => setFalhou(true)} />
+      ) : null}
+
       <View style={[audioStyles.botao, { borderColor: cor }]}>
-        {!uri
+        {!dados
           ? <ActivityIndicator size="small" color={cor} />
-          : <Simbolo nome={(status.playing ? SIMBOLO.pausar : SIMBOLO.tocar) as never} tamanho={14} cor={cor} />}
+          : <Simbolo nome={(estado.tocando ? SIMBOLO.pausar : SIMBOLO.tocar) as never} tamanho={14} cor={cor} />}
       </View>
       <View style={audioStyles.trilhaWrap}>
         <View style={[audioStyles.trilha, { backgroundColor: corMeta }]}>
           <View style={[audioStyles.preenchida, { backgroundColor: cor, width: `${progresso * 100}%` }]} />
         </View>
         <Text style={[audioStyles.tempo, { color: corMeta }]}>
-          {status.playing || status.currentTime > 0 ? mmss(status.currentTime) : duracaoTexto}
+          {falhou ? "áudio indisponível"
+            : estado.posicao > 0 ? mmss(estado.posicao)
+            : estado.duracao > 0 ? mmss(estado.duracao)
+            : duracaoTexto}
         </Text>
       </View>
     </Pressable>
@@ -661,8 +711,8 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     centro: { alignItems: "center", justifyContent: "center" },
 
     acoesTopo: { flexDirection: "row", alignItems: "center", gap: 14 },
-    tituloNav: { flexDirection: "row", alignItems: "center", gap: 9, maxWidth: 200 },
-    tituloNavCorpo: { flexShrink: 1 },
+    tituloNav: { flexDirection: "row", alignItems: "center", gap: 9, justifyContent: "center" },
+    tituloNavCorpo: { flexShrink: 1, minWidth: 0 },
     avatarPeq: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
     avatarPeqTexto: { color: "#fff", fontWeight: "700", fontSize: 13.6 },
     nome: { ...TIPO.destaque, color: t.text },
@@ -677,8 +727,12 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 1, shadowOffset: { width: 0, height: 1 },
     },
     origemTexto: { ...TIPO.legenda, color: t.muted, maxWidth: 240 },
+    faixaTopo: { alignItems: "center", gap: 6, marginBottom: 4 },
+    etiquetas: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 5, paddingHorizontal: 24 },
+    etiqueta: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2.5, maxWidth: 150 },
+    etiquetaTexto: { fontSize: 10.5, fontWeight: "800", color: "#fff", letterSpacing: 0.2 },
 
-    chat: { flex: 1, backgroundColor: t.waChat },
+    chat: { flex: 1, backgroundColor: "transparent" },
     chatConteudo: { paddingHorizontal: 10, paddingVertical: 10 },
 
     diaLinha: { alignItems: "center", marginVertical: 9 },

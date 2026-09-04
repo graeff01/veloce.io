@@ -20,22 +20,24 @@ const conversa = (over: Partial<ConversationRow> = {}): ConversationRow => ({
 
 // ── Navegação: a barra lista MÓDULOS, decididos pelo tenant ───────────────────
 
-test("barra sempre tem Conversas e Mais", () => {
-  assert.deepEqual(modulosPara(me([])), ["conversas", "mais"]);
-  assert.deepEqual(modulosPara(null), ["conversas", "mais"]);
+test("Conversas está sempre na barra; Mais não é módulo", () => {
+  // "Mais" saiu da barra e virou atalho no cabeçalho: a barra inferior é só
+  // para o que se usa o dia inteiro.
+  assert.deepEqual(modulosPara(me([])), ["conversas"]);
+  assert.deepEqual(modulosPara(null), ["conversas"]);
 });
 
-test("cliente COM anúncios e COM orçamento vê os quatro módulos", () => {
+test("cliente COM anúncios e COM orçamento vê os três módulos", () => {
   assert.deepEqual(
     modulosPara(me(["conversas", "anuncios", "revisao"], true)),
-    ["conversas", "anuncios", "revisao", "mais"],
+    ["conversas", "anuncios", "revisao"],
   );
 });
 
 test("cliente sem orçamento NÃO vê Orçamentos", () => {
   const m = modulosPara(me(["conversas", "anuncios", "revisao"], false));
   assert.ok(!m.includes("revisao"), "quotesEnabled=false precisa esconder o módulo");
-  assert.deepEqual(m, ["conversas", "anuncios", "mais"]);
+  assert.deepEqual(m, ["conversas", "anuncios"]);
 });
 
 test("seção revisao sem quotesEnabled não basta, e quotesEnabled sem seção também não", () => {
@@ -52,17 +54,17 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
     modulosPara(me(["anuncios", "revisao", "conversas"], true)),
-    ["conversas", "anuncios", "revisao", "mais"],
+    ["conversas", "anuncios", "revisao"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });
 
-test("no máximo quatro destinos principais", () => {
+test("no máximo três destinos principais", () => {
   const todas: PortalSection[] = [
     "painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo",
     "frete", "equipe", "anuncios", "ia", "funil", "objecoes",
   ];
-  assert.equal(modulosPara(me(todas, true)).length, 4, "o excedente vai para Mais");
+  assert.equal(modulosPara(me(todas, true)).length, 3, "o excedente vai para a folha Mais");
 });
 
 // ── Filtros da caixa de entrada ───────────────────────────────────────────────

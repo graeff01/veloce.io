@@ -13,23 +13,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS, ActivityIndicator, AppState, FlatList, Pressable, RefreshControl,
-  ScrollView, StyleSheet, Text, useColorScheme, View,
+  StyleSheet, Text, TextInput, useColorScheme, View,
 } from "react-native";
 import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
-import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Notifications from "expo-notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Haptics from "expo-haptics";
 import { SIMBOLO, Simbolo } from "./simbolo";
+import { BotaoMais } from "./botao-mais";
 import { TIPO } from "./tipografia";
-import { CURVA, ESP, RAIO } from "./forma";
+import { CURVA, ESP, ESPACO_BARRA, RAIO } from "./forma";
 import { useSession } from "./session";
-import { avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
+import { accentAlpha, avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
-import { aguardandoResposta, campanhaDe, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
+import { aguardandoResposta, campanhaDe, campanhasContadas, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
 import { guardarLista, lerLidas, lerLista, marcarLida, marcarNaoLida, naoLida } from "./cache";
+import { guardarCampanhas } from "./campanhas-store";
 import type { ConversationRow } from "../core/contracts";
 
 export type { Filtro };
@@ -42,6 +44,12 @@ const ROTULO_MIDIA: Record<string, string> = {
   image: "Foto", audio: "Áudio", video: "Vídeo",
   document: "Documento", sticker: "Figurinha", location: "Localização",
 };
+
+/** Anexa a página nova descartando o que já está na lista, por contactId. */
+function juntarSemRepetir(antes: ConversationRow[], novas: ConversationRow[]): ConversationRow[] {
+  const vistos = new Set(antes.map((c) => c.contactId));
+  return [...antes, ...novas.filter((c) => !vistos.has(c.contactId))];
+}
 
 const previa = (c: ConversationRow) =>
   (c.lastText && c.lastText.trim()) || (c.lastType && ROTULO_MIDIA[c.lastType]) || "—";
@@ -82,6 +90,9 @@ export function ListaConversas() {
   const [erro, setErro] = useState<string | null>(null);
   const [meuEmail, setMeuEmail] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  // Estado do React não serve de trava: `setCarregandoMais(true)` só vale no
+  // próximo render, e até lá o onEndReached já disparou de novo.
+  const buscandoMais = useRef(false);
 
   useEffect(() => { if (campanha) setCampanhaSel(campanha); }, [campanha]);
 
@@ -93,13 +104,13 @@ export function ListaConversas() {
     abort.current = ctrl;
 
     if (!opts.silencioso && offset === 0) setCarregando(true);
-    if (offset > 0) setCarregandoMais(true);
+    if (offset > 0) { buscandoMais.current = true; setCarregandoMais(true); }
 
     try {
       const r = await client.conversations({
         limit: PAGINA, offset, q: busca, onlyMine: filtro === "minhas", signal: ctrl.signal,
       });
-      setLinhas((antes) => (offset === 0 ? r.conversations : [...antes, ...r.conversations]));
+      setLinhas((antes) => (offset === 0 ? r.conversations : juntarSemRepetir(antes, r.conversations)));
       // Só a primeira página vira cache — é o que a próxima abertura precisa.
       if (offset === 0 && !busca && filtro === "todas") guardarLista(r.conversations);
       setTemMais(r.hasMore);
@@ -113,6 +124,7 @@ export function ListaConversas() {
       setCarregando(false);
       setAtualizando(false);
       setCarregandoMais(false);
+      buscandoMais.current = false;
     }
   }, [client, busca, filtro]);
 
@@ -143,6 +155,11 @@ export function ListaConversas() {
   }, [linhas, lidas]);
 
   const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
+
+  // A folha de campanhas é outra rota e não tem a lista carregada — deixa aqui
+  // o que já foi calculado, em vez de mandar dezenas de nomes pela URL.
+  const contadas = useMemo(() => campanhasContadas(linhas), [linhas]);
+  useEffect(() => { guardarCampanhas(contadas); }, [contadas]);
 
   useEffect(() => {
     if (campanhaSel && !campanhas.includes(campanhaSel)) setCampanhaSel(null);
@@ -243,13 +260,21 @@ export function ListaConversas() {
       </View>
     );
 
+    // Só a primeira tela anima. O resto entra direto.
+    const Envolucro = indice < 10 ? Animated.View : View;
+    const animacao = indice < 10
+      ? { entering: FadeInDown.duration(230).delay(indice * 26) }
+      : {};
+
     return (
-      // Entrada escalonada: a lista assenta em vez de aparecer seca. O atraso
-      // para no 8º item — além disso vira espera, não elegância.
-      <Animated.View entering={FadeInDown.duration(230).delay(Math.min(indice, 8) * 26)}>
+      <Envolucro {...animacao}>
       <Swipeable renderRightActions={acoes} friction={1.6} rightThreshold={38} overshootRight={false}>
       <Pressable
-        onPress={() => router.push(`/(app)/conversas/${item.contactId}`)}
+        onPress={() => router.push({
+          pathname: "/(app)/conversas/[contactId]",
+          // O nome viaja junto para o cabeçalho da conversa não abrir vazio.
+          params: { contactId: item.contactId, nome: item.name },
+        })}
         onLongPress={() => menuDaLinha(item)}
         delayLongPress={340}
         accessibilityRole="button"
@@ -273,21 +298,58 @@ export function ListaConversas() {
             {esperando ? <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" /> : null}
           </View>
 
-          {etapa ? (
-            <Text style={[s.marcador, { color: etapa.color }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
-              {etapa.label}
-            </Text>
+          {/* Etapa + etiquetas + origem numa linha só. As etiquetas voltaram
+              porque são o que a vendedora escreveu sobre o lead — informação
+              dela, não do sistema. O que eu tinha cortado antes eram os rótulos
+              REDUNDANTES (campanha e dono, que já aparecem em outros lugares). */}
+          {etapa || item.tags.length > 0 || item.fromAd ? (
+            <View style={s.marcadores}>
+              {item.fromAd ? (
+                <View style={[s.selo, { backgroundColor: accentAlpha(theme.accent, 0.12) }]}>
+                  <Text style={[s.seloTexto, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>ADS</Text>
+                </View>
+              ) : null}
+              {etapa ? (
+                <Text style={[s.marcador, { color: etapa.color }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+                  {etapa.label}
+                </Text>
+              ) : null}
+              {item.tags.slice(0, 2).map((t) => (
+                <View key={t.id} style={[s.etiqueta, { backgroundColor: t.color }]}>
+                  <Text style={s.etiquetaTexto} numberOfLines={1} maxFontSizeMultiplier={1.2}>{t.name}</Text>
+                </View>
+              ))}
+              {item.tags.length > 2 ? (
+                <Text style={s.maisEtiquetas} maxFontSizeMultiplier={1.2}>+{item.tags.length - 2}</Text>
+              ) : null}
+            </View>
           ) : null}
         </View>
       </Pressable>
       </Swipeable>
-      </Animated.View>
+      </Envolucro>
     );
   };
 
-  // Filtros rolam com a lista — padrão iOS. Não são cabeçalho fixo.
+  // Busca e filtros rolam com a lista — padrão iOS. Não são cabeçalho fixo.
   const cabecalhoDaLista = (
     <View style={s.filtros}>
+      <View style={s.busca}>
+        <Simbolo nome={SIMBOLO.busca as never} tamanho={16} cor={theme.muted} />
+        <TextInput
+          style={s.buscaCampo}
+          value={busca}
+          onChangeText={setBusca}
+          placeholder="Pesquisar"
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          accessibilityLabel="Pesquisar conversas"
+        />
+      </View>
+
       <SegmentedControl
         values={ROTULOS}
         selectedIndex={FILTROS.indexOf(filtro)}
@@ -296,30 +358,32 @@ export function ListaConversas() {
       />
 
       {campanhas.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.campanhas}>
-          <Pressable
-            onPress={() => selecionarCampanha(null)}
-            style={[s.campanha, !campanhaSel && { borderColor: theme.accent }]}
+        <Pressable
+          onPress={() => router.push({ pathname: "/campanhas", params: { atual: campanhaSel ?? "" } })}
+          accessibilityRole="button"
+          accessibilityLabel="Filtrar por campanha"
+          style={({ pressed }) => [s.seletor, campanhaSel != null && s.seletorAtivo, pressed && { opacity: 0.6 }]}
+        >
+          <Simbolo
+            nome={SIMBOLO.anuncios as never}
+            tamanho={15}
+            cor={campanhaSel != null ? theme.accent : theme.muted}
+          />
+          <Text
+            style={[s.seletorTexto, campanhaSel != null && { color: theme.accent, fontWeight: "700" }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
           >
-            <Text style={[s.campanhaTexto, !campanhaSel && { color: theme.accent, fontWeight: "700" }]} maxFontSizeMultiplier={1.3}>
-              Todas as campanhas
-            </Text>
-          </Pressable>
-          {campanhas.map((c) => {
-            const on = campanhaSel === c;
-            return (
-              <Pressable
-                key={c}
-                onPress={() => selecionarCampanha(on ? null : c)}
-                style={[s.campanha, on && { borderColor: theme.accent }]}
-              >
-                <Text style={[s.campanhaTexto, on && { color: theme.accent, fontWeight: "700" }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                  {c}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+            {campanhaSel ?? "Todas as campanhas"}
+          </Text>
+          {campanhaSel != null ? (
+            <Pressable onPress={() => selecionarCampanha(null)} hitSlop={12} accessibilityLabel="Limpar filtro de campanha">
+              <Simbolo nome={SIMBOLO.fechar as never} tamanho={13} cor={theme.accent} />
+            </Pressable>
+          ) : (
+            <Simbolo nome={"chevron.down" as never} tamanho={12} cor={theme.muted} />
+          )}
+        </Pressable>
       ) : null}
 
       {erro ? (
@@ -332,11 +396,11 @@ export function ListaConversas() {
   );
 
   return (
-    <View style={s.tela}>
+    <>
       <Stack.Screen
         options={{
           title: "Conversas",
-          headerLargeTitle: true,
+          headerLeft: () => <BotaoMais />,
           headerRight: () => (
             <Pressable
               onPress={() => router.push("/perfil")}
@@ -349,42 +413,43 @@ export function ListaConversas() {
           ),
           // Busca do SISTEMA: aparece sob o título grande, com "Cancelar" e
           // teclado próprio — não é uma caixa de texto imitando uma.
-          headerSearchBarOptions: {
-            placeholder: "Pesquisar",
-            hideWhenScrolling: false,
-            autoCapitalize: "none",
-            textColor: theme.text,
-            tintColor: theme.accent,
-            onChangeText: (e) => setBusca(e.nativeEvent.text),
-            onCancelButtonPress: () => setBusca(""),
-          },
+
         }}
       />
 
-      {carregando ? (
-        <View style={s.centro}><ActivityIndicator color={theme.accent} /></View>
-      ) : (
-        <Animated.FlatList
+      {/* A lista NUNCA é substituída por um spinner de tela cheia. Trocar de
+          filtro disparava `carregando` e o ecrã inteiro virava branco — sumindo
+          com o segmented control, que é justamente o controle que o usuário
+          acabou de tocar. O carregamento agora acontece DENTRO da lista. */}
+      <FlatList
+          style={s.tela}
           data={visiveis}
           keyExtractor={(c) => c.contactId}
           renderItem={renderItem}
-          itemLayoutAnimation={LinearTransition.duration(240)}
           ListHeaderComponent={cabecalhoDaLista}
           ItemSeparatorComponent={() => <View style={s.separador} />}
           // Faz o título grande encolher e a busca se comportar como no sistema.
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={visiveis.length === 0 ? s.vazioBox : { paddingBottom: insets.bottom + 92 }}
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + ESPACO_BARRA,
+            ...(visiveis.length === 0 ? { flexGrow: 1 } : null),
+          }}
           ListEmptyComponent={
-            <View style={s.vazioBox}>
-              <Simbolo
-                nome={(filtro === "aguardando" ? SIMBOLO.relogio : SIMBOLO.caixaVazia) as never}
-                tamanho={48}
-                cor={theme.border}
-              />
-              <Text style={s.vazio}>{vazio}</Text>
-            </View>
+            carregando ? (
+              <View style={s.vazioBox}><ActivityIndicator color={theme.accent} /></View>
+            ) : (
+              <View style={s.vazioBox}>
+                <Simbolo
+                  nome={(filtro === "aguardando" ? SIMBOLO.relogio : SIMBOLO.caixaVazia) as never}
+                  tamanho={48}
+                  cor={theme.border}
+                />
+                <Text style={s.vazio}>{vazio}</Text>
+              </View>
+            )
           }
           keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={atualizando}
@@ -393,11 +458,12 @@ export function ListaConversas() {
             />
           }
           onEndReachedThreshold={0.4}
-          onEndReached={() => { if (temMais && !carregandoMais) void carregar({ offset: linhas.length }); }}
+          onEndReached={() => {
+            if (temMais && !buscandoMais.current) void carregar({ offset: linhas.length });
+          }}
           ListFooterComponent={carregandoMais ? <ActivityIndicator style={s.rodape} color={theme.accent} /> : null}
         />
-      )}
-    </View>
+    </>
   );
 }
 
@@ -405,13 +471,23 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.surface },
 
-    filtros: { paddingHorizontal: ESP.gutter, paddingTop: ESP.xs, paddingBottom: ESP.md, gap: ESP.md, backgroundColor: t.surface },
-    campanhas: { gap: 6, paddingRight: 8 },
-    campanha: {
-      borderRadius: RAIO.pilula, borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
-      paddingHorizontal: 13, paddingVertical: 6, maxWidth: 190, backgroundColor: t.bg,
+    filtros: { paddingHorizontal: ESP.gutter, paddingTop: ESP.sm, paddingBottom: ESP.md, gap: ESP.md, backgroundColor: t.surface },
+    // Campo de busca no vocabulário do iOS: fundo cinza, cantos de pílula.
+    busca: {
+      flexDirection: "row", alignItems: "center", gap: ESP.sm,
+      backgroundColor: t.raise, borderRadius: RAIO.peq, ...CURVA,
+      paddingHorizontal: ESP.md, height: 36,
     },
-    campanhaTexto: { ...TIPO.legenda, fontWeight: "600", color: t.muted },
+    buscaCampo: { ...TIPO.corpo, flex: 1, color: t.text, padding: 0 },
+    // Um seletor só, largura cheia: diz a campanha ATUAL e abre a lista inteira.
+    // As pílulas horizontais escondiam as últimas campanhas fora da tela.
+    seletor: {
+      flexDirection: "row", alignItems: "center", gap: ESP.sm,
+      borderRadius: RAIO.peq, ...CURVA, backgroundColor: t.raise,
+      paddingHorizontal: ESP.md, paddingVertical: 9,
+    },
+    seletorAtivo: { backgroundColor: accentAlpha(t.accent, 0.1) },
+    seletorTexto: { ...TIPO.subtitulo, flex: 1, color: t.muted, fontWeight: "600" },
 
     linha: { flexDirection: "row", alignItems: "center", gap: ESP.md, paddingVertical: 10, paddingHorizontal: ESP.gutter, backgroundColor: t.surface },
     avatar: { width: 52, height: 52, borderRadius: 26, ...CURVA, alignItems: "center", justifyContent: "center" },
@@ -438,6 +514,12 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     centro: { flex: 1, alignItems: "center", justifyContent: "center" },
     vazioBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 },
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", marginTop: 14 },
+    marcadores: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1, flexWrap: "nowrap", overflow: "hidden" },
+    selo: { borderRadius: RAIO.pilula, paddingHorizontal: 6, paddingVertical: 1 },
+    seloTexto: { ...TIPO.legenda2, fontSize: 9.5, fontWeight: "800", letterSpacing: 0.3 },
+    etiqueta: { borderRadius: RAIO.pilula, ...CURVA, paddingHorizontal: 7, paddingVertical: 1.5, maxWidth: 96 },
+    etiquetaTexto: { ...TIPO.legenda2, fontSize: 9.5, fontWeight: "800", color: "#fff", letterSpacing: 0.2 },
+    maisEtiquetas: { ...TIPO.legenda2, fontSize: 10, color: t.muted, fontWeight: "700" },
     rodape: { paddingVertical: 16 },
     erroCaixa: { padding: ESP.md, backgroundColor: t.critSoft, borderRadius: RAIO.peq, ...CURVA, gap: ESP.xs },
     erroTexto: { ...TIPO.nota, color: t.crit },

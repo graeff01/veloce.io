@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator, Image, Pressable, RefreshControl, ScrollView,
-  StyleSheet, Text, useColorScheme, View,
+  ActivityIndicator, AppState, Image, Pressable, RefreshControl, ScrollView,
+  StyleSheet, Text, useColorScheme, useWindowDimensions, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
 import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
-import { CURVA, ESP, RAIO, cartao } from "../../../src/ui/forma";
+import { CURVA, ESP, ESPACO_BARRA, RAIO, cartao } from "../../../src/ui/forma";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import { NumeroAnimado } from "../../../src/ui/numero";
+import { Sparkline } from "../../../src/ui/sparkline";
 import { useSession } from "../../../src/ui/session";
+import { BotaoMais } from "../../../src/ui/botao-mais";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
 import type { AdsPerformance } from "../../../src/core/contracts";
@@ -26,6 +29,8 @@ export default function Anuncios() {
   const { client, me } = useSession();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: larguraTela } = useWindowDimensions();
+  const larguraGrafico = Math.max(120, larguraTela - ESP.gutter * 2 - ESP.lg * 2);
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
 
@@ -50,26 +55,33 @@ export default function Anuncios() {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
+  // "Vivo enquanto a aba está aberta": os números se atualizam sozinhos a cada
+  // 60s, com o app em primeiro plano. O ponto pulsando na ponta da linha é o
+  // sinal disso — não é enfeite, é o estado real do dado.
+  useFocusEffect(useCallback(() => {
+    const id = setInterval(() => {
+      if (AppState.currentState === "active") void carregar();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [carregar]));
+
   const moeda = (v: number, c: string) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: c || "BRL", maximumFractionDigits: 0 });
 
   const verLeads = (campanha: string) =>
     router.push({ pathname: "/(app)/conversas", params: { campanha } });
 
-  if (carregando) {
-    return <View style={[s.tela, s.centro]}><ActivityIndicator color={theme.accent} /></View>;
-  }
-
   return (
+    <>
+    <Stack.Screen options={{ title: "Anúncios", headerLeft: () => <BotaoMais /> }} />
     <ScrollView
       style={s.tela}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + ESPACO_BARRA }}
       refreshControl={
         <RefreshControl refreshing={atualizando} onRefresh={() => { setAtualizando(true); void carregar(); }} tintColor={theme.accent} />
       }
     >
-      <Stack.Screen options={{ title: "Anúncios", headerLargeTitle: true }} />
       {dados?.periodLabel ? <Text style={s.periodo}>{dados.periodLabel}</Text> : null}
 
       {erro ? (
@@ -83,10 +95,50 @@ export default function Anuncios() {
         <Text style={s.vazio}>Nenhuma conta de anúncios conectada.</Text>
       ) : dados ? (
         <>
-          <View style={s.metricas}>
-            <Metrica rotulo="Investimento" valor={moeda(dados.spend, dados.currency)} delta={dados.deltas.spend} theme={theme} maiorEhMelhor={undefined} />
-            <Metrica rotulo="Leads" valor={String(dados.leads)} delta={dados.deltas.leads} theme={theme} maiorEhMelhor />
-            <Metrica rotulo="CPL" valor={dados.cpl == null ? "—" : moeda(dados.cpl, dados.currency)} delta={dados.deltas.cpl} theme={theme} maiorEhMelhor={false} />
+          {/* Investimento é o número que o dono da loja procura primeiro, então
+              ele domina; leads e CPL ficam abaixo, lendo-se como consequência.
+              Três colunas de mesmo peso não diziam o que olhar primeiro. */}
+          <Animated.View style={s.heroi} entering={FadeInDown.duration(320)}>
+            <View style={s.heroiTopo}>
+              <Text style={s.heroiRotulo}>Investimento</Text>
+              <Delta valor={dados.deltas.spend} maiorEhMelhor={undefined} theme={theme} />
+            </View>
+            <NumeroAnimado
+              valor={dados.spend}
+              moeda
+              prefixo={dados.currency === "BRL" ? "R$ " : ""}
+              estilo={s.heroiValor}
+            />
+            <View style={s.grafico}>
+              <Sparkline
+                valores={dados.series.map((p: { spend: number }) => p.spend)}
+                cor={theme.accent}
+                largura={larguraGrafico}
+              />
+            </View>
+          </Animated.View>
+
+          <View style={s.duplas}>
+            <Animated.View style={s.dupla} entering={FadeInDown.duration(320).delay(90)}>
+              <Text style={s.duplaRotulo}>Leads</Text>
+              <NumeroAnimado valor={dados.leads} estilo={s.duplaValor} duracao={700} />
+              <Delta valor={dados.deltas.leads} maiorEhMelhor theme={theme} />
+            </Animated.View>
+            <Animated.View style={s.dupla} entering={FadeInDown.duration(320).delay(150)}>
+              <Text style={s.duplaRotulo}>Custo por lead</Text>
+              {dados.cpl == null ? (
+                <Text style={s.duplaValor}>—</Text>
+              ) : (
+                <NumeroAnimado
+                  valor={dados.cpl}
+                  moeda
+                  prefixo={dados.currency === "BRL" ? "R$ " : ""}
+                  estilo={s.duplaValor}
+                  duracao={700}
+                />
+              )}
+              <Delta valor={dados.deltas.cpl} maiorEhMelhor={false} theme={theme} />
+            </Animated.View>
           </View>
 
           <Text style={s.secao}>Campanhas</Text>
@@ -123,34 +175,30 @@ export default function Anuncios() {
             ))
           )}
         </>
+      ) : carregando ? (
+        <View style={s.centro}><ActivityIndicator color={theme.accent} /></View>
       ) : null}
     </ScrollView>
+    </>
   );
 }
 
-function Metrica({ rotulo, valor, delta, theme, maiorEhMelhor }: {
-  rotulo: string; valor: string; delta: number | null;
-  theme: ReturnType<typeof buildTheme>; maiorEhMelhor?: boolean;
+/**
+ * Variação contra o MESMO número de dias do mês anterior. `maiorEhMelhor`
+ * decide a cor: subir o CPL é ruim, subir os leads é bom, e o investimento não
+ * é nem uma coisa nem outra — fica neutro.
+ */
+function Delta({ valor, maiorEhMelhor, theme }: {
+  valor: number | null; maiorEhMelhor?: boolean; theme: ReturnType<typeof buildTheme>;
 }) {
   const s = styles(theme);
-  const sobe = (delta ?? 0) >= 0;
-  const cor = delta == null || maiorEhMelhor === undefined
-    ? theme.muted
-    : sobe === maiorEhMelhor ? theme.good : theme.crit;
-  const simbolo = sobe ? SIMBOLO.subindo : SIMBOLO.descendo;
-
+  if (valor == null) return <Text style={s.deltaVazio}>sem comparação</Text>;
+  const sobe = valor >= 0;
+  const cor = maiorEhMelhor === undefined ? theme.muted : sobe === maiorEhMelhor ? theme.good : theme.crit;
   return (
-    <View style={s.metrica}>
-      <Text style={s.metricaRotulo}>{rotulo}</Text>
-      <Text style={s.metricaValor} maxFontSizeMultiplier={1.4} numberOfLines={1} adjustsFontSizeToFit>{valor}</Text>
-      {delta == null ? (
-        <Text style={s.metricaDelta}>—</Text>
-      ) : (
-        <View style={s.deltaLinha}>
-          <Simbolo nome={simbolo as never} tamanho={11} cor={cor} peso="bold" />
-          <Text style={[s.metricaDelta, { color: cor }]}>{sobe ? "+" : ""}{delta}%</Text>
-        </View>
-      )}
+    <View style={[s.deltaLinha, { backgroundColor: `${cor}1A` }]}>
+      <Simbolo nome={(sobe ? SIMBOLO.subindo : SIMBOLO.descendo) as never} tamanho={10} cor={cor} peso="bold" />
+      <Text style={[s.deltaTexto, { color: cor }]} maxFontSizeMultiplier={1.2}>{sobe ? "+" : ""}{valor}%</Text>
     </View>
   );
 }
@@ -171,12 +219,19 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     centro: { alignItems: "center", justifyContent: "center" },
     periodo: { ...TIPO.nota, color: t.muted, marginHorizontal: 16, marginBottom: 6 },
 
-    metricas: { flexDirection: "row", backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border },
-    metrica: { flex: 1, padding: ESP.gutter, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border },
-    metricaRotulo: { ...TIPO.legenda, fontWeight: "500", color: t.muted },
-    metricaValor: { ...TIPO.titulo3, fontWeight: "700", color: t.text, marginTop: 5, fontVariant: ["tabular-nums"] },
-    deltaLinha: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 5 },
-    metricaDelta: { ...TIPO.legenda2, fontWeight: "600", color: t.muted, marginTop: 5 },
+    heroi: { ...cartao(t.surface), marginHorizontal: ESP.gutter, marginBottom: ESP.md, padding: ESP.lg, gap: ESP.xs },
+    heroiTopo: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    heroiRotulo: { ...TIPO.subtitulo, color: t.muted, fontWeight: "600" },
+    heroiValor: { ...TIPO.tituloGrande, color: t.text, fontVariant: ["tabular-nums"], letterSpacing: -1 },
+    grafico: { marginTop: ESP.sm, marginHorizontal: -4 },
+
+    duplas: { flexDirection: "row", gap: ESP.md, marginHorizontal: ESP.gutter, marginBottom: ESP.sm },
+    dupla: { ...cartao(t.surface), flex: 1, padding: ESP.gutter, gap: 3, alignItems: "flex-start" },
+    duplaRotulo: { ...TIPO.legenda, color: t.muted, fontWeight: "600" },
+    duplaValor: { ...TIPO.titulo2, fontWeight: "700", color: t.text, fontVariant: ["tabular-nums"], marginBottom: 2 },
+    deltaVazio: { ...TIPO.legenda2, color: t.muted },
+    deltaTexto: { ...TIPO.legenda2, fontWeight: "800" },
+    deltaLinha: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: RAIO.pilula, marginTop: 2 },
 
     secao: { ...CABECALHO_SECAO, color: t.muted, marginHorizontal: 32, marginTop: 24, marginBottom: 7 },
     cartao: { ...cartao(t.surface), marginHorizontal: ESP.gutter, marginBottom: ESP.md, padding: ESP.gutter, gap: ESP.md },

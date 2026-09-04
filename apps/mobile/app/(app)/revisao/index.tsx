@@ -4,25 +4,25 @@ import {
   StyleSheet, Text, useColorScheme, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { TIPO } from "../../../src/ui/tipografia";
-import { CURVA, ESP, RAIO, cartao } from "../../../src/ui/forma";
+import { CURVA, ESP, ESPACO_BARRA, RAIO, cartao } from "../../../src/ui/forma";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import * as Sharing from "expo-sharing";
 import { useSession } from "../../../src/ui/session";
+import { BotaoMais } from "../../../src/ui/botao-mais";
 import { buildTheme } from "../../../src/ui/theme";
-import { pdfDoOrcamento } from "../../../src/ui/media";
 import { ApiError } from "../../../src/core/errors";
 import type { QuoteReview } from "../../../src/core/contracts";
 
 // ── Revisão de orçamento ──────────────────────────────────────────────────────
 // O PDF continua sendo gerado no SERVIDOR (lib/quote-pdf.ts, mesmo layout que a
-// IA usa). O app baixa os bytes com a credencial e abre no visualizador nativo —
+// IA usa). O app baixa os bytes com a credencial e mostra numa FOLHA (app/pdf) —
 // nada de reimplementar geração de PDF no aparelho.
 
 export default function Revisao() {
   const { client, me } = useSession();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
   const s = styles(theme);
 
@@ -77,43 +77,34 @@ export default function Revisao() {
     );
   }, [client]);
 
-  const abrirPdf = useCallback(async (q: QuoteReview) => {
-    if (!client) return;
-    setOcupado(q.quoteId);
-    try {
-      const uri = await pdfDoOrcamento(client, q.quoteId);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
-      }
-    } catch {
-      Alert.alert("PDF indisponível", "Não foi possível abrir o orçamento agora.");
-    } finally {
-      setOcupado(null);
-    }
-  }, [client]);
-
   const moeda = (v: number | null, c: string) =>
     v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: c || "BRL" });
 
-  if (carregando) {
-    return <View style={[s.tela, s.centro]}><ActivityIndicator color={theme.accent} /></View>;
-  }
-
   return (
-    <View style={s.tela}>
-      <Stack.Screen options={{ title: "Revisão", headerLargeTitle: true }} />
-
-      {erro ? <Text style={s.erro}>{erro}</Text> : null}
+    <>
+      <Stack.Screen options={{ title: "Orçamentos", headerLeft: () => <BotaoMais /> }} />
 
       <FlatList
+        style={s.tela}
         data={itens}
         keyExtractor={(q) => q.quoteId}
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
-          <Text style={s.sub}>{itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`}</Text>
+          <>
+            {erro ? <Text style={s.erro}>{erro}</Text> : null}
+            <Text style={s.sub}>{itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`}</Text>
+          </>
         }
-        contentContainerStyle={itens.length === 0 ? s.vazioBox : { padding: 16, gap: 12, paddingBottom: insets.bottom + 24 }}
-        ListEmptyComponent={<Text style={s.vazio}>Nenhum orçamento aguardando revisão.</Text>}
+        contentContainerStyle={{
+          padding: ESP.gutter, gap: ESP.md,
+          paddingBottom: insets.bottom + ESPACO_BARRA,
+          ...(itens.length === 0 ? { flexGrow: 1, alignItems: "center", justifyContent: "center" } : null),
+        }}
+        ListEmptyComponent={
+          carregando
+            ? <ActivityIndicator color={theme.accent} />
+            : <Text style={s.vazio}>Nenhum orçamento aguardando revisão.</Text>
+        }
         refreshControl={
           <RefreshControl refreshing={atualizando} onRefresh={() => { setAtualizando(true); void carregar(); }} tintColor={theme.accent} />
         }
@@ -135,7 +126,10 @@ export default function Revisao() {
             ))}
 
             <View style={s.acoes}>
-              <Pressable style={s.botaoNeutro} onPress={() => void abrirPdf(item)} disabled={ocupado === item.quoteId}>
+              <Pressable
+                style={s.botaoNeutro}
+                onPress={() => router.push({ pathname: "/pdf", params: { quoteId: item.quoteId, titulo: String(item.number) } })}
+              >
                 <Text style={s.botaoNeutroTexto}>Ver PDF</Text>
               </Pressable>
               <Pressable style={s.botaoRejeitar} onPress={() => decidir(item, false)} disabled={ocupado === item.quoteId}>
@@ -150,7 +144,7 @@ export default function Revisao() {
           </Animated.View>
         )}
       />
-    </View>
+    </>
   );
 }
 

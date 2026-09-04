@@ -83,3 +83,10 @@ export function apiErrorFrom(status: number, body: unknown, retryAfter: string |
 }
 
 export const offlineError = (): ApiError => new ApiError("offline", 0, FALLBACK.offline);
+
+/**
+ * Requisição cancelada pela própria UI (troca de filtro, nova busca, saída da
+ * tela). Reaproveita o tipo "offline" para não alargar a superfície de erro —
+ * o que importa é NÃO ser tratado nem registrado como falha.
+ */
+export const canceladoError = (): ApiError => new ApiError("offline", 0, "cancelado");

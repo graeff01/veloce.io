@@ -8,7 +8,7 @@
 //
 // `fetch` é injetável para que tudo aqui seja testável sem rede e sem simulador.
 
-import { ApiError, apiErrorFrom, offlineError } from "./errors";
+import { ApiError, apiErrorFrom, canceladoError, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
@@ -59,6 +59,9 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 
 export class VeloceClient {
   private readonly baseUrl: string;
+
+  /** Base em uso — só para montar links públicos (documentos legais). */
+  get base(): string { return this.baseUrl; }
   private readonly store: SessionStore;
   private readonly device: DeviceIdentity;
   private readonly http: typeof fetch;
@@ -99,8 +102,13 @@ export class VeloceClient {
         signal: controller.signal,
       });
     } catch {
-      // Falha de transporte: rede caiu, DNS, timeout. Nunca logamos a URL crua —
-      // ela pode conter o token do portal durante o vínculo.
+      // Cancelamento NÃO é falha. A caixa de entrada aborta a busca anterior a
+      // cada troca de filtro ou de texto — o normal é que isso aconteça várias
+      // vezes por sessão. Registrar como "falha de rede" enchia o log de alarme
+      // falso e escondia problema de verdade.
+      if (opts.signal?.aborted) throw canceladoError();
+      // Falha de transporte real: rede caiu, DNS, tempo esgotado. Nunca logamos
+      // a URL crua — ela pode conter o token do portal durante o vínculo.
       log.warn(`falha de rede em ${path}`);
       throw offlineError();
     } finally {
@@ -134,12 +142,36 @@ export class VeloceClient {
    * tenant, e nunca é gravado. A resposta traz o sessionToken, que vai para o
    * Keychain — daí em diante todas as chamadas usam `_session`.
    */
+  /**
+   * Marca do cliente ANTES do login. A rota `/me` responde só com o token — sem
+   * sessão ela devolve `user: null` e a identidade visual. É o que permite o
+   * formulário se vestir do cliente, como o portal web faz.
+   *
+   * Falhar aqui não impede entrar: é enfeite, não autorização.
+   */
+  async marcaPublica(portalToken: string): Promise<Me | null> {
+    try {
+      return parseMe(await this.request(`/api/portal/${portalToken}/me`, { bearer: "" }));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Cria o acesso e já entra — mesma rota que o botão "Criar conta" do portal. */
+  async registrar(portalToken: string, email: string, password: string, nome: string): Promise<StoredSession> {
+    return this.autenticar(`/api/portal/${portalToken}/auth/register`, { email, password, name: nome.trim() || null });
+  }
+
   async login(portalToken: string, email: string, password: string): Promise<StoredSession> {
-    const payload = await this.request(`/api/portal/${portalToken}/auth/login`, {
+    return this.autenticar(`/api/portal/${portalToken}/auth/login`, { email, password });
+  }
+
+  /** Tronco comum de login e registro. */
+  private async autenticar(rota: string, corpo: Record<string, unknown>): Promise<StoredSession> {
+    const payload = await this.request(rota, {
       method: "POST",
       body: {
-        email,
-        password,
+        ...corpo,
         device: { id: this.device.id, name: this.device.name ?? null, platform: this.device.platform ?? "ios" },
       },
       bearer: "", // sem credencial anterior
