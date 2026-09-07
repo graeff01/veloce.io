@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,14 +8,14 @@ export const dynamic = "force-dynamic";
 // GET — Fila de Fechamento: leads com orçamento APROVADO pelo cliente (quer fechar), ainda
 // abertos. Retorna os cards (sem dono + os que são meus) + a contagem de "esperando" (sem
 // dono) para o sino/badge. Só quem tem sessão no portal vê.
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login." }, { status: 401 });
-  }
-  const me = await getPortalSessionEmail(portal.clientId);
+  // Passa pelo GATE do portal, como as demais rotas. Antes decidia a autorização
+  // por conta própria e, por isso, ficava de fora da checagem de seção: um
+  // usuário restrito a "conversas" via (e pegava) lead de fechamento.
+  const { error, portal } = await guardPortal(req, token, { section: "fechamento" });
+  if (error) return error;
+  const me = portal.email;
 
   const connIds = (await prisma.waConnection.findMany({ where: { clientId: portal.clientId }, select: { id: true } })).map((c) => c.id);
   if (!connIds.length) return NextResponse.json({ leads: [], unclaimed: 0, me });

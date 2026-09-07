@@ -21,6 +21,7 @@ import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
 import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
+import { pushPortalMensagem } from "@/lib/notifications/portal-push";
 import { logWaEvent } from "@/lib/wa-events";
 import { isWithin24h } from "@/lib/wa-window";
 import { allowSend } from "@/lib/portal-send-throttle";
@@ -105,6 +106,32 @@ export async function storeOutbound(connectionId: string, contactId: string, waM
   await applyMessageToConversation({ connectionId, contactId, direction: "out", timestamp: ts }).catch(() => {});
 }
 
+/**
+ * A IA decidiu ficar CALADA neste lead — quem responde é gente. Avisa o app da
+ * vendedora, que até aqui não recebia nada quando o lead escrevia.
+ *
+ * Só aqui, e não a cada mensagem recebida: com a IA atendendo, notificar tudo
+ * seriam centenas de avisos por dia. Estes são os momentos em que o silêncio da
+ * IA significa "alguém precisa entrar".
+ *
+ * Fire-and-forget e nunca lança: um push que falha não pode mudar o desfecho do
+ * job nem atrasar o webhook.
+ */
+function avisarHumanoDeVez(clientId: string, contact: { id: string; name: string | null }, texto: string | null): void {
+  void (async () => {
+    // Tem dona? Só ela é avisada — o lead é dela (mesma regra do fechamento).
+    const conv = await prisma.waConversation.findUnique({
+      where: { contactId: contact.id }, select: { assignedEmail: true },
+    }).catch(() => null);
+    await pushPortalMensagem(clientId, {
+      contactId: contact.id,
+      contactName: contact.name,
+      texto,
+      ownerEmail: conv?.assignedEmail ?? null,
+    });
+  })().catch(() => {});
+}
+
 // Runner único do agente (chamado pela fila durável). Aplica TODAS as travas de
 // segurança antes de gerar resposta. Retorna o desfecho para a fila decidir retry.
 export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
@@ -162,7 +189,13 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // 1) Gatekeeper: kill-switch global, pause por cliente, status live, fora do horário.
   //    No modo manual, `engaged` libera os leads que o vendedor engajou ("IA Atender").
   const gate = shouldRespond(cfg, { engaged: contact.aiEngaged });
-  if (!gate.respond) return "skipped";
+  if (!gate.respond) {
+    // IA desligada, pausada, em modo manual ou DENTRO do horário comercial (que
+    // é justamente quando o atendimento é humano): o lead falou e ninguém vai
+    // responder por ela. É o aviso mais importante do app.
+    avisarHumanoDeVez(conn.clientId, contact, input.payload.text ?? null);
+    return "skipped";
+  }
 
   // 2) Modo canário: responde SOMENTE os números de teste liberados (validação em PRD
   //    sem risco com cliente real). Tolera o 9º dígito do celular BR (canário/operador).
@@ -172,7 +205,11 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
 
   // 3) Operador assumiu manualmente este contato → IA silenciada.
-  if (contact.aiSilenced) return "skipped";
+  if (contact.aiSilenced) {
+    // Alguém assumiu esta conversa: a mensagem do lead é dela para responder.
+    avisarHumanoDeVez(conn.clientId, contact, input.payload.text ?? null);
+    return "skipped";
+  }
 
   // 4) Opt-out (LGPD) — trava determinística, independe do LLM.
   const inboundRaw = input.payload.text ?? "";

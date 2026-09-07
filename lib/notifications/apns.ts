@@ -28,6 +28,10 @@ export interface ApnsPayload {
   badge?: number;
   /** Agrupa notificações da mesma conversa. */
   collapseId?: string;
+  /** Categoria da notificação: habilita os BOTÕES de ação no iOS (ex.: responder). */
+  category?: string;
+  /** Conversa a que a notificação se refere — o app responde direto por ela. */
+  contactId?: string;
 }
 
 const HOST_PROD = "https://api.push.apple.com";
@@ -87,9 +91,13 @@ export function buildApnsBody(payload: ApnsPayload): Record<string, unknown> {
       sound: "default",
       ...(payload.badge === undefined ? {} : { badge: payload.badge }),
       "thread-id": payload.collapseId,
+      // Sem categoria o iOS mostra a notificação sem botões. Com ela, a
+      // vendedora responde da tela de bloqueio, sem abrir o app.
+      ...(payload.category ? { category: payload.category } : {}),
     },
     // Consumido pelo app para abrir a tela certa (ver src/ui/push.ts).
     route: payload.route ?? "conversas",
+    ...(payload.contactId ? { contactId: payload.contactId } : {}),
   };
 }
 

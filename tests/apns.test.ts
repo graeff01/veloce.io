@@ -130,3 +130,21 @@ test("configuração parcial também conta como desligado", () => {
   assert.equal(apnsConfig(), null);
   process.env = salvo;
 });
+
+// ── Notificação de mensagem nova ──────────────────────────────────────────────
+// Sem `category` o iOS mostra a notificação SEM botões, e o "Responder" da tela
+// de bloqueio — a razão de o app existir em vez do PWA — simplesmente não
+// aparece. É silencioso: nada falha, o botão só não vem.
+
+test("buildApnsBody: a categoria habilita os botões e só aparece quando pedida", () => {
+  const com = buildApnsBody({ title: "t", body: "b", category: "mensagem" }) as { aps: Record<string, unknown> };
+  assert.equal(com.aps.category, "mensagem");
+  const sem = buildApnsBody({ title: "t", body: "b" }) as { aps: Record<string, unknown> };
+  assert.equal("category" in sem.aps, false);
+});
+
+test("buildApnsBody: o contactId viaja para o app responder pela notificação", () => {
+  const com = buildApnsBody({ title: "t", body: "b", contactId: "abc123" }) as Record<string, unknown>;
+  assert.equal(com.contactId, "abc123");
+  assert.equal("contactId" in (buildApnsBody({ title: "t", body: "b" }) as Record<string, unknown>), false);
+});
