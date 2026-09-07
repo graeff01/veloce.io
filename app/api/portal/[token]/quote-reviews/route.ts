@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET — Fila de REVISÃO: orçamentos aguardando o aval de um vendedor antes de ir ao lead
 // (modo revisão). Retorna os cards + a contagem de pendentes (badge/sino). Só com sessão.
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login." }, { status: 401 });
-  }
-  const me = await getPortalSessionEmail(portal.clientId);
+  // Passa pelo GATE do portal, como as demais rotas. Antes decidia a
+  // autorização por conta própria e, por isso, ficava de fora da checagem de
+  // seção: um usuário restrito a "conversas" lia e aprovava orçamento.
+  const { error, portal } = await guardPortal(req, token, { section: "revisao" });
+  if (error) return error;
+  const me = portal.email;
 
   const quotes = await prisma.quote.findMany({
     where: { clientId: portal.clientId, status: "pending_review" },

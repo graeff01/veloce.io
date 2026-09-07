@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { renderQuotePdf } from "@/lib/quote-pdf";
 import { buildQuoteDocData, type QuoteLineIn } from "@/lib/ai-agent/tools";
 import type { IntakeData } from "@/lib/ai-agent/intake";
@@ -13,11 +12,11 @@ export const dynamic = "force-dynamic";
 // ao lead). `?desconto=` mostra o efeito de um desconto de fechamento antes de aprovar.
 export async function GET(req: Request, { params }: { params: Promise<{ token: string; quoteId: string }> }) {
   const { token, quoteId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login." }, { status: 401 });
-  }
+  // Passa pelo GATE do portal, como as demais rotas. Antes decidia a
+  // autorização por conta própria e, por isso, ficava de fora da checagem de
+  // seção: um usuário restrito a "conversas" lia e aprovava orçamento.
+  const { error, portal } = await guardPortal(req, token, { section: "revisao" });
+  if (error) return error;
   const quote = await prisma.quote.findFirst({ where: { id: quoteId, clientId: portal.clientId } });
   if (!quote) return NextResponse.json({ error: "Orçamento não encontrado." }, { status: 404 });
 

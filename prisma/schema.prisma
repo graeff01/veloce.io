@@ -1018,6 +1018,13 @@ model WaConversation {
   connectionId     String
   contactId        String    @unique
   status           String    @default("open") // open | waiting | closed (rótulo interno)
+
+  // Estado COMPARTILHADO pela equipe do cliente (app + portal). Compartilhado, e
+  // não por pessoa, porque a caixa é de um número só atendido por várias
+  // vendedoras — marcar como lida vale para o time. O PWA ignora estes campos.
+  portalReadAt     DateTime? // quando alguém da equipe abriu a conversa
+  portalReadBy     String?   // e-mail de quem abriu — só para exibir "lida por"
+  portalArchivedAt DateTime? // tirada da caixa de entrada, sem apagar nada
   funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido
   funnelManual     Boolean   @default(false) // operador definiu a etapa → auto-classificador não toca
   funnelEvidence   String?    // frase que justificou a etapa (auditoria do classificador)

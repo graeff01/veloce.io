@@ -83,6 +83,29 @@ rótulo "em breve" e o toque desabilitado. A Apple reprova conteúdo de
 espaço reservado (diretriz 4.2). Antes de submeter, considere **esconder** os
 itens sem tela em vez de mostrá-los desabilitados.
 
+## Validação adiada para o build nativo
+
+O **envio ao WhatsApp** — texto, foto, documento e nota de voz — nunca foi
+exercitado de ponta a ponta. Não por descuido: na cópia local a credencial do
+WhatsApp é neutralizada de propósito (`accessToken = DESATIVADO_COPIA_LOCAL`),
+então qualquer envio para em 502 na autenticação com a Meta. Validar de verdade
+exige credencial válida, o que significa produção e uma mensagem real chegando
+a alguém.
+
+O que JÁ foi verificado desse caminho:
+
+- a rota `send-media` aceita multipart e responde corretamente (testada por
+  curl: 502 com "Authentication Error", que é a trava do token);
+- o `FormData` do app foi corrigido — o atalho `{ uri, name, type }` do React
+  Native antigo é recusado por esta versão com "Unsupported FormDataPart
+  implementation", e agora montamos um `Blob` de verdade;
+- o tempo limite de envio subiu de 20s para 90s, porque upload não cabe no
+  limite de uma leitura.
+
+**O que falta confirmar quando houver conta e build nativo:** que a mensagem
+sai, chega ao lead e volta como confirmação de entrega. Testar primeiro em um
+número próprio, nunca em lead de cliente.
+
 ## Dependências que faltam **[precisa da conta]**
 
 1. Programa Apple Developer (US$ 99/ano).

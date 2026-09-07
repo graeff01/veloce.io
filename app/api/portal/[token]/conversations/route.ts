@@ -19,10 +19,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get("limit")) || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
   const owner = url.searchParams.get("owner"); // "me" → só as conversas da vendedora logada (dona)
+  // "arquivadas=1" mostra o que foi tirado da caixa. Sem o parâmetro a resposta
+  // é a de sempre — o PWA não manda e continua vendo tudo.
+  const arquivadas = url.searchParams.get("arquivadas") === "1";
   const me = portal.email;
   const isAdmin = portal.isAdmin;
   // Filtro "Minhas conversas": o dono da conversa é waConversation.assignedEmail.
   const ownerFilter = owner === "me" && me ? { conversation: { is: { assignedEmail: me } } } : {};
+  // Por padrão a caixa esconde as arquivadas. O `is: null` cobre contato que
+  // ainda não tem linha de conversa — sem ele, lead novo sumiria da lista.
+  const arquivoFilter = arquivadas
+    ? { conversation: { is: { portalArchivedAt: { not: null } } } }
+    : { OR: [{ conversation: { is: { portalArchivedAt: null } } }, { conversation: { is: null } }] };
   const digits = q.replace(/\D/g, "");
   const search = q
     ? { OR: [
@@ -33,7 +41,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     : {};
 
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: conn.id, ...search, ...ownerFilter },
+    where: { connectionId: conn.id, ...search, ...ownerFilter, ...arquivoFilter },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,
@@ -44,7 +52,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const ids = contacts.map((c) => c.id);
   const [leads, convs, attendants, contactTags] = await Promise.all([
     prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
-    prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true } }),
+    prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true, portalReadAt: true, portalReadBy: true, portalArchivedAt: true, lastInboundAt: true, lastOutboundAt: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
     prisma.waContactTag.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, tag: { select: { id: true, name: true, color: true } } } }),
   ]);
@@ -79,6 +87,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         funnelStage: cv?.funnelStage ?? null,
         assignedEmail: cv?.assignedEmail ?? null,
         assignedName: nameOf(cv?.assignedEmail ?? null),
+        // Estado compartilhado pela equipe. Campos NOVOS: o PWA ignora.
+        // Desde quando o lead espera. O dado já existia na conversa e nunca
+        // tinha saído daqui — é o que separa "1.257 esperando" de uma fila
+        // que dá para priorizar.
+        lastInboundAt: cv?.lastInboundAt ?? null,
+        lastOutboundAt: cv?.lastOutboundAt ?? null,
+        lida: cv?.portalReadAt != null,
+        lidaPor: cv?.portalReadBy ?? null,
+        arquivada: cv?.portalArchivedAt != null,
         tags: tagsBy.get(c.id) ?? [],
       };
     }),
