@@ -11,7 +11,9 @@ test("notificação de conversa abre a conversa certa", () => {
 
 test("notificação de revisão e fechamento abrem suas telas", () => {
   assert.equal(rotaDaNotificacao("revisao"), "/(app)/revisao");
-  assert.equal(rotaDaNotificacao("fechamento"), "/(app)/fechamento");
+  // Fechamento virou um SEGMENTO de Orçamentos, não um destino próprio: a
+  // notificação antiga continua valendo e abre a tela já no segmento certo.
+  assert.equal(rotaDaNotificacao("fechamento"), "/(app)/revisao?aba=fechamento");
 });
 
 test("barra inicial e espaços não atrapalham", () => {

@@ -14,6 +14,10 @@ export function rotaDaNotificacao(raw: unknown): string | null {
   const base = partes[0];
   if (!base || !ROTAS_VALIDAS.has(base)) return null;
 
+  // Fechamento deixou de ser destino próprio: virou um segmento de Orçamentos.
+  // A notificação continua valendo — ela só passa a abrir a tela já no segmento.
+  if (base === "fechamento") return "/(app)/revisao?aba=fechamento";
+
   if (base === "conversas" && partes[1]) {
     const id = partes[1];
     // contactId é cuid: só alfanumérico. Barra a travessia de caminho pelo payload.

@@ -5,7 +5,7 @@
 import type { ConversationRow, Me } from "./contracts";
 
 /** Módulos da barra inferior, na ordem de exibição. */
-export type ModuloRota = "conversas" | "anuncios" | "funil" | "revisao" | "fechamento";
+export type ModuloRota = "conversas" | "anuncios" | "funil" | "revisao";
 
 /**
  * Quais MÓDULOS este tenant/usuário enxerga.
@@ -23,11 +23,11 @@ export function modulosPara(me: Me | null): ModuloRota[] {
   // cara do usuário.
   if (secoes.includes("anuncios")) out.push("anuncios");
   if (secoes.includes("funil")) out.push("funil");
-  // Orçamentos exige a seção E a funcionalidade ligada no cliente.
-  if (secoes.includes("revisao") && me?.quotesEnabled === true) out.push("revisao");
-  // Fechamento fica ao lado de Orçamentos, e DEPOIS: é a sequência real do
-  // negócio — o orçamento é revisado, o lead aprova, e aí ele cai aqui.
-  if (secoes.includes("fechamento")) out.push("fechamento");
+  // Orçamentos exige a seção E a funcionalidade ligada no cliente. Fechamento
+  // NÃO é um destino próprio: vive como segmento dentro desta mesma tela, que é
+  // o mesmo assunto — e assim não consome um espaço da barra.
+  const temRevisao = secoes.includes("revisao") && me?.quotesEnabled === true;
+  if (temRevisao || secoes.includes("fechamento")) out.push("revisao");
   // "Mais" NÃO entra aqui: virou atalho no cabeçalho. A barra é só para o que
   // se usa o dia inteiro.
   return out;

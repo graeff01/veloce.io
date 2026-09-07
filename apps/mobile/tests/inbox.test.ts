@@ -61,20 +61,19 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
     modulosPara(me(["anuncios", "revisao", "funil", "conversas", "fechamento"], true)),
-    ["conversas", "anuncios", "funil", "revisao", "fechamento"],
+    ["conversas", "anuncios", "funil", "revisao"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });
 
-// Cinco é o TETO, não uma meta. A barra é nossa (não a do sistema, que empurraria
-// o excedente para "Mais"), e cinco rótulos curtos ainda cabem em um iPhone SE.
-// O sexto módulo não entra aqui: vai para a folha Ajustes.
-test("no máximo cinco destinos principais", () => {
+// Quatro é o TETO. Fechamento não gasta um espaço da barra: é um segmento
+// dentro de Orçamentos, que é o mesmo assunto. O que sobra vai para Ajustes.
+test("no máximo quatro destinos principais", () => {
   const todas: PortalSection[] = [
     "painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo",
     "frete", "equipe", "anuncios", "ia", "funil", "objecoes",
   ];
-  assert.equal(modulosPara(me(todas, true)).length, 5, "o excedente vai para a folha Ajustes");
+  assert.equal(modulosPara(me(todas, true)).length, 4, "o excedente vai para a folha Ajustes");
 });
 
 // ── Filtros da caixa de entrada ───────────────────────────────────────────────
@@ -138,4 +137,20 @@ test("campanhasDe NÃO devolve contagem (o total parcial mentiria)", () => {
   const linhas = [conversa({ fromAd: true, adModel: "Tiguan" })];
   const r = campanhasDe(linhas);
   assert.ok(r.every((c) => typeof c === "string"), "só rótulos; número exigiria agregação no servidor");
+});
+
+// Fechamento não tem destino próprio, mas não pode sumir: quem tem só essa
+// seção precisa chegar na tela de Orçamentos, onde ela vive como segmento.
+test("cliente com fechamento e sem revisão ainda alcança a tela", () => {
+  assert.deepEqual(modulosPara(me(["conversas", "fechamento"], false)), ["conversas", "revisao"]);
+});
+
+test("sem revisão e sem fechamento, a tela não aparece", () => {
+  assert.deepEqual(modulosPara(me(["conversas"], true)), ["conversas"]);
+});
+
+// Orçamento desligado no cliente derruba "A revisar", mas não o fechamento.
+test("quotesEnabled falso não tira o fechamento", () => {
+  assert.deepEqual(modulosPara(me(["conversas", "revisao"], false)), ["conversas"]);
+  assert.deepEqual(modulosPara(me(["conversas", "revisao", "fechamento"], false)), ["conversas", "revisao"]);
 });
