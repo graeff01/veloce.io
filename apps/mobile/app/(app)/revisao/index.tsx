@@ -131,13 +131,17 @@ export default function Revisao() {
               <Pressable
                 style={s.botaoNeutro}
                 onPress={() => router.push({ pathname: "/pdf", params: { quoteId: item.quoteId, titulo: String(item.number) } })}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver o PDF do orçamento de ${item.name}`}
               >
                 <Text style={s.botaoNeutroTexto}>Ver PDF</Text>
               </Pressable>
-              <Pressable style={s.botaoRejeitar} onPress={() => decidir(item, false)} disabled={ocupado === item.quoteId}>
+              <Pressable style={s.botaoRejeitar} onPress={() => decidir(item, false)} disabled={ocupado === item.quoteId}
+                accessibilityRole="button" accessibilityLabel={`Rejeitar o orçamento de ${item.name}`}>
                 <Text style={s.botaoRejeitarTexto}>Rejeitar</Text>
               </Pressable>
-              <Pressable style={s.botaoAprovar} onPress={() => decidir(item, true)} disabled={ocupado === item.quoteId}>
+              <Pressable style={s.botaoAprovar} onPress={() => decidir(item, true)} disabled={ocupado === item.quoteId}
+                accessibilityRole="button" accessibilityLabel={`Aprovar e enviar o orçamento de ${item.name}`}>
                 {ocupado === item.quoteId
                   ? <ActivityIndicator color={theme.onAccent} />
                   : <Text style={s.botaoAprovarTexto}>Aprovar</Text>}

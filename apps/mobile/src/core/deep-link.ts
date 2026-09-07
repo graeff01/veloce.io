@@ -3,7 +3,7 @@
 // Puro de propósito — sem isto a regra ficaria dentro de um módulo que importa
 // expo-notifications e não daria para testar sem simulador.
 
-const ROTAS_VALIDAS = new Set(["conversas", "revisao", "fechamento", "perfil"]);
+const ROTAS_VALIDAS = new Set(["conversas", "revisao", "fechamento", "equipe", "perfil"]);
 
 export function rotaDaNotificacao(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -21,4 +21,14 @@ export function rotaDaNotificacao(raw: unknown): string | null {
     return `/(app)/conversas/${id}`;
   }
   return `/(app)/${base}`;
+}
+
+/**
+ * O contato a que a notificação se refere — para RESPONDER sem abrir o app.
+ * Entrada externa: vale a mesma desconfiança da rota.
+ */
+export function contatoDaNotificacao(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null;
 }

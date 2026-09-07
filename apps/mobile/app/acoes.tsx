@@ -92,6 +92,8 @@ export default function Acoes() {
               ])
             }
             disabled={ocupado}
+            accessibilityRole="button"
+            accessibilityLabel="Pedir para a IA responder este lead"
           >
             <View style={[s.iconeDestaque, { backgroundColor: theme.accent }]}>
               <Simbolo nome={"sparkles" as never} tamanho={17} cor={theme.onAccent} />
@@ -115,6 +117,9 @@ export default function Acoes() {
                   key={chave}
                   disabled={ocupado}
                   onPress={() => { void Haptics.selectionAsync().catch(() => {}); void agir(() => client!.setFunnelStage(String(contactId), chave)); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`Mover para a etapa ${v.label}`}
                   style={({ pressed }) => [
                     s.opcao,
                     { borderColor: on ? v.color : theme.border, backgroundColor: on ? v.color + "1F" : theme.surface },
@@ -147,6 +152,9 @@ export default function Acoes() {
                         ? client!.removeTag(String(contactId), t.id)
                         : client!.addTag(String(contactId), t.id));
                     }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${on ? "Remover" : "Aplicar"} a etiqueta ${t.name}`}
                     style={({ pressed }) => [
                       s.opcao,
                       { borderColor: on ? t.color : theme.border, backgroundColor: on ? t.color + "1F" : theme.surface },
@@ -176,6 +184,9 @@ export default function Acoes() {
                   <Pressable
                     disabled={ocupado}
                     onPress={() => { void Haptics.selectionAsync().catch(() => {}); void agir(() => client!.assign(String(contactId), a.email)); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={`Passar a conversa para ${a.name}`}
                     style={({ pressed }) => [s.linha, pressed && s.pressionado]}
                   >
                     <Text style={s.linhaTexto}>{a.name}{a.email === conversa.me ? " (você)" : ""}</Text>
@@ -190,6 +201,7 @@ export default function Acoes() {
                 <Pressable
                   disabled={ocupado}
                   onPress={() => void agir(() => client!.assign(String(contactId), null))}
+                  accessibilityRole="button"
                   style={({ pressed }) => [s.linha, pressed && s.pressionado]}
                 >
                   <Text style={[s.linhaTexto, { color: theme.crit }]}>Remover dono</Text>

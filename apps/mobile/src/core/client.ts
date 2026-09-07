@@ -12,8 +12,8 @@ import { ApiError, apiErrorFrom, canceladoError, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
-  parseAdsPerformance, parseCatalogo, parseConversation, parseConversationList, parseMe, parseQuoteReviews, parseTags,
-  type AdsPerformance, type Conversation, type ConversationList, type ItemCatalogo, type Me, type QuoteReview, type Tag,
+  parseAdsPerformance, parseCatalogo, parseConversation, parseConversationList, parseEquipe, parseFechamento, parseMe, parseQuoteReviews, parseTags,
+  type AdsPerformance, type Conversation, type ConversationList, type Equipe, type Fechamento, type ItemCatalogo, type Me, type QuoteReview, type Tag,
 } from "./contracts";
 
 export interface StoredSession {
@@ -260,6 +260,32 @@ export class VeloceClient {
    */
   async marcarEstado(contactId: string, estado: { lida?: boolean; arquivada?: boolean }): Promise<void> {
     await this.request(portalPath(`/conversations/${contactId}/state`), { method: "POST", body: estado });
+  }
+
+  /** Fila de fechamento: quem já aprovou o orçamento e quer comprar. */
+  async fechamento(): Promise<Fechamento> {
+    return parseFechamento(await this.request(portalPath("/hot-leads")));
+  }
+
+  /**
+   * "Pegar" o lead: vira dono de forma atômica e silencia a IA. Devolve quem
+   * pegou primeiro quando outra pessoa chegou antes — dizer isso é melhor do
+   * que um erro genérico com três vendedoras na mesma fila.
+   */
+  async pegarLead(contactId: string): Promise<{ ok: boolean; takenBy: string | null }> {
+    try {
+      const r = await this.request(portalPath(`/hot-leads/${contactId}/claim`), { method: "POST" }) as { ok?: unknown };
+      return { ok: r?.ok === true, takenBy: null };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) return { ok: false, takenBy: e.message || null };
+      throw e;
+    }
+  }
+
+  /** Números por atendente. O servidor decide o que este papel pode ver. */
+  async equipe(periodo?: string): Promise<Equipe> {
+    const cauda = periodo ? `?p=${encodeURIComponent(periodo)}` : "";
+    return parseEquipe(await this.request(`${portalPath("/team-metrics")}${cauda}`));
   }
 
   /** Catálogo do cliente, para consulta no meio do atendimento. */

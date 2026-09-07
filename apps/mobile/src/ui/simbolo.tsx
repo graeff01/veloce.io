@@ -17,9 +17,16 @@ export interface SimboloProps {
   peso?: SymbolWeight;
   /** Desenho equivalente para plataformas sem SF Symbols. */
   reserva?: ReactNode;
+  /**
+   * O que o VoiceOver anuncia. Sem isto o ícone é DECORATIVO e é pulado — que é
+   * o certo na esmagadora maioria dos casos: quase todo símbolo aqui acompanha
+   * um texto que já diz a mesma coisa, e pará-lo em cada glifo transformaria a
+   * navegação por voz numa peregrinação.
+   */
+  rotulo?: string;
 }
 
-export function Simbolo({ nome, tamanho = 22, cor, peso = "regular", reserva = null }: SimboloProps) {
+export function Simbolo({ nome, tamanho = 22, cor, peso = "regular", reserva = null, rotulo }: SimboloProps) {
   if (Platform.OS !== "ios") return <>{reserva}</>;
   return (
     <SymbolView
@@ -29,6 +36,10 @@ export function Simbolo({ nome, tamanho = 22, cor, peso = "regular", reserva = n
       weight={peso}
       resizeMode="scaleAspectFit"
       style={{ width: tamanho, height: tamanho }}
+      accessible={rotulo !== undefined}
+      accessibilityRole={rotulo === undefined ? "none" : "image"}
+      accessibilityLabel={rotulo}
+      importantForAccessibility={rotulo === undefined ? "no-hide-descendants" : "yes"}
     />
   );
 }

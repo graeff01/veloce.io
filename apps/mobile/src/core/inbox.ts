@@ -5,7 +5,7 @@
 import type { ConversationRow, Me } from "./contracts";
 
 /** Módulos da barra inferior, na ordem de exibição. */
-export type ModuloRota = "conversas" | "anuncios" | "funil" | "revisao";
+export type ModuloRota = "conversas" | "fechamento" | "anuncios" | "funil" | "revisao";
 
 /**
  * Quais MÓDULOS este tenant/usuário enxerga.
@@ -21,6 +21,9 @@ export function modulosPara(me: Me | null): ModuloRota[] {
   // só estética quando o servidor passou a RECUSAR a rota correspondente
   // (PORTAL_SECTION_ENFORCE): mostrar um módulo sem seção viraria um 403 na
   // cara do usuário.
+  // Fechamento vem antes: é a fila de quem já quer comprar, e é a tela que
+  // justifica abrir o app quando não há nada de novo na caixa de entrada.
+  if (secoes.includes("fechamento")) out.push("fechamento");
   if (secoes.includes("anuncios")) out.push("anuncios");
   if (secoes.includes("funil")) out.push("funil");
   // Orçamentos exige a seção E a funcionalidade ligada no cliente.

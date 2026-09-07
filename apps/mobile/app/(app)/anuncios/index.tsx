@@ -89,7 +89,7 @@ export default function Anuncios() {
       {erro ? (
         <View style={s.erroCaixa}>
           <Text style={s.erroTexto}>{erro}</Text>
-          <Pressable onPress={() => void carregar()}><Text style={s.tentar}>Tentar de novo</Text></Pressable>
+          <Pressable onPress={() => void carregar()} accessibilityRole="button"><Text style={s.tentar}>Tentar de novo</Text></Pressable>
         </View>
       ) : null}
 
@@ -198,6 +198,9 @@ export default function Anuncios() {
                   onPress={() => verLeads(c.name)}
                   style={({ pressed }) => [s.verLeads, pressed && { opacity: 0.6 }]}
                   accessibilityRole="button"
+                  // Sem isto o VoiceOver anuncia "Ver leads, botão" em todos os
+                  // cartões, sem dizer de qual campanha.
+                  accessibilityLabel={`Ver os leads da campanha ${c.name}`}
                 >
                   <Text style={s.verLeadsTexto}>Ver leads</Text>
                 </Pressable>

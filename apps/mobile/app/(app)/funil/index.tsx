@@ -248,6 +248,7 @@ export default function Funil() {
                       onPress={() => abrirLead(c)}
                       style={({ pressed }) => [s.lead, pressed && { backgroundColor: theme.raise }]}
                       accessibilityRole="button"
+                      accessibilityLabel={`Abrir a conversa com ${c.name}`}
                     >
                       <View style={[s.avatar, { backgroundColor: avatarColor(c.name) }]}>
                         <Text style={s.avatarTexto}>{(c.name || "?").charAt(0).toUpperCase()}</Text>

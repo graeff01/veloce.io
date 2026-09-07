@@ -245,6 +245,7 @@ export default function Vincular() {
                   setErro(null);
                 }}
                 hitSlop={8}
+                accessibilityRole="button"
               >
                 <Text style={s.trocar}>Usar outro painel</Text>
               </Pressable>
@@ -257,7 +258,7 @@ export default function Vincular() {
 
           <View style={s.legal}>
             {[["/termos", "Termos"], ["/privacy", "Privacidade"], ["/exclusao-de-dados", "Exclusão de dados"]].map(([caminho, rotulo]) => (
-              <Pressable key={caminho} onPress={() => abrirDocumento(caminho!)} hitSlop={6}>
+              <Pressable key={caminho} onPress={() => abrirDocumento(caminho!)} hitSlop={6} accessibilityRole="link">
                 <Text style={s.legalTexto}>{rotulo}</Text>
               </Pressable>
             ))}

@@ -103,7 +103,7 @@ export default function Perfil() {
         <Linha rotulo="Aplicativo" valor={versao} theme={theme} />
       </View>
 
-      <Pressable style={s.botaoNeutro} onPress={limpar} disabled={limpando}>
+      <Pressable style={s.botaoNeutro} onPress={limpar} disabled={limpando} accessibilityRole="button">
         <Text style={s.botaoNeutroTexto}>{limpando ? "Limpando…" : "Limpar fotos e áudios baixados"}</Text>
       </Pressable>
       <Text style={s.rodape}>
@@ -111,7 +111,7 @@ export default function Perfil() {
         no servidor e voltam a carregar quando você abrir a conversa.
       </Text>
 
-      <Pressable style={s.botaoSair} onPress={confirmarSaida} disabled={saindo}>
+      <Pressable style={s.botaoSair} onPress={confirmarSaida} disabled={saindo} accessibilityRole="button">
         <Text style={s.botaoSairTexto}>{saindo ? "Saindo…" : "Sair da conta"}</Text>
       </Pressable>
     </ScrollView>

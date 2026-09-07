@@ -28,11 +28,15 @@ import type { PortalSection } from "../src/core/contracts";
 import { relatorio, relevantes } from "../src/core/diagnostico";
 import { lerDiario } from "../src/core/redact";
 
+// Seções do portal que NÃO são aba. As que têm `rota` abrem no app; as demais
+// são trabalho de mesa (configuração, auditoria) e seguem no portal web — e
+// dizer isso é melhor do que sumir com elas, que fazia o app parecer incompleto.
+//
+// Antes esta lista inteira era filtrada por `m.rota` e NENHUMA entrada tinha uma:
+// a seção "Ferramentas" nunca aparecia para ninguém.
 const CATALOGO: { chave: PortalSection; rotulo: string; simbolo: string; rota?: string }[] = [
+  { chave: "equipe", rotulo: "Equipe", simbolo: "person.2.fill", rota: "/equipe" },
   { chave: "painel", rotulo: "Painel", simbolo: "chart.bar.fill" },
-  { chave: "funil", rotulo: "Funil", simbolo: "line.3.horizontal.decrease" },
-  { chave: "fechamento", rotulo: "Fechamento", simbolo: "flame.fill" },
-  { chave: "equipe", rotulo: "Equipe", simbolo: "person.2.fill" },
   { chave: "ia", rotulo: "IA", simbolo: "sparkles" },
   { chave: "aprendizado", rotulo: "Aprendizado", simbolo: "graduationcap.fill" },
   { chave: "objecoes", rotulo: "Objeções", simbolo: "exclamationmark.bubble.fill" },
@@ -64,7 +68,7 @@ export default function Mais() {
       .catch(() => setPermissao("?"));
   }, []);
 
-  const modulos = CATALOGO.filter((m) => can(m.chave) && m.rota);
+  const modulos = CATALOGO.filter((m) => can(m.chave));
 
   const escolher = useCallback((p: Preferencia) => {
     void Haptics.selectionAsync().catch(() => {});
@@ -167,14 +171,19 @@ export default function Mais() {
                   {i > 0 ? <View style={s.divisor} /> : null}
                   <Pressable
                     onPress={() => rota && router.push(rota as never)}
-                    style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
-                    accessibilityRole="button"
+                    disabled={!rota}
+                    style={({ pressed }) => [s.linha, pressed && rota && { backgroundColor: theme.raise }]}
+                    accessibilityRole={rota ? "button" : "text"}
+                    accessibilityLabel={rota ? `Abrir ${rotulo}` : `${rotulo}: disponível no portal web`}
                   >
-                    <View style={[s.icone, { backgroundColor: theme.accent }]}>
+                    <View style={[s.icone, { backgroundColor: rota ? theme.accent : theme.muted }]}>
                       <Simbolo nome={simbolo as never} tamanho={15} cor="#fff" />
                     </View>
-                    <Text style={[s.linhaTitulo, s.corpo]}>{rotulo}</Text>
-                    <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+                    <View style={s.corpo}>
+                      <Text style={s.linhaTitulo}>{rotulo}</Text>
+                      {!rota ? <Text style={s.linhaSub}>Disponível no portal web</Text> : null}
+                    </View>
+                    {rota ? <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" /> : null}
                   </Pressable>
                 </View>
               ))}

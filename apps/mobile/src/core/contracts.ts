@@ -401,3 +401,120 @@ export function parseAdsPerformance(input: unknown): AdsPerformance {
       .filter((c): c is AdsCampaign => c !== null),
   };
 }
+
+// ── Fechamento (leads que aprovaram o orçamento) ──────────────────────────────
+// A fila de quem já disse "quero fechar". É a tela oposta à lista de 1.271
+// conversas: cinco linhas, ordenadas pela mais antiga, com SLA correndo.
+
+export interface LeadFechamento {
+  contactId: string;
+  name: string;
+  waId: string | null;
+  approvedAt: string | null;
+  quoteNumber: string | null;
+  total: number | null;
+  currency: string;
+  resumo: string | null;
+  city: string | null;
+  ownerEmail: string | null;
+  ownerName: string | null;
+  mine: boolean;
+}
+
+export interface Fechamento {
+  leads: LeadFechamento[];
+  /** Quantos ainda não têm dono — é a urgência da tela. */
+  unclaimed: number;
+  me: string | null;
+}
+
+export function parseFechamento(input: unknown): Fechamento {
+  const d = obj(input, "fila de fechamento");
+  const leads = arr(d.leads)
+    .map((v) => {
+      if (!v || typeof v !== "object") return null;
+      const l = v as Record<string, unknown>;
+      const contactId = str(l.contactId);
+      if (!contactId) return null;
+      return {
+        contactId,
+        name: str(l.name) || "Lead",
+        waId: str(l.waId),
+        approvedAt: str(l.approvedAt),
+        quoteNumber: str(l.quoteNumber),
+        total: num(l.total),
+        currency: str(l.currency) || "BRL",
+        resumo: str(l.resumo),
+        city: str(l.city),
+        ownerEmail: str(l.ownerEmail),
+        ownerName: str(l.ownerName),
+        mine: bool(l.mine),
+      };
+    })
+    .filter((v): v is LeadFechamento => v !== null);
+  return { leads, unclaimed: num(d.unclaimed) ?? 0, me: str(d.me) };
+}
+
+// ── Equipe ────────────────────────────────────────────────────────────────────
+// Três vendedoras no mesmo número: sem isto não dá para saber quem respondeu o
+// quê. O servidor já decide o que cada papel enxerga — atendente vê só a própria
+// linha, admin vê o time inteiro. O app só respeita.
+
+export interface LinhaEquipe {
+  email: string;
+  name: string;
+  isMe: boolean;
+  newLeads: number;
+  owned: number;
+  waiting: number;
+  qualified: number;
+  converted: number;
+  revenue: number;
+  replies: number;
+  avgFirstResponseSec: number | null;
+}
+
+export interface Equipe {
+  me: string | null;
+  isAdmin: boolean;
+  periodLabel: string;
+  rows: LinhaEquipe[];
+  team: Omit<LinhaEquipe, "email" | "name" | "isMe" | "avgFirstResponseSec"> | null;
+  unassigned: number;
+}
+
+export function parseEquipe(input: unknown): Equipe {
+  const d = obj(input, "métricas da equipe");
+  const linha = (v: unknown): LinhaEquipe | null => {
+    if (!v || typeof v !== "object") return null;
+    const r = v as Record<string, unknown>;
+    const email = str(r.email);
+    if (!email) return null;
+    return {
+      email,
+      name: str(r.name) || email,
+      isMe: bool(r.isMe),
+      newLeads: num(r.newLeads) ?? 0,
+      owned: num(r.owned) ?? 0,
+      waiting: num(r.waiting) ?? 0,
+      qualified: num(r.qualified) ?? 0,
+      converted: num(r.converted) ?? 0,
+      revenue: num(r.revenue) ?? 0,
+      replies: num(r.replies) ?? 0,
+      avgFirstResponseSec: num(r.avgFirstResponseSec),
+    };
+  };
+  const t = d.team && typeof d.team === "object" ? (d.team as Record<string, unknown>) : null;
+  return {
+    me: str(d.me),
+    isAdmin: bool(d.isAdmin),
+    periodLabel: str(d.periodLabel) || "",
+    rows: arr(d.rows).map(linha).filter((v): v is LinhaEquipe => v !== null),
+    team: t ? {
+      newLeads: num(t.newLeads) ?? 0, owned: num(t.owned) ?? 0, waiting: num(t.waiting) ?? 0,
+      qualified: num(t.qualified) ?? 0, converted: num(t.converted) ?? 0,
+      revenue: num(t.revenue) ?? 0, replies: num(t.replies) ?? 0,
+    } : null,
+    unassigned: num(d.unassigned) ?? 0,
+  };
+}

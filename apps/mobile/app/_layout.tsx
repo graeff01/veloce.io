@@ -12,7 +12,8 @@ import { AvisoConexao } from "../src/ui/aviso-conexao";
 import { TemaProvider, useTema } from "../src/ui/tema";
 import { BarreiraDeErro } from "../src/ui/barreira";
 import { buildTheme } from "../src/ui/theme";
-import { configurarApresentacao, ouvirNotificacoes, registrarPush } from "../src/ui/push";
+import { useFilaEnvio } from "../src/ui/fila-envio";
+import { configurarApresentacao, ouvirNotificacoes, registrarCategorias, registrarPush } from "../src/ui/push";
 
 configurarApresentacao();
 
@@ -24,7 +25,7 @@ configurarApresentacao();
  * tem altura conhecida, a segunda altura não trazia nada. Fechar arrastando
  * para baixo continua funcionando.
  */
-const MODAIS = new Set(["perfil", "acoes", "pdf", "campanhas", "mais", "respostas", "catalogo"]);
+const MODAIS = new Set(["perfil", "acoes", "pdf", "campanhas", "mais", "respostas", "catalogo", "equipe"]);
 
 // Guardião de navegação: mantém a rota coerente com o estado de sessão.
 // É conveniência de UX — a autorização real acontece no servidor a cada chamada.
@@ -34,6 +35,9 @@ function Guard() {
   const router = useRouter();
   const systemDark = useEscuro();
   const theme = useTema();
+  // A resposta pela notificação entra pela MESMA fila do campo de texto: se a
+  // rede estiver ruim, ela sai sozinha depois, em vez de se perder.
+  const { enfileirar } = useFilaEnvio();
 
   useEffect(() => {
     if (status === "carregando") return;
@@ -59,10 +63,16 @@ function Guard() {
   }, [status, client]);
 
   // Tocar na notificação abre a conversa certa — inclusive em cold start.
+  // Responder PELA notificação não abre o app: o texto vai para a fila, que
+  // cuida de reenviar se a rede estiver ruim.
   useEffect(() => {
     if (status !== "logado") return;
-    return ouvirNotificacoes((rota) => router.push(rota as never));
-  }, [status, router]);
+    void registrarCategorias();
+    return ouvirNotificacoes(
+      (rota) => router.push(rota as never),
+      (contactId, texto) => { enfileirar(contactId, texto); },
+    );
+  }, [status, router, enfileirar]);
 
   if (status === "carregando") {
     return (
@@ -119,6 +129,17 @@ function Guard() {
             headerShown: true,
             presentation: "formSheet",
             sheetAllowedDetents: [0.75],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 20,
+          }}
+        />
+        {/* Equipe é uma folha ALTA: são números para ler, não uma ação rápida. */}
+        <Stack.Screen
+          name="equipe"
+          options={{
+            headerShown: true,
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.9],
             sheetGrabberVisible: true,
             sheetCornerRadius: 20,
           }}

@@ -60,18 +60,21 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
-    modulosPara(me(["anuncios", "revisao", "funil", "conversas"], true)),
-    ["conversas", "anuncios", "funil", "revisao"],
+    modulosPara(me(["anuncios", "revisao", "funil", "conversas", "fechamento"], true)),
+    ["conversas", "fechamento", "anuncios", "funil", "revisao"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });
 
-test("no máximo quatro destinos principais", () => {
+// Cinco é o TETO, não uma meta. A barra é nossa (não a do sistema, que empurraria
+// o excedente para "Mais"), e cinco rótulos curtos ainda cabem em um iPhone SE.
+// O sexto módulo não entra aqui: vai para a folha Ajustes.
+test("no máximo cinco destinos principais", () => {
   const todas: PortalSection[] = [
     "painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo",
     "frete", "equipe", "anuncios", "ia", "funil", "objecoes",
   ];
-  assert.equal(modulosPara(me(todas, true)).length, 4, "o excedente vai para a folha Ajustes");
+  assert.equal(modulosPara(me(todas, true)).length, 5, "o excedente vai para a folha Ajustes");
 });
 
 // ── Filtros da caixa de entrada ───────────────────────────────────────────────
