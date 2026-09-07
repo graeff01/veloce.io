@@ -27,10 +27,10 @@ type NomeRota = ModuloRota;
 
 const MODULOS: { rota: NomeRota; rotulo: string; simbolo: string }[] = [
   { rota: "conversas", rotulo: "Conversas", simbolo: SIMBOLO.conversas },
-  { rota: "fechamento", rotulo: "Fechar", simbolo: "flame.fill" },
   { rota: "anuncios", rotulo: "Anúncios", simbolo: SIMBOLO.anuncios },
   { rota: "funil", rotulo: "Funil", simbolo: SIMBOLO.funil },
   { rota: "revisao", rotulo: "Orçamentos", simbolo: SIMBOLO.orcamentos },
+  { rota: "fechamento", rotulo: "Fechar", simbolo: "flame.fill" },
 ];
 
 /** Contadores da barra — mesmo endpoint e cadência do PWA. */

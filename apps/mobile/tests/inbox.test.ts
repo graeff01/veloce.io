@@ -61,7 +61,7 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
     modulosPara(me(["anuncios", "revisao", "funil", "conversas", "fechamento"], true)),
-    ["conversas", "fechamento", "anuncios", "funil", "revisao"],
+    ["conversas", "anuncios", "funil", "revisao", "fechamento"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });

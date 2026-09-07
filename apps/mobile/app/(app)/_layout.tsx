@@ -11,10 +11,10 @@ export default function AppLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <BarraInferior {...props} />}>
       <Tabs.Screen name="conversas" options={{ title: "Conversas" }} />
-      <Tabs.Screen name="fechamento" options={{ title: "Fechar", href: visivel("fechamento") }} />
       <Tabs.Screen name="anuncios" options={{ title: "Anúncios", href: visivel("anuncios") }} />
       <Tabs.Screen name="funil" options={{ title: "Funil", href: visivel("funil") }} />
       <Tabs.Screen name="revisao" options={{ title: "Orçamentos", href: visivel("revisao") }} />
+      <Tabs.Screen name="fechamento" options={{ title: "Fechar", href: visivel("fechamento") }} />
     </Tabs>
   );
 }
