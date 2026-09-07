@@ -45,6 +45,13 @@ export interface ConversationRow {
   assignedEmail: string | null;
   assignedName: string | null;
   tags: Tag[];
+  /** Quando o lead falou e quando respondemos — alimenta "aguardando há". */
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  /** Estado COMPARTILHADO pela equipe — não é preferência do aparelho. */
+  lida: boolean;
+  lidaPor: string | null;
+  arquivada: boolean;
 }
 
 export interface ConversationList {
@@ -232,6 +239,11 @@ export function parseConversationRow(input: unknown): ConversationRow {
     assignedEmail: str(d.assignedEmail),
     assignedName: str(d.assignedName),
     tags: parseTags(d.tags),
+    lastInboundAt: str(d.lastInboundAt) || null,
+    lastOutboundAt: str(d.lastOutboundAt) || null,
+    lida: bool(d.lida),
+    lidaPor: str(d.lidaPor) || null,
+    arquivada: bool(d.arquivada),
   };
 }
 
@@ -329,6 +341,27 @@ export function parseQuoteReviews(input: unknown): QuoteReview[] {
       } satisfies QuoteReview;
     })
     .filter((q): q is QuoteReview => q !== null);
+}
+
+export interface ItemCatalogo {
+  id: string;
+  title: string;
+  price: number | null;
+  imageUrl: string | null;
+  url: string | null;
+}
+
+export function parseCatalogo(input: unknown): ItemCatalogo[] {
+  const d = obj(input, "catálogo");
+  return arr(d.items)
+    .map((v) => {
+      if (!v || typeof v !== "object") return null;
+      const c = v as Record<string, unknown>;
+      const id = str(c.id), title = str(c.title);
+      if (!id || !title) return null;
+      return { id, title, price: num(c.price), imageUrl: str(c.imageUrl) || null, url: str(c.url) || null };
+    })
+    .filter((v): v is ItemCatalogo => v !== null);
 }
 
 export function parseAdsPerformance(input: unknown): AdsPerformance {

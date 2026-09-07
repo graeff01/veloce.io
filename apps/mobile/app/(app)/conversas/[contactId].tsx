@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal,
-  Platform, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View,
+  Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from "react-native";
+import { useEscuro } from "../../../src/ui/aparencia";
+import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -19,13 +21,16 @@ import { Papel } from "../../../src/ui/papel";
 import { TIPO } from "../../../src/ui/tipografia";
 import { CURVA, ESP, RAIO } from "../../../src/ui/forma";
 import { useSession } from "../../../src/ui/session";
+import { useFilaEnvio } from "../../../src/ui/fila-envio";
+import { gravarRascunho, lerRascunho } from "../../../src/ui/respostas";
+import { TextoRealcado } from "../../../src/ui/realce";
+import { useTema } from "../../../src/ui/tema";
 import { AZUL_LIDO, avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
-import { midiaDaMensagem, midiaEmDataUri } from "../../../src/ui/media";
+import { midiaDaMensagem, midiaEmDataUri, parteDeArquivo } from "../../../src/ui/media";
 import { useConversaAoVivo } from "../../../src/ui/stream";
-import { marcarLida } from "../../../src/ui/cache";
 import { ApiError } from "../../../src/core/errors";
 import type { Conversation, Message, Tag } from "../../../src/core/contracts";
-import { lerLidas } from "../../../src/ui/cache";
+import { guardarConversa, lerConversa, lerLidas, marcarLida } from "../../../src/ui/cache";
 
 // ── Thread ────────────────────────────────────────────────────────────────────
 // Visual portado do portal: fundo do chat na cor do WhatsApp, balão recebido
@@ -68,27 +73,64 @@ export default function Thread() {
   const router = useRouter();
   const { width: larguraJanela } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const [conversa, setConversa] = useState<Conversation | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [texto, setTexto] = useState("");
+  // Mostrando o que estava guardado no aparelho porque a rede não respondeu.
+  const [semRede, setSemRede] = useState(false);
+  // Rascunho por conversa: sair da tela não pode apagar o que foi escrito.
+  const [texto, setTexto] = useState(() => (contactId ? lerRascunho(String(contactId)) : ""));
   const [enviando, setEnviando] = useState(false);
   const [gravando, setGravando] = useState(false);
   // Mensagens que JÁ apareceram na tela mas ainda não voltaram do servidor.
-  const [pendentes, setPendentes] = useState<Message[]>([]);
+  const { daConversa: pendentesDaFila, enfileirar, enfileirarMidia } = useFilaEnvio();
+
+  // Bolha otimista a partir da fila: some quando o servidor confirma e a
+  // conversa recarrega, e SOBREVIVE a fechar o app.
+  const pendentes = useMemo<Message[]>(() => pendentesDaFila(contactId).map((p) => ({
+    id: p.id,
+    text: p.texto, direction: "out", type: "text",
+    timestamp: new Date(p.criadoEm).toISOString(),
+    aiGenerated: false, sentByName: null,
+    transcription: null, deliveredAt: null, readAt: null, reaction: null,
+  })), [pendentesDaFila, contactId]);
   const [imagemAberta, setImagemAberta] = useState<string | null>(null);
   const [longe, setLonge] = useState(false);   // rolado para cima
   const lista = useRef<FlatList<Item>>(null);
-  // A última visita é lida ANTES de marcar como lida — senão o divisor nunca
-  // apareceria, porque abrir a conversa já a marcaria.
+  // Dois conceitos diferentes, de propósito:
+  //   · "lida" (servidor) = a EQUIPE já tratou esta conversa. É o que zera o
+  //     contador para todo mundo.
+  //   · "última visita" (local) = onde EU parei. Alimenta o divisor de novas
+  //     mensagens, e é legitimamente por aparelho: o divisor da Maria não tem
+  //     de sumir porque a Luiza abriu a conversa no aparelho dela.
+  //
+  // Lida ANTES de gravar a visita — senão o divisor nunca apareceria.
   const visitaAnterior = useRef<string | undefined>(
     contactId ? lerLidas()[String(contactId)] : undefined,
   );
 
+  // Altura da barra de navegação + área segura de cima. É o quanto esta tela
+  // começa abaixo da janela, e o que o KeyboardAvoidingView precisa descontar.
+  const alturaCabecalho = insets.top + 44;
+
   const gravador = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+
+  // Persiste em repouso, não a cada tecla: gravar no disco a cada letra é
+  // desperdício, e meio segundo de folga cobre a saída da tela.
+  useEffect(() => {
+    if (!contactId) return;
+    const id = setTimeout(() => gravarRascunho(String(contactId), texto), 500);
+    return () => clearTimeout(id);
+  }, [contactId, texto]);
+
+  // Volta da folha de respostas rápidas com o texto já montado lá.
+  useFocusEffect(useCallback(() => {
+    if (contactId) setTexto(lerRascunho(String(contactId)));
+  }, [contactId]));
 
   /** Folha de ações do iOS. Nativa: é o menu que a pessoa já conhece. */
   const folha = useCallback((titulo: string, opcoes: string[], aoEscolher: (i: number) => void, destrutivo?: number) => {
@@ -109,12 +151,24 @@ export default function Thread() {
     if (!client || !contactId) return;
     if (!silencioso) setCarregando(true);
     try {
-      setConversa(await client.conversation(contactId));
-      setPendentes([]); // o servidor já devolveu o que estava pendente
+      const nova = await client.conversation(contactId);
+      setConversa(nova);
+      guardarConversa(String(contactId), nova);   // para abrir sem rede depois
+      setSemRede(false);
+      // A fila se esvazia sozinha: cada item sai dela quando o servidor
+      // confirma. Não há mais estado local a zerar aqui.
       setErro(null);
     } catch (e) {
-      if (e instanceof ApiError && !e.requiresLogout) setErro(e.message);
-      else if (!(e instanceof ApiError)) setErro("Não foi possível abrir a conversa.");
+      // Erro do SERVIDOR (403, sessão expirada) é erro de verdade: some com o
+      // cache, porque insistir mostraria conteúdo que a pessoa talvez não possa
+      // mais ver. Falha de REDE é outra história — aí o cache é a resposta certa.
+      if (e instanceof ApiError) {
+        if (!e.requiresLogout) setErro(e.message);
+      } else {
+        const guardada = lerConversa(String(contactId));
+        if (guardada) { setConversa(guardada); setSemRede(true); setErro(null); }
+        else setErro("Não foi possível abrir a conversa.");
+      }
     } finally {
       setCarregando(false);
     }
@@ -122,7 +176,16 @@ export default function Thread() {
 
   useEffect(() => { void carregar(); }, [carregar]);
   // Abrir a conversa é o que a marca como lida.
-  useEffect(() => { if (contactId) marcarLida(String(contactId)); }, [contactId]);
+  // Abrir marca como lida para a EQUIPE, no servidor — não só neste aparelho.
+  // Melhor esforço: falhar aqui não pode atrapalhar a leitura da conversa.
+  useEffect(() => {
+    if (!client || !contactId) return;
+    // Para a equipe, no servidor. Melhor esforço: falhar aqui não pode
+    // atrapalhar a leitura da conversa.
+    void client.marcarEstado(String(contactId), { lida: true }).catch(() => {});
+    // E para mim, neste aparelho, só para o divisor da próxima visita.
+    marcarLida(String(contactId));
+  }, [client, contactId]);
   useFocusEffect(useCallback(() => { void carregar(true); }, [carregar]));
 
   // Mensagem nova do lead chega SOZINHA na tela, sem sair e voltar.
@@ -155,38 +218,46 @@ export default function Thread() {
     return out;
   }, [conversa, pendentes]);
 
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [buscaTexto, setBuscaTexto] = useState("");
+
+  /** Índices dos itens que casam — usados para pular de um ao outro. */
+  const achados = useMemo(() => {
+    const q = buscaTexto.trim().toLowerCase();
+    if (!q) return [] as number[];
+    return itens.reduce<number[]>((acc, it, i) => {
+      if (it.tipo !== "msg") return acc;
+      const texto = `${it.msg.text ?? ""} ${it.msg.transcription ?? ""}`.toLowerCase();
+      if (texto.includes(q)) acc.push(i);
+      return acc;
+    }, []);
+  }, [itens, buscaTexto]);
+
+  const [achadoAtual, setAchadoAtual] = useState(0);
+  useEffect(() => { setAchadoAtual(0); }, [buscaTexto]);
+
+  const irParaAchado = useCallback((direcao: 1 | -1) => {
+    if (achados.length === 0) return;
+    const proximo = (achadoAtual + direcao + achados.length) % achados.length;
+    setAchadoAtual(proximo);
+    void Haptics.selectionAsync().catch(() => {});
+    lista.current?.scrollToIndex({ index: achados[proximo]!, viewPosition: 0.5, animated: true });
+  }, [achados, achadoAtual]);
+
   // ── Envio otimista ──────────────────────────────────────────────────────────
-  // A mensagem aparece na hora, esmaecida e com relógio; some se o envio falhar.
-  // Antes o app esperava o servidor e só então recarregava — em rede ruim parecia
-  // travado, e a vendedora não sabia se tinha enviado.
-  const enviarTexto = useCallback(async () => {
+  // A mensagem entra na FILA, não numa tentativa única. Aparece na hora com
+  // relógio e fica lá até o servidor confirmar — se a rede estiver fora, o
+  // reenvio acontece sozinho quando ela voltar, mesmo que o app tenha sido
+  // fechado no meio. Antes o texto voltava para o campo e dependia de a pessoa
+  // lembrar de mandar de novo.
+  const enviarTexto = useCallback(() => {
     const t = texto.trim();
-    if (!client || !contactId || !t || enviando) return;
-
-    const local: Message = {
-      id: `local-${Date.now()}`,
-      text: t, direction: "out", type: "text",
-      timestamp: new Date().toISOString(),
-      aiGenerated: false, sentByName: conversa?.meName ?? null,
-      transcription: null, deliveredAt: null, readAt: null, reaction: null,
-    };
-
+    if (!contactId || !t) return;
     vibrar();
     setTexto("");
-    setPendentes((p) => [...p, local]);
-    setEnviando(true);
-    try {
-      await client.sendText(contactId, t);
-      await carregar(true);
-    } catch (e) {
-      setPendentes((p) => p.filter((m) => m.id !== local.id));
-      setTexto(t); // devolve o que a pessoa escreveu — nada se perde
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
-    } finally {
-      setEnviando(false);
-    }
-  }, [client, contactId, texto, enviando, conversa, carregar]);
+    gravarRascunho(contactId, "");
+    enfileirar(contactId, t);
+  }, [contactId, texto, enfileirar]);
 
   const enviarImagem = useCallback(async (daCamera: boolean) => {
     if (!client || !contactId) return;
@@ -203,23 +274,15 @@ export default function Thread() {
     if (r.canceled || !r.assets[0]) return;
 
     const asset = r.assets[0];
-    const form = new FormData();
-    form.append("file", {
-      uri: asset.uri, name: asset.fileName ?? "foto.jpg", type: asset.mimeType ?? "image/jpeg",
-    } as unknown as Blob);
-    form.append("kind", "image");
-
+    // Vai para a FILA, como o texto: rede ruim no meio do upload deixava a
+    // foto pelo caminho, e foto é o que mais custa a tirar de novo.
     vibrar();
-    setEnviando(true);
-    try {
-      await client.sendMedia(contactId, form);
-      await carregar(true);
-    } catch (e) {
-      Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
-    } finally {
-      setEnviando(false);
-    }
-  }, [client, contactId, carregar]);
+    enfileirarMidia(contactId, "imagem", {
+      uri: asset.uri,
+      nome: asset.fileName ?? "foto.jpg",
+      tipo: asset.mimeType ?? "image/jpeg",
+    });
+  }, [client, contactId, enfileirarMidia]);
 
   const enviarDocumento = useCallback(async () => {
     if (!client || !contactId) return;
@@ -227,23 +290,13 @@ export default function Thread() {
     if (!r || r.canceled || !r.assets?.[0]) return;
     const a = r.assets[0];
 
-    const form = new FormData();
-    form.append("file", {
-      uri: a.uri, name: a.name || "documento", type: a.mimeType || "application/octet-stream",
-    } as unknown as Blob);
-    form.append("kind", "document");
-
     vibrar();
-    setEnviando(true);
-    try {
-      await client.sendMedia(String(contactId), form);
-      await carregar(true);
-    } catch (e) {
-      Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
-    } finally {
-      setEnviando(false);
-    }
-  }, [client, contactId, carregar]);
+    enfileirarMidia(String(contactId), "documento", {
+      uri: a.uri,
+      nome: a.name || "documento",
+      tipo: a.mimeType || "application/octet-stream",
+    });
+  }, [contactId, enfileirarMidia]);
 
   /** O clipe abre a escolha: foto ou arquivo. */
   const escolherAnexo = useCallback(() => {
@@ -262,20 +315,9 @@ export default function Thread() {
       await gravador.stop();
       const uri = gravador.uri;
       if (!uri) return;
-      const form = new FormData();
       // HIGH_QUALITY no iOS grava .m4a (audio/mp4) — aceito pela Cloud API e o
       // mesmo contêiner que o Safari produzia no PWA.
-      form.append("file", { uri, name: "audio.m4a", type: "audio/mp4" } as unknown as Blob);
-      form.append("kind", "audio");
-      setEnviando(true);
-      try {
-        await client.sendMedia(contactId, form);
-        await carregar(true);
-      } catch (e) {
-        Alert.alert("Não enviou", e instanceof ApiError ? e.message : "Tente de novo.");
-      } finally {
-        setEnviando(false);
-      }
+      enfileirarMidia(String(contactId), "audio", { uri, nome: "audio.m4a", tipo: "audio/mp4" });
       return;
     }
 
@@ -342,7 +384,11 @@ export default function Thread() {
   const etapa = conversa.funnelStage ? STAGE[conversa.funnelStage] : null;
 
   return (
-    <KeyboardAvoidingView style={s.tela} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={s.tela}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={alturaCabecalho}
+    >
       <Papel cor={theme.dark ? "#cbd3da" : "#6b5f52"} opacidade={theme.dark ? 0.06 : 0.09} />
       {/* Header NATIVO: o botão voltar e o gesto de arrastar da borda vêm da
           pilha, não de um botão desenhado. É o que faz a tela parecer empurrada
@@ -375,6 +421,14 @@ export default function Thread() {
                   <Text style={s.assumirTexto}>Assumir</Text>
                 </Pressable>
               ) : null}
+              <Pressable
+                onPress={() => setBuscaAberta((v) => !v)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Buscar nesta conversa"
+              >
+                <Simbolo nome={SIMBOLO.busca as never} tamanho={20} cor={theme.accent} />
+              </Pressable>
               <Pressable onPress={menu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Mais ações">
                 <Simbolo nome={"ellipsis.circle" as never} tamanho={24} cor={theme.accent} />
               </Pressable>
@@ -382,6 +436,58 @@ export default function Thread() {
           ),
         }}
       />
+
+      {/* Sem rede: a conversa na tela veio do aparelho. Dizer isso é o que
+          separa "app offline" de "app quebrado" — e avisa que pode faltar
+          mensagem recente. */}
+      {semRede ? (
+        <Animated.View style={s.semRede} entering={FadeInDown.duration(180)} exiting={FadeOut.duration(120)}>
+          <Simbolo nome={"wifi.slash" as never} tamanho={13} cor={theme.warn} />
+          <Text style={s.semRedeTexto} numberOfLines={1}>
+            Sem conexão — mostrando a última versão salva
+          </Text>
+          <Pressable onPress={() => void carregar(true)} hitSlop={8} accessibilityRole="button">
+            <Text style={s.semRedeAcao}>Atualizar</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+
+      {buscaAberta ? (
+        <Animated.View style={s.buscaBarra} entering={FadeInDown.duration(180)} exiting={FadeOut.duration(120)}>
+          <Simbolo nome={SIMBOLO.busca as never} tamanho={15} cor={theme.waMuted} />
+          <TextInput
+            style={s.buscaCampo}
+            value={buscaTexto}
+            onChangeText={setBuscaTexto}
+            placeholder="Buscar nesta conversa"
+            placeholderTextColor={theme.waMuted}
+            autoFocus
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={() => irParaAchado(1)}
+          />
+          {buscaTexto.trim() ? (
+            <>
+              <Text style={s.buscaContagem}>
+                {achados.length === 0 ? "0" : `${achadoAtual + 1}/${achados.length}`}
+              </Text>
+              <Pressable onPress={() => irParaAchado(-1)} hitSlop={8} accessibilityLabel="Anterior">
+                <Simbolo nome={"chevron.up" as never} tamanho={15} cor={achados.length ? theme.accent : theme.border} />
+              </Pressable>
+              <Pressable onPress={() => irParaAchado(1)} hitSlop={8} accessibilityLabel="Próximo">
+                <Simbolo nome={"chevron.down" as never} tamanho={15} cor={achados.length ? theme.accent : theme.border} />
+              </Pressable>
+            </>
+          ) : null}
+          <Pressable
+            onPress={() => { setBuscaAberta(false); setBuscaTexto(""); }}
+            hitSlop={8}
+            accessibilityLabel="Fechar busca"
+          >
+            <Simbolo nome={SIMBOLO.fechar as never} tamanho={15} cor={theme.waMuted} />
+          </Pressable>
+        </Animated.View>
+      ) : null}
 
       <FlatList
         ref={lista}
@@ -414,6 +520,13 @@ export default function Thread() {
             </View>
           ) : null
         }
+        onScrollToIndexFailed={(info) => {
+          // A lista ainda não mediu aquele item. Aproxima e tenta de novo.
+          lista.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+          setTimeout(() => {
+            lista.current?.scrollToIndex({ index: info.index, viewPosition: 0.5, animated: true });
+          }, 120);
+        }}
         onScroll={(e) => {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
           setLonge(contentSize.height - contentOffset.y - layoutMeasurement.height > 260);
@@ -437,6 +550,7 @@ export default function Thread() {
               theme={theme}
               contactId={String(contactId)}
               aoAbrirImagem={setImagemAberta}
+              termo={buscaAberta ? buscaTexto : ""}
             />
           )
         }
@@ -468,6 +582,24 @@ export default function Thread() {
         </Pressable>
         <Pressable onPress={() => void enviarImagem(true)} disabled={!podeEnviar} hitSlop={8} accessibilityLabel="Câmera">
           <View style={!podeEnviar && s.off}><Simbolo nome={SIMBOLO.camera as never} tamanho={24} cor={theme.muted} /></View>
+        </Pressable>
+        {/* Respostas rápidas e catálogo: os dois atalhos que evitam sair do app
+            no meio do atendimento. */}
+        <Pressable
+          onPress={() => router.push({ pathname: "/respostas", params: { contactId } })}
+          disabled={!podeEnviar}
+          hitSlop={8}
+          accessibilityLabel="Respostas rápidas"
+        >
+          <View style={!podeEnviar && s.off}><Simbolo nome={"text.bubble.fill" as never} tamanho={23} cor={theme.muted} /></View>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push({ pathname: "/catalogo", params: { contactId } })}
+          disabled={!podeEnviar}
+          hitSlop={8}
+          accessibilityLabel="Catálogo"
+        >
+          <View style={!podeEnviar && s.off}><Simbolo nome={"tag.fill" as never} tamanho={22} cor={theme.muted} /></View>
         </Pressable>
 
         <TextInput
@@ -595,12 +727,14 @@ const audioStyles = StyleSheet.create({
   tempo: { fontSize: 10.5, fontVariant: ["tabular-nums"] },
 });
 
-function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
+function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, termo = "" }: {
   msg: Message;
   pendente: boolean;
   theme: ReturnType<typeof buildTheme>;
   contactId: string;
   aoAbrirImagem: (uri: string) => void;
+  /** Trecho da busca, para marcar dentro da mensagem. */
+  termo?: string;
 }) {
   const { client } = useSession();
   const [midia, setMidia] = useState<string | null>(null);
@@ -676,7 +810,14 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem }: {
           <Text style={[s.transcricao, { color: corMeta }]}>“{msg.transcription}”</Text>
         ) : null}
 
-        {msg.text && !ehArquivo ? <Text style={[s.textoBalao, { color: corTexto }]}>{msg.text}</Text> : null}
+        {msg.text && !ehArquivo ? (
+          <TextoRealcado
+            texto={msg.text}
+            termo={termo}
+            estilo={[s.textoBalao, { color: corTexto }]}
+            estiloRealce={s.realce}
+          />
+        ) : null}
 
         {msg.reaction ? (
           <View style={[s.reacao, saiu ? { left: 8 } : { right: 8 }, { backgroundColor: theme.waIn, borderColor: theme.border }]}>
@@ -781,6 +922,18 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
       borderWidth: StyleSheet.hairlineWidth, borderColor: t.border,
       shadowColor: "#000", shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
     },
+    buscaBarra: {
+      flexDirection: "row", alignItems: "center", gap: ESP.sm,
+      paddingHorizontal: ESP.gutter, paddingVertical: 8,
+      backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
+    },
+    buscaCampo: { ...TIPO.subtitulo, flex: 1, color: t.text, padding: 0 },
+    buscaContagem: { ...TIPO.legenda, color: t.waMuted, fontVariant: ["tabular-nums"] },
+
+    // Fundo âmbar em vez de cor de texto: funciona nos dois lados da conversa,
+    // sobre o balão claro e sobre o de destaque.
+    realce: { backgroundColor: "#ffd54a", color: "#2b2100", fontWeight: "700" },
+
     janelaFechada: {
       paddingHorizontal: 16, paddingVertical: 8,
       backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border,
@@ -805,5 +958,13 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     off: { opacity: 0.35 },
 
     erroTexto: { ...TIPO.subtitulo, color: t.crit, textAlign: "center" },
+    semRede: {
+      flexDirection: "row", alignItems: "center", gap: ESP.sm,
+      paddingHorizontal: ESP.gutter, paddingVertical: 7,
+      backgroundColor: t.dark ? "rgba(245,181,68,0.14)" : "rgba(245,181,68,0.18)",
+      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border,
+    },
+    semRedeTexto: { ...TIPO.legenda, color: t.text, flex: 1 },
+    semRedeAcao: { ...TIPO.legenda, color: t.accent, fontWeight: "700" },
     tentar: { ...TIPO.corpo, color: t.accent, fontWeight: "600" },
   });

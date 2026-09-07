@@ -2,9 +2,11 @@
 // O gasto por dia do período, desenhado como um traço só. Não é gráfico de
 // análise — é o formato da coisa, para saber de relance se subiu ou caiu.
 //
-// A linha se DESENHA ao entrar (stroke-dashoffset indo a zero) e o ponto da
-// ponta pulsa devagar enquanto a tela está aberta: é o sinal de que o número é
-// do agora, e o "algo vivo" da aba.
+// Três movimentos, e cada um diz uma coisa:
+//   · a linha se DESENHA ao entrar (stroke-dashoffset indo a zero);
+//   · uma luz PERCORRE o traço continuamente — é o "vivo" que fica enquanto a
+//     aba está aberta, e sugere fluxo, que é o que a série representa;
+//   · o ponto da ponta pulsa devagar: o dado é do agora.
 
 import { useEffect, useMemo } from "react";
 import { View } from "react-native";
@@ -21,6 +23,7 @@ export function Sparkline({ valores, cor, largura, altura = 46 }: {
 }) {
   const desenho = useSharedValue(1); // 1 = escondida, 0 = desenhada
   const pulso = useSharedValue(1);
+  const corrente = useSharedValue(0); // luz percorrendo o traço, sem fim
 
   const { linha, area, fim, comprimento } = useMemo(() => {
     const n = valores.length;
@@ -46,6 +49,11 @@ export function Sparkline({ valores, cor, largura, altura = 46 }: {
     return { linha: d, area: sob, fim: pts[pts.length - 1] ?? [0, 0], comprimento: Math.max(c, 1) };
   }, [valores, largura, altura]);
 
+  // Tamanho do risco aceso. Declarado ANTES dos worklets que o capturam — um
+  // `const` depois deles entraria na zona morta e quebraria em execução, coisa
+  // que o TypeScript não acusa.
+  const brilhoTam = Math.max(18, comprimento * 0.12);
+
   useEffect(() => {
     desenho.value = 1;
     desenho.value = withDelay(160, withTiming(0, { duration: 760, easing: Easing.out(Easing.cubic) }));
@@ -55,12 +63,27 @@ export function Sparkline({ valores, cor, largura, altura = 46 }: {
         withTiming(1.75, { duration: 900, easing: Easing.inOut(Easing.quad) }),
         withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
       ), -1, false));
-  }, [linha, desenho, pulso]);
+
+    // A corrente só começa depois que a linha terminou de se desenhar — as duas
+    // animações usam dashoffset e brigariam pelo mesmo traço.
+    corrente.value = 0;
+    corrente.value = withDelay(1000, withRepeat(
+      withTiming(1, { duration: 2600, easing: Easing.linear }), -1, false,
+    ));
+  }, [linha, desenho, pulso, corrente]);
 
   const propsTraco = useAnimatedProps(() => ({ strokeDashoffset: desenho.value * comprimento }));
+
+  // Um risco curto que corre o caminho inteiro: o dash tem um segmento aceso e
+  // um vão do tamanho da linha, então só um trecho aparece por vez.
+  const propsCorrente = useAnimatedProps(() => ({
+    strokeDashoffset: -corrente.value * (comprimento + brilhoTam),
+    opacity: desenho.value > 0.02 ? 0 : 0.9, // some enquanto a linha desenha
+  }));
   const propsPonto = useAnimatedProps(() => ({ r: 2.6 * pulso.value, opacity: 1.15 - pulso.value * 0.4 }));
 
   if (valores.length < 2) return <View style={{ height: altura }} />;
+
 
   return (
     <Svg width={largura} height={altura}>
@@ -80,6 +103,16 @@ export function Sparkline({ valores, cor, largura, altura = 46 }: {
         strokeLinejoin="round"
         strokeDasharray={comprimento}
         animatedProps={propsTraco}
+      />
+      {/* A luz que percorre. Desenhada DEPOIS do traço para ficar por cima. */}
+      <Traco
+        d={linha}
+        stroke="#ffffff"
+        strokeWidth={2.4}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={`${brilhoTam} ${comprimento + brilhoTam}`}
+        animatedProps={propsCorrente}
       />
       <Ponto cx={fim[0]} cy={fim[1]} fill={cor} animatedProps={propsPonto} />
       <Circle cx={fim[0]} cy={fim[1]} r={2.4} fill={cor} />

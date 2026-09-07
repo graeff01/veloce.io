@@ -5,7 +5,7 @@
 import type { ConversationRow, Me } from "./contracts";
 
 /** Módulos da barra inferior, na ordem de exibição. */
-export type ModuloRota = "conversas" | "anuncios" | "revisao";
+export type ModuloRota = "conversas" | "anuncios" | "funil" | "revisao";
 
 /**
  * Quais MÓDULOS este tenant/usuário enxerga.
@@ -17,7 +17,12 @@ export type ModuloRota = "conversas" | "anuncios" | "revisao";
 export function modulosPara(me: Me | null): ModuloRota[] {
   const secoes = me?.sections ?? [];
   const out: ModuloRota[] = ["conversas"];
+  // Cada módulo aparece só para o tenant que tem a seção. Isto deixou de ser
+  // só estética quando o servidor passou a RECUSAR a rota correspondente
+  // (PORTAL_SECTION_ENFORCE): mostrar um módulo sem seção viraria um 403 na
+  // cara do usuário.
   if (secoes.includes("anuncios")) out.push("anuncios");
+  if (secoes.includes("funil")) out.push("funil");
   // Orçamentos exige a seção E a funcionalidade ligada no cliente.
   if (secoes.includes("revisao") && me?.quotesEnabled === true) out.push("revisao");
   // "Mais" NÃO entra aqui: virou atalho no cabeçalho. A barra é só para o que
@@ -27,7 +32,7 @@ export function modulosPara(me: Me | null): ModuloRota[] {
 
 // ── Filtros da caixa de entrada ───────────────────────────────────────────────
 
-export type Filtro = "todas" | "aguardando" | "minhas";
+export type Filtro = "todas" | "aguardando" | "minhas" | "arquivadas";
 
 /**
  * "Aguardando resposta": a última mensagem foi do LEAD e ninguém respondeu.

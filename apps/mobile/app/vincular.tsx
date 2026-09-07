@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView,
-  StyleSheet, Text, TextInput, useColorScheme, View,
+  StyleSheet, Text, TextInput, View,
 } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, ZoomIn } from "react-native-reanimated";
 import * as Linking from "expo-linking";
@@ -36,7 +37,7 @@ type Modo = "entrar" | "criar";
 export default function Vincular() {
   const { vincularELogar, vincularECriar, marcaDoLink, configError, painelSalvo, esquecerPainel } = useSession();
   const insets = useSafeAreaInsets();
-  const escuro = useColorScheme() === "dark";
+  const escuro = useEscuro();
 
   const dev = useMemo(() => devPrefill(), []);
   const [link, setLink] = useState(dev.link);

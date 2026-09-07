@@ -1,26 +1,33 @@
-import { ScrollView, StyleSheet, Text, useColorScheme, View, Pressable } from "react-native";
+// ── Ajustes do aplicativo ─────────────────────────────────────────────────────
+// Divisão de papéis com o Perfil, que estava duplicado:
+//   · Perfil (ícone de pessoa, à direita) = QUEM VOCÊ É — conta, aparelho, sair.
+//   · Aqui (••• , à esquerda)             = COMO O APP SE COMPORTA.
+//
+// Módulos do portal que ainda não têm tela no app NÃO aparecem: listar o que
+// não existe é promessa que a tela não cumpre — e, para a App Store, conteúdo
+// de espaço reservado (diretriz 4.2). Cada um volta ao ganhar `rota`.
+
+import { useCallback, useEffect, useState } from "react";
+import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
+import * as Haptics from "expo-haptics";
 import { SIMBOLO, Simbolo } from "../src/ui/simbolo";
 import { CABECALHO_SECAO, TIPO } from "../src/ui/tipografia";
 import { CURVA, ESP, RAIO } from "../src/ui/forma";
 import { useSession } from "../src/ui/session";
+import { useAparencia, type Preferencia } from "../src/ui/aparencia";
+import { useTema } from "../src/ui/tema";
 import { buildTheme } from "../src/ui/theme";
+import { DOCUMENTOS, urlDoDocumento } from "../src/config/legal";
+import { appEnv } from "../src/config/env";
 import type { PortalSection } from "../src/core/contracts";
+import { relatorio, relevantes } from "../src/core/diagnostico";
+import { lerDiario } from "../src/core/redact";
 
-// ── Mais ──────────────────────────────────────────────────────────────────────
-// Escape do produto: módulos adicionais que o TENANT tem, derivados de `sections`
-// do /me. Nada de nome de cliente no código.
-//
-// É FOLHA, não aba. A barra inferior é para os módulos que a pessoa usa o dia
-// inteiro — Conversas, Anúncios, Orçamentos. "Mais" é um escape ocasional, e
-// gastar um quarto da barra com ele empobrecia os três que importam. Fica no
-// cabeçalho, do lado oposto ao perfil.
-//
-// Os que ainda não têm tela no app aparecem marcados como "em breve" em vez de
-// virar link morto — assim a estrutura já cresce sem enganar o usuário.
-
-// Símbolo do sistema por ferramenta — o mesmo vocabulário visual dos Ajustes.
 const CATALOGO: { chave: PortalSection; rotulo: string; simbolo: string; rota?: string }[] = [
   { chave: "painel", rotulo: "Painel", simbolo: "chart.bar.fill" },
   { chave: "funil", rotulo: "Funil", simbolo: "line.3.horizontal.decrease" },
@@ -33,21 +40,70 @@ const CATALOGO: { chave: PortalSection; rotulo: string; simbolo: string; rota?: 
   { chave: "frete", rotulo: "Frete", simbolo: "shippingbox.fill" },
 ];
 
+/** WhatsApp do suporte da Veloce. Formato internacional, só dígitos. */
+const SUPORTE_WHATSAPP = "5551991597229";
+
+const APARENCIAS: { valor: Preferencia; rotulo: string }[] = [
+  { valor: "automatico", rotulo: "Automático" },
+  { valor: "claro", rotulo: "Claro" },
+  { valor: "escuro", rotulo: "Escuro" },
+];
+
 export default function Mais() {
-  const { me, can } = useSession();
+  const { me, can, base } = useSession();
+  const { preferencia, definir } = useAparencia();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
-  // Conversas, Anúncios e Orçamentos já são módulos da barra — não repetem aqui.
-  const modulos = CATALOGO.filter((m) => can(m.chave));
+  const [permissao, setPermissao] = useState<"concedida" | "negada" | "?">("?");
+  useEffect(() => {
+    void Notifications.getPermissionsAsync()
+      .then((p) => setPermissao(p.granted ? "concedida" : "negada"))
+      .catch(() => setPermissao("?"));
+  }, []);
+
+  const modulos = CATALOGO.filter((m) => can(m.chave) && m.rota);
+
+  const escolher = useCallback((p: Preferencia) => {
+    void Haptics.selectionAsync().catch(() => {});
+    definir(p);
+  }, [definir]);
+
+  // Suporte pelo WhatsApp, não por e-mail: é o canal em que a equipe já vive o
+  // dia inteiro, e a resposta chega em minutos em vez de horas. A mensagem vai
+  // pronta com o contexto que a gente sempre teria de perguntar depois.
+  const pedirAjuda = useCallback(() => {
+    const texto = encodeURIComponent(
+      `Preciso de suporte no app da Veloce.\n\n` +
+      `Cliente: ${me?.brand.name ?? "—"}\n` +
+      `Usuário: ${me?.user?.email ?? "—"}\n` +
+      `Aplicativo: ${Constants.expoConfig?.version ?? "—"}`,
+    );
+    void Linking.openURL(`https://wa.me/${SUPORTE_WHATSAPP}?text=${texto}`).catch(() => {});
+  }, [me]);
+
+  // "Deu erro" sem diagnóstico vira uma investigação do zero. O diário fica no
+  // aparelho e só sai daqui — pela mão da pessoa, para onde ELA escolher. Nada
+  // é enviado sozinho, e o conteúdo das conversas nunca entra no texto.
+  const compartilharDiagnostico = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    const diario = lerDiario();
+    const texto = relatorio(diario, {
+      versao: Constants.expoConfig?.version ?? "—",
+      aparelho: Constants.deviceName ?? "—",
+      sistema: `${Platform.OS} ${String(Platform.Version)}`,
+      servidor: base ?? "—",
+    });
+    void Share.share({ message: texto }).catch(() => {});
+  }, [base]);
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: "Mais",
+          title: "Ajustes",
           headerLeft: () => (
             <Pressable onPress={() => router.back()} hitSlop={10} accessibilityRole="button">
               <Text style={s.fechar}>Fechar</Text>
@@ -58,55 +114,131 @@ export default function Mais() {
       <ScrollView
         style={s.tela}
         contentInsetAdjustmentBehavior="automatic"
-        // Rola de novo: "sem rolagem" fazia sentido quando isto era uma aba de
-        // tela cheia. Numa folha de 68% os nove módulos não cabem, e o que não
-        // coubesse simplesmente sumia.
-        contentContainerStyle={{ paddingBottom: insets.bottom + ESP.xl }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + ESP.xxl + ESP.gutter }}
       >
-
-      <Text style={s.secao}>Conta</Text>
-      <View style={s.grupo}>
-        <Pressable style={s.item} onPress={() => router.push("/perfil")} accessibilityRole="button">
-          <View style={[s.icone, { backgroundColor: theme.accent }]}>
-            <Simbolo nome={SIMBOLO.pessoa as never} tamanho={17} cor="#fff" />
-          </View>
-          <Text style={s.itemTexto}>{me?.user?.name ?? me?.user?.email ?? "Perfil"}</Text>
-          <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
-        </Pressable>
-      </View>
-
-      {modulos.length > 0 ? (
-        <>
-          <Text style={s.secao}>Ferramentas</Text>
-          <View style={s.grupo}>
-            {modulos.map(({ chave, rotulo, simbolo, rota }, i) => (
-              <View key={chave}>
-                {i > 0 ? <View style={s.divisor} /> : null}
+        {/* ── Aparência ─────────────────────────────────────────────────── */}
+        <Text style={s.secao}>Aparência</Text>
+        <View style={s.grupo}>
+          <View style={s.seletor}>
+            {APARENCIAS.map(({ valor, rotulo }) => {
+              const on = preferencia === valor;
+              return (
                 <Pressable
-                  disabled={!rota}
-                  onPress={() => rota && router.push(rota as never)}
-                  style={[s.item, !rota && s.itemInativo]}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !rota }}
+                  key={valor}
+                  onPress={() => escolher(valor)}
+                  style={[s.opcao, on && s.opcaoAtiva]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
                 >
-                  <View style={[s.icone, { backgroundColor: rota ? theme.accent : theme.muted }]}>
-                    <Simbolo nome={simbolo as never} tamanho={16} cor="#fff" />
-                  </View>
-                  <Text style={[s.itemTexto, !rota && { color: theme.muted }]}>{rotulo}</Text>
-                  {rota
-                    ? <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
-                    : <Text style={s.emBreve}>em breve</Text>}
+                  <Text style={[s.opcaoTexto, on && s.opcaoTextoAtivo]}>{rotulo}</Text>
                 </Pressable>
-              </View>
-            ))}
+              );
+            })}
           </View>
-          <Text style={s.nota}>
-            As ferramentas disponíveis são definidas pela sua agência. As marcadas como
-            &quot;em breve&quot; já existem no painel web e chegarão ao aplicativo.
+          <Text style={s.dica}>
+            &quot;Automático&quot; acompanha o iPhone. As outras valem só para este aplicativo.
           </Text>
-        </>
-      ) : null}
-    </ScrollView>
+        </View>
+
+        {/* ── Notificações ──────────────────────────────────────────────── */}
+        <Text style={s.secao}>Notificações</Text>
+        <View style={s.grupo}>
+          <Pressable style={s.linha} onPress={() => void Linking.openSettings()} accessibilityRole="button">
+            <View style={[s.icone, { backgroundColor: permissao === "concedida" ? theme.good : theme.muted }]}>
+              <Simbolo nome={"bell.fill" as never} tamanho={15} cor="#fff" />
+            </View>
+            <View style={s.corpo}>
+              <Text style={s.linhaTitulo}>
+                {permissao === "concedida" ? "Ativadas" : permissao === "negada" ? "Desativadas" : "Verificando…"}
+              </Text>
+              <Text style={s.linhaSub}>Avisos de lead novo e de orçamento aguardando</Text>
+            </View>
+            <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+          </Pressable>
+        </View>
+
+        {/* ── Ferramentas do portal com tela no app ─────────────────────── */}
+        {modulos.length > 0 ? (
+          <>
+            <Text style={s.secao}>Ferramentas</Text>
+            <View style={s.grupo}>
+              {modulos.map(({ chave, rotulo, simbolo, rota }, i) => (
+                <View key={chave}>
+                  {i > 0 ? <View style={s.divisor} /> : null}
+                  <Pressable
+                    onPress={() => rota && router.push(rota as never)}
+                    style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
+                    accessibilityRole="button"
+                  >
+                    <View style={[s.icone, { backgroundColor: theme.accent }]}>
+                      <Simbolo nome={simbolo as never} tamanho={15} cor="#fff" />
+                    </View>
+                    <Text style={[s.linhaTitulo, s.corpo]}>{rotulo}</Text>
+                    <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {/* ── Ajuda e documentos ────────────────────────────────────────── */}
+        <Text style={s.secao}>Ajuda</Text>
+        <View style={s.grupo}>
+          <Pressable style={s.linha} onPress={pedirAjuda} accessibilityRole="button">
+            <View style={[s.icone, { backgroundColor: "#25D366" }]}>
+              <Simbolo nome={"bubble.left.fill" as never} tamanho={15} cor="#fff" />
+            </View>
+            <View style={s.corpo}>
+              <Text style={s.linhaTitulo}>Falar com a Veloce</Text>
+              <Text style={s.linhaSub}>Abre o WhatsApp com a mensagem pronta</Text>
+            </View>
+            <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+          </Pressable>
+          <View style={s.divisor} />
+          <Pressable
+            style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
+            onPress={compartilharDiagnostico}
+            accessibilityRole="button"
+          >
+            <View style={[s.icone, { backgroundColor: theme.warn }]}>
+              <Simbolo nome={"stethoscope" as never} tamanho={15} cor="#fff" />
+            </View>
+            <View style={s.corpo}>
+              <Text style={s.linhaTitulo}>Enviar diagnóstico</Text>
+              <Text style={s.linhaSub}>
+                {(() => {
+                  const n = relevantes(lerDiario()).length;
+                  return n === 0 ? "Nenhum erro nesta sessão" : n === 1 ? "1 ocorrência registrada" : `${n} ocorrências registradas`;
+                })()}
+              </Text>
+            </View>
+            <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+          </Pressable>
+          {DOCUMENTOS.map((d) => (
+            <View key={d.caminho}>
+              <View style={s.divisor} />
+              <Pressable
+                style={({ pressed }) => [s.linha, pressed && { backgroundColor: theme.raise }]}
+                onPress={() => base && void Linking.openURL(urlDoDocumento(base, d.caminho))}
+                disabled={!base}
+                accessibilityRole="link"
+              >
+                <View style={[s.icone, { backgroundColor: theme.muted }]}>
+                  <Simbolo nome={"doc.text.fill" as never} tamanho={15} cor="#fff" />
+                </View>
+                <Text style={[s.linhaTitulo, s.corpo]}>{d.titulo}</Text>
+                <Simbolo nome={SIMBOLO.avancar as never} tamanho={14} cor={theme.muted} peso="semibold" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+
+        <Text style={s.rodape}>
+          Veloce {Constants.expoConfig?.version ?? ""}
+          {appEnv() === "production" ? "" : ` · ${appEnv()}`}
+        </Text>
+      </ScrollView>
     </>
   );
 }
@@ -115,22 +247,23 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
     tela: { flex: 1, backgroundColor: t.bg },
     fechar: { color: t.accent, fontSize: 16, fontWeight: "600" },
-    secao: {
-      ...CABECALHO_SECAO, color: t.muted,
-      marginTop: 26, marginBottom: 7, marginHorizontal: 32,
-    },
-    // Lista AGRUPADA com recuo, como nos Ajustes: cartão arredondado sobre o
-    // fundo, não linhas de ponta a ponta. É o que separa "tela de app" de
-    // "lista de página web".
-    grupo: {
-      marginHorizontal: ESP.gutter, borderRadius: RAIO.medio, ...CURVA, overflow: "hidden", backgroundColor: t.surface,
-    },
-    item: { flexDirection: "row", alignItems: "center", gap: ESP.md, paddingHorizontal: ESP.gutter, paddingVertical: 12 },
-    itemInativo: { opacity: 0.55 },
-    // Ícone em quadradinho colorido — vocabulário dos Ajustes do iOS.
+
+    secao: { ...CABECALHO_SECAO, color: t.muted, marginHorizontal: ESP.gutter + 4, marginTop: ESP.lg, marginBottom: ESP.sm },
+    grupo: { marginHorizontal: ESP.gutter, borderRadius: RAIO.medio, ...CURVA, overflow: "hidden", backgroundColor: t.surface },
+    divisor: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 54 },
+
+    linha: { flexDirection: "row", alignItems: "center", gap: ESP.md, paddingHorizontal: ESP.gutter, paddingVertical: 11 },
+    corpo: { flex: 1 },
+    linhaTitulo: { ...TIPO.corpo, color: t.text },
+    linhaSub: { ...TIPO.legenda, color: t.muted, marginTop: 1 },
     icone: { width: 29, height: 29, borderRadius: 7, ...CURVA, alignItems: "center", justifyContent: "center" },
-    itemTexto: { ...TIPO.corpo, flex: 1, color: t.text },
-    emBreve: { ...TIPO.nota, color: t.muted },
-    divisor: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 55 },
-    nota: { ...TIPO.nota, color: t.muted, marginHorizontal: 32, marginTop: 10 },
+
+    seletor: { flexDirection: "row", gap: 4, backgroundColor: t.raise, borderRadius: RAIO.peq, ...CURVA, padding: 4, margin: ESP.md },
+    opcao: { flex: 1, paddingVertical: 8, borderRadius: 8, ...CURVA, alignItems: "center" },
+    opcaoAtiva: { backgroundColor: t.surface, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
+    opcaoTexto: { ...TIPO.subtitulo, color: t.muted, fontWeight: "500" },
+    opcaoTextoAtivo: { color: t.text, fontWeight: "700" },
+    dica: { ...TIPO.legenda, color: t.muted, paddingHorizontal: ESP.gutter, paddingBottom: ESP.md, lineHeight: 16 },
+
+    rodape: { ...TIPO.legenda2, color: t.muted, textAlign: "center", marginTop: ESP.xl },
   });

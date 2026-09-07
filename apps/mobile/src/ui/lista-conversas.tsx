@@ -12,9 +12,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActionSheetIOS, ActivityIndicator, AppState, FlatList, Pressable, RefreshControl,
-  StyleSheet, Text, TextInput, useColorScheme, View,
+  ActionSheetIOS, ActivityIndicator, Alert, AppState, FlatList, Pressable, RefreshControl,
+  StyleSheet, Text, TextInput, View,
 } from "react-native";
+import { useEscuro } from "./aparencia";
 import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Notifications from "expo-notifications";
@@ -27,18 +28,21 @@ import { BotaoMais } from "./botao-mais";
 import { TIPO } from "./tipografia";
 import { CURVA, ESP, ESPACO_BARRA, RAIO } from "./forma";
 import { useSession } from "./session";
+import { useBadges } from "./nav";
+import { useTema } from "./tema";
 import { accentAlpha, avatarColor, buildTheme, STAGE, VERDE_ESPERA } from "./theme";
 import { ApiError } from "../core/errors";
 import { aguardandoResposta, campanhaDe, campanhasContadas, campanhasDe, filtrarConversas, type Filtro } from "../core/inbox";
-import { guardarLista, lerLidas, lerLista, marcarLida, marcarNaoLida, naoLida } from "./cache";
+import { esperandoDesde, rotuloEspera, urgenciaDe } from "../core/espera";
+import { guardarLista, lerLista } from "./cache";
 import { guardarCampanhas } from "./campanhas-store";
 import type { ConversationRow } from "../core/contracts";
 
 export type { Filtro };
 
 const PAGINA = 30;
-const FILTROS: Filtro[] = ["todas", "aguardando", "minhas"];
-const ROTULOS = ["Todas", "Aguardando", "Minhas"];
+const FILTROS: Filtro[] = ["todas", "aguardando", "minhas", "arquivadas"];
+const ROTULOS = ["Todas", "Aguardando", "Minhas", "Arquivadas"];
 
 const ROTULO_MIDIA: Record<string, string> = {
   image: "Foto", audio: "Áudio", video: "Vídeo",
@@ -71,7 +75,7 @@ export function ListaConversas() {
   const { client, me } = useSession();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const { campanha } = useLocalSearchParams<{ campanha?: string }>();
@@ -79,7 +83,6 @@ export function ListaConversas() {
   // Primeira pintura SEM esperar a rede: a última lista conhecida aparece na
   // hora e é substituída quando o servidor responde. Antes era um spinner.
   const [linhas, setLinhas] = useState<ConversationRow[]>(() => lerLista());
-  const [lidas, setLidas] = useState(() => lerLidas());
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [campanhaSel, setCampanhaSel] = useState<string | null>(null);
@@ -108,7 +111,10 @@ export function ListaConversas() {
 
     try {
       const r = await client.conversations({
-        limit: PAGINA, offset, q: busca, onlyMine: filtro === "minhas", signal: ctrl.signal,
+        limit: PAGINA, offset, q: busca,
+        onlyMine: filtro === "minhas",
+        arquivadas: filtro === "arquivadas",
+        signal: ctrl.signal,
       });
       setLinhas((antes) => (offset === 0 ? r.conversations : juntarSemRepetir(antes, r.conversations)));
       // Só a primeira página vira cache — é o que a próxima abertura precisa.
@@ -134,7 +140,6 @@ export function ListaConversas() {
   }, [carregar, busca]);
 
   useFocusEffect(useCallback(() => {
-    setLidas(lerLidas()); // voltar de uma conversa atualiza o "não lida"
     void carregar({ silencioso: true });
   }, [carregar]));
 
@@ -147,12 +152,13 @@ export function ListaConversas() {
     return () => clearInterval(id);
   }, [carregar]));
 
-  // Contador no ÍCONE do app: o número de conversas por ler aparece na tela
-  // inicial, como em qualquer app de mensagem.
+  // Contador no ÍCONE do app. Vem do SERVIDOR, não das linhas carregadas:
+  // somar o que está na tela dava no máximo o tamanho da página — com 1.271
+  // conversas e páginas de 30, o iPhone mostrava "8" havendo centenas.
+  const badges = useBadges();
   useEffect(() => {
-    const n = linhas.reduce((acc, c) => acc + (naoLida(c, lidas) ? 1 : 0), 0);
-    void Notifications.setBadgeCountAsync(n).catch(() => {});
-  }, [linhas, lidas]);
+    void Notifications.setBadgeCountAsync(badges.waiting).catch(() => {});
+  }, [badges.waiting]);
 
   const campanhas = useMemo(() => campanhasDe(linhas), [linhas]);
 
@@ -167,6 +173,14 @@ export function ListaConversas() {
 
   const visiveis = filtrarConversas(linhas, filtro, campanhaSel);
 
+  // Um relógio só para a lista inteira, a cada minuto: recalcular "há quanto
+  // tempo" por linha, a cada quadro, seria desperdício.
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const trocarFiltro = useCallback((i: number) => {
     void Haptics.selectionAsync().catch(() => {});
     setFiltro(FILTROS[i] ?? "todas");
@@ -178,18 +192,57 @@ export function ListaConversas() {
     setCampanhaSel(c);
   }, []);
 
-  const alternarLeitura = useCallback((c: ConversationRow, lida: boolean) => {
+  // Estado COMPARTILHADO: some para a equipe inteira, não só neste aparelho.
+  // Otimista, porque esperar a rede para riscar uma linha é atrito puro.
+  const alternarLeitura = useCallback(async (c: ConversationRow, lida: boolean) => {
     void Haptics.selectionAsync().catch(() => {});
-    setLidas(lida ? marcarLida(c.contactId) : marcarNaoLida(c.contactId));
-  }, []);
+    setLinhas((f) => f.map((x) => (x.contactId === c.contactId ? { ...x, lida } : x)));
+    try { await client?.marcarEstado(c.contactId, { lida }); }
+    catch { setLinhas((f) => f.map((x) => (x.contactId === c.contactId ? { ...x, lida: !lida } : x))); }
+  }, [client]);
+
+  /** Tira da caixa sem apagar nada — some para todo mundo. */
+  const arquivar = useCallback(async (c: ConversationRow) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setLinhas((f) => f.filter((x) => x.contactId !== c.contactId));
+    try { await client?.marcarEstado(c.contactId, { arquivada: true }); }
+    catch { void carregar({ silencioso: true }); }
+  }, [client, carregar]);
+
+  /**
+   * Assumir em LOTE. A JR abriu o app com ~1.250 conversas sem dona: pegar uma
+   * a uma não é trabalho, é desistência. Pega as livres que estão na tela agora
+   * — o filtro é a seleção, e por isso o aviso diz o número exato antes.
+   */
+  const TETO_LOTE = 100;
+  const assumirLote = useCallback(async (livres: ConversationRow[]) => {
+    if (!client || !meuEmail || livres.length === 0) return;
+    const alvo = livres.slice(0, TETO_LOTE);
+    try {
+      const r = await client.assumirVarias(alvo.map((c) => c.contactId));
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Ignoradas = alguém assumiu primeiro. Dizer isso evita a vendedora achar
+      // que pegou conversa que na verdade é de outra.
+      Alert.alert(
+        r.assumidas === 1 ? "1 conversa assumida" : `${r.assumidas} conversas assumidas`,
+        r.ignoradas > 0 ? `${r.ignoradas} já tinham outra responsável.` : undefined,
+      );
+      await carregar({ silencioso: true });
+    } catch (e) {
+      Alert.alert("Não foi possível assumir", e instanceof Error ? e.message : "Tente de novo.");
+    }
+  }, [client, meuEmail, carregar]);
 
   /** Pressionar e segurar: as mesmas ações do deslizar, para quem prefere o menu. */
-  const menuDaLinha = useCallback((c: ConversationRow) => {
+  const menuDaLinha = useCallback((c: ConversationRow, naTela: ConversationRow[]) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    const nova = naoLida(c, lidas);
+    const nova = !c.lida;
     const souDona = !!c.assignedEmail && c.assignedEmail === meuEmail;
+    const livres = naTela.filter((x) => !x.assignedEmail).slice(0, TETO_LOTE);
     const opcoes = [nova ? "Marcar como lida" : "Marcar como não lida"];
     if (!souDona) opcoes.push("Assumir conversa");
+    const iLote = livres.length > 1 ? opcoes.length : -1;
+    if (iLote >= 0) opcoes.push(`Assumir as ${livres.length} livres desta lista`);
 
     ActionSheetIOS.showActionSheetWithOptions(
       {
@@ -200,6 +253,18 @@ export function ListaConversas() {
       },
       async (i) => {
         if (i === 0) { alternarLeitura(c, nova); return; }
+        if (i === iLote) {
+          // Lote mexe em muita coisa de uma vez: confirma antes, sempre.
+          Alert.alert(
+            `Assumir ${livres.length} conversas?`,
+            "Você passa a ser a responsável por todas elas.",
+            [
+              { text: "Cancelar", style: "cancel" },
+              { text: "Assumir", onPress: () => void assumirLote(livres) },
+            ],
+          );
+          return;
+        }
         if (i === 1 && client && meuEmail) {
           try {
             await client.assign(c.contactId, meuEmail);
@@ -209,7 +274,7 @@ export function ListaConversas() {
         }
       },
     );
-  }, [lidas, meuEmail, theme.dark, alternarLeitura, client, carregar]);
+  }, [meuEmail, theme.dark, alternarLeitura, client, carregar, assumirLote]);
 
   const vazio =
     busca ? "Nenhuma conversa encontrada."
@@ -219,8 +284,14 @@ export function ListaConversas() {
     : "Nenhuma conversa ainda.";
 
   const renderItem = ({ item, index: indice }: { item: ConversationRow; index: number }) => {
-    const esperando = aguardandoResposta(item);
-    const nova = naoLida(item, lidas);
+    const nova = !item.lida;
+    // Há quanto tempo o lead espera. Com 1.257 aguardando, é isto que separa
+    // "tenho mil conversas" de "estas cinco estão me custando venda".
+    const desde = esperandoDesde(item.lastInboundAt, item.lastOutboundAt);
+    const urgencia = urgenciaDe(desde, agora);
+    const corEspera = urgencia === "critica" ? theme.crit
+      : urgencia === "atencao" ? theme.warn
+      : theme.muted;
     const etapa = item.funnelStage ? STAGE[item.funnelStage] : null;
     // UM marcador, não quatro. Três rótulos coloridos empilhados sob cada linha
     // é pensamento de tabela de dados — nenhum app de mensagem faz isso, e era o
@@ -242,6 +313,15 @@ export function ListaConversas() {
         >
           <Simbolo nome={(nova ? "envelope.open.fill" : "envelope.badge.fill") as never} tamanho={20} cor="#fff" />
           <Text style={s.acaoTexto}>{nova ? "Lida" : "Não lida"}</Text>
+        </Pressable>
+        <Pressable
+          style={[s.acao, { backgroundColor: theme.muted }]}
+          onPress={() => void arquivar(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`Arquivar conversa com ${item.name}`}
+        >
+          <Simbolo nome={"archivebox.fill" as never} tamanho={20} cor="#fff" />
+          <Text style={s.acaoTexto}>Arquivar</Text>
         </Pressable>
         {!souDona ? (
           <Pressable
@@ -275,7 +355,7 @@ export function ListaConversas() {
           // O nome viaja junto para o cabeçalho da conversa não abrir vazio.
           params: { contactId: item.contactId, nome: item.name },
         })}
-        onLongPress={() => menuDaLinha(item)}
+        onLongPress={() => menuDaLinha(item, visiveis)}
         delayLongPress={340}
         accessibilityRole="button"
         accessibilityLabel={`Conversa com ${item.name}`}
@@ -288,14 +368,26 @@ export function ListaConversas() {
         <View style={s.corpo}>
           <View style={s.topo}>
             <Text style={[s.nome, nova && s.nomeNaoLida]} numberOfLines={1}>{item.name}</Text>
-            <Text style={s.hora} maxFontSizeMultiplier={1.3}>{horaCurta(item.lastMessageAt)}</Text>
+            {urgencia === "nenhuma" ? (
+              <Text style={s.hora} maxFontSizeMultiplier={1.3}>{horaCurta(item.lastMessageAt)}</Text>
+            ) : (
+              <View style={[s.espera, { backgroundColor: `${corEspera}1A` }]}>
+                <Text style={[s.esperaTexto, { color: corEspera }]} maxFontSizeMultiplier={1.2}>
+                  {rotuloEspera(desde, agora)}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={s.meio}>
             <Text style={[s.previa, nova && s.previaNaoLida]} numberOfLines={1}>
               {item.lastDirection === "out" ? "✓ " : ""}{previa(item)}
             </Text>
-            {esperando ? <View style={s.pontoEspera} accessibilityLabel="Aguardando resposta" /> : null}
+            {/* O ponto agora diz NÃO LIDA — que é o que marcar/desmarcar muda,
+                e o que a pessoa procura de relance. "Aguardando resposta" já tem
+                a própria aba, e ter dois pontos verdes com sentidos diferentes
+                na mesma linha era o que confundia. */}
+            {nova ? <View style={s.pontoNaoLida} accessibilityLabel="Não lida" /> : null}
           </View>
 
           {/* Etapa + etiquetas + origem numa linha só. As etiquetas voltaram
@@ -502,9 +594,13 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     nomeNaoLida: { fontWeight: "800" },
     previaNaoLida: { color: t.text, fontWeight: "500" },
     hora: { ...TIPO.nota, color: t.waMuted },
+    // Pílula em vez de texto solto: o tempo de espera precisa competir com o
+    // nome pela atenção, não desaparecer no canto.
+    espera: { borderRadius: RAIO.pilula, paddingHorizontal: 7, paddingVertical: 2 },
+    esperaTexto: { ...TIPO.legenda, fontWeight: "700", fontVariant: ["tabular-nums"] },
     meio: { flexDirection: "row", alignItems: "center", gap: 8 },
     previa: { ...TIPO.subtitulo, flex: 1, color: t.waMuted },
-    pontoEspera: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: VERDE_ESPERA },
+    pontoNaoLida: { width: 10, height: 10, borderRadius: 5, backgroundColor: VERDE_ESPERA },
     marcador: { ...TIPO.nota, fontWeight: "600", marginTop: 1 },
 
     separador: { height: StyleSheet.hairlineWidth, backgroundColor: t.border, marginLeft: 80 },

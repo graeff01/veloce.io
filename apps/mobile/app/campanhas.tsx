@@ -5,10 +5,12 @@
 // lista inteira de uma vez, com quantos leads cada campanha trouxe.
 
 import { useCallback } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useSession } from "../src/ui/session";
+import { useTema } from "../src/ui/tema";
 import { buildTheme } from "../src/ui/theme";
 import { TIPO } from "../src/ui/tipografia";
 import { CURVA, ESP, RAIO } from "../src/ui/forma";
@@ -19,7 +21,7 @@ export default function Campanhas() {
   const { me } = useSession();
   const router = useRouter();
   const { atual } = useLocalSearchParams<{ atual?: string }>();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const campanhas = lerCampanhas();

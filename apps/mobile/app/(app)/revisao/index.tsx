@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, Alert, FlatList, Pressable, RefreshControl,
-  StyleSheet, Text, useColorScheme, View,
+  StyleSheet, Text, View,
 } from "react-native";
+import { useEscuro } from "../../../src/ui/aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { TIPO } from "../../../src/ui/tipografia";
@@ -10,6 +11,7 @@ import { CURVA, ESP, ESPACO_BARRA, RAIO, cartao } from "../../../src/ui/forma";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSession } from "../../../src/ui/session";
 import { BotaoMais } from "../../../src/ui/botao-mais";
+import { useTema } from "../../../src/ui/tema";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
 import type { QuoteReview } from "../../../src/core/contracts";
@@ -23,7 +25,7 @@ export default function Revisao() {
   const { client, me } = useSession();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const [itens, setItens] = useState<QuoteReview[]>([]);

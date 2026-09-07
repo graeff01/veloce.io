@@ -12,6 +12,8 @@ import { parseInviteLink } from "../core/link";
 import { log } from "../core/redact";
 import { KeychainSessionStore, apiBaseStore, deviceId, portalTokenStore } from "../storage/session-store";
 import { limparCache } from "./cache";
+import { limparFila } from "./fila-envio";
+import { limparRespostasERascunhos } from "./respostas";
 import { apiBase, describeEnv } from "../config/env";
 
 type Status = "carregando" | "sem-sessao" | "logado";
@@ -67,6 +69,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // e se a rede falhar, elas ficam na tela. Isolamento não pode depender
           // de o usuário lembrar de sair pelo botão.
           limparCache();
+          limparFila();
+          limparRespostasERascunhos();
           setMe(null);
           setStatus("sem-sessao");
         },
@@ -170,6 +174,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // O painel PERMANECE: sair é trocar de usuária, não de loja.
     await store.clear();
     limparCache(); // lista e histórico de leitura saem junto com a credencial
+    limparFila();  // e o que estava esperando envio — é de outra conta
+    limparRespostasERascunhos();
     setMe(null);
     setStatus("sem-sessao");
   }, [client, store]);

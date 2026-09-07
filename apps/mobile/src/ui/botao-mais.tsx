@@ -2,16 +2,18 @@
 // Espelha o botão de perfil do lado direito: mesmo tamanho, mesmo peso visual,
 // lado oposto. A barra inferior fica só com os módulos do dia a dia.
 
-import { Pressable, useColorScheme, View, StyleSheet } from "react-native";
+import { Pressable, View, StyleSheet } from "react-native";
+import { useEscuro } from "./aparencia";
 import { useRouter } from "expo-router";
 import { SIMBOLO, Simbolo } from "./simbolo";
 import { useSession } from "./session";
+import { useTema } from "./tema";
 import { accentAlpha, buildTheme } from "./theme";
 
 export function BotaoMais() {
   const { me } = useSession();
   const router = useRouter();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
 
   return (
     <Pressable

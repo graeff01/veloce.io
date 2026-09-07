@@ -42,6 +42,20 @@ export function redactMessageBody(text: string | null | undefined): string {
   return `(${text.length} caracteres omitidos)`;
 }
 
+import { anexar, type Nivel, type Ocorrencia } from "./diagnostico";
+
+// O diário vive aqui porque este é o único ponto por onde todo log passa. Fica
+// em memória: sai do processo quando o app fecha, e nunca vai para disco.
+let diario: Ocorrencia[] = [];
+
+/** Cópia do diário, para a tela de diagnóstico. */
+export const lerDiario = (): Ocorrencia[] => [...diario];
+export const limparDiario = (): void => { diario = []; };
+
+function registrar(nivel: Nivel, texto: string): void {
+  diario = anexar(diario, { em: Date.now(), nivel, texto });
+}
+
 /** Passe final aplicado a tudo que for logado. */
 export function safeForLog(input: unknown): string {
   const raw = typeof input === "string" ? input : safeStringify(input);
@@ -65,10 +79,15 @@ function safeStringify(value: unknown): string {
 
 /** Logger do app: única forma autorizada de imprimir. */
 export const log = {
-  info: (msg: string, ctx?: unknown) =>
-    console.log(`[veloce] ${safeForLog(msg)}${ctx === undefined ? "" : ` ${safeForLog(ctx)}`}`),
-  warn: (msg: string, ctx?: unknown) =>
-    console.warn(`[veloce] ${safeForLog(msg)}${ctx === undefined ? "" : ` ${safeForLog(ctx)}`}`),
-  error: (msg: string, ctx?: unknown) =>
-    console.error(`[veloce] ${safeForLog(msg)}${ctx === undefined ? "" : ` ${safeForLog(ctx)}`}`),
+  info: (msg: string, ctx?: unknown) => saida("info", msg, ctx),
+  warn: (msg: string, ctx?: unknown) => saida("aviso", msg, ctx),
+  error: (msg: string, ctx?: unknown) => saida("erro", msg, ctx),
 };
+
+function saida(nivel: Nivel, msg: string, ctx?: unknown): void {
+  const texto = `${safeForLog(msg)}${ctx === undefined ? "" : ` ${safeForLog(ctx)}`}`;
+  registrar(nivel, texto);
+  if (nivel === "erro") console.error(`[veloce] ${texto}`);
+  else if (nivel === "aviso") console.warn(`[veloce] ${texto}`);
+  else console.log(`[veloce] ${texto}`);
+}

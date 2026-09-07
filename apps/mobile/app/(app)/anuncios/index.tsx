@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, AppState, Image, Pressable, RefreshControl, ScrollView,
-  StyleSheet, Text, useColorScheme, useWindowDimensions, View,
+  StyleSheet, Text, useWindowDimensions, View,
 } from "react-native";
+import { useEscuro } from "../../../src/ui/aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useFocusEffect, useRouter } from "expo-router";
 import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
@@ -13,6 +14,7 @@ import { NumeroAnimado } from "../../../src/ui/numero";
 import { Sparkline } from "../../../src/ui/sparkline";
 import { useSession } from "../../../src/ui/session";
 import { BotaoMais } from "../../../src/ui/botao-mais";
+import { useTema } from "../../../src/ui/tema";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
 import type { AdsPerformance } from "../../../src/core/contracts";
@@ -31,7 +33,7 @@ export default function Anuncios() {
   const insets = useSafeAreaInsets();
   const { width: larguraTela } = useWindowDimensions();
   const larguraGrafico = Math.max(120, larguraTela - ESP.gutter * 2 - ESP.lg * 2);
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const [dados, setDados] = useState<AdsPerformance | null>(null);
@@ -92,7 +94,16 @@ export default function Anuncios() {
       ) : null}
 
       {dados && !dados.hasMeta ? (
-        <Text style={s.vazio}>Nenhuma conta de anúncios conectada.</Text>
+        <Animated.View style={s.vazioBox} entering={FadeInDown.duration(300)}>
+          <View style={s.vazioIcone}>
+            <Simbolo nome={SIMBOLO.semAnuncio as never} tamanho={40} cor={theme.muted} />
+          </View>
+          <Text style={s.vazioTitulo}>Anúncios ainda não conectados</Text>
+          <Text style={s.vazioTexto}>
+            Quando sua agência conectar a conta de anúncios, aparecem aqui o
+            investimento, os leads que cada campanha trouxe e o custo por lead.
+          </Text>
+        </Animated.View>
       ) : dados ? (
         <>
           {/* Investimento é o número que o dono da loja procura primeiro, então
@@ -157,12 +168,31 @@ export default function Anuncios() {
                       <Simbolo nome={SIMBOLO.semAnuncio as never} tamanho={22} cor={theme.muted} />
                     </View>
                   )}
-                  <Text style={s.campanhaNome} numberOfLines={3}>{c.name}</Text>
+                  <View style={s.campanhaCorpo}>
+                    <Text style={s.campanhaNome} numberOfLines={2}>{c.name}</Text>
+                    {/* Fatia do investimento: "onde o dinheiro está indo" sem
+                        obrigar ninguém a fazer conta de cabeça. */}
+                    <View style={s.fatiaTrilha}>
+                      <View style={[s.fatiaCheia, { width: `${Math.max(3, c.pctSpend)}%`, backgroundColor: theme.accent }]} />
+                    </View>
+                    <Text style={s.fatiaTexto}>{c.pctSpend}% do investimento</Text>
+                  </View>
                 </View>
-                <View style={s.linhaMetricas}>
+
+                {/* Faixa própria, fundo recuado e divisores entre os números:
+                    separa "o que é" de "quanto deu". Antes os três boiavam no
+                    mesmo fundo do nome, sem nada os agrupando. */}
+                <View style={s.faixaMetricas}>
                   <Coluna rotulo="Investimento" valor={moeda(c.spend, dados.currency)} theme={theme} />
+                  <View style={s.divisorVertical} />
                   <Coluna rotulo="Leads" valor={String(c.leads)} theme={theme} />
-                  <Coluna rotulo="CPL" valor={c.cpl == null ? "—" : moeda(c.cpl, dados.currency)} theme={theme} />
+                  <View style={s.divisorVertical} />
+                  <Coluna
+                    rotulo="Custo por lead"
+                    valor={c.cpl == null ? "—" : moeda(c.cpl, dados.currency)}
+                    theme={theme}
+                    apagado={c.cpl == null}
+                  />
                 </View>
                 <Pressable
                   onPress={() => verLeads(c.name)}
@@ -203,12 +233,21 @@ function Delta({ valor, maiorEhMelhor, theme }: {
   );
 }
 
-function Coluna({ rotulo, valor, theme }: { rotulo: string; valor: string; theme: ReturnType<typeof buildTheme> }) {
+function Coluna({ rotulo, valor, theme, apagado }: {
+  rotulo: string; valor: string; theme: ReturnType<typeof buildTheme>; apagado?: boolean;
+}) {
   const s = styles(theme);
   return (
     <View style={s.coluna}>
-      <Text style={s.colunaRotulo}>{rotulo}</Text>
-      <Text style={s.colunaValor} maxFontSizeMultiplier={1.4} numberOfLines={1} adjustsFontSizeToFit>{valor}</Text>
+      <Text style={s.colunaRotulo} numberOfLines={1}>{rotulo}</Text>
+      <Text
+        style={[s.colunaValor, apagado && { color: theme.muted }]}
+        maxFontSizeMultiplier={1.4}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {valor}
+      </Text>
     </View>
   );
 }
@@ -236,16 +275,34 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     secao: { ...CABECALHO_SECAO, color: t.muted, marginHorizontal: 32, marginTop: 24, marginBottom: 7 },
     cartao: { ...cartao(t.surface), marginHorizontal: ESP.gutter, marginBottom: ESP.md, padding: ESP.gutter, gap: ESP.md },
     campanhaTopo: { flexDirection: "row", alignItems: "center", gap: 12 },
-    criativo: { width: 68, height: 68, borderRadius: RAIO.peq, ...CURVA, backgroundColor: t.raise },
+    criativo: { width: 84, height: 84, borderRadius: RAIO.medio, ...CURVA, backgroundColor: t.raise },
+    campanhaCorpo: { flex: 1, gap: 6 },
+    fatiaTrilha: { height: 5, borderRadius: 3, backgroundColor: t.raise, overflow: "hidden" },
+    fatiaCheia: { height: 5, borderRadius: 3 },
+    fatiaTexto: { ...TIPO.legenda2, color: t.muted },
+
+    // Faixa própria, com fundo recuado: separa "o que é" de "quanto deu".
+    faixaMetricas: {
+      flexDirection: "row", alignItems: "stretch",
+      backgroundColor: t.bg, borderRadius: RAIO.peq, ...CURVA,
+      paddingVertical: ESP.md, marginTop: ESP.xs,
+    },
+    divisorVertical: { width: StyleSheet.hairlineWidth, backgroundColor: t.border, marginVertical: 2 },
     criativoVazio: { alignItems: "center", justifyContent: "center" },
     campanhaNome: { ...TIPO.destaque, flex: 1, color: t.text },
-    linhaMetricas: { flexDirection: "row", gap: 14 },
     coluna: { flex: 1 },
     colunaRotulo: { ...TIPO.legenda2, fontWeight: "500", color: t.muted },
     colunaValor: { ...TIPO.subtitulo, fontWeight: "600", color: t.text, marginTop: 2, fontVariant: ["tabular-nums"] },
     verLeads: { alignSelf: "flex-start", borderRadius: RAIO.pilula, backgroundColor: t.accentSoft, paddingHorizontal: ESP.gutter, paddingVertical: 8 },
     verLeadsTexto: { ...TIPO.nota, color: t.accent, fontWeight: "600" },
 
+    vazioBox: { alignItems: "center", gap: ESP.md, paddingHorizontal: ESP.xl, paddingTop: ESP.xxl },
+    vazioIcone: {
+      width: 76, height: 76, borderRadius: 38, alignItems: "center", justifyContent: "center",
+      backgroundColor: t.raise,
+    },
+    vazioTitulo: { ...TIPO.titulo3, color: t.text, textAlign: "center" },
+    vazioTexto: { ...TIPO.subtitulo, color: t.muted, textAlign: "center", lineHeight: 21 },
     vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center", padding: 32 },
     erroCaixa: { padding: 14, backgroundColor: t.critSoft, gap: 4 },
     erroTexto: { color: t.crit, fontSize: 13 },

@@ -3,24 +3,26 @@
 //
 //   1. A última lista de conversas conhecida, para o app PINTAR NA HORA ao abrir
 //      em vez de mostrar um spinner até a rede responder.
-//   2. Até quando esta pessoa já viu cada conversa — o "não lida".
+//   2. Até quando esta pessoa já viu cada conversa — o divisor "novas mensagens".
+//   3. A última versão de cada conversa aberta, para que ela ABRA SEM REDE.
 //
 // Fica no diretório de CACHE, não em `document`: são dados pessoais de LEADS
 // (terceiros), e queremos que o iOS possa descartá-los sozinho quando o aparelho
 // apertar. O logout apaga tudo.
 //
-// LIMITE CONHECIDO: o "não lida" é LOCAL. Se a vendedora ler a conversa no
-// portal web, o app continua marcando como não lida. Sincronizar exigiria campo
-// novo no servidor e uma decisão de produto (três vendedoras no mesmo número:
-// lido por uma é lido por todas?), que ainda não foi tomada.
+// O "lida" da EQUIPE mora no servidor (`portalReadAt`) — ler no portal web
+// reflete no app e vice-versa. O mapa local abaixo é outra coisa: é só o divisor
+// "mensagens novas" DESTE aparelho, que é legitimamente por aparelho.
 
 import { Directory, File, Paths } from "expo-file-system";
-import type { ConversationRow } from "../core/contracts";
+import { parseConversation, type Conversation, type ConversationRow } from "../core/contracts";
 import { log } from "../core/redact";
 
 const PASTA = "veloce-cache";
 const LISTA = "conversas.json";
 const LIDAS = "lidas.json";
+const CONVERSAS = "conversas";      // subpasta: uma conversa por arquivo
+const TETO_CONVERSAS = 40;          // quantas conversas ficam guardadas
 
 function pasta(): Directory {
   const d = new Directory(Paths.cache, PASTA);
@@ -100,6 +102,65 @@ export function naoLida(c: ConversationRow, lidas: MapaLidas): boolean {
 
 export const contarNaoLidas = (linhas: ConversationRow[], lidas: MapaLidas): number =>
   linhas.reduce((n, c) => n + (naoLida(c, lidas) ? 1 : 0), 0);
+
+// ── Conversa aberta ───────────────────────────────────────────────────────────
+// Abrir uma conversa no elevador, no depósito, no cliente: a rede cai e a
+// vendedora precisa LER o que já foi conversado. Guardamos a última versão de
+// cada conversa aberta e mostramos ela quando a rede não responde.
+
+/** contactId vem do servidor (cuid), mas nunca confie nele como nome de arquivo. */
+const nomeSeguro = (contactId: string): string => contactId.replace(/[^A-Za-z0-9_-]/g, "");
+
+function pastaConversas(): Directory {
+  const d = new Directory(pasta(), CONVERSAS);
+  if (!d.exists) d.create({ intermediates: true });
+  return d;
+}
+
+/**
+ * Só as ÚLTIMAS mensagens: o disco do aparelho não é o banco. Quem quiser o
+ * histórico inteiro precisa de rede, e é isso que a tela diz.
+ */
+export function guardarConversa(contactId: string, c: Conversation): void {
+  const id = nomeSeguro(contactId);
+  if (!id) return;
+  try {
+    const f = new File(pastaConversas(), `${id}.json`);
+    if (!f.exists) f.create();
+    f.write(JSON.stringify({ ...c, items: c.items.slice(-60) }));
+    podar();
+  } catch {
+    // Cache é conveniência: falhar aqui não pode atrapalhar a conversa na tela.
+  }
+}
+
+/** A conversa guardada, ou null. Passa pelo parse: arquivo velho não quebra a tela. */
+export function lerConversa(contactId: string): Conversation | null {
+  const id = nomeSeguro(contactId);
+  if (!id) return null;
+  try {
+    const f = new File(pastaConversas(), `${id}.json`);
+    if (!f.exists) return null;
+    const txt = f.textSync();
+    return txt ? parseConversation(JSON.parse(txt)) : null;
+  } catch {
+    return null; // formato antigo ou arquivo corrompido = sem cache
+  }
+}
+
+/** Mantém as TETO_CONVERSAS mais recentes; o resto sai. */
+function podar(): void {
+  try {
+    const arquivos = pastaConversas().list().filter((f): f is File => f instanceof File);
+    if (arquivos.length <= TETO_CONVERSAS) return;
+    arquivos
+      .sort((a, b) => (b.modificationTime ?? 0) - (a.modificationTime ?? 0))
+      .slice(TETO_CONVERSAS)
+      .forEach((f) => { try { f.delete(); } catch { /* já sumiu */ } });
+  } catch {
+    // Poda é higiene, não correção.
+  }
+}
 
 /** Logout apaga a lista e o histórico de leitura junto com a mídia. */
 export function limparCache(): void {

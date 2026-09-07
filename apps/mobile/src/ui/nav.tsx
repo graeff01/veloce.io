@@ -12,12 +12,14 @@
 // devolve. Nunca por nome de cliente.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEscuro } from "./aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { SIMBOLO, Simbolo } from "./simbolo";
 import { TIPO } from "./tipografia";
 import { useSession } from "./session";
+import { useTema } from "./tema";
 import { accentAlpha, buildTheme, VERDE_ESPERA } from "./theme";
 import { modulosPara, type ModuloRota } from "../core/inbox";
 
@@ -26,6 +28,7 @@ type NomeRota = ModuloRota;
 const MODULOS: { rota: NomeRota; rotulo: string; simbolo: string }[] = [
   { rota: "conversas", rotulo: "Conversas", simbolo: SIMBOLO.conversas },
   { rota: "anuncios", rotulo: "Anúncios", simbolo: SIMBOLO.anuncios },
+  { rota: "funil", rotulo: "Funil", simbolo: SIMBOLO.funil },
   { rota: "revisao", rotulo: "Orçamentos", simbolo: SIMBOLO.orcamentos },
 ];
 
@@ -76,7 +79,7 @@ const DETALHE = new Set<string>();
 export function BarraInferior({ state, navigation }: { state: EstadoAbas; navigation: NavegacaoAbas }) {
   const { me } = useSession();
   const insets = useSafeAreaInsets();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const badges = useBadges();
   const visiveis = useModulosVisiveis();
   const s = styles(theme);

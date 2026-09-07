@@ -69,15 +69,23 @@ export function accentAlpha(accent: string, alpha: number): string {
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
 }
 
-export function buildTheme(brand: Brand | null, systemDark: boolean): Theme {
+/**
+ * `escuro` decide o esquema, e vem dos Ajustes do app: escolha explícita do
+ * usuário, ou o esquema do iPhone quando ele deixou em "Automático".
+ *
+ * O `mode` do portal NÃO entra mais nessa conta. Ele é configuração da web, e
+ * como a maioria dos clientes está gravada como "light" — o caso da JR — ele
+ * prendia o app ao claro e a preferência do usuário não tinha efeito nenhum.
+ * A cor da marca continua vindo do portal; só o claro/escuro é do usuário.
+ */
+export function buildTheme(brand: Brand | null, escuro: boolean): Theme {
   // Mesmo azul padrão do web quando o cliente não configurou cor.
   const rgb = hexToRgb(brand?.accentColor ?? "") ?? [30, 102, 245];
   const accent = `#${rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   const onAccent = luminance(rgb) > 0.5 ? "#0b0d12" : "#ffffff"; // guard de contraste
   const accentSoft = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.12)`;
 
-  const mode = brand?.mode ?? "light";
-  const dark = mode === "dark" || (mode === "auto" && systemDark);
+  const dark = escuro;
 
   const neutros = dark
     ? { bg: "#0a0c10", surface: "#14171d", border: "#242832", text: "#eef1f6", muted: "#8b93a3" }

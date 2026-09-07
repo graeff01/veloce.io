@@ -15,22 +15,29 @@ const conversa = (over: Partial<ConversationRow> = {}): ConversationRow => ({
   contactId: "c1", name: "Lead", waId: "5551999", lastText: "oi", lastType: "text",
   lastDirection: "in", lastMessageAt: new Date().toISOString(), fromAd: false, adStrong: false,
   adTitle: null, adModel: null, funnelStage: null, assignedEmail: null, assignedName: null,
-  tags: [], ...over,
+  tags: [], lastInboundAt: null, lastOutboundAt: null,
+  lida: false, lidaPor: null, arquivada: false, ...over,
 });
 
 // ── Navegação: a barra lista MÓDULOS, decididos pelo tenant ───────────────────
 
-test("Conversas está sempre na barra; Mais não é módulo", () => {
-  // "Mais" saiu da barra e virou atalho no cabeçalho: a barra inferior é só
-  // para o que se usa o dia inteiro.
+test("sem seção, só Conversas; Mais não é módulo", () => {
+  // "Mais" saiu da barra e virou atalho no cabeçalho. Os demais dependem de
+  // `sections` — e agora isso é autorização, não estética: o servidor recusa
+  // a rota de um módulo sem seção.
   assert.deepEqual(modulosPara(me([])), ["conversas"]);
   assert.deepEqual(modulosPara(null), ["conversas"]);
 });
 
-test("cliente COM anúncios e COM orçamento vê os três módulos", () => {
+test("cliente COM anúncios e COM orçamento vê os módulos que tem", () => {
   assert.deepEqual(
     modulosPara(me(["conversas", "anuncios", "revisao"], true)),
     ["conversas", "anuncios", "revisao"],
+    "sem a seção 'funil', o módulo não entra",
+  );
+  assert.deepEqual(
+    modulosPara(me(["conversas", "anuncios", "funil", "revisao"], true)),
+    ["conversas", "anuncios", "funil", "revisao"],
   );
 });
 
@@ -53,18 +60,18 @@ test("Aguardando e o antigo filtro de anúncios NÃO são módulos da barra", ()
 
 test("a ordem dos módulos é estável", () => {
   assert.deepEqual(
-    modulosPara(me(["anuncios", "revisao", "conversas"], true)),
-    ["conversas", "anuncios", "revisao"],
+    modulosPara(me(["anuncios", "revisao", "funil", "conversas"], true)),
+    ["conversas", "anuncios", "funil", "revisao"],
     "a ordem vem do produto, não da ordem que o servidor devolveu",
   );
 });
 
-test("no máximo três destinos principais", () => {
+test("no máximo quatro destinos principais", () => {
   const todas: PortalSection[] = [
     "painel", "revisao", "fechamento", "conversas", "aprendizado", "consumo",
     "frete", "equipe", "anuncios", "ia", "funil", "objecoes",
   ];
-  assert.equal(modulosPara(me(todas, true)).length, 3, "o excedente vai para a folha Mais");
+  assert.equal(modulosPara(me(todas, true)).length, 4, "o excedente vai para a folha Ajustes");
 });
 
 // ── Filtros da caixa de entrada ───────────────────────────────────────────────

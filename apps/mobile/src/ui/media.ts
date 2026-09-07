@@ -64,6 +64,50 @@ export async function midiaEmDataUri(caminho: string, mime: string): Promise<str
   return `data:${mime};base64,${b64}`;
 }
 
+/**
+ * Baixa uma imagem PÚBLICA (a foto do catálogo, servida pela Meta ou pelo CDN
+ * do cliente) para o cache. Sem credencial: estas URLs são abertas, ao
+ * contrário da mídia das conversas.
+ */
+/**
+ * Um arquivo local como parte de `FormData`.
+ *
+ * O atalho antigo do React Native — `append("file", { uri, name, type })` —
+ * deixou de ser aceito: o FormData desta versão segue a especificação e recusa
+ * com "Unsupported FormDataPart implementation". A requisição morria no
+ * aparelho, sem nunca sair, e aparecia como "falha de rede".
+ *
+ * Lemos os bytes e montamos um Blob de verdade. Vale para foto, documento e
+ * áudio — todo o envio de mídia passava pelo mesmo atalho quebrado.
+ */
+export async function parteDeArquivo(uri: string, tipo: string): Promise<Blob> {
+  const bytes = await new File(uri).bytes();
+  return new Blob([bytes as unknown as BlobPart], { type: tipo });
+}
+
+export async function baixarImagemPublica(url: string, chave: string): Promise<string> {
+  const destino = new File(pasta(), nomeLocal(chave, ".jpg"));
+
+  // Um arquivo VAZIO no cache é pior que nenhum: `exists` diz que está lá, o
+  // envio segue com lixo e falha lá na frente sem explicar. Tentativa anterior
+  // interrompida deixa exatamente isso.
+  if (destino.exists) {
+    if ((destino.size ?? 0) > 0) return destino.uri;
+    try { destino.delete(); } catch { /* segue e tenta baixar por cima */ }
+  }
+
+  const baixado = await File.downloadFileAsync(url, destino, { idempotent: true });
+  const arquivo = new File(baixado.uri);
+  const tamanho = arquivo.exists ? (arquivo.size ?? 0) : 0;
+  if (tamanho <= 0) {
+    // Sem isto, o erro só apareceria como "falha de rede" no envio — apontando
+    // para o lugar errado.
+    log.warn(`imagem do catálogo veio vazia (${new URL(url).host})`);
+    throw new Error("Não foi possível baixar a foto do produto.");
+  }
+  return baixado.uri;
+}
+
 export async function pdfDoOrcamento(client: VeloceClient, quoteId: string): Promise<string> {
   return baixarAutenticado(client, client.quotePdfPath(quoteId), `orcamento-${quoteId}`, ".pdf");
 }

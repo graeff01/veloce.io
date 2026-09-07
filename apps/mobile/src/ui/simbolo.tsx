@@ -55,6 +55,7 @@ export const SIMBOLO = {
   semAnuncio: "megaphone",
   caixaVazia: "tray",
   relogio: "clock",
+  funil: "line.3.horizontal.decrease.circle.fill",
   cadeado: "lock.fill",
   compartilhar: "square.and.arrow.up",
   etiqueta: "tag.fill",

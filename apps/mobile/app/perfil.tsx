@@ -1,22 +1,21 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { useSession } from "../src/ui/session";
+import { useTema } from "../src/ui/tema";
 import { buildTheme } from "../src/ui/theme";
 import * as Notifications from "expo-notifications";
-import * as Linking from "expo-linking";
-import { DOCUMENTOS, urlDoDocumento } from "../src/config/legal";
-import { SIMBOLO, Simbolo } from "../src/ui/simbolo";
 import Constants from "expo-constants";
 import { limparCacheDeMidia } from "../src/ui/media";
 import { appEnv } from "../src/config/env";
 
 export default function Perfil() {
-  const { me, sair, base } = useSession();
+  const { me, sair } = useSession();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
   const [saindo, setSaindo] = useState(false);
   const [limpando, setLimpando] = useState(false);
@@ -59,7 +58,11 @@ export default function Perfil() {
   };
 
   return (
-    <ScrollView style={s.tela} contentContainerStyle={[s.conteudo, { paddingBottom: insets.bottom + 32 }]}>
+    <ScrollView
+      style={s.tela}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={[s.conteudo, { paddingBottom: insets.bottom + 48 }]}
+    >
       <Stack.Screen
         options={{
           title: "Perfil",
@@ -108,25 +111,6 @@ export default function Perfil() {
         no servidor e voltam a carregar quando você abrir a conversa.
       </Text>
 
-      <Text style={s.secaoTitulo}>Privacidade e termos</Text>
-      <View style={s.bloco}>
-        {DOCUMENTOS.map((d, i) => (
-          <Pressable
-            key={d.caminho}
-            onPress={() => base && void Linking.openURL(urlDoDocumento(base, d.caminho))}
-            disabled={!base}
-            accessibilityRole="link"
-            style={({ pressed }) => [s.documento, i > 0 && s.documentoSeparado, pressed && { opacity: 0.6 }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={s.documentoTitulo}>{d.titulo}</Text>
-              <Text style={s.documentoResumo}>{d.resumo}</Text>
-            </View>
-            <Simbolo nome={SIMBOLO.avancar as never} tamanho={13} cor={theme.muted} peso="semibold" />
-          </Pressable>
-        ))}
-      </View>
-
       <Pressable style={s.botaoSair} onPress={confirmarSaida} disabled={saindo}>
         <Text style={s.botaoSairTexto}>{saindo ? "Saindo…" : "Sair da conta"}</Text>
       </Pressable>
@@ -160,10 +144,6 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     secaoTitulo: { fontSize: 13, fontWeight: "700", color: t.muted, marginTop: 6, marginLeft: 4 },
     botaoNeutro: { borderWidth: 1, borderColor: t.border, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 6 },
     botaoNeutroTexto: { color: t.text, fontWeight: "600", fontSize: 15 },
-    documento: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 4 },
-    documentoSeparado: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border, paddingTop: 12, marginTop: 8 },
-    documentoTitulo: { fontSize: 15, fontWeight: "600", color: t.text },
-    documentoResumo: { fontSize: 12, color: t.muted, marginTop: 2, lineHeight: 16 },
     botaoSair: { borderWidth: 1, borderColor: t.crit, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
     botaoSairTexto: { color: t.crit, fontWeight: "700", fontSize: 15 },
     rodape: { color: t.muted, fontSize: 12, lineHeight: 17, textAlign: "center", marginTop: -6, marginBottom: 4, paddingHorizontal: 8 },

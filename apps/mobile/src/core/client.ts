@@ -12,8 +12,8 @@ import { ApiError, apiErrorFrom, canceladoError, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
-  parseAdsPerformance, parseConversation, parseConversationList, parseMe, parseQuoteReviews, parseTags,
-  type AdsPerformance, type Conversation, type ConversationList, type Me, type QuoteReview, type Tag,
+  parseAdsPerformance, parseCatalogo, parseConversation, parseConversationList, parseMe, parseQuoteReviews, parseTags,
+  type AdsPerformance, type Conversation, type ConversationList, type ItemCatalogo, type Me, type QuoteReview, type Tag,
 } from "./contracts";
 
 export interface StoredSession {
@@ -47,6 +47,8 @@ export interface ClientOptions {
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Sobrepõe o tempo máximo — subir arquivo não cabe no limite de uma leitura. */
+  timeoutMs?: number;
   body?: unknown;
   /** multipart: quando presente, `body` é ignorado. */
   form?: FormData;
@@ -89,7 +91,7 @@ export class VeloceClient {
     if (opts.body !== undefined && !opts.form) headers["content-type"] = "application/json";
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.timeoutMs);
     // Um abort externo (usuário saiu da tela) também cancela.
     opts.signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
@@ -101,7 +103,7 @@ export class VeloceClient {
         body: opts.form ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
         signal: controller.signal,
       });
-    } catch {
+    } catch (e) {
       // Cancelamento NÃO é falha. A caixa de entrada aborta a busca anterior a
       // cada troca de filtro ou de texto — o normal é que isso aconteça várias
       // vezes por sessão. Registrar como "falha de rede" enchia o log de alarme
@@ -109,7 +111,11 @@ export class VeloceClient {
       if (opts.signal?.aborted) throw canceladoError();
       // Falha de transporte real: rede caiu, DNS, tempo esgotado. Nunca logamos
       // a URL crua — ela pode conter o token do portal durante o vínculo.
-      log.warn(`falha de rede em ${path}`);
+      //
+      // O MOTIVO vai junto: "falha de rede" sozinho não distingue rede caída de
+      // arquivo ilegível, e nos custou várias tentativas às cegas.
+      const motivo = e instanceof Error ? e.message : String(e);
+      log.warn(`falha de rede em ${path} — ${motivo}`);
       throw offlineError();
     } finally {
       clearTimeout(timer);
@@ -215,13 +221,17 @@ export class VeloceClient {
   // ── conversas ───────────────────────────────────────────────────────────────
 
   async conversations(params: {
-    limit?: number; offset?: number; q?: string; onlyMine?: boolean; signal?: AbortSignal;
+    limit?: number; offset?: number; q?: string; onlyMine?: boolean;
+    /** Mostra o que foi tirado da caixa, em vez do que está nela. */
+    arquivadas?: boolean;
+    signal?: AbortSignal;
   } = {}): Promise<ConversationList> {
     const sp = new URLSearchParams();
     sp.set("limit", String(params.limit ?? 30));
     sp.set("offset", String(params.offset ?? 0));
     if (params.q?.trim()) sp.set("q", params.q.trim());
     if (params.onlyMine) sp.set("owner", "me");
+    if (params.arquivadas) sp.set("arquivadas", "1");
     return parseConversationList(
       await this.request(`${portalPath("/conversations")}?${sp.toString()}`, { signal: params.signal }),
     );
@@ -236,7 +246,43 @@ export class VeloceClient {
   }
 
   async sendMedia(contactId: string, form: FormData): Promise<void> {
-    await this.request(portalPath(`/conversations/${contactId}/send-media`), { method: "POST", form });
+    // Subir foto ou áudio numa rede de rua não cabe nos 20s de uma leitura: o
+    // aparelho manda o arquivo E o servidor ainda repassa à Meta. Abortar no
+    // meio aparecia como "falha de rede" sem que nada estivesse errado.
+    await this.request(portalPath(`/conversations/${contactId}/send-media`), {
+      method: "POST", form, timeoutMs: 90_000,
+    });
+  }
+
+  /**
+   * Estado compartilhado da conversa. Marcar como lida vale para a EQUIPE —
+   * a caixa é de um número só, atendido por várias pessoas.
+   */
+  async marcarEstado(contactId: string, estado: { lida?: boolean; arquivada?: boolean }): Promise<void> {
+    await this.request(portalPath(`/conversations/${contactId}/state`), { method: "POST", body: estado });
+  }
+
+  /** Catálogo do cliente, para consulta no meio do atendimento. */
+  async catalogo(q?: string): Promise<ItemCatalogo[]> {
+    const sp = new URLSearchParams();
+    if (q?.trim()) sp.set("q", q.trim());
+    const cauda = sp.toString() ? `?${sp.toString()}` : "";
+    return parseCatalogo(await this.request(`${portalPath("/catalog")}${cauda}`));
+  }
+
+  /**
+   * Assume VÁRIAS conversas de uma vez. O servidor ignora em silêncio as que já
+   * têm outra dona e devolve a contagem — é o que a tela usa para dizer a
+   * verdade em vez de "pronto".
+   */
+  async assumirVarias(contactIds: string[]): Promise<{ assumidas: number; ignoradas: number }> {
+    const r = await this.request(portalPath("/conversations/bulk-assign"), {
+      method: "POST", body: { contactIds },
+    }) as { assumidas?: unknown; ignoradas?: unknown };
+    return {
+      assumidas: Number(r?.assumidas) || 0,
+      ignoradas: Number(r?.ignoradas) || 0,
+    };
   }
 
   async assign(contactId: string, email: string | null): Promise<void> {

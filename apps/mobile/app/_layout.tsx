@@ -3,8 +3,14 @@ import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
-import { Stack, useRouter, useSegments } from "expo-router";
+// O expo-router reexporta o tema da navegação — não precisa do pacote solto.
+import { Stack, ThemeProvider, DarkTheme, DefaultTheme, useRouter, useSegments } from "expo-router";
 import { SessionProvider, useSession } from "../src/ui/session";
+import { AparenciaProvider, useEscuro } from "../src/ui/aparencia";
+import { FilaEnvioProvider } from "../src/ui/fila-envio";
+import { AvisoConexao } from "../src/ui/aviso-conexao";
+import { TemaProvider, useTema } from "../src/ui/tema";
+import { BarreiraDeErro } from "../src/ui/barreira";
 import { buildTheme } from "../src/ui/theme";
 import { configurarApresentacao, ouvirNotificacoes, registrarPush } from "../src/ui/push";
 
@@ -18,7 +24,7 @@ configurarApresentacao();
  * tem altura conhecida, a segunda altura não trazia nada. Fechar arrastando
  * para baixo continua funcionando.
  */
-const MODAIS = new Set(["perfil", "acoes", "pdf", "campanhas", "mais"]);
+const MODAIS = new Set(["perfil", "acoes", "pdf", "campanhas", "mais", "respostas", "catalogo"]);
 
 // Guardião de navegação: mantém a rota coerente com o estado de sessão.
 // É conveniência de UX — a autorização real acontece no servidor a cada chamada.
@@ -26,8 +32,8 @@ function Guard() {
   const { status, me, client } = useSession();
   const segments = useSegments();
   const router = useRouter();
-  const systemDark = useColorScheme() === "dark";
-  const theme = buildTheme(me?.brand ?? null, systemDark);
+  const systemDark = useEscuro();
+  const theme = useTema();
 
   useEffect(() => {
     if (status === "carregando") return;
@@ -82,7 +88,7 @@ function Guard() {
             // Folha que sobe até 60% e pode ser arrastada até o topo. Modal de
             // tela cheia para uma tela curta é desperdício de contexto.
             presentation: "formSheet",
-            sheetAllowedDetents: [0.62],
+            sheetAllowedDetents: [0.72],
             sheetGrabberVisible: true,
             sheetCornerRadius: 20,
           }}
@@ -102,7 +108,27 @@ function Guard() {
           options={{
             headerShown: true,
             presentation: "formSheet",
-            sheetAllowedDetents: [0.68],
+            sheetAllowedDetents: [0.82],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 20,
+          }}
+        />
+        <Stack.Screen
+          name="respostas"
+          options={{
+            headerShown: true,
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.75],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 20,
+          }}
+        />
+        <Stack.Screen
+          name="catalogo"
+          options={{
+            headerShown: true,
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.85],
             sheetGrabberVisible: true,
             sheetCornerRadius: 20,
           }}
@@ -133,16 +159,64 @@ function Guard() {
   );
 }
 
+/**
+ * Informa o esquema à navegação e adota a cor da marca nos seus padrões — é o
+ * que pinta ANTES de qualquer `headerStyle` nosso.
+ */
+function ComNavegacao() {
+  const tema = useTema();
+  const base = tema.dark ? DarkTheme : DefaultTheme;
+  return (
+    <ThemeProvider
+      value={{
+        ...base,
+        colors: {
+          ...base.colors,
+          background: tema.surface,
+          card: tema.surface,
+          text: tema.text,
+          border: tema.border,
+          primary: tema.accent,
+        },
+      }}
+    >
+      <Guard />
+    </ThemeProvider>
+  );
+}
+
+/** A fila precisa do cliente HTTP, que só existe depois da sessão. */
+function ComFila() {
+  const { client } = useSession();
+  return (
+    <FilaEnvioProvider client={client}>
+      {/* Tema construído UMA vez, abaixo da sessão (precisa da marca). */}
+      <TemaProvider>
+        <ComNavegacao />
+      {/* Sobre tudo, inclusive as folhas: a pessoa precisa ver de onde estiver. */}
+        <AvisoConexao />
+      </TemaProvider>
+    </FilaEnvioProvider>
+  );
+}
+
 export default function RootLayout() {
   return (
     // GestureHandlerRootView na raiz: sem ela o deslizar da lista não recebe
     // os toques. Precisa envolver TUDO, inclusive os modais.
+    // A barreira envolve TUDO, inclusive os provedores: se um deles quebrar na
+    // montagem, ainda há tela para explicar em vez de branco.
+    <BarreiraDeErro>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <SessionProvider>
-          <Guard />
-        </SessionProvider>
+        {/* Aparência acima da sessão: a escolha vale já na tela de entrada. */}
+        <AparenciaProvider>
+          <SessionProvider>
+            <ComFila />
+          </SessionProvider>
+        </AparenciaProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </BarreiraDeErro>
   );
 }

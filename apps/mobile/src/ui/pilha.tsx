@@ -1,7 +1,6 @@
 import { Stack } from "expo-router";
 import { useColorScheme } from "react-native";
-import { useSession } from "./session";
-import { buildTheme } from "./theme";
+import { useTema } from "./tema";
 
 // ── Pilha nativa de um módulo ─────────────────────────────────────────────────
 // Cada aba tem a SUA pilha, como manda o padrão do iOS. Daí vêm, prontos:
@@ -10,8 +9,7 @@ import { buildTheme } from "./theme";
 //
 // Definição única: se a identidade do header mudar, muda em um lugar só.
 export function PilhaModulo() {
-  const { me } = useSession();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
 
   return (
     <Stack

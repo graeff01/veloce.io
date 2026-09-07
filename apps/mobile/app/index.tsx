@@ -1,4 +1,5 @@
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { Redirect } from "expo-router";
 import { useSession } from "../src/ui/session";
 import { buildTheme } from "../src/ui/theme";
@@ -13,7 +14,7 @@ import { buildTheme } from "../src/ui/theme";
 // abertura é esta rota.
 export default function Index() {
   const { status, me } = useSession();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = buildTheme(me?.brand ?? null, useEscuro());
 
   if (status === "carregando") {
     return (

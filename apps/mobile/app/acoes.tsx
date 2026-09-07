@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View,
+  ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View,
 } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSession } from "../src/ui/session";
+import { useTema } from "../src/ui/tema";
 import { buildTheme, STAGE } from "../src/ui/theme";
 import { TIPO, CABECALHO_SECAO } from "../src/ui/tipografia";
 import { CURVA, ESP, RAIO } from "../src/ui/forma";
@@ -25,7 +27,7 @@ export default function Acoes() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
   const { client, me } = useSession();
   const router = useRouter();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const [conversa, setConversa] = useState<Conversation | null>(null);

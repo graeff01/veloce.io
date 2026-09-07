@@ -12,11 +12,13 @@
 // reaproveita `pdfDoOrcamento`, que já é o caminho testado.
 
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEscuro } from "../src/ui/aparencia";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { WebView } from "react-native-webview";
 import * as Sharing from "expo-sharing";
 import { useSession } from "../src/ui/session";
+import { useTema } from "../src/ui/tema";
 import { buildTheme } from "../src/ui/theme";
 import { TIPO } from "../src/ui/tipografia";
 import { ESP } from "../src/ui/forma";
@@ -27,7 +29,7 @@ export default function VisorPdf() {
   const { client, me } = useSession();
   const router = useRouter();
   const { quoteId, titulo } = useLocalSearchParams<{ quoteId?: string; titulo?: string }>();
-  const theme = buildTheme(me?.brand ?? null, useColorScheme() === "dark");
+  const theme = useTema();
   const s = styles(theme);
 
   const [uri, setUri] = useState<string | null>(null);
