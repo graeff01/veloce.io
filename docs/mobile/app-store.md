@@ -60,6 +60,27 @@ O que o aplicativo **coleta**, e para quê:
 Declarar **"não usado para rastreamento"**: o aplicativo não tem SDK de
 publicidade, não usa IDFA e não compartilha dado com terceiros para marketing.
 
+## Manifesto de privacidade (`PrivacyInfo.xcprivacy`)
+
+Obrigatório desde 2024: sem ele a submissão é **recusada na validação**, antes de
+chegar a um revisor. Fica em `ios.privacyManifests` no `app.json` e o EAS gera o
+arquivo no build — conferido com `expo config --type introspect`.
+
+Os tipos de dado espelham a tabela acima (todos ligados à identidade, todos com
+finalidade "App Functionality", nenhum para rastreamento).
+
+As *required reason APIs* declaradas, e por que cada uma:
+
+| API | Código | Onde o app usa |
+| --- | --- | --- |
+| UserDefaults | `CA92.1` | Preferência de aparência e base da API — só para o próprio app |
+| File timestamp | `C617.1` | `src/ui/cache.ts` lê `modificationTime` para podar o cache |
+| Disk space | `B728.1` | Antes de gravar mídia e a fila de envio |
+| System boot time | `35F9.1` | Tempo decorrido: animações e o backoff da fila |
+
+Rever esta lista sempre que entrar biblioteca nova — a Apple valida contra os
+símbolos do binário, não contra a intenção.
+
 ## Permissões — textos já no `app.json`
 
 - Câmera: enviar foto ao lead durante o atendimento.

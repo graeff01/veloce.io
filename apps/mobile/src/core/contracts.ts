@@ -518,3 +518,49 @@ export function parseEquipe(input: unknown): Equipe {
     unassigned: num(d.unassigned) ?? 0,
   };
 }
+
+// ── Orçamentos enviados ───────────────────────────────────────────────────────
+// O meio que faltava. O app via os dois extremos — aguardando revisão e já
+// aprovado — e não via o mais comum na vida de quem vende: "mandei o PDF há três
+// dias e o lead sumiu".
+
+export type StatusOrcamento = "sent" | "approved" | "rejected";
+
+export interface OrcamentoEnviado {
+  id: string;
+  contactId: string;
+  number: string | null;
+  contactName: string | null;
+  total: number | null;
+  currency: string;
+  status: StatusOrcamento;
+  summary: string | null;
+  sentAt: string | null;
+}
+
+export function parseOrcamentosEnviados(input: unknown): OrcamentoEnviado[] {
+  const d = obj(input, "orçamentos enviados");
+  return arr(d.quotes)
+    .map((v) => {
+      if (!v || typeof v !== "object") return null;
+      const q = v as Record<string, unknown>;
+      const id = str(q.id), contactId = str(q.contactId);
+      if (!id || !contactId) return null;
+      const bruto = str(q.status);
+      // Status desconhecido vira "sent": na dúvida a linha aparece como
+      // esperando resposta, que é o estado que pede ação.
+      const status: StatusOrcamento =
+        bruto === "approved" || bruto === "rejected" ? bruto : "sent";
+      return {
+        id, contactId,
+        number: str(q.number),
+        contactName: str(q.contactName),
+        total: num(q.total),
+        currency: str(q.currency) || "BRL",
+        status,
+        summary: str(q.summary),
+        sentAt: iso(q.sentAt),
+      };
+    })
+    .filter((v): v is OrcamentoEnviado => v !== null);
+}

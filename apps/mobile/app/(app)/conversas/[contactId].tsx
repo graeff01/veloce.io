@@ -338,6 +338,39 @@ export default function Thread() {
 
 
   // Uma folha com tudo à vista, em vez de menu que abre outro menu.
+  /**
+   * "A IA errou aqui". Até então, correção só nascia ao REJEITAR um orçamento —
+   * ou seja, o aprendizado só enxergava erro de preço. Quem vê a IA errar em
+   * tempo real é quem está na conversa.
+   */
+  const corrigirIA = useCallback((msg: Message) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    Alert.prompt(
+      "A IA errou aqui?",
+      "Escreva o que ela deveria ter respondido. Isso vai para a fila de aprendizado da Veloce — o lead não recebe nada.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Enviar",
+          onPress: (texto?: string) => {
+            const nota = (texto ?? "").trim();
+            if (!nota || !client) return;
+            void (async () => {
+              try {
+                await client.corrigirIA(String(contactId), msg.id, nota);
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                Alert.alert("Obrigado", "A correção foi registrada.");
+              } catch (e) {
+                Alert.alert("Não foi possível registrar", e instanceof Error ? e.message : "Tente de novo.");
+              }
+            })();
+          },
+        },
+      ],
+      "plain-text",
+    );
+  }, [client, contactId]);
+
   const menu = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
     router.push({ pathname: "/acoes", params: { contactId: String(contactId) } });
@@ -550,6 +583,7 @@ export default function Thread() {
               theme={theme}
               contactId={String(contactId)}
               aoAbrirImagem={setImagemAberta}
+              aoCorrigir={corrigirIA}
               termo={buscaAberta ? buscaTexto : ""}
             />
           )
@@ -727,12 +761,14 @@ const audioStyles = StyleSheet.create({
   tempo: { fontSize: 10.5, fontVariant: ["tabular-nums"] },
 });
 
-function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, termo = "" }: {
+function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoCorrigir, termo = "" }: {
   msg: Message;
   pendente: boolean;
   theme: ReturnType<typeof buildTheme>;
   contactId: string;
   aoAbrirImagem: (uri: string) => void;
+  /** Toque longo numa resposta da IA: relatar que ela errou. */
+  aoCorrigir: (msg: Message) => void;
   /** Trecho da busca, para marcar dentro da mensagem. */
   termo?: string;
 }) {
@@ -758,9 +794,18 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, termo = "" }: {
   const corMeta = saiu ? theme.onAccent : theme.waMuted;
   const autor = saiu ? (msg.aiGenerated ? "IA" : msg.sentByName || "Equipe") : null;
 
+  // Corrigir só faz sentido numa resposta que a IA de fato mandou. Em mensagem
+  // da equipe ou ainda na fila, o toque longo não faz nada.
+  const corrigivel = saiu && msg.aiGenerated && !pendente;
+
   return (
     <View style={[s.balaoLinha, msg.reaction && s.balaoComReacao, { justifyContent: saiu ? "flex-end" : "flex-start" }]}>
-      <View
+      <Pressable
+        onLongPress={corrigivel ? () => aoCorrigir(msg) : undefined}
+        delayLongPress={400}
+        disabled={!corrigivel}
+        accessibilityRole={corrigivel ? "button" : "text"}
+        accessibilityHint={corrigivel ? "Toque e segure para avisar que a IA errou nesta resposta" : undefined}
         style={[
           s.balao,
           saiu
@@ -830,18 +875,23 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, termo = "" }: {
             {autor ? `${autor} · ` : ""}{hhmm(msg.timestamp)}
           </Text>
           {saiu ? (
-            <Text
-              style={[
-                s.metaTexto,
-                { color: msg.readAt ? AZUL_LIDO : corMeta, fontWeight: msg.readAt ? "700" : "400", marginLeft: 3 },
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              {pendente ? "🕘" : msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
-            </Text>
+            pendente ? (
+              <Simbolo nome={"clock" as never} tamanho={11} cor={corMeta} rotulo="Enviando" />
+            ) : (
+              <Text
+                style={[
+                  s.metaTexto,
+                  { color: msg.readAt ? AZUL_LIDO : corMeta, fontWeight: msg.readAt ? "700" : "400", marginLeft: 3 },
+                ]}
+                maxFontSizeMultiplier={1.3}
+                accessibilityLabel={msg.readAt ? "Lida" : msg.deliveredAt ? "Entregue" : "Enviada"}
+              >
+                {msg.deliveredAt || msg.readAt ? "✓✓" : "✓"}
+              </Text>
+            )
           ) : null}
         </View>
-      </View>
+      </Pressable>
     </View>
   );
 }

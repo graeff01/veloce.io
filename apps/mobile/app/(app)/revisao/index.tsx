@@ -14,7 +14,10 @@ import { BotaoMais } from "../../../src/ui/botao-mais";
 import { useTema } from "../../../src/ui/tema";
 import { buildTheme } from "../../../src/ui/theme";
 import { ApiError } from "../../../src/core/errors";
-import type { QuoteReview } from "../../../src/core/contracts";
+import SegmentedControl from "@react-native-segmented-control/segmented-control";
+import { Simbolo } from "../../../src/ui/simbolo";
+import { rotuloEspera, urgenciaDe } from "../../../src/core/espera";
+import type { OrcamentoEnviado, QuoteReview } from "../../../src/core/contracts";
 
 // ── Revisão de orçamento ──────────────────────────────────────────────────────
 // O PDF continua sendo gerado no SERVIDOR (lib/quote-pdf.ts, mesmo layout que a
@@ -34,6 +37,16 @@ export default function Revisao() {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
+  // A aba via os dois extremos — a revisar e (em Fechar) os já aprovados — e não
+  // via o caso mais comum de quem vende: "mandei o PDF e o lead sumiu".
+  const [aba, setAba] = useState<"revisar" | "enviados">("revisar");
+  const [enviados, setEnviados] = useState<OrcamentoEnviado[]>([]);
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const carregar = useCallback(async () => {
     if (!client) return;
     try {
@@ -49,6 +62,17 @@ export default function Revisao() {
   }, [client]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // Só busca os enviados quando a pessoa abre a aba: são até 500 linhas e não
+  // fazem falta enquanto ela está decidindo o que aprovar.
+  useEffect(() => {
+    if (aba !== "enviados" || !client) return;
+    let vivo = true;
+    void client.orcamentosEnviados()
+      .then((r) => { if (vivo) setEnviados(r); })
+      .catch(() => { /* a faixa de erro da tela já cobre a lista principal */ });
+    return () => { vivo = false; };
+  }, [aba, client]);
 
   const decidir = useCallback((q: QuoteReview, aprovar: boolean) => {
     Alert.alert(
@@ -86,31 +110,57 @@ export default function Revisao() {
     <>
       <Stack.Screen options={{ title: "Orçamentos", headerLeft: () => <BotaoMais /> }} />
 
-      <FlatList
+      <FlatList<QuoteReview | OrcamentoEnviado>
         style={s.tela}
-        data={itens}
-        keyExtractor={(q) => q.quoteId}
+        data={aba === "revisar" ? itens : enviados}
+        keyExtractor={(q) => ("quoteId" in q ? q.quoteId : q.id)}
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
           <>
             {erro ? <Text style={s.erro}>{erro}</Text> : null}
-            <Text style={s.sub}>{itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`}</Text>
+            <SegmentedControl
+              values={["A revisar", "Enviados"]}
+              selectedIndex={aba === "revisar" ? 0 : 1}
+              onChange={(e) => setAba(e.nativeEvent.selectedSegmentIndex === 0 ? "revisar" : "enviados")}
+              appearance={theme.dark ? "dark" : "light"}
+            />
+            <Text style={s.sub}>
+              {aba === "revisar"
+                ? (itens.length === 0 ? "Nada pendente" : `${itens.length} aguardando você`)
+                : (() => {
+                    const esperando = enviados.filter((q) => q.status === "sent").length;
+                    return esperando === 0 ? "Nenhum sem resposta"
+                      : esperando === 1 ? "1 sem resposta do lead"
+                      : `${esperando} sem resposta do lead`;
+                  })()}
+            </Text>
           </>
         }
         contentContainerStyle={{
           padding: ESP.gutter, gap: ESP.md,
           paddingBottom: insets.bottom + ESPACO_BARRA,
-          ...(itens.length === 0 ? { flexGrow: 1, alignItems: "center", justifyContent: "center" } : null),
+          ...((aba === "revisar" ? itens.length : enviados.length) === 0
+            ? { flexGrow: 1, alignItems: "center", justifyContent: "center" } : null),
         }}
         ListEmptyComponent={
           carregando
             ? <ActivityIndicator color={theme.accent} />
-            : <Text style={s.vazio}>Nenhum orçamento aguardando revisão.</Text>
+            : (
+              <Text style={s.vazio}>
+                {aba === "revisar"
+                  ? "Nenhum orçamento aguardando revisão."
+                  : "Nenhum orçamento enviado ainda."}
+              </Text>
+            )
         }
         refreshControl={
           <RefreshControl refreshing={atualizando} onRefresh={() => { setAtualizando(true); void carregar(); }} tintColor={theme.accent} />
         }
-        renderItem={({ item, index }) => (
+        renderItem={({ item, index }) => {
+          // "quoteId" só existe no que está em revisão; "id" no que já foi
+          // enviado. É o discriminante da união, sem campo extra inventado.
+          if (!("quoteId" in item)) return <CartaoEnviado q={item} indice={index} agora={agora} theme={theme} />;
+          return (
           <Animated.View style={s.cartao} entering={FadeInDown.duration(240).delay(Math.min(index, 6) * 55)}>
             <View style={s.cartaoTopo}>
               <Text style={s.lead} numberOfLines={1}>{item.name}</Text>
@@ -148,9 +198,57 @@ export default function Revisao() {
               </Pressable>
             </View>
           </Animated.View>
-        )}
+          );
+        }}
       />
     </>
+  );
+}
+
+/**
+ * Orçamento que JÁ saiu para o lead. O que interessa aqui não é decidir nada —
+ * é ver há quanto tempo está sem resposta e ir atrás.
+ */
+function CartaoEnviado({ q, indice, agora, theme }: {
+  q: OrcamentoEnviado; indice: number; agora: number; theme: ReturnType<typeof buildTheme>;
+}) {
+  const s = styles(theme);
+  const router = useRouter();
+  const desde = q.sentAt ? Date.parse(q.sentAt) : null;
+  const esperando = q.status === "sent";
+  const urgencia = urgenciaDe(desde, agora);
+  const cor = !esperando ? theme.muted : urgencia === "critica" ? theme.crit : urgencia === "atencao" ? theme.warn : theme.good;
+  const rotulo = q.status === "approved" ? "aprovado" : q.status === "rejected" ? "recusado" : "sem resposta";
+  const moeda = (v: number | null, c: string) =>
+    v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: c || "BRL" });
+
+  return (
+    <Animated.View entering={FadeInDown.duration(240).delay(Math.min(indice, 6) * 55)}>
+      <Pressable
+        style={({ pressed }) => [s.cartao, pressed && { opacity: 0.7 }]}
+        onPress={() => router.push({
+          pathname: "/(app)/conversas/[contactId]",
+          params: { contactId: q.contactId, nome: q.contactName ?? "" },
+        })}
+        accessibilityRole="button"
+        accessibilityLabel={`Abrir a conversa com ${q.contactName ?? "o lead"}, orçamento ${rotulo}`}
+      >
+        <View style={s.cartaoTopo}>
+          <Text style={s.lead} numberOfLines={1}>{q.contactName ?? "Lead"}</Text>
+          <Text style={s.total}>{moeda(q.total, q.currency)}</Text>
+        </View>
+        <View style={s.marcadores}>
+          <View style={[s.pilula, { backgroundColor: cor + "22" }]}>
+            <Simbolo nome={(esperando ? "clock.fill" : q.status === "approved" ? "checkmark.circle.fill" : "xmark.circle.fill") as never} tamanho={10} cor={cor} />
+            <Text style={[s.pilulaTexto, { color: cor }]}>
+              {esperando && desde ? `${rotulo} há ${rotuloEspera(desde, agora)}` : rotulo}
+            </Text>
+          </View>
+          {q.number ? <Text style={s.numero}>Orçamento {q.number}</Text> : null}
+        </View>
+        {q.summary ? <Text style={s.resumo} numberOfLines={2}>{q.summary}</Text> : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -166,6 +264,9 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     lead: { ...TIPO.destaque, flex: 1, color: t.text },
     total: { ...TIPO.destaque, fontWeight: "700", color: t.accent, fontVariant: ["tabular-nums"] },
     numero: { ...TIPO.nota, color: t.muted },
+    marcadores: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 },
+    pilula: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: RAIO.pilula, ...CURVA },
+    pilulaTexto: { ...TIPO.legenda, fontWeight: "600" },
     resumo: { ...TIPO.nota, color: t.muted },
     linhaItem: { flexDirection: "row", gap: 8, marginTop: 2 },
     linhaLabel: { ...TIPO.subtitulo, flex: 1, color: t.text },

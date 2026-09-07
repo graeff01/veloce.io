@@ -12,8 +12,8 @@ import { ApiError, apiErrorFrom, canceladoError, offlineError } from "./errors";
 import { portalPath } from "./api-base";
 import { log } from "./redact";
 import {
-  parseAdsPerformance, parseCatalogo, parseConversation, parseConversationList, parseEquipe, parseFechamento, parseMe, parseQuoteReviews, parseTags,
-  type AdsPerformance, type Conversation, type ConversationList, type Equipe, type Fechamento, type ItemCatalogo, type Me, type QuoteReview, type Tag,
+  parseAdsPerformance, parseCatalogo, parseConversation, parseConversationList, parseEquipe, parseFechamento, parseMe, parseOrcamentosEnviados, parseQuoteReviews, parseTags,
+  type AdsPerformance, type Conversation, type ConversationList, type Equipe, type Fechamento, type ItemCatalogo, type Me, type OrcamentoEnviado, type QuoteReview, type Tag,
 } from "./contracts";
 
 export interface StoredSession {
@@ -260,6 +260,22 @@ export class VeloceClient {
    */
   async marcarEstado(contactId: string, estado: { lida?: boolean; arquivada?: boolean }): Promise<void> {
     await this.request(portalPath(`/conversations/${contactId}/state`), { method: "POST", body: estado });
+  }
+
+  /**
+   * "A IA errou aqui". Só o id da mensagem e o que a vendedora escreveu — o
+   * servidor busca o texto da IA e a pergunta do lead, que é a fonte da verdade.
+   */
+  async corrigirIA(contactId: string, messageId: string, note: string): Promise<{ novo: boolean }> {
+    const r = await this.request(portalPath(`/conversations/${contactId}/correction`), {
+      method: "POST", body: { messageId, note },
+    }) as { novo?: unknown };
+    return { novo: r?.novo === true };
+  }
+
+  /** Orçamentos que já saíram para o lead — inclusive os sem resposta. */
+  async orcamentosEnviados(): Promise<OrcamentoEnviado[]> {
+    return parseOrcamentosEnviados(await this.request(portalPath("/quotes")));
   }
 
   /** Fila de fechamento: quem já aprovou o orçamento e quer comprar. */

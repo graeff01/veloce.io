@@ -30,6 +30,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   return NextResponse.json({
     quotes: quotes.map((q) => ({
       id: q.id,
+      // O app abre a conversa a partir daqui — sem o contato, a lista de
+      // enviados é um beco sem saída.
+      contactId: q.contactId,
       number: q.number,
       total: q.total,
       currency: q.currency,
