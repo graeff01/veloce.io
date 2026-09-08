@@ -32,10 +32,9 @@ import { devPrefill, temPrefill } from "../src/config/dev-prefill";
 import type { Me } from "../src/core/contracts";
 
 type Passo = "link" | "credencial";
-type Modo = "entrar" | "criar";
 
 export default function Vincular() {
-  const { vincularELogar, vincularECriar, marcaDoLink, configError, painelSalvo, esquecerPainel } = useSession();
+  const { vincularELogar, marcaDoLink, configError, painelSalvo, esquecerPainel } = useSession();
   const insets = useSafeAreaInsets();
   const escuro = useEscuro();
 
@@ -43,10 +42,8 @@ export default function Vincular() {
   const [link, setLink] = useState(dev.link);
   const [email, setEmail] = useState(dev.email);
   const [senha, setSenha] = useState(dev.senha);
-  const [nome, setNome] = useState("");
 
   const [passo, setPasso] = useState<Passo>("link");
-  const [modo, setModo] = useState<Modo>("entrar");
   const [marca, setMarca] = useState<Me | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -113,8 +110,7 @@ export default function Vincular() {
     setErro(null);
     setEnviando(true);
     try {
-      if (modo === "entrar") await vincularELogar(link, email, senha);
-      else await vincularECriar(link, email, senha, nome);
+      await vincularELogar(link, email, senha);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -123,7 +119,7 @@ export default function Vincular() {
     } finally {
       setEnviando(false);
     }
-  }, [modo, link, email, senha, nome, vincularELogar, vincularECriar]);
+  }, [link, email, senha, vincularELogar]);
 
   const podeEntrar = email.trim().length > 3 && senha.length > 0 && !enviando;
   const inicial = (marca?.brand.name ?? "V").slice(0, 1).toUpperCase();
@@ -152,9 +148,7 @@ export default function Vincular() {
           <Animated.Text style={s.subtitulo} layout={LinearTransition}>
             {passo === "link"
               ? "Cole o link do painel que a sua agência enviou. Ele identifica a sua loja e só é pedido uma vez."
-              : modo === "entrar"
-                ? "Entre com seu e-mail e senha para acessar o painel."
-                : "Crie seu acesso ao painel com e-mail e senha."}
+              : "Entre com seu e-mail e senha para acessar o painel."}
           </Animated.Text>
 
           {configError ? (
@@ -188,37 +182,17 @@ export default function Vincular() {
             </Animated.View>
           ) : (
             <Animated.View entering={FadeInDown.duration(280)} layout={LinearTransition}>
-              {/* Entrar / Criar conta — as mesmas duas portas do portal. */}
-              <View style={s.abas}>
-                {(["entrar", "criar"] as Modo[]).map((m) => {
-                  const on = modo === m;
-                  return (
-                    <Pressable
-                      key={m}
-                      onPress={() => { void Haptics.selectionAsync().catch(() => {}); setModo(m); setErro(null); }}
-                      style={[s.aba, on && s.abaAtiva]}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: on }}
-                    >
-                      <Text style={[s.abaTexto, on && s.abaTextoAtivo]}>
-                        {m === "entrar" ? "Entrar" : "Criar conta"}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {modo === "criar" ? (
-                <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(120)}>
-                  <Campo icone={SIMBOLO.pessoa} valor={nome} aoMudar={setNome} placeholder="Seu nome (opcional)" theme={theme} />
-                </Animated.View>
-              ) : null}
-
+              {/* O app SÓ ENTRA. Criar conta ficou no portal web de propósito:
+                  a regra 5.1.1(v) da Apple exige que todo app que permite criar
+                  conta permita EXCLUIR a conta por dentro dele — e aqui quem
+                  administra o acesso das vendedoras é o dono do painel, não elas.
+                  Tirar a criação resolve a regra sem inventar um botão de excluir
+                  que o produto não quer. A rota de registro segue viva para o PWA. */}
               <Campo icone={SIMBOLO.busca} valor={email} aoMudar={setEmail} placeholder="voce@sualoja.com" teclado="email-address" theme={theme} />
               <Campo icone={SIMBOLO.cadeado} valor={senha} aoMudar={setSenha} placeholder="Senha" secreto theme={theme} aoEnviar={() => { if (podeEntrar) void entrar(); }} />
 
               <Botao
-                rotulo={enviando ? "Aguarde…" : modo === "entrar" ? "Entrar" : "Criar conta e entrar"}
+                rotulo={enviando ? "Aguarde…" : "Entrar"}
                 ocupado={enviando}
                 ativo={podeEntrar}
                 aoTocar={() => void entrar()}
@@ -226,13 +200,12 @@ export default function Vincular() {
               />
 
               <Text style={s.ajuda}>
-                {modo === "entrar"
-                  ? "Ainda não tem acesso? Toque em “Criar conta”."
-                  : "Já tem conta? Toque em “Entrar”."}
+                Ainda não tem acesso? Abra o link do painel no navegador e crie
+                sua conta lá — depois entre por aqui.
               </Text>
-              {modo === "entrar" ? (
-                <Text style={s.ajudaFraca}>Esqueceu a senha? Peça ao administrador do painel para reiniciar seu acesso.</Text>
-              ) : null}
+              <Text style={s.ajudaFraca}>
+                Esqueceu a senha? Peça ao administrador do painel para reiniciar seu acesso.
+              </Text>
 
               <Pressable
                 onPress={() => {
@@ -335,12 +308,6 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
 
     titulo: { ...TIPO.titulo2, color: t.text, textAlign: "center" },
     subtitulo: { ...TIPO.subtitulo, color: t.muted, textAlign: "center", marginTop: ESP.xs, lineHeight: 20 },
-
-    abas: { flexDirection: "row", gap: 4, backgroundColor: t.raise, borderRadius: RAIO.peq, ...CURVA, padding: 4, marginTop: ESP.lg },
-    aba: { flex: 1, paddingVertical: 8, borderRadius: 8, ...CURVA, alignItems: "center" },
-    abaAtiva: { backgroundColor: t.surface, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
-    abaTexto: { ...TIPO.subtitulo, color: t.muted, fontWeight: "500" },
-    abaTextoAtivo: { color: t.text, fontWeight: "700" },
 
     campo: {
       flexDirection: "row", alignItems: "center", gap: ESP.sm, height: 52,

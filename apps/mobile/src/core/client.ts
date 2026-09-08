@@ -164,10 +164,6 @@ export class VeloceClient {
   }
 
   /** Cria o acesso e já entra — mesma rota que o botão "Criar conta" do portal. */
-  async registrar(portalToken: string, email: string, password: string, nome: string): Promise<StoredSession> {
-    return this.autenticar(`/api/portal/${portalToken}/auth/register`, { email, password, name: nome.trim() || null });
-  }
-
   async login(portalToken: string, email: string, password: string): Promise<StoredSession> {
     return this.autenticar(`/api/portal/${portalToken}/auth/login`, { email, password });
   }

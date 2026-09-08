@@ -83,3 +83,26 @@ test("nenhuma aba usa título grande — a regra vive só na pilha", () => {
     assert.ok(!/headerLargeTitle:\s*true/.test(texto), `${tela} reintroduz o título grande`);
   }
 });
+
+// ── Regra 5.1.1(v) da Apple ───────────────────────────────────────────────────
+// "Apps que permitem CRIAR conta precisam permitir EXCLUIR a conta pelo app."
+//
+// Aqui quem administra o acesso das vendedoras é o dono do painel, não elas — um
+// botão de excluir a própria conta não é o que o produto quer. A saída foi tirar
+// a CRIAÇÃO do app: ela vive no portal web, e a regra deixa de se aplicar.
+//
+// Este teste existe para a criação não voltar sem querer numa tela futura e
+// derrubar a submissão meses depois, quando ninguém lembrar do porquê.
+
+test("o app não cria conta em lugar nenhum", () => {
+  const fontes = [
+    "../app/vincular.tsx",
+    "../src/ui/session.tsx",
+    "../src/core/client.ts",
+  ];
+  for (const f of fontes) {
+    const src = leia(f);
+    assert.ok(!src.includes("auth/register"), `${f} chama a rota de registro`);
+    assert.ok(!/vincularECriar|Criar conta e entrar/.test(src), `${f} ainda oferece criar conta`);
+  }
+});

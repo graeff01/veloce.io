@@ -15,6 +15,7 @@ import { limparCache } from "./cache";
 import { limparFila } from "./fila-envio";
 import { limparRespostasERascunhos } from "./respostas";
 import { apiBase, describeEnv } from "../config/env";
+import { ApiConfigError } from "../core/api-base";
 
 type Status = "carregando" | "sem-sessao" | "logado";
 
@@ -29,7 +30,6 @@ interface SessionValue {
   can: (section: PortalSection) => boolean;
   vincularELogar: (link: string, email: string, senha: string) => Promise<void>;
   /** Cria o acesso e entra — o "Criar conta" do portal. */
-  vincularECriar: (link: string, email: string, senha: string, nome: string) => Promise<void>;
   /** Marca do cliente a partir do link, antes de qualquer credencial. */
   marcaDoLink: (link: string) => Promise<Me | null>;
   /** Painel já vinculado neste aparelho — pula o passo do link. */
@@ -80,8 +80,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /** Sobe o app: se há credencial no Keychain, confirma com o servidor. */
   const boot = useCallback(async () => {
+    // Fora do try: o catch precisa saber se havia base salva para distinguir
+    // "ainda não configurado" de "configurado errado".
+    const savedBase = await apiBaseStore.read().catch(() => null);
     try {
-      const savedBase = await apiBaseStore.read();
       const base = apiBase(savedBase);
       const c = await buildClient(base);
       setClient(c);
@@ -109,8 +111,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStatus("sem-sessao");
         return;
       }
-      // Erro de configuração (sem API, ou dev apontando para produção).
-      setConfigError(e instanceof Error ? e.message : "Falha ao iniciar.");
+      // AUSÊNCIA de API não é erro: é o estado normal de quem abre o app pela
+      // primeira vez e ainda não colou o link do painel — que é justamente o que
+      // a próxima tela pede. Antes, a primeira coisa que o usuário (e o revisor
+      // da Apple) via era "Defina EXPO_PUBLIC_API_URL", que faz o app parecer
+      // quebrado e cita variável de ambiente.
+      const semBase = e instanceof ApiConfigError && !savedBase;
+      if (!semBase) {
+        // Configuração ERRADA (endereço inválido, dev apontando para produção)
+        // continua visível — mas em produção sem jargão de ambiente.
+        setConfigError(
+          __DEV__ || !(e instanceof ApiConfigError)
+            ? (e instanceof Error ? e.message : "Falha ao iniciar.")
+            : "Não foi possível usar o endereço deste painel. Confira o link com a Veloce.",
+        );
+      }
       setStatus("sem-sessao");
     }
   }, [buildClient, store]);
@@ -135,24 +150,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     log.info("aparelho vinculado e sessão criada");
   }, [buildClient]);
 
-  const vincularECriar = useCallback(async (link: string, email: string, senha: string, nome: string) => {
-    const invite = parseInviteLink(link);
-    const base = apiBase(invite.baseUrl);
-    const c = await buildClient(base);
-
-    await c.registrar(invite.token, email.trim(), senha, nome);
-    await apiBaseStore.write(base);
-    await portalTokenStore.write(invite.token);
-    setPainelSalvo({ base, token: invite.token });
-
-    const perfil = await c.me();
-    setClient(c);
-    setMe(perfil);
-    setStatus("logado");
-    log.info("acesso criado e aparelho vinculado");
-  }, [buildClient]);
-
-  /** Só identidade visual: falhar aqui não impede entrar. */
   const marcaDoLink = useCallback(async (link: string): Promise<Me | null> => {
     try {
       const invite = parseInviteLink(link);
@@ -199,10 +196,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SessionValue>(
     () => ({
       status, me, client, configError, base: client?.base ?? null,
-      can, vincularELogar, vincularECriar, marcaDoLink, sair, recarregar,
+      can, vincularELogar, marcaDoLink, sair, recarregar,
       painelSalvo, esquecerPainel,
     }),
-    [status, me, client, configError, can, vincularELogar, vincularECriar, marcaDoLink,
+    [status, me, client, configError, can, vincularELogar, marcaDoLink,
      sair, recarregar, painelSalvo, esquecerPainel],
   );
 

@@ -60,6 +60,22 @@ O que o aplicativo **coleta**, e para quê:
 Declarar **"não usado para rastreamento"**: o aplicativo não tem SDK de
 publicidade, não usa IDFA e não compartilha dado com terceiros para marketing.
 
+## Conta: por que o app NÃO cria conta (regra 5.1.1(v))
+
+A diretriz da Apple é: *app que permite criar conta precisa permitir excluir a
+conta por dentro do app*. Aqui quem administra o acesso das vendedoras é o dono
+do painel, não elas — um botão de "excluir minha conta" não é o que o produto
+quer, e o acesso não é da pessoa, é do cliente.
+
+A saída foi **tirar a criação de conta do app**: ela continua no portal web, com
+o mesmo link. Sem criação, a regra não se aplica.
+
+Se a pergunta aparecer na revisão, a resposta é: *o acesso é provisionado pelo
+administrador do painel do cliente; o aplicativo apenas autentica.*
+
+`tests/release.test.ts` falha se a criação de conta voltar ao app — a rota
+`auth/register` segue viva no servidor, para o PWA.
+
 ## Manifesto de privacidade (`PrivacyInfo.xcprivacy`)
 
 Obrigatório desde 2024: sem ele a submissão é **recusada na validação**, antes de
