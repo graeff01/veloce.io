@@ -20,6 +20,7 @@ import { BotaoMais } from "../../../src/ui/botao-mais";
 import { useTema } from "../../../src/ui/tema";
 import { avatarColor, buildTheme, STAGE } from "../../../src/ui/theme";
 import { CABECALHO_SECAO, TIPO } from "../../../src/ui/tipografia";
+import { SIMBOLO, Simbolo } from "../../../src/ui/simbolo";
 import { CURVA, ESP, ESPACO_BARRA, RAIO, cartao } from "../../../src/ui/forma";
 import { ApiError } from "../../../src/core/errors";
 import type { ConversationRow } from "../../../src/core/contracts";
@@ -218,7 +219,20 @@ export default function Funil() {
           </>
         }
         ListEmptyComponent={
-          carregando ? <ActivityIndicator color={theme.accent} style={{ marginTop: ESP.xxl }} /> : null
+          <View style={s.vazioBox}>
+            {carregando
+              ? <ActivityIndicator color={theme.accent} />
+              : (
+                <>
+                  <Simbolo nome={SIMBOLO.funil as never} tamanho={32} cor={theme.muted} />
+                  <Text style={s.vazioTitulo}>Funil vazio</Text>
+                  <Text style={s.vazio}>
+                    As conversas entram aqui conforme a IA identifica em que etapa
+                    cada lead está.
+                  </Text>
+                </>
+              )}
+          </View>
         }
         renderItem={({ item, index }) => {
           const expandida = aberta === item.chave;
@@ -284,6 +298,12 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     legendaTexto: { ...TIPO.legenda, color: t.muted },
     legendaNumero: { color: t.text, fontWeight: "700", fontVariant: ["tabular-nums"] },
     erro: { ...TIPO.nota, color: t.crit, marginBottom: ESP.sm },
+
+    vazioBox: { minHeight: 240, alignItems: "center", justifyContent: "center", gap: ESP.sm, paddingHorizontal: ESP.xl },
+
+    vazioTitulo: { ...TIPO.destaque, color: t.text },
+
+    vazio: { ...TIPO.corpo, color: t.muted, textAlign: "center" },
 
     cartao: { ...cartao(t.surface), padding: ESP.gutter, gap: ESP.sm },
     topo: { flexDirection: "row", alignItems: "center", gap: ESP.md },

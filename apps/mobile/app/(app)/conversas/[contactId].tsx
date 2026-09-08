@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal,
-  Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from "react-native";
 import { useEscuro } from "../../../src/ui/aparencia";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
@@ -10,6 +10,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-rou
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync,
@@ -344,7 +345,6 @@ export default function Thread() {
    * tempo real é quem está na conversa.
    */
   const corrigirIA = useCallback((msg: Message) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.prompt(
       "A IA errou aqui?",
       "Escreva o que ela deveria ter respondido. Isso vai para a fila de aprendizado da Veloce — o lead não recebe nada.",
@@ -370,6 +370,42 @@ export default function Thread() {
       "plain-text",
     );
   }, [client, contactId]);
+
+  /**
+   * Toque longo numa mensagem. "Copiar" vale para qualquer uma e é o que mais
+   * falta no dia a dia: endereço, medida, CPF e número de referência chegam pelo
+   * lead e, sem isto, eram redigitados olhando para a tela.
+   */
+  const menuDaMensagem = useCallback((msg: Message) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    // Áudio não tem texto, mas tem transcrição — e é ela que a pessoa quer.
+    const copiavel = (msg.text ?? msg.transcription ?? "").trim();
+    const daIA = msg.direction === "out" && msg.aiGenerated;
+
+    const opcoes: string[] = [];
+    if (copiavel) opcoes.push("Copiar");
+    if (daIA) opcoes.push("A IA errou aqui");
+    if (opcoes.length === 0) return;
+
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...opcoes, "Cancelar"],
+        cancelButtonIndex: opcoes.length,
+        userInterfaceStyle: theme.dark ? "dark" : "light",
+      },
+      (i) => {
+        const escolha = opcoes[i];
+        if (escolha === "Copiar") {
+          void Clipboard.setStringAsync(copiavel)
+            .then(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success))
+            .catch(() => {});
+          return;
+        }
+        if (escolha === "A IA errou aqui") corrigirIA(msg);
+      },
+    );
+  }, [theme.dark, corrigirIA]);
+
 
   const menu = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
@@ -583,7 +619,7 @@ export default function Thread() {
               theme={theme}
               contactId={String(contactId)}
               aoAbrirImagem={setImagemAberta}
-              aoCorrigir={corrigirIA}
+              aoSegurar={menuDaMensagem}
               termo={buscaAberta ? buscaTexto : ""}
             />
           )
@@ -673,14 +709,60 @@ export default function Thread() {
 
       {/* Foto em tela cheia — tocar na miniatura abre aqui. */}
       <Modal visible={!!imagemAberta} transparent animationType="fade" onRequestClose={() => setImagemAberta(null)}>
-        <Pressable style={s.visor} onPress={() => setImagemAberta(null)} accessibilityLabel="Fechar foto">
-          <View style={[s.visorFechar, { top: insets.top + 10 }]}>
-            <Simbolo nome={SIMBOLO.fechar as never} tamanho={24} cor="#fff" peso="semibold" />
-          </View>
+        <View style={s.visor}>
+          {/* ScrollView é o zoom NATIVO do iOS: pinça e duplo toque de graça,
+              sem biblioteca nenhuma. Antes a foto abria em tamanho fixo — e o
+              lead manda foto do espaço, da churrasqueira atual, de uma medida
+              escrita à mão, que não dava para aproximar e ler.
+              Os botões ficam FORA do scroll: dentro, cada pinça viraria toque. */}
           {imagemAberta ? (
-            <Image source={{ uri: imagemAberta }} style={s.visorImagem} resizeMode="contain" />
+            <ScrollView
+              style={s.visorScroll}
+              contentContainerStyle={s.visorConteudo}
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              bouncesZoom
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+            >
+              <Pressable onPress={() => setImagemAberta(null)} accessibilityLabel="Fechar foto">
+                <Image
+                  source={{ uri: imagemAberta }}
+                  style={[s.visorImagem, { width: larguraJanela }]}
+                  resizeMode="contain"
+                />
+              </Pressable>
+            </ScrollView>
           ) : null}
-        </Pressable>
+
+          <Pressable
+            style={[s.visorFechar, { top: insets.top + 10 }]}
+            onPress={() => setImagemAberta(null)}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Fechar foto"
+          >
+            <Simbolo nome={SIMBOLO.fechar as never} tamanho={24} cor="#fff" peso="semibold" />
+          </Pressable>
+
+          {/* A foto do lead é material de trabalho: vai para o orçamento, para o
+              instalador, para o grupo da equipe. Sem isto ficava presa aqui. */}
+          <Pressable
+            style={[s.visorAcao, { top: insets.top + 10 }]}
+            onPress={() => {
+              if (!imagemAberta) return;
+              void Sharing.isAvailableAsync()
+                .then((ok) => (ok ? Sharing.shareAsync(imagemAberta) : null))
+                .catch(() => {});
+            }}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Compartilhar ou salvar esta foto"
+          >
+            <Simbolo nome={"square.and.arrow.up" as never} tamanho={23} cor="#fff" peso="semibold" />
+          </Pressable>
+        </View>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -761,14 +843,14 @@ const audioStyles = StyleSheet.create({
   tempo: { fontSize: 10.5, fontVariant: ["tabular-nums"] },
 });
 
-function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoCorrigir, termo = "" }: {
+function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoSegurar, termo = "" }: {
   msg: Message;
   pendente: boolean;
   theme: ReturnType<typeof buildTheme>;
   contactId: string;
   aoAbrirImagem: (uri: string) => void;
-  /** Toque longo numa resposta da IA: relatar que ela errou. */
-  aoCorrigir: (msg: Message) => void;
+  /** Toque longo: copiar e, em resposta da IA, relatar que ela errou. */
+  aoSegurar: (msg: Message) => void;
   /** Trecho da busca, para marcar dentro da mensagem. */
   termo?: string;
 }) {
@@ -794,18 +876,20 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoCorrigir, ter
   const corMeta = saiu ? theme.onAccent : theme.waMuted;
   const autor = saiu ? (msg.aiGenerated ? "IA" : msg.sentByName || "Equipe") : null;
 
-  // Corrigir só faz sentido numa resposta que a IA de fato mandou. Em mensagem
-  // da equipe ou ainda na fila, o toque longo não faz nada.
-  const corrigivel = saiu && msg.aiGenerated && !pendente;
+  // Copiar vale para qualquer mensagem com texto (ou transcrição de áudio);
+  // corrigir, só para resposta que a IA de fato mandou. Mensagem ainda na fila
+  // não abre menu: ela nem existe no servidor.
+  const temTexto = !!(msg.text ?? msg.transcription ?? "").trim();
+  const acionavel = !pendente && (temTexto || (saiu && msg.aiGenerated));
 
   return (
     <View style={[s.balaoLinha, msg.reaction && s.balaoComReacao, { justifyContent: saiu ? "flex-end" : "flex-start" }]}>
       <Pressable
-        onLongPress={corrigivel ? () => aoCorrigir(msg) : undefined}
+        onLongPress={acionavel ? () => aoSegurar(msg) : undefined}
         delayLongPress={400}
-        disabled={!corrigivel}
-        accessibilityRole={corrigivel ? "button" : "text"}
-        accessibilityHint={corrigivel ? "Toque e segure para avisar que a IA errou nesta resposta" : undefined}
+        disabled={!acionavel}
+        accessibilityRole={acionavel ? "button" : "text"}
+        accessibilityHint={acionavel ? "Toque e segure para copiar esta mensagem" : undefined}
         style={[
           s.balao,
           saiu
@@ -958,9 +1042,12 @@ const styles = (t: ReturnType<typeof buildTheme>) =>
     meta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
     metaTexto: { fontSize: 11, opacity: 0.7 },
 
-    visor: { flex: 1, backgroundColor: "rgba(0,0,0,0.94)", alignItems: "center", justifyContent: "center" },
-    visorImagem: { width: "100%", height: "82%" },
+    visor: { flex: 1, backgroundColor: "rgba(0,0,0,0.94)" },
+    visorScroll: { flex: 1 },
+    visorConteudo: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
+    visorImagem: { height: "100%", minHeight: 320 },
     visorFechar: { position: "absolute", right: 18, zIndex: 2 },
+    visorAcao: { position: "absolute", left: 18, zIndex: 2 },
 
     naoLidasLinha: { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 10 },
     naoLidasRisco: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: t.crit, opacity: 0.5 },
