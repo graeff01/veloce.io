@@ -518,6 +518,16 @@ export function ListaConversas() {
           data={visiveis}
           keyExtractor={(c) => c.contactId}
           renderItem={renderItem}
+          // A JR abre com 1.271 conversas. Sem estes limites o iOS tenta medir
+          // linhas demais de uma vez — cada uma com Swipeable e Reanimated — e a
+          // lista engasga; foi o aviso de "lista lenta" que apareceu no aparelho.
+          // LIMITE CONHECIDO: isto reduz o custo por quadro, mas não elimina a
+          // causa — `renderItem` não é memoizado, então o relógio de um minuto
+          // (o "há 12min" das linhas) ainda refaz a lista inteira. Resolver de
+          // verdade é extrair a linha para um componente memoizado.
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={9}
           ListHeaderComponent={cabecalhoDaLista}
           ItemSeparatorComponent={() => <View style={s.separador} />}
           // Faz o título grande encolher e a busca se comportar como no sistema.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal,
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
@@ -624,7 +624,16 @@ export default function Thread() {
             />
           )
         }
-        onContentSizeChange={() => lista.current?.scrollToEnd({ animated: false })}
+        // Só desce sozinho quem já ESTAVA embaixo. Antes descia sempre — então
+        // bastava uma imagem terminar de carregar enquanto a vendedora lia o
+        // histórico para a tela pular para o fim e perder o lugar dela.
+        onContentSizeChange={() => { if (!longe) lista.current?.scrollToEnd({ animated: false }); }}
+        // A conversa vem com até 2.000 mensagens. Sem estes limites o iOS tenta
+        // medir muito de uma vez e a lista trava — foi o aviso de "lista lenta"
+        // que apareceu no aparelho.
+        initialNumToRender={18}
+        maxToRenderPerBatch={12}
+        windowSize={11}
       />
 
       {longe ? (
@@ -843,7 +852,10 @@ const audioStyles = StyleSheet.create({
   tempo: { fontSize: 10.5, fontVariant: ["tabular-nums"] },
 });
 
-function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoSegurar, termo = "" }: {
+// memo: sem isto, TODO balão da conversa era refeito a cada tecla digitada no
+// compositor e a cada evento do stream. Com centenas de mensagens na tela, é a
+// diferença entre digitar liso e digitar travando.
+const Balao = memo(function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoSegurar, termo = "" }: {
   msg: Message;
   pendente: boolean;
   theme: ReturnType<typeof buildTheme>;
@@ -978,7 +990,7 @@ function Balao({ msg, pendente, theme, contactId, aoAbrirImagem, aoSegurar, term
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = (t: ReturnType<typeof buildTheme>) =>
   StyleSheet.create({
