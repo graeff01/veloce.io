@@ -4,8 +4,12 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEv
 import Link from "next/link";
 import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
+import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
-interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
+interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null;
+  // Já vinham na resposta de /conversations e o portal não usava: são o tempo de
+  // espera e o estado que a EQUIPE compartilha (o app já lê os dois).
+  lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -87,6 +91,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
+  // Relógio único da lista: o rótulo "há 12min" precisa envelhecer sozinho, e um
+  // intervalo por linha seria desperdício. Mesma cadência do aplicativo.
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [adFilter, setAdFilter] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(initialContact ?? null);
@@ -230,6 +241,15 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     let alive = true;
     nearBottomRef.current = true; // ao abrir uma conversa, começa no fim
     setDraft(""); setSendError(null); // compositor limpo por conversa
+
+    // Abrir marca como lida para a EQUIPE, no servidor — não só neste navegador.
+    // São três vendedoras no MESMO número: lido por uma precisa sumir do negrito
+    // das outras, e do aplicativo. Melhor esforço: falhar aqui não pode
+    // atrapalhar a leitura da conversa.
+    fetch(`/api/portal/${token}/conversations/${sel}/state`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lida: true }),
+    }).catch(() => {});
+    setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, lida: true } : row)) : l));
     const load = (silent: boolean) => {
       if (!silent) setLoadingConv(true);
       return fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -626,21 +646,34 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
+              // DOIS SINAIS DIFERENTES, e confundi-los seria um erro de negócio:
+              //   `waiting`  — o lead falou por último e NINGUÉM respondeu. Ler
+              //                não é responder: continua esperando depois de aberta.
+              //   `naoLida`  — ninguém da equipe ABRIU ainda. Some quando a
+              //                colega abre, no app ou aqui, porque o estado mora
+              //                no servidor (três vendedoras, um número só).
               const waiting = isWaiting(c);
+              const naoLida = waiting && c.lida !== true;
+              // HÁ QUANTO TEMPO espera, não só QUE espera. Com 1.257 aguardando,
+              // é o que separa "tenho mil conversas" de "estas cinco estão me
+              // custando venda". Igual ao aplicativo, pela mesma função.
+              const desde = esperandoDesde(c.lastInboundAt, c.lastOutboundAt);
+              const urgencia = urgenciaDe(desde, agora);
+              const corEspera = corDaUrgencia(urgencia);
               return (
-                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
+                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? `3px solid ${corEspera}` : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? `color-mix(in srgb, ${corEspera} 5%, transparent)` : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      <span style={{ fontSize: 14.5, fontWeight: naoLida ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
                       {!nameIsNumber(c.name, c.waId) && formatPhoneShort(c.waId) && (
                         <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatPhoneShort(c.waId)}</span>
                       )}
-                      <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
+                      <span title={waiting && desde ? "Esperando resposta há " + rotuloEspera(desde, agora) : undefined} style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? corEspera : "var(--wa-muted)", whiteSpace: "nowrap" }}>{waiting && desde ? rotuloEspera(desde, agora) : listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: waiting ? 700 : 400, color: waiting ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
-                      {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} />}
+                      <span style={{ fontSize: 12.5, fontWeight: naoLida ? 700 : 400, color: naoLida ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
+                      {naoLida && <span title="Ninguém da equipe abriu ainda" style={{ width: 9, height: 9, borderRadius: "50%", background: corEspera, boxShadow: `0 0 0 3px color-mix(in srgb, ${corEspera} 18%, transparent)`, flexShrink: 0 }} />}
                       {c.fromAd && (c.adStrong
                         ? <span title="Clicou no anúncio (Click-to-WhatsApp)" style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>
                         : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
