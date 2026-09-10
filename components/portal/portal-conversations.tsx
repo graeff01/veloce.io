@@ -209,22 +209,44 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     return () => { alive = false; clearTimeout(t); };
   }, [token, q, mineOnly, tab]);
 
-  // Auto-atualização (novas conversas/mensagens) — só na 1ª página e fora de busca, para NÃO
-  // resetar o histórico já carregado com "Carregar mais".
+  // Auto-atualização: quem manda mensagem SOBE PARA O TOPO, como no WhatsApp.
+  //
+  // Dois defeitos corrigidos aqui:
+  //   1. A consulta não levava `arquivadas=1`. Estando na aba Arquivadas, a cada
+  //      seis segundos a lista era trocada pela caixa NORMAL — a aba se desfazia
+  //      sozinha na frente da pessoa.
+  //   2. Depois de "Carregar mais" o refresh era desligado PARA SEMPRE
+  //      (loadedMoreRef), para não descartar as páginas já carregadas. O efeito
+  //      colateral era este: a lista parava de reordenar, e o lead que acabou de
+  //      escrever ficava enterrado onde estava.
+  //
+  // Agora FUNDE em vez de substituir: a primeira página (que o servidor já manda
+  // ordenada pela mensagem mais recente) vem na frente, e o que foi carregado
+  // além dela segue embaixo, na ordem em que estava. Assim reordena sem perder
+  // histórico, e o "Carregar mais" deixa de ser um caminho sem volta.
   useEffect(() => {
     const reload = () => {
-      if (document.hidden || qRef.current || loadedMoreRef.current) return;
-      fetch(`/api/portal/${token}/conversations?limit=${PAGE}&offset=0${mineOnly ? "&owner=me" : ""}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (document.hidden || qRef.current) return;
+      const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
+      if (mineOnly) sp.set("owner", "me");
+      if (tab === "arquivadas") sp.set("arquivadas", "1");
+      fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
-        setHasMore(!!d.hasMore); setList(d.conversations ?? []);
+        const frescas: Row[] = d.conversations ?? [];
+        const naPrimeira = new Set(frescas.map((c) => c.contactId));
+        setList((antiga) => {
+          if (!antiga || !loadedMoreRef.current) { setHasMore(!!d.hasMore); return frescas; }
+          // Só as páginas EXTRAS ficam embaixo; `hasMore` segue sendo delas.
+          return [...frescas, ...antiga.filter((c) => !naPrimeira.has(c.contactId))];
+        });
       }).catch(() => {});
     };
     const iv = setInterval(reload, 6000);
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token, mineOnly]);
+  }, [token, mineOnly, tab]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -309,8 +331,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   // A aba "Leads de anúncio" só aparece se o cliente REALMENTE tem leads de anúncio
   // (cliente que só usa a IA não vê um atalho vazio). Se sumir, volta pra "Conversas".
-  const hasAds = adGroups.length > 0;
-  useEffect(() => { if (!hasAds && (tab === "ads")) { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
+  // A aba de anúncio some quando a LISTA CARREGADA não tem lead de anúncio — e
+  // em "Arquivadas" ela quase nunca tem. Resultado: entrar em Arquivadas fazia a
+  // aba Anúncio desaparecer. A pergunta certa é "este CLIENTE tem leads de
+  // anúncio?", que não muda ao trocar de filtro. Uma vez visto, fica.
+  const [clienteTemAds, setClienteTemAds] = useState(false);
+  useEffect(() => { if (adGroups.length > 0) setClienteTemAds(true); }, [adGroups.length]);
+  const hasAds = clienteTemAds;
+  useEffect(() => { if (!hasAds && tab === "ads") { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
 
   const items = (list ?? []).filter((c) => {
     if (mineOnly && (!me || c.assignedEmail !== me)) return false;
