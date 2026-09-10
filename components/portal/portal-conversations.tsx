@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -90,7 +90,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [list, setList] = useState<Row[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
+  const [tab, setTab] = useState<"all" | "ads" | "waiting" | "arquivadas">("all");
   // Relógio único da lista: o rótulo "há 12min" precisa envelhecer sozinho, e um
   // intervalo por linha seria desperdício. Mesma cadência do aplicativo.
   const [agora, setAgora] = useState(() => Date.now());
@@ -173,7 +173,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // ?tab=waiting/ads pra manter o filtro ao voltar. Só na montagem.
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "waiting" || t === "ads") setTab(t);
+    if (t === "waiting" || t === "ads" || t === "arquivadas") setTab(t);
   }, []);
 
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
@@ -196,6 +196,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
       if (q.trim()) sp.set("q", q.trim());
       if (mineOnly) sp.set("owner", "me"); // "Minhas conversas" no SERVIDOR (pega todas, não só a página)
+      // Arquivadas vivem FORA da caixa: o servidor as exclui por padrão e só as
+      // devolve quando pedidas. Sem isto, arquivar não tiraria nada da frente.
+      if (tab === "arquivadas") sp.set("arquivadas", "1");
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
@@ -203,7 +206,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q, mineOnly]);
+  }, [token, q, mineOnly, tab]);
 
   // Auto-atualização (novas conversas/mensagens) — só na 1ª página e fora de busca, para NÃO
   // resetar o histórico já carregado com "Carregar mais".
@@ -229,6 +232,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     const sp = new URLSearchParams({ limit: String(PAGE), offset: String(list?.length ?? 0) });
     if (q.trim()) sp.set("q", q.trim());
     if (mineOnly) sp.set("owner", "me");
+    if (tab === "arquivadas") sp.set("arquivadas", "1");
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
@@ -367,6 +371,46 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       setDraft((cur) => cur || text);
       setSendError("Falha de conexão. Tente de novo.");
     } finally { setSending(false); }
+  }
+
+  /**
+   * "A IA errou aqui". Até agora, AiCorrection só nascia quando alguém REJEITAVA
+   * um orçamento — o aprendizado enxergava erro de preço e mais nada. Quem vê a
+   * IA errar em tempo real é a vendedora, dentro da conversa. Mesma rota do
+   * aplicativo; o servidor busca o texto da IA e a pergunta do lead.
+   */
+  async function corrigirIA(messageId: string) {
+    const nota = window.prompt(
+      "O que a IA deveria ter respondido?\n\nIsso vai para a fila de aprendizado da Veloce — o lead não recebe nada.",
+    );
+    if (!nota || !nota.trim() || !sel) return;
+    const r = await fetch(`/api/portal/${token}/conversations/${sel}/correction`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, note: nota.trim() }),
+    }).catch(() => null);
+    const d = await r?.json().catch(() => ({}));
+    if (!r?.ok) { alert(d?.error || "Não foi possível registrar."); return; }
+    alert("Obrigado. A correção foi registrada.");
+  }
+
+  /**
+   * Arquivar tira da caixa SEM apagar nada, e some para a equipe inteira — o
+   * estado mora no servidor, como no aplicativo. É o que permite a JR encarar
+   * 1.271 conversas: o que já morreu sai da frente.
+   */
+  const [arquivando, setArquivando] = useState(false);
+  async function arquivar(arquivada: boolean) {
+    if (!sel || arquivando) return;
+    setArquivando(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/state`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ arquivada }),
+      });
+      if (!r.ok) { alert("Não foi possível arquivar agora."); return; }
+      // Sai da lista na hora: esperar o polling faria a linha ficar piscando.
+      setList((l) => (l ? l.filter((row) => row.contactId !== sel) : l));
+      setSel(null);
+    } finally { setArquivando(false); }
   }
 
   // Assumir/transferir/remover o dono do lead (atribuição).
@@ -544,7 +588,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     return false;
   })();
 
-  const tabChip = (k: "all" | "ads" | "waiting", label: string) => {
+  const tabChip = (k: "all" | "ads" | "waiting" | "arquivadas", label: string) => {
     const on = tab === k;
     const isWait = k === "waiting";
     return (
@@ -593,7 +637,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}`}</style>
+      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
@@ -631,7 +675,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
         {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
-        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>}
+        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}{tabChip("arquivadas", "Arquivadas")}</div>}
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -741,8 +785,15 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
                 </div>
               </div>
-              {/* Ações do topo — só ETIQUETA e DONO (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
+              {/* Ações do topo — ETIQUETA, DONO e ARQUIVAR (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                onClick={() => void arquivar(tab !== "arquivadas")}
+                disabled={arquivando}
+                title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap" }}>
+                <Archive size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{tab === "arquivadas" ? "Desarquivar" : "Arquivar"}</span>}
+              </button>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
@@ -873,6 +924,22 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </a>
                 </div>
               )}
+              {/* FAIXA DE ETIQUETAS. Antes elas viviam só como um NÚMERO dentro do
+                  botão "Etiquetas" do topo: para saber quais estavam aplicadas era
+                  preciso abrir o menu. No aplicativo elas aparecem coloridas junto
+                  da conversa, e é o que faz a vendedora reconhecer o lead de
+                  relance. Aqui ficam no mesmo lugar — dentro da conversa. */}
+              {(conv.tags ?? []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", margin: "2px 0 10px" }}>
+                  {(conv.tags ?? []).map((t) => (
+                    <span key={t.id} title={t.name}
+                      style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: t.color, padding: "3px 9px", borderRadius: 20, letterSpacing: 0.2, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", boxShadow: "0 1px 2px rgba(0,0,0,.12)" }}>
+                      {t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {grouped.map((g, gi) => (
                 <div key={gi}>
                   <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
@@ -883,7 +950,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     const body = (m.text && m.text.trim()) || mediaLabel(m.type) || "[mensagem]";
                     return (
                       <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4 }}>
-                        <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
+                        <div data-bolha style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
@@ -897,6 +964,19 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           </span>
                           {m.reaction && (
                             <span style={{ position: "absolute", bottom: -12, [mine ? "left" : "right"]: 8, background: "var(--wa-in)", color: "var(--wa-text)", borderRadius: 11, padding: "1px 5px", fontSize: 12, lineHeight: "16px", boxShadow: "0 1px 3px rgba(0,0,0,.2)", border: "1px solid var(--p-border)" }}>{m.reaction}</span>
+                          )}
+                          {/* "A IA errou aqui" — só em resposta que a IA de fato
+                              mandou, e só depois de confirmada pelo servidor.
+                              Fica discreto: aparece ao passar o mouse pelo balão. */}
+                          {mine && m.aiGenerated && !m.pending && (
+                            <button
+                              className="pc-corrigir"
+                              onClick={() => void corrigirIA(m.id)}
+                              title="A IA errou aqui — registrar correção"
+                              aria-label="A IA errou aqui — registrar correção"
+                              style={{ position: "absolute", top: -9, left: -9, width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", cursor: "pointer", padding: 0, opacity: 0, transition: "opacity .15s ease" }}>
+                              <AlertTriangle size={12} />
+                            </button>
                           )}
                         </div>
                       </div>
