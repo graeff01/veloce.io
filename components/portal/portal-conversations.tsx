@@ -91,6 +91,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<"all" | "ads" | "waiting" | "arquivadas">("all");
+  const [campanhaModal, setCampanhaModal] = useState(false);
   // Relógio único da lista: o rótulo "há 12min" precisa envelhecer sozinho, e um
   // intervalo por linha seria desperdício. Mesma cadência do aplicativo.
   const [agora, setAgora] = useState(() => Date.now());
@@ -785,15 +786,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     );
   };
 
-  const adChip = (label: string | null, text: string, count: number) => {
-    const on = adFilter === label;
-    return (
-      <button key={text} onClick={() => setAdFilter(label)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: `1px solid ${on ? "var(--p-accent)" : "var(--p-border)"}`, cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: 20, whiteSpace: "nowrap", background: on ? "var(--p-accent-soft)" : "var(--p-bg)", color: on ? "var(--p-accent)" : "var(--p-text)" }}>
-        {text} <span style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>{count}</span>
-      </button>
-    );
-  };
-
   // Item da barra flutuante inferior (mobile, estilo WhatsApp): ícone + rótulo, ativo destacado.
   const bottomItem = (k: "all" | "ads" | "waiting", label: string, icon: React.ReactNode, badge: number) => {
     const on = tab === k;
@@ -863,7 +855,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {!isMobile && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
             {tabChip("all", "Conversas")}
-            {tabChip("waiting", "Aguardando")}
             {hasAds && tabChip("ads", "Anúncio")}
             {tabChip("arquivadas", "Arquivadas")}
             {me && attendants.length > 1 && (
@@ -894,12 +885,55 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             {!assumindoLote && <span style={{ fontWeight: 800 }}>Assumir →</span>}
           </button>
         )}
-        {/* filtro por anúncio (só na aba de anúncios) */}
+        {/* CAMPANHA — antes era uma barra de chips que rolava para o lado: com
+            várias campanhas, os nomes ficavam cortados e era preciso arrastar
+            para descobrir o que existia. No aplicativo isso é uma folha que
+            abre com a lista inteira, e é o que vale aqui: um botão diz a
+            campanha atual, e o modal mostra todas com suas contagens. */}
         {tab === "ads" && adGroups.length > 0 && (
-          <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
-            {adChip(null, "Todos", adGroups.reduce((s, g) => s + g.count, 0))}
-            {adGroups.map((g) => adChip(g.label, g.label, g.count))}
+          <div style={{ padding: "0 12px 9px", borderBottom: "1px solid var(--p-border)" }}>
+            <button onClick={() => setCampanhaModal(true)}
+              style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 34, padding: "0 12px", borderRadius: 10, border: `1px solid ${adFilter ? "var(--p-accent)" : "var(--p-border)"}`, background: adFilter ? "var(--p-accent-soft)" : "var(--p-bg)", color: adFilter ? "var(--p-accent)" : "var(--p-text)", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+              <Megaphone size={14} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {adFilter ?? "Todas as campanhas"}
+              </span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", flexShrink: 0 }}>
+                {adFilter ? (adGroups.find((g) => g.label === adFilter)?.count ?? 0) : adGroups.reduce((n, g) => n + g.count, 0)}
+              </span>
+              <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+            </button>
           </div>
+        )}
+
+        {campanhaModal && (
+          <>
+            <div onClick={() => setCampanhaModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
+            <div role="dialog" aria-label="Escolher campanha"
+              style={{ position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
+                <Megaphone size={16} style={{ color: "var(--p-accent)" }} />
+                <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>Campanhas</strong>
+                <button onClick={() => setCampanhaModal(false)} aria-label="Fechar" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ overflowY: "auto", padding: 6 }}>
+                {[{ label: null as string | null, nome: "Todas as campanhas", count: adGroups.reduce((n, g) => n + g.count, 0) },
+                  ...adGroups.map((g) => ({ label: g.label as string | null, nome: g.label, count: g.count }))].map((op) => {
+                  const on = adFilter === op.label;
+                  return (
+                    <button key={op.nome} onClick={() => { setAdFilter(op.label); setCampanhaModal(false); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", border: "none", borderRadius: 10, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{op.nome}</span>
+                      <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>{op.count}</span>
+                      {on && <Check size={15} style={{ flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
         )}
         {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
