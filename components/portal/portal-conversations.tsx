@@ -340,14 +340,108 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     } finally { setAiReplying(false); }
   }
 
+  // ── Fila de envio ─────────────────────────────────────────────────────────
+  // Antes: falhou a rede, a mensagem voltava para a caixa de texto com um aviso
+  // e a vendedora tinha de reenviar na mão. Agora ela fica guardada e sai
+  // sozinha — o mesmo comportamento do aplicativo.
+  //
+  // Vive no localStorage por CONVERSA: recarregar a aba ou fechar o navegador no
+  // meio de uma queda não pode perder o que a pessoa escreveu.
+  interface Pendente { id: string; chave: string; contactId: string; text: string; tentativas: number; criadoEm: number }
+  const FILA_CHAVE = `vp-fila-${token}`;
+  const VALIDADE_MS = 60 * 60_000;   // 1h, como no app: depois disso o contexto morreu
+  const [fila, setFila] = useState<Pendente[]>([]);
+
+  // Lê a fila salva UMA vez, na montagem. localStorage pode falhar (modo privado,
+  // cota) e isso nunca pode impedir a tela de abrir.
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(FILA_CHAVE);
+      const salvos: Pendente[] = cru ? JSON.parse(cru) : [];
+      const vivos = Array.isArray(salvos) ? salvos.filter((p) => Date.now() - p.criadoEm < VALIDADE_MS) : [];
+      if (vivos.length) setFila(vivos);
+    } catch { /* fila corrompida é fila vazia, nunca um erro na tela */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(FILA_CHAVE, JSON.stringify(fila)); } catch { /* sem espaço: a fila segue em memória */ }
+  }, [fila, FILA_CHAVE]);
+
+  const enfileirar = (p: Pendente) => setFila((f) => [...f, p]);
+
+  // Uma tentativa por ciclo, do mais antigo para o mais novo: manter a ORDEM das
+  // mensagens importa mais do que despachar rápido. O intervalo cresce com as
+  // tentativas para não martelar um servidor que já está com problema.
+  useEffect(() => {
+    if (fila.length === 0) return;
+    const primeiro = fila[0];
+    const espera = Math.min(30_000, 2_000 * Math.pow(2, Math.min(primeiro.tentativas, 4)));
+    const id = setTimeout(async () => {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setFila((f) => f.map((x) => (x.id === primeiro.id ? { ...x, tentativas: x.tentativas + 1 } : x)));
+        return;
+      }
+      try {
+        const r = await fetch(`/api/portal/${token}/conversations/${primeiro.contactId}/send`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: primeiro.text, key: primeiro.chave }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+          // Saiu (ou já tinha saído, e o servidor disse `duplicada`). Fora da fila.
+          setFila((f) => f.filter((x) => x.id !== primeiro.id));
+          if (d?.message && sel === primeiro.contactId) {
+            setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === primeiro.id ? (d.message as Msg) : m)) } : c));
+          }
+          return;
+        }
+        // O servidor RESPONDEU e recusou: insistir não muda nada. Sai da fila e
+        // o texto volta para a caixa, com o motivo à vista.
+        setFila((f) => f.filter((x) => x.id !== primeiro.id));
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== primeiro.id) } : c));
+        if (sel === primeiro.contactId) {
+          setDraft((cur) => cur || primeiro.text);
+          setSendError(d?.error || "Não foi possível enviar a mensagem.");
+        }
+      } catch {
+        // Ainda sem rede: conta a tentativa e espera mais da próxima vez.
+        setFila((f) => f.map((x) => (x.id === primeiro.id ? { ...x, tentativas: x.tentativas + 1 } : x)));
+      }
+    }, espera);
+    return () => clearTimeout(id);
+  }, [fila, token, sel]);
+
+  // Passou da validade: o contexto da conversa morreu e mandar agora seria pior
+  // do que não mandar. Sai da fila e o texto volta para a caixa.
+  useEffect(() => {
+    const velhas = fila.filter((p) => Date.now() - p.criadoEm >= VALIDADE_MS);
+    if (velhas.length === 0) return;
+    setFila((f) => f.filter((p) => Date.now() - p.criadoEm < VALIDADE_MS));
+    setConv((c) => (c ? { ...c, items: c.items.filter((m) => !velhas.some((v) => v.id === m.id)) } : c));
+    const minha = velhas.find((p) => p.contactId === sel);
+    if (minha) { setDraft((cur) => cur || minha.text); setSendError("A mensagem esperou mais de uma hora sem conexão e não foi enviada."); }
+  }, [fila, sel, VALIDADE_MS]);
+
   // Envio MANUAL da equipe (texto livre) pelo painel. Otimista: mostra a bolha na hora e
   // reconcilia com a mensagem real do servidor (dedup por id no polling). aiGenerated=false
   // → o backend aciona o takeover e pausa o bot.
+  //
+  // FILA: quando a rede falha, a mensagem NÃO volta para a caixa de texto — fica
+  // guardada e sai sozinha quando a conexão voltar, como no aplicativo. Cada item
+  // carrega uma CHAVE, e o servidor recusa a segunda vez que ela aparece: sem
+  // isso, um reenvio de uma tentativa que na verdade chegou mandaria a mesma
+  // mensagem duas vezes para o WhatsApp de uma pessoa.
+  //
+  // Erro do SERVIDOR (janela de 24h fechada, sem permissão) não entra na fila:
+  // insistir não resolveria e a mensagem ficaria voltando para sempre. Aí sim o
+  // texto volta para a caixa, com o motivo na tela.
   async function send() {
     const text = draft.trim();
     if (!sel || !text || sending || !conv?.windowOpen) return;
     setSending(true); setSendError(null);
     const optId = "opt-" + Date.now();
+    const chave = `${optId}-${Math.random().toString(36).slice(2, 10)}`;
     const optimistic: Msg = { id: optId, text, direction: "out", type: "text", timestamp: new Date().toISOString(), aiGenerated: false, pending: true };
     nearBottomRef.current = true;
     setConv((c) => (c ? { ...c, items: [...c.items, optimistic] } : c));
@@ -355,21 +449,28 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (taRef.current) taRef.current.style.height = "auto";
     try {
       const r = await fetch(`/api/portal/${token}/conversations/${sel}/send`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, key: chave }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d?.message) {
+      if (!r.ok) {
+        // O servidor respondeu e recusou: insistir não muda nada.
         setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
         setDraft((cur) => cur || text); // devolve o texto pra não perder o que digitou
         setSendError(d?.error || "Não foi possível enviar a mensagem.");
         return;
       }
+      if (!d?.message) {
+        // `duplicada: true` — uma tentativa anterior já entregou. A bolha
+        // otimista sai e o polling traz a real; não há nada a reenviar.
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+        return;
+      }
       // reconcilia a otimista pela mensagem real (id do banco → polling não duplica)
       setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === optId ? (d.message as Msg) : m)) } : c));
     } catch {
-      setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
-      setDraft((cur) => cur || text);
-      setSendError("Falha de conexão. Tente de novo.");
+      // Falha de REDE: a mensagem fica na fila com a bolha em cinza na tela, e
+      // sai sozinha quando a conexão voltar.
+      enfileirar({ id: optId, chave, contactId: sel, text, tentativas: 0, criadoEm: Date.now() });
     } finally { setSending(false); }
   }
 
@@ -1124,6 +1225,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
             {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
             <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: isMobile ? `10px 12px calc(18px + env(safe-area-inset-bottom))` : `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
+              {/* Fila visível: sem isto, "mandei e não apareceu" viraria a
+                  sensação de que o portal engoliu a mensagem. */}
+              {fila.length > 0 && (
+                <div role="status" style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f5b544", animation: "portalRecBlink 1.6s steps(1) infinite", flexShrink: 0 }} />
+                  {fila.length === 1 ? "Sem conexão — 1 mensagem sai assim que a rede voltar." : `Sem conexão — ${fila.length} mensagens saem assim que a rede voltar.`}
+                </div>
+              )}
               {iaPaused && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
                   <Sparkles size={12} style={{ color: "var(--p-accent)" }} /> IA em pausa — sua equipe assumiu esta conversa.
