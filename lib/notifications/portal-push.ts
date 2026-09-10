@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushToPortalClient } from "./web-push";
 import { sendPushToPortalDevices } from "./device-push";
 import { gateOnce } from "./dispatch";
+import { apnsConfig } from "./apns";
 
 // Alertas de Web Push pros vendedores do portal (com o portal FECHADO). Best-effort:
 // resolve o token do portal p/ o link e dispara pra todos os dispositivos inscritos.
@@ -61,6 +62,12 @@ export async function pushPortalMensagem(clientId: string, opts: {
   ownerEmail?: string | null;
 }): Promise<void> {
   const { contactId, contactName, texto, ownerEmail } = opts;
+
+  // Sem credencial APNs não há para onde mandar: sai ANTES de gravar qualquer
+  // coisa. Sem esta linha, cada mensagem de lead que a IA não responde gravaria
+  // uma linha de dedupe no banco para um aviso que nunca sairia — e é exatamente
+  // o estado de produção hoje, que ainda não tem as chaves da Apple.
+  if (!apnsConfig()) return;
 
   // Rajada de 5 mensagens seguidas do mesmo lead = 1 aviso. A chave carrega a
   // janela de 10 min porque `gateOnce` é permanente por natureza.
