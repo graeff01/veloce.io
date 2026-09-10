@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -50,15 +50,57 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 }
 // Miniatura de imagem recebida (o lead mandou foto). Fallback pro rótulo se falhar.
+// A foto abria em ABA NOVA (`target="_blank"`): tirava a vendedora da conversa e
+// ainda punha o endereço da API — que carrega o token do portal — na barra e no
+// histórico do navegador. Agora abre num VISOR sobre a página, com zoom nativo
+// (a própria imagem cresce no clique) e sem sair de onde ela está.
 function ThreadImage({ src, caption }: { src: string; caption: string | null }) {
   const [err, setErr] = useState(false);
+  const [aberta, setAberta] = useState(false);
+  const [zoom, setZoom] = useState(false);
+
+  // Esc fecha, como em qualquer visor. Só escuta enquanto está aberto.
+  useEffect(() => {
+    if (!aberta) return;
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setAberta(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aberta]);
+
   if (err) return <span>📷 Foto{caption ? ` · ${caption}` : ""}</span>;
   return (
-    <a href={src} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="Foto do lead" loading="lazy" onError={() => setErr(true)} style={{ maxWidth: 240, width: "100%", borderRadius: 9, display: "block" }} />
-      {caption && caption.trim() && <span style={{ display: "block", marginTop: 5 }}>{caption}</span>}
-    </a>
+    <>
+      <button onClick={() => { setAberta(true); setZoom(false); }} aria-label="Abrir a foto" style={{ display: "block", border: "none", background: "transparent", padding: 0, cursor: "zoom-in", width: "100%", textAlign: "left", color: "inherit" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="Foto do lead" loading="lazy" onError={() => setErr(true)} style={{ maxWidth: 240, width: "100%", borderRadius: 9, display: "block" }} />
+        {caption && caption.trim() && <span style={{ display: "block", marginTop: 5 }}>{caption}</span>}
+      </button>
+
+      {aberta && (
+        <div role="dialog" aria-label="Foto do lead" onClick={() => setAberta(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,.94)", display: "flex", alignItems: "center", justifyContent: "center", overflow: zoom ? "auto" : "hidden" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="Foto do lead"
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => !z); }}
+            style={zoom
+              ? { width: "auto", maxWidth: "none", height: "auto", cursor: "zoom-out" }
+              : { maxWidth: "94vw", maxHeight: "88vh", objectFit: "contain", cursor: "zoom-in" }} />
+          <button onClick={(e) => { e.stopPropagation(); setAberta(false); }} aria-label="Fechar foto"
+            style={{ position: "fixed", top: 18, right: 18, width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "none", background: "rgba(255,255,255,.14)", color: "#fff", cursor: "pointer" }}>
+            <X size={18} />
+          </button>
+          {/* A foto do lead é material de trabalho: vai para o orçamento e para o
+              instalador. O download é o "salvar" do navegador. */}
+          <a href={src} download onClick={(e) => e.stopPropagation()} aria-label="Salvar a foto"
+            style={{ position: "fixed", top: 18, left: 18, width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "rgba(255,255,255,.14)", color: "#fff", textDecoration: "none" }}>
+            <Download size={17} />
+          </a>
+          {caption && caption.trim() && (
+            <span style={{ position: "fixed", left: 0, right: 0, bottom: 22, textAlign: "center", color: "#fff", fontSize: 13, padding: "0 24px", textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{caption}</span>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 function avatarColor(name: string) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 42% 52%)`; }
