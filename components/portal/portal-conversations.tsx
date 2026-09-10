@@ -508,6 +508,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
    * contagem; dizer isso evita a vendedora achar que pegou conversa alheia.
    */
   const [assumindoLote, setAssumindoLote] = useState(false);
+  // Teto de 100 por chamada é regra do SERVIDOR; a tela mostra o mesmo número
+  // que vai agir, para o aviso não prometer mais do que acontece.
+  const livresNaTela = Math.min(100, items.filter((c) => !c.assignedEmail).length);
   async function assumirLote() {
     const livres = items.filter((c) => !c.assignedEmail).slice(0, 100);
     if (livres.length === 0 || assumindoLote) return;
@@ -848,23 +851,49 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar por nome ou número" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
-        {/* filtro "Meus leads" (só com login + equipe) */}
-        {me && attendants.length > 1 && (
-          <div style={{ padding: "0 14px 8px" }}>
-            <button onClick={() => setMineOnly((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", border: `1px solid ${mineOnly ? "var(--p-accent)" : "var(--p-border)"}`, borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 600, background: mineOnly ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOnly ? "var(--p-accent)" : "var(--p-text)" }}>
-              <UserRound size={13} /> Meus leads {myWaiting > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#1FA855" }}>{myWaiting}</span>}
-            </button>
+        {/* FAIXA DE FILTROS — uma linha só, que ROLA na horizontal.
+            Antes era `flexWrap: wrap` com um botão em `marginLeft: auto`: as
+            quatro abas quebravam em duas linhas e o botão caía numa terceira,
+            sozinho. Com a busca e o "Meus leads" acima, viravam cinco faixas
+            empilhadas antes da primeira conversa. Agora é UMA, e o que não cabe
+            se alcança arrastando — como as abas do WhatsApp.
+
+            Dois eixos diferentes na mesma linha (estado da conversa e dono),
+            separados por um traço para não parecerem a mesma escolha. */}
+        {!isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
+            {tabChip("all", "Conversas")}
+            {tabChip("waiting", "Aguardando")}
+            {hasAds && tabChip("ads", "Anúncio")}
+            {tabChip("arquivadas", "Arquivadas")}
+            {me && attendants.length > 1 && (
+              <>
+                <span aria-hidden style={{ width: 1, height: 18, background: "var(--p-border)", margin: "0 3px", flexShrink: 0 }} />
+                <button onClick={() => setMineOnly((v) => !v)} aria-pressed={mineOnly}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", border: "none", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 600, flexShrink: 0, background: mineOnly ? "var(--p-accent-soft)" : "transparent", color: mineOnly ? "var(--p-accent)" : "var(--wa-muted)" }}>
+                  <UserRound size={13} /> Meus
+                  {myWaiting > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#1FA855" }}>{myWaiting}</span>}
+                </button>
+              </>
+            )}
           </div>
         )}
-        {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
-        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}{tabChip("arquivadas", "Arquivadas")}
-          {me && items.some((c) => !c.assignedEmail) && (
-            <button onClick={() => void assumirLote()} disabled={assumindoLote}
-              title="Assumir as conversas sem responsável que estão nesta lista"
-              style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer" }}>
-              <UserRound size={13} />{assumindoLote ? "assumindo…" : `Assumir ${items.filter((c) => !c.assignedEmail).length > 100 ? 100 : items.filter((c) => !c.assignedEmail).length} livres`}
-            </button>
-          )}</div>}
+
+        {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
+            Como chip solto na linha das abas ela competia com os filtros e
+            parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
+            na tela, que só aparece quando há o que assumir. */}
+        {!isMobile && me && livresNaTela > 0 && (
+          <button onClick={() => void assumirLote()} disabled={assumindoLote}
+            title="Assumir as conversas sem responsável que estão nesta lista"
+            style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 14px", border: "none", borderTop: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-accent) 6%, transparent)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer", textAlign: "left" }}>
+            <UserRound size={14} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>
+              {assumindoLote ? "assumindo…" : `${livresNaTela} sem responsável nesta lista`}
+            </span>
+            {!assumindoLote && <span style={{ fontWeight: 800 }}>Assumir →</span>}
+          </button>
+        )}
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -980,14 +1009,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 onClick={() => void arquivar(tab !== "arquivadas")}
                 disabled={arquivando}
                 title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap" }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Archive size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{tab === "arquivadas" ? "Desarquivar" : "Arquivar"}</span>}
               </button>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
                   <button onClick={() => setOwnerMenu((o) => !o)} disabled={assigning} title={assigned ? `Dono: ${conv.assignedName}` : "Sem dono — assumir/atribuir"}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: `1px solid ${assigned ? (mineOwner ? "var(--p-accent)" : "var(--p-border)") : "var(--p-border)"}`, background: mineOwner ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOwner ? "var(--p-accent)" : assigned ? "var(--p-text)" : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assigning ? "wait" : "pointer", whiteSpace: "nowrap", maxWidth: isMobile ? 120 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, boxShadow: "0 1px 3px rgba(0,0,0,.06)", border: `1px solid ${assigned ? (mineOwner ? "var(--p-accent)" : "var(--p-border)") : "var(--p-border)"}`, background: mineOwner ? "var(--p-accent-soft)" : "var(--p-surface)", color: mineOwner ? "var(--p-accent)" : assigned ? "var(--p-text)" : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assigning ? "wait" : "pointer", whiteSpace: "nowrap", maxWidth: isMobile ? 120 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
                     <UserRound size={14} style={{ flexShrink: 0 }} />{!isMobile && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{assigned ? (mineOwner ? "Você" : conv.assignedName) : "Assumir"}</span>}
                   </button>
                 ); })()}
@@ -1025,7 +1054,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {/* Etiquetas (tags) da conversa */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <button onClick={() => setTagMenu((o) => !o)} title="Etiquetas"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                   <TagIcon size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{conv.tags?.length ? String(conv.tags.length) : "Etiquetas"}</span>}
                 </button>
                 {tagMenu && (

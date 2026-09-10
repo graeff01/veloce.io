@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET — Consumo do mês: atendimentos (contatos distintos que escreveram no mês) vs o limite
 // do plano, excedente + custo, projeção no ritmo atual, e a série diária pro gráfico.
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login." }, { status: 401 });
-  }
+  // Passa pelo GATE do portal, como as demais rotas. Antes decidia a autorização
+  // por conta própria e ficava fora da checagem de seção: uma atendente sem a
+  // seção "consumo" lia o limite do plano, o excedente e o CUSTO do cliente.
+  // Encontrado testando com o acesso real de uma vendedora da JR.
+  const { error, portal } = await guardPortal(req, token, { section: "consumo" });
+  if (error) return error;
 
   const conns = await prisma.waConnection.findMany({ where: { clientId: portal.clientId }, select: { id: true } });
   const connIds = conns.map((c) => c.id);
