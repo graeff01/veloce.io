@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -245,7 +245,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (!sel) { setConv(null); return; }
     let alive = true;
     nearBottomRef.current = true; // ao abrir uma conversa, começa no fim
-    setDraft(""); setSendError(null); // compositor limpo por conversa
+    setDraft(lerRascunho(sel)); setSendError(null); // volta o que ela tinha escrito
+
+    // Corte do divisor: a última visita ANTES de registrar a de agora.
+    try {
+      const anterior = localStorage.getItem(visitaKey(sel));
+      setCorteNovas(anterior ? Number(anterior) || null : null);
+      localStorage.setItem(visitaKey(sel), String(Date.now()));
+    } catch { setCorteNovas(null); }
 
     // Abrir marca como lida para a EQUIPE, no servidor — não só neste navegador.
     // São três vendedoras no MESMO número: lido por uma precisa sumir do negrito
@@ -340,6 +347,109 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       if (dd) setConv(dd);
     } finally { setAiReplying(false); }
   }
+
+  // ── Respostas rápidas ─────────────────────────────────────────────────────
+  // Sem isto a vendedora redigita as mesmas frases o dia inteiro: saudação,
+  // condições de frete, chave PIX. O aplicativo já tem; aqui vai o mesmo.
+  //
+  // POR NAVEGADOR, não por equipe — igual ao app, que guarda no aparelho.
+  // Compartilhar entre as três vendedoras seria melhor produto (a Maria escreve,
+  // a Ana usa), mas exige tabela nova e migration; fica anotado como decisão,
+  // não resolvido por conta própria.
+  const respostasKey = `vp-respostas-${token}`;
+  const [respostas, setRespostas] = useState<string[]>([]);
+  const [respostasAbertas, setRespostasAbertas] = useState(false);
+
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(respostasKey);
+      const v = cru ? JSON.parse(cru) : [];
+      if (Array.isArray(v)) setRespostas(v.filter((x) => typeof x === "string"));
+    } catch { /* lista corrompida é lista vazia */ }
+  }, [respostasKey]);
+
+  const gravarRespostas = (lista: string[]) => {
+    setRespostas(lista);
+    try { localStorage.setItem(respostasKey, JSON.stringify(lista)); } catch { /* segue em memória */ }
+  };
+
+  function novaResposta() {
+    const t = window.prompt("Nova resposta rápida:\n\nEla fica guardada neste navegador e entra no compositor com um clique.");
+    if (t && t.trim()) gravarRespostas([...respostas, t.trim()]);
+  }
+
+  // ── Busca dentro da conversa ──────────────────────────────────────────────
+  // O Ctrl+F do navegador acha, mas não navega entre ocorrências nem diz quantas
+  // são — e numa conversa de meses isso é a diferença entre achar o endereço e
+  // rolar procurando. O aplicativo já tinha; aqui vai o mesmo.
+  const [buscaThread, setBuscaThread] = useState("");
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [achadoAtual, setAchadoAtual] = useState(0);
+
+  const achados = useMemo(() => {
+    const termo = buscaThread.trim().toLowerCase();
+    if (!termo) return [] as string[];
+    return (conv?.items ?? [])
+      .filter((m) => ((m.text ?? "") + " " + (m.transcription ?? "")).toLowerCase().includes(termo))
+      .map((m) => m.id);
+  }, [buscaThread, conv]);
+
+  useEffect(() => { setAchadoAtual(0); }, [buscaThread]);
+  useEffect(() => { if (!sel) { setBuscaAberta(false); setBuscaThread(""); } }, [sel]);
+
+  /** Rola até a ocorrência e a destaca por um instante. */
+  const irParaAchado = (passo: number) => {
+    if (achados.length === 0) return;
+    const i = (achadoAtual + passo + achados.length) % achados.length;
+    setAchadoAtual(i);
+    const el = document.getElementById(`msg-${achados[i]}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  /**
+   * Devolve a conversa ao estado de pendente PARA A EQUIPE. Passou a importar
+   * mais agora que a leitura é compartilhada: o que uma abre some do negrito das
+   * outras, e sem isto não havia como desfazer — "abri, li, respondo depois"
+   * virava uma conversa que ninguém mais via como pendente.
+   */
+  async function marcarNaoLida() {
+    if (!sel) return;
+    const id = sel;
+    await fetch(`/api/portal/${token}/conversations/${id}/state`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lida: false }),
+    }).catch(() => {});
+    setList((l) => (l ? l.map((row) => (row.contactId === id ? { ...row, lida: false } : row)) : l));
+    // Volta para a lista: ficar dentro da conversa que acabou de ser marcada
+    // como não lida é contraditório — e o efeito de abrir a marcaria de novo.
+    setSel(null);
+  }
+
+  // ── Rascunho por conversa ─────────────────────────────────────────────────
+  // Antes o compositor era LIMPO ao trocar de conversa ("compositor limpo por
+  // conversa"). Na prática: escreveu meia resposta, pulou para outra conversa
+  // conferir um preço, voltou — e o texto tinha sumido. O aplicativo guarda por
+  // conversa, e é o que passa a valer aqui.
+  const rascunhoKey = (id: string) => `vp-rascunho-${token}-${id}`;
+  const lerRascunho = (id: string) => {
+    try { return localStorage.getItem(rascunhoKey(id)) ?? ""; } catch { return ""; }
+  };
+  const gravarRascunho = (id: string, texto: string) => {
+    try {
+      if (texto.trim()) localStorage.setItem(rascunhoKey(id), texto);
+      else localStorage.removeItem(rascunhoKey(id));
+    } catch { /* sem espaço: o rascunho segue só em memória */ }
+  };
+
+  // ── Divisor "mensagens novas" ─────────────────────────────────────────────
+  // Guarda o instante da ÚLTIMA visita a cada conversa, NESTE navegador. É
+  // legitimamente por aparelho: o divisor responde "onde eu parei", não "onde a
+  // equipe parou" — para a equipe existe o `lida`, que mora no servidor.
+  const visitaKey = (id: string) => `vp-visita-${token}-${id}`;
+  const [corteNovas, setCorteNovas] = useState<number | null>(null);
+  // O divisor aparece UMA vez. Sem esta trava ele nasceria antes de cada
+  // mensagem nova, e viraria listra em vez de marcação.
+  const marcouNovas = useRef(false);
+  useEffect(() => { marcouNovas.current = false; }, [sel, corteNovas, conv]);
 
   // ── Fila de envio ─────────────────────────────────────────────────────────
   // Antes: falhou a rede, a mensagem voltava para a caixa de texto com um aviso
@@ -449,6 +559,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
     try {
+      gravarRascunho(sel, ""); // saiu do compositor: o rascunho morreu aqui
       const r = await fetch(`/api/portal/${token}/conversations/${sel}/send`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, key: chave }),
       });
@@ -762,6 +873,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   };
   const onComposerInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(e.target.value);
+    if (sel) gravarRascunho(sel, e.target.value); // sobrevive a trocar de conversa e a recarregar
     const el = e.target; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 120) + "px";
   };
 
@@ -1040,6 +1152,21 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {/* Ações do topo — ETIQUETA, DONO e ARQUIVAR (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               <button
+                onClick={() => setBuscaAberta((v) => !v)}
+                title="Buscar nesta conversa"
+                aria-label="Buscar nesta conversa"
+                aria-expanded={buscaAberta}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, border: "1px solid var(--p-border)", background: buscaAberta ? "var(--p-accent-soft)" : "var(--p-surface)", color: buscaAberta ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Search size={14} />
+              </button>
+              <button
+                onClick={() => void marcarNaoLida()}
+                title="Marcar como não lida — volta a aparecer como pendente para a equipe"
+                aria-label="Marcar como não lida"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Eye size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>Não lida</span>}
+              </button>
+              <button
                 onClick={() => void arquivar(tab !== "arquivadas")}
                 disabled={arquivando}
                 title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
@@ -1115,6 +1242,32 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               </div>
               </div>
             </div>
+
+            {buscaAberta && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: isMobile ? "10px 12px 0" : "10px 8% 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, height: 34, padding: "0 12px", borderRadius: 10, background: "var(--p-surface)", border: "1px solid var(--p-border)" }}>
+                  <Search size={14} style={{ color: "var(--wa-muted)", flexShrink: 0 }} />
+                  <input autoFocus value={buscaThread} onChange={(e) => setBuscaThread(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") irParaAchado(1); if (e.key === "Escape") { setBuscaAberta(false); setBuscaThread(""); } }}
+                    placeholder="Buscar nesta conversa"
+                    style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: 13.5 }} />
+                  {buscaThread.trim() && (
+                    <span className="tnum" style={{ fontSize: 11.5, color: "var(--wa-muted)", flexShrink: 0 }}>
+                      {achados.length === 0 ? "0" : `${achadoAtual + 1}/${achados.length}`}
+                    </span>
+                  )}
+                  <button onClick={() => irParaAchado(-1)} disabled={!achados.length} aria-label="Ocorrência anterior" style={{ border: "none", background: "transparent", color: achados.length ? "var(--p-accent)" : "var(--p-border)", cursor: achados.length ? "pointer" : "default", padding: 2, display: "inline-flex" }}>
+                    <ChevronDown size={14} style={{ transform: "rotate(180deg)" }} />
+                  </button>
+                  <button onClick={() => irParaAchado(1)} disabled={!achados.length} aria-label="Próxima ocorrência" style={{ border: "none", background: "transparent", color: achados.length ? "var(--p-accent)" : "var(--p-border)", cursor: achados.length ? "pointer" : "default", padding: 2, display: "inline-flex" }}>
+                    <ChevronDown size={14} />
+                  </button>
+                  <button onClick={() => { setBuscaAberta(false); setBuscaThread(""); }} aria-label="Fechar busca" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 2, display: "inline-flex" }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Pílulas flutuantes abaixo do header — ETAPA do funil + IA responder (estilo dos avisos). */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: isMobile ? "10px 12px 0" : "10px 8% 0" }}>
@@ -1200,9 +1353,23 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {g.msgs.map((m) => {
                     const mine = m.direction === "out";
                     const body = (m.text && m.text.trim()) || mediaLabel(m.type) || "[mensagem]";
+                    // Primeira mensagem DO LEAD que chegou depois da última
+                    // visita: é onde a leitura parou. Só entrada — marcar as
+                    // nossas próprias como "novas" não diz nada a ninguém.
+                    const nova = corteNovas != null && !mine && Date.parse(m.timestamp) > corteNovas;
+                    const primeiraNova = nova && !marcouNovas.current;
+                    if (primeiraNova) marcouNovas.current = true;
                     return (
+                      <div key={`w-${m.id}`}>
+                      {primeiraNova && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0 10px" }}>
+                          <span style={{ flex: 1, height: 1, background: "color-mix(in srgb, #1FA855 45%, transparent)" }} />
+                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, color: "#1FA855", whiteSpace: "nowrap" }}>MENSAGENS NOVAS</span>
+                          <span style={{ flex: 1, height: 1, background: "color-mix(in srgb, #1FA855 45%, transparent)" }} />
+                        </div>
+                      )}
                       <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4 }}>
-                        <div data-bolha style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
+                        <div data-bolha id={`msg-${m.id}`} style={{ outline: achados[achadoAtual] === m.id ? "2px solid var(--p-accent)" : undefined, outlineOffset: 2, maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
@@ -1232,11 +1399,43 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           )}
                         </div>
                       </div>
+                      </div>
                     );
                   })}
                 </div>
               ))}
             </div>
+
+            {respostasAbertas && (
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: 240, overflowY: "auto", padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <strong style={{ flex: 1, fontSize: 12, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Respostas rápidas</strong>
+                  <button onClick={novaResposta} style={{ fontSize: 12, fontWeight: 700, color: "var(--p-accent)", background: "transparent", border: "none", cursor: "pointer" }}>+ nova</button>
+                  <button onClick={() => setRespostasAbertas(false)} aria-label="Fechar" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", display: "inline-flex", padding: 2 }}><X size={14} /></button>
+                </div>
+                {respostas.length === 0 ? (
+                  <p style={{ fontSize: 12.5, color: "var(--wa-muted)", margin: 0 }}>
+                    Nenhuma ainda. Toque em “+ nova” para guardar uma frase que você repete todo dia.
+                  </p>
+                ) : respostas.map((t, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                    <button
+                      onClick={() => {
+                        setDraft((d) => (d.trim() ? `${d.trim()} ${t}` : t));
+                        if (sel) gravarRascunho(sel, t);
+                        setRespostasAbertas(false);
+                        taRef.current?.focus();
+                      }}
+                      style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 13, color: "var(--p-text)", background: "var(--p-bg)", border: "1px solid var(--p-border)", borderRadius: 9, padding: "8px 10px", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t}
+                    </button>
+                    <button onClick={() => gravarRespostas(respostas.filter((_, j) => j !== i))} aria-label={`Apagar resposta ${i + 1}`} title="Apagar" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", display: "inline-flex", padding: 4, flexShrink: 0 }}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* CATÁLOGO — abre acima do compositor, não em outra tela: a consulta
                 de preço acontece no meio da conversa, e sair dela era o atrito. */}
@@ -1327,6 +1526,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         </button>
                         <button onClick={() => imgInputRef.current?.click()} disabled={sending} aria-label="Enviar imagem" title="Enviar imagem" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer" }}>
                           <Camera size={21} />
+                        </button>
+                        <button onClick={() => setRespostasAbertas((v) => !v)} disabled={sending} aria-label="Respostas rápidas" title="Respostas rápidas — frases que você usa todo dia" aria-expanded={respostasAbertas} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: respostasAbertas ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
+                          <Zap size={20} />
                         </button>
                         <button onClick={() => setCatalogoAberto((v) => !v)} disabled={sending} aria-label="Consultar o catálogo" title="Catálogo — preço e foto sem sair da conversa" aria-expanded={catalogoAberto} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: catalogoAberto ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
                           <Package size={21} />

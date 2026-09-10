@@ -9,6 +9,7 @@ import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { PortalCreativeMedia } from "@/components/portal/portal-creative-media";
+import { AreaChart, Sparkline } from "@/components/portal/portal-charts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -116,6 +117,19 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
               <DeltaChip pct={data.deltas.cpl} goodWhenUp={false} />
             </div>
           </div>
+
+          {data.series.length > 1 && (
+            <div style={{ padding: "4px 18px 16px" }}>
+              <div className="p-eyebrow" style={{ marginBottom: 8 }}>Leads por dia</div>
+              <AreaChart points={data.series.map((d) => d.leads)} height={150} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                <span style={{ fontSize: 11.5, color: "var(--p-muted)", flexShrink: 0 }}>Investimento</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Sparkline points={data.series.map((d) => d.spend)} height={26} />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="p-split">
             {/* Pra onde foi o investimento */}
