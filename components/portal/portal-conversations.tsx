@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -398,6 +398,87 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
    * estado mora no servidor, como no aplicativo. É o que permite a JR encarar
    * 1.271 conversas: o que já morreu sai da frente.
    */
+  /**
+   * Assumir em LOTE as conversas LIVRES que estão na tela. A JR abriu com ~1.250
+   * sem dona: pegar uma a uma não é trabalho, é desistência. O filtro é a
+   * seleção — por isso o aviso diz o número exato antes de agir.
+   *
+   * O servidor ignora em silêncio o que já tem outra responsável e devolve a
+   * contagem; dizer isso evita a vendedora achar que pegou conversa alheia.
+   */
+  const [assumindoLote, setAssumindoLote] = useState(false);
+  async function assumirLote() {
+    const livres = items.filter((c) => !c.assignedEmail).slice(0, 100);
+    if (livres.length === 0 || assumindoLote) return;
+    if (!window.confirm(`Assumir ${livres.length} conversa${livres.length > 1 ? "s" : ""}?\n\nVocê passa a ser a responsável por todas elas.`)) return;
+    setAssumindoLote(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/bulk-assign`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: livres.map((c) => c.contactId) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d?.error || "Não foi possível assumir agora."); return; }
+      setList((l) => (l ? l.map((row) => (livres.some((x) => x.contactId === row.contactId) ? { ...row, assignedEmail: me ?? row.assignedEmail } : row)) : l));
+      alert(`${d.assumidas} assumida${d.assumidas === 1 ? "" : "s"}.${d.ignoradas > 0 ? ` ${d.ignoradas} já tinham outra responsável.` : ""}`);
+    } finally { setAssumindoLote(false); }
+  }
+
+  // ── Catálogo no meio do atendimento ───────────────────────────────────────
+  // A vendedora precisava sair da conversa (ou abrir o site) para consultar
+  // preço. O aplicativo trouxe o catálogo para dentro da conversa; aqui vai o
+  // mesmo, pela MESMA rota somente-leitura (/catalog).
+  const [catalogoAberto, setCatalogoAberto] = useState(false);
+  const [catalogoBusca, setCatalogoBusca] = useState("");
+  const [catalogo, setCatalogo] = useState<{ id: string; title: string; price: number | null; imageUrl: string | null }[] | null>(null);
+  const [enviandoItem, setEnviandoItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!catalogoAberto) return;
+    let vivo = true;
+    const sp = catalogoBusca.trim() ? `?q=${encodeURIComponent(catalogoBusca.trim())}` : "";
+    // Debounce curto: digitar "churrasqueira" não vale doze consultas.
+    const id = setTimeout(() => {
+      fetch(`/api/portal/${token}/catalog${sp}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (vivo) setCatalogo(Array.isArray(d?.items) ? d.items : []); })
+        .catch(() => { if (vivo) setCatalogo([]); });
+    }, 220);
+    return () => { vivo = false; clearTimeout(id); };
+  }, [catalogoAberto, catalogoBusca, token]);
+
+  const precoBR = (v: number | null) =>
+    v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  /** Insere o item no compositor, para a vendedora completar antes de mandar. */
+  function inserirItem(it: { title: string; price: number | null }) {
+    const linha = it.price != null ? `${it.title} — ${precoBR(it.price)}` : it.title;
+    setDraft((d) => (d.trim() ? `${d.trim()}\n${linha}` : linha));
+    setCatalogoAberto(false);
+    taRef.current?.focus();
+  }
+
+  /**
+   * Manda a FOTO com o nome e o preço na legenda — que é o que o lead quer ver.
+   * A imagem do catálogo pode estar em outro domínio; se o navegador barrar,
+   * dizemos isso em vez de falhar em silêncio, e o texto ainda pode ser inserido.
+   */
+  async function enviarItemComFoto(it: { id: string; title: string; price: number | null; imageUrl: string | null }) {
+    if (!it.imageUrl || !sel || enviandoItem) return;
+    setEnviandoItem(it.id);
+    try {
+      const resp = await fetch(it.imageUrl);
+      if (!resp.ok) throw new Error("imagem indisponível");
+      const blob = await resp.blob();
+      const nome = `catalogo-${it.id}.jpg`;
+      const legenda = it.price != null ? `${it.title} — ${precoBR(it.price)}` : it.title;
+      await sendMedia("image", new File([blob], nome, { type: blob.type || "image/jpeg" }), legenda);
+      setCatalogoAberto(false);
+    } catch {
+      alert("Não foi possível baixar a foto deste item. Use “inserir texto” e envie a imagem manualmente.");
+    } finally { setEnviandoItem(null); }
+  }
+
   const [arquivando, setArquivando] = useState(false);
   async function arquivar(arquivada: boolean) {
     if (!sel || arquivando) return;
@@ -675,7 +756,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
         {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
-        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}{tabChip("arquivadas", "Arquivadas")}</div>}
+        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}{tabChip("arquivadas", "Arquivadas")}
+          {me && items.some((c) => !c.assignedEmail) && (
+            <button onClick={() => void assumirLote()} disabled={assumindoLote}
+              title="Assumir as conversas sem responsável que estão nesta lista"
+              style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer" }}>
+              <UserRound size={13} />{assumindoLote ? "assumindo…" : `Assumir ${items.filter((c) => !c.assignedEmail).length > 100 ? 100 : items.filter((c) => !c.assignedEmail).length} livres`}
+            </button>
+          )}</div>}
         {/* filtro por anúncio (só na aba de anúncios) */}
         {tab === "ads" && adGroups.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
@@ -986,6 +1074,54 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               ))}
             </div>
 
+            {/* CATÁLOGO — abre acima do compositor, não em outra tela: a consulta
+                de preço acontece no meio da conversa, e sair dela era o atrito. */}
+            {catalogoAberto && (
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: 300, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px 8px" }}>
+                  <Search size={15} style={{ color: "var(--wa-muted)", flexShrink: 0 }} />
+                  <input
+                    autoFocus
+                    value={catalogoBusca}
+                    onChange={(e) => setCatalogoBusca(e.target.value)}
+                    placeholder="Buscar no catálogo"
+                    style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", outline: "none", fontSize: 13.5, color: "var(--p-text)" }}
+                  />
+                  <button onClick={() => setCatalogoAberto(false)} aria-label="Fechar catálogo" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
+                    <X size={15} />
+                  </button>
+                </div>
+                <div style={{ overflowY: "auto", padding: "0 8px 10px" }}>
+                  {catalogo === null ? (
+                    <p style={{ fontSize: 12.5, color: "var(--wa-muted)", padding: "6px 6px 10px", margin: 0 }}>Carregando…</p>
+                  ) : catalogo.length === 0 ? (
+                    <p style={{ fontSize: 12.5, color: "var(--wa-muted)", padding: "6px 6px 10px", margin: 0 }}>
+                      {catalogoBusca.trim() ? "Nenhum item com esse nome." : "O catálogo deste cliente está vazio."}
+                    </p>
+                  ) : catalogo.map((it) => (
+                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 7, borderRadius: 10 }}>
+                      <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 8, overflow: "hidden", background: "var(--p-raise)", border: "1px solid var(--p-border)" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {it.imageUrl ? <img src={it.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+                        {it.price != null && <div className="tnum" style={{ fontSize: 12, color: "var(--p-accent)", fontWeight: 700 }}>{precoBR(it.price)}</div>}
+                      </div>
+                      <button onClick={() => inserirItem(it)} title="Inserir no texto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", background: "transparent", border: "1px solid var(--p-border)", borderRadius: 8, padding: "5px 9px", cursor: "pointer", flexShrink: 0 }}>
+                        texto
+                      </button>
+                      {it.imageUrl && (
+                        <button onClick={() => void enviarItemComFoto(it)} disabled={!!enviandoItem} title="Enviar a foto com nome e preço" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--p-on-accent)", background: "var(--p-accent)", border: "none", borderRadius: 8, padding: "5px 10px", cursor: enviandoItem ? "wait" : "pointer", flexShrink: 0, opacity: enviandoItem && enviandoItem !== it.id ? 0.5 : 1 }}>
+                          {enviandoItem === it.id ? "enviando…" : "enviar foto"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
             <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: isMobile ? `10px 12px calc(18px + env(safe-area-inset-bottom))` : `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
               {iaPaused && (
@@ -1019,6 +1155,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         </button>
                         <button onClick={() => imgInputRef.current?.click()} disabled={sending} aria-label="Enviar imagem" title="Enviar imagem" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer" }}>
                           <Camera size={21} />
+                        </button>
+                        <button onClick={() => setCatalogoAberto((v) => !v)} disabled={sending} aria-label="Consultar o catálogo" title="Catálogo — preço e foto sem sair da conversa" aria-expanded={catalogoAberto} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: catalogoAberto ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
+                          <Package size={21} />
                         </button>
                         <textarea
                           ref={taRef}
