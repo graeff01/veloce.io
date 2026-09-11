@@ -63,6 +63,8 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
         @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){ .pmobnav{background:var(--p-surface)} }
         @media(prefers-reduced-motion:reduce){ .pmobnav{animation:none} }
         @media(min-width:1024px){ .pmobnav{display:none} }
+        /* Conversa aberta = tela de detalhe: some, como no aplicativo. */
+        html[data-conversa-aberta="1"] .pmobnav{display:none}
         @media(max-width:1023px){ .pmain,.fmain,.imain,.amain,.tmain,.qmain{padding-bottom:calc(96px + env(safe-area-inset-bottom))} }`}</style>
       <nav className="pmobnav" aria-label="Navegação principal">
         {modulos.map((m) => {

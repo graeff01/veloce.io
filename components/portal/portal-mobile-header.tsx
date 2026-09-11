@@ -83,6 +83,8 @@ export function PortalMobileHeader({ token, titulo, account, sections, comPerfil
         /* O título passou para a barra: no celular, o do conteúdo viraria eco. */
         @media(max-width:1023px){ .pm-titulo-conteudo{display:none} }
         @media(min-width:1024px){ .pmhead{display:none} }
+        /* Conversa aberta = tela de detalhe: some, como no aplicativo. */
+        html[data-conversa-aberta="1"] .pmhead{display:none}
       `}</style>
 
       <header className="pmhead">

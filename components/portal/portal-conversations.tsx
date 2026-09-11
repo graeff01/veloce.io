@@ -224,6 +224,17 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (t === "waiting" || t === "ads" || t === "arquivadas") setTab(t);
   }, []);
 
+  // Avisa a página inteira que estamos numa tela de DETALHE: o cabeçalho móvel e
+  // a barra inferior somem, como no aplicativo. Sem isso a barra fica por cima do
+  // compositor e a pessoa não consegue responder — foi exatamente o que
+  // aconteceu, e é o mesmo motivo anotado em apps/mobile/src/ui/nav.tsx.
+  useEffect(() => {
+    const raiz = document.documentElement;
+    if (isMobile && sel) raiz.setAttribute("data-conversa-aberta", "1");
+    else raiz.removeAttribute("data-conversa-aberta");
+    return () => raiz.removeAttribute("data-conversa-aberta");
+  }, [isMobile, sel]);
+
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 760px)");
