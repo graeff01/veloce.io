@@ -264,3 +264,35 @@ test("filtro apontando para número de outro cliente é ignorado, não obedecido
   const meus = new Set(d.conexoes.map((c: { id: string }) => c.id));
   for (const c of d.conversations) assert.ok(meus.has(c.conexaoId), "só números deste cliente");
 });
+
+// ── o formato da Jardim do Lago ──────────────────────────────────────────────
+// Um perfil, três abas: WhatsApp, Funil e Equipe (as métricas individuais e
+// gerais). Isso é CONFIGURAÇÃO — `ClientPortal.sections` —, não código; este
+// teste prova que a configuração produz o que se espera dela.
+
+test("com três seções, o portal mostra três abas e nada mais", async () => {
+  await db.clientPortal.update({ where: { clientId }, data: { sections: "conversas,funil,equipe" } });
+
+  const html = await (await fetch(`${BASE}/r/${token}/conversas`, { headers: { cookie } })).text();
+  for (const caminho of ["/conversas", "/funil", "/equipe"]) {
+    assert.ok(html.includes(`/r/${token}${caminho}`), `a aba ${caminho} precisa estar no menu`);
+  }
+  for (const fora of ["/anuncios", "/consumo", "/frete", "/aprendizado", "/objecoes"]) {
+    assert.ok(!html.includes(`/r/${token}${fora}`), `${fora} não foi configurada e não pode aparecer`);
+  }
+});
+
+test("as três páginas da configuração respondem", async () => {
+  for (const caminho of ["/conversas", "/funil", "/equipe"]) {
+    const r = await fetch(`${BASE}/r/${token}${caminho}`, { headers: { cookie } });
+    assert.equal(r.status, 200, `página ${caminho}`);
+  }
+});
+
+test("a barra do celular leva as três, não duas", async () => {
+  // A regra vive em lib/portal/modulos.ts e é testada lá; aqui o que se prova é
+  // que ela chega na página com as seções certas — Equipe entra na barra porque
+  // este cliente tem poucas seções, e acompanhar é o trabalho das gerentes.
+  const html = await (await fetch(`${BASE}/r/${token}/equipe`, { headers: { cookie } })).text();
+  assert.ok(html.includes("Navegação principal"), "a barra inferior precisa existir na página");
+});

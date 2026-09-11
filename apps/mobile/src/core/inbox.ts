@@ -30,6 +30,12 @@ export function modulosPara(me: Me | null): ModuloRota[] {
   if (temRevisao || secoes.includes("fechamento")) out.push("revisao");
   // "Mais" NÃO entra aqui: virou atalho no cabeçalho. A barra é só para o que
   // se usa o dia inteiro.
+  //
+  // PENDENTE: o PWA já deixa Equipe entrar na barra quando o cliente tem poucas
+  // seções (Jardim do Lago: WhatsApp, Funil e acompanhamento — acompanhar é o
+  // trabalho inteiro das gerentes). Aqui a tela existe, mas fora das abas: para
+  // acompanhar o portal, `app/equipe.tsx` precisa virar uma rota de `(app)`.
+  // Ver `lib/portal/modulos.ts` no portal.
   return out;
 }
 

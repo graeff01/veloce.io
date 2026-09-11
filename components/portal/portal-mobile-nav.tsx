@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Megaphone, Filter, FileText } from "lucide-react";
+import { MessageCircle, Megaphone, Filter, FileText, Users } from "lucide-react";
 import { modulosPortal, type ModuloPortal } from "@/lib/portal/modulos";
 
 // ── Barra inferior do PWA no celular ──────────────────────────────────────────
@@ -26,6 +26,7 @@ const ICONE: Record<ModuloPortal, React.ReactNode> = {
   anuncios: <Megaphone size={20} />,
   funil: <Filter size={20} />,
   revisao: <FileText size={20} />,
+  equipe: <Users size={20} />,
 };
 
 export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
