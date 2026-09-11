@@ -62,7 +62,8 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
       <style>{`.pmobnav{position:fixed;left:16px;right:16px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:30;display:flex;gap:2px;padding:5px;background:color-mix(in srgb, var(--p-surface) 78%, transparent);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid color-mix(in srgb, var(--p-border) 50%, transparent);border-radius:22px;box-shadow:0 4px 20px rgba(0,0,0,.10);animation:portalBarUp .34s cubic-bezier(.22,1,.36,1) both}
         @keyframes portalBarUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
         @media(prefers-reduced-motion:reduce){ .pmobnav{animation:none} }
-        @media(min-width:761px){ .pmobnav{display:none} }`}</style>
+        @media(min-width:761px){ .pmobnav{display:none} }
+        @media(max-width:760px){ .pmain,.fmain,.imain,.amain,.tmain,.qmain{padding-bottom:calc(96px + env(safe-area-inset-bottom))} }`}</style>
       <nav className="pmobnav" aria-label="Navegação principal">
         {modulos.map((m) => {
           const on = active === m.chave;
