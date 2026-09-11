@@ -42,7 +42,7 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
   return (
     <div style={{ padding: "22px 26px 60px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>Funil de vendas</h1>
+        <h1 className="pm-titulo-conteudo" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>Funil de vendas</h1>
         <p style={{ fontSize: 13.5, color: "var(--p-muted)", marginTop: 2 }}>A jornada dos leads na barra de temperatura: frio → quente. Abra cada etapa abaixo para ver os leads.</p>
       </div>
 

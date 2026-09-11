@@ -8,6 +8,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
+import { PortalMobileHeader } from "@/components/portal/portal-mobile-header";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { PortalCreativeMedia } from "@/components/portal/portal-creative-media";
 import { AreaChart, Sparkline } from "@/components/portal/portal-charts";
@@ -78,6 +79,7 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="anuncios" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"anuncios"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileHeader token={token} titulo="Anúncios" account={shell.account} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .amain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .amain{margin-left:236px} }

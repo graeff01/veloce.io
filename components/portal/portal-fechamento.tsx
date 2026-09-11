@@ -151,7 +151,7 @@ export function PortalFechamento({ token }: { token: string }) {
       `}</style>
 
       <div className="fhead">
-        <h1>Fila de Fechamento</h1>
+        <h1 className="pm-titulo-conteudo">Fila de Fechamento</h1>
         {waiting.length > 0 && <span className="fcount">{waiting.length}</span>}
       </div>
       <p className="fsub">Leads que <b>aprovaram o orçamento</b> e querem fechar. Pegue para assumir o atendimento — a IA silencia na hora.</p>
