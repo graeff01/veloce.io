@@ -42,12 +42,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   const d = parsed.data;
 
+  const numero = d.phoneNumberId.trim();
+  const jaExiste = await prisma.waConnection.findUnique({
+    where: { phoneNumberId: numero },
+    select: { clientId: true },
+  });
+  if (jaExiste && jaExiste.clientId !== id) {
+    return NextResponse.json(
+      { error: "Este número já está conectado a outro cliente. Remova-o de lá antes de conectar aqui." },
+      { status: 409 },
+    );
+  }
+
   const conn = await prisma.waConnection.upsert({
-    where: { clientId: id },
+    where: { phoneNumberId: numero },
     create: {
       clientId: id,
       wabaId: d.wabaId.trim(),
-      phoneNumberId: d.phoneNumberId.trim(),
+      phoneNumberId: numero,
       accessToken: encryptSecret(d.accessToken.trim()),
       appSecret: d.appSecret ? encryptSecret(d.appSecret.trim()) : null,
       displayPhone: d.displayPhone ?? null,
@@ -55,7 +67,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
     update: {
       wabaId: d.wabaId.trim(),
-      phoneNumberId: d.phoneNumberId.trim(),
+      phoneNumberId: numero,
       accessToken: encryptSecret(d.accessToken.trim()),
       ...(d.appSecret ? { appSecret: encryptSecret(d.appSecret.trim()) } : {}),
       displayPhone: d.displayPhone ?? null,

@@ -77,7 +77,7 @@ async function main() {
 
   const { start, end, label } = monthWindow(monthStr);
 
-  const conn = await prisma.waConnection.findUnique({
+  const conn = await prisma.waConnection.findFirst({
     where: { clientId },
     include: { client: { select: { name: true } } },
   });

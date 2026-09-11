@@ -11,8 +11,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId } });
-  if (!conn) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
+  const conns = await prisma.waConnection.findMany({
+    where: { clientId: portal.clientId },
+    select: { id: true, name: true, displayPhone: true },
+  });
+  if (conns.length === 0) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
+  const connIds = conns.map((c) => c.id);
+  // De qual número veio cada conversa — é o que permite dizer "esta é da Vitória"
+  // sem depender de alguém ter atribuído a conversa na mão.
+  const connBy = new Map(conns.map((c) => [c.id, c]));
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -41,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     : {};
 
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: conn.id, ...search, ...ownerFilter, ...arquivoFilter },
+    where: { connectionId: { in: connIds }, ...search, ...ownerFilter, ...arquivoFilter },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,
@@ -51,7 +58,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const contacts = hasMore ? rows.slice(0, limit) : rows;
   const ids = contacts.map((c) => c.id);
   const [leads, convs, attendants, contactTags] = await Promise.all([
-    prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
+    prisma.waLead.findMany({ where: { connectionId: { in: connIds }, contactId: { in: ids } }, select: { contactId: true, adTitle: true, adModel: true, adId: true, ctwaClid: true, sourceType: true } }),
     prisma.waConversation.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, funnelStage: true, assignedEmail: true, portalReadAt: true, portalReadBy: true, portalArchivedAt: true, lastInboundAt: true, lastOutboundAt: true } }),
     prisma.portalAccess.findMany({ where: { clientId: portal.clientId }, orderBy: { createdAt: "asc" }, select: { email: true, name: true } }),
     prisma.waContactTag.findMany({ where: { contactId: { in: ids } }, select: { contactId: true, tag: { select: { id: true, name: true, color: true } } } }),
@@ -76,6 +83,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         contactId: c.id,
         name: c.displayName || c.name || c.waId,
         waId: c.waId,
+        conexaoId: c.connectionId,
+        conexaoNome: connBy.get(c.connectionId)?.name ?? connBy.get(c.connectionId)?.displayPhone ?? null,
         lastText: last?.text ?? null,
         lastType: last?.type ?? null,
         lastDirection: last?.direction ?? null,

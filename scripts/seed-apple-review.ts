@@ -42,10 +42,10 @@ const LEADS = [
 ];
 
 async function limpar(clientId: string) {
-  const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (wa) {
     await prisma.leadProfile.deleteMany({ where: { connectionId: wa.id } });
-    await prisma.waConnection.delete({ where: { clientId } }); // cascata: contatos, mensagens, conversas
+    await prisma.waConnection.delete({ where: { id: wa.id } }); // cascata: contatos, mensagens, conversas
   }
   await prisma.quote.deleteMany({ where: { clientId } });
   await prisma.portalSession.deleteMany({ where: { clientId } });

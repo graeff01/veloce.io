@@ -55,11 +55,11 @@ async function findClient() {
 
 // Remove SÓ o que este script cria — seguro mesmo se o cliente já existir.
 async function wipe(clientId: string) {
-  const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (wa) {
     // LeadProfile não tem cascade por conexão — apaga explicitamente antes da conexão.
     await prisma.leadProfile.deleteMany({ where: { connectionId: wa.id } });
-    await prisma.waConnection.delete({ where: { clientId } }); // cascade: contatos/mensagens/leads/conversas
+    await prisma.waConnection.delete({ where: { id: wa.id } }); // cascade: contatos/mensagens/leads/conversas
   }
   await prisma.metaConnection.deleteMany({ where: { clientId } }); // cascade: campanhas/ads/criativos/insights
   await prisma.leadObjection.deleteMany({ where: { clientId } });   // sem FK cascade — apaga explícito

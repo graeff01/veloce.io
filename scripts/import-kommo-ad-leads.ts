@@ -59,7 +59,7 @@ function parseKommoDate(s: string): Date | null {
 }
 
 async function main() {
-  const conn = await prisma.waConnection.findUnique({ where: { clientId } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId } });
   if (!conn) { console.error(`WaConnection não encontrada para clientId=${clientId}`); process.exit(1); }
 
   const raw = readFileSync(csvPath, "utf8");
