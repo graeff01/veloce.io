@@ -5,6 +5,9 @@ import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/li
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
+import { PortalMobileHeader } from "@/components/portal/portal-mobile-header";
+import { PortalOrcamentosAbas } from "@/components/portal/portal-orcamentos-abas";
 import { PortalQuotes } from "@/components/portal/portal-quotes";
 
 export const runtime = "nodejs";
@@ -41,6 +44,9 @@ export default async function OrcamentosPage({ params }: { params: Promise<{ tok
     <main className="qmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="orcamentos" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileNav token={token} active={"revisao"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileHeader token={token} titulo="Orçamentos" account={shell.account} sections={shell.sections} />
+      <PortalOrcamentosAbas token={token} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .qmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}`}</style>
       <PortalQuotes token={token} />
