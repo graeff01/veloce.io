@@ -61,12 +61,12 @@ export function PortalFunnel({ token, data }: { token: string; data: FunnelData 
           <span style={cap}>fechando · Quente 🔥</span>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <div className="heatbar" style={{ height: 26, borderRadius: 13, minWidth: 520, backgroundImage: "repeating-linear-gradient(110deg, rgba(255,255,255,0) 0px, rgba(255,255,255,.12) 40px, rgba(255,255,255,0) 80px), linear-gradient(90deg,#2563EB,#06B6D4,#EAB308,#F97316,#DC2626)", backgroundSize: "auto, 100% 100%", backgroundRepeat: "repeat, no-repeat", boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)", animation: "heatShimmer 5s linear infinite" }} />
+        <div>
+          <div className="heatbar" style={{ height: 26, borderRadius: 13, backgroundImage: "repeating-linear-gradient(110deg, rgba(255,255,255,0) 0px, rgba(255,255,255,.12) 40px, rgba(255,255,255,0) 80px), linear-gradient(90deg,#2563EB,#06B6D4,#EAB308,#F97316,#DC2626)", backgroundSize: "auto, 100% 100%", backgroundRepeat: "repeat, no-repeat", boxShadow: "inset 0 1px 3px rgba(0,0,0,.14)", animation: "heatShimmer 5s linear infinite" }} />
 
-          <div style={{ display: "flex", marginTop: 10, minWidth: 520 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))", rowGap: 12, marginTop: 10 }}>
             {data.stages.map((s) => (
-              <div key={s.key} style={{ flex: 1, textAlign: "center", padding: "0 4px" }}>
+              <div key={s.key} style={{ textAlign: "center", padding: "0 4px", minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: s.isBottleneck ? "#DC2626" : "var(--p-text)" }}>{s.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1.2 }}>{s.reached}</div>
                 <div style={{ fontSize: 11, color: "var(--p-muted)" }}>
