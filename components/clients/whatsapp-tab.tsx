@@ -280,7 +280,9 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0, lineHeight: 1.6, maxWidth: 560 }}>
           Cada número pode ter um responsável e uma equipe. O responsável vira dono
           das conversas que chegam nele — é assim que as métricas individuais
-          aparecem sem ninguém precisar atribuir lead na mão.
+          aparecem sem ninguém precisar atribuir lead na mão. O e-mail do
+          responsável <b>não precisa ter acesso ao portal</b>: ele serve para
+          identificar quem atende, não para entrar no sistema.
         </p>
         <button onClick={onAdicionar} style={{ height: 34, padding: "0 14px", borderRadius: 9, border: "none", background: "#25D366", color: "#fff", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
           <Plus size={14} /> Adicionar número
@@ -311,19 +313,20 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
             <Field label="Quem atende neste número">
-              <select
-                value={c.ownerEmail ?? ""}
-                onChange={(e) => salvar(c.id, "ownerEmail", e.target.value)}
-                style={{ ...inp, cursor: "pointer" }}
-              >
-                <option value="">— ninguém (número da casa)</option>
-                {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
-                {/* Dono que não está (mais) na lista de acessos do portal: sem
-                    isto o campo apareceria vazio e a primeira edição o apagaria. */}
-                {c.ownerEmail && !users.some((u) => u.email === c.ownerEmail) && (
-                  <option value={c.ownerEmail}>{c.ownerEmail} (fora do portal)</option>
-                )}
-              </select>
+              {/* CAMPO ABERTO, não uma lista fechada. Quem atende num número
+                  quase nunca entra na plataforma — na Jardim do Lago os seis
+                  funcionários respondem pelo próprio celular e não têm acesso.
+                  Uma lista só com usuários do portal tornaria impossível dizer
+                  de quem é o número justamente no caso que motivou o campo.
+                  Os usuários do portal ficam como sugestão. */}
+              <input
+                list={`donos-${clientId}`}
+                type="email"
+                defaultValue={c.ownerEmail ?? ""}
+                placeholder="ana@jardimdolago.com.br"
+                onBlur={(e) => { if ((e.target.value.trim() || null) !== (c.ownerEmail ?? null)) salvar(c.id, "ownerEmail", e.target.value); }}
+                style={inp}
+              />
             </Field>
             <Field label="Equipe">
               <input
@@ -340,6 +343,9 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
 
       <datalist id={`equipes-${clientId}`}>
         {equipes.map((e) => <option key={e} value={e} />)}
+      </datalist>
+      <datalist id={`donos-${clientId}`}>
+        {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
       </datalist>
 
       {conns.length > 1 && (

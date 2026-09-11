@@ -296,3 +296,20 @@ test("a barra do celular leva as três, não duas", async () => {
   const html = await (await fetch(`${BASE}/r/${token}/equipe`, { headers: { cookie } })).text();
   assert.ok(html.includes("Navegação principal"), "a barra inferior precisa existir na página");
 });
+
+test("responsável SEM acesso ao portal ainda vira linha de métrica", async () => {
+  // O caso real: os seis funcionários da Jardim do Lago atendem pelo próprio
+  // celular e nunca entram na plataforma. Se só quem tem acesso pudesse ser
+  // dono de um número, as métricas individuais delas não existiriam.
+  const externo = "carla.sem.acesso@teste.local";
+  const conn = await numero(externo, "captacao", `externa${Date.now()}`);
+  await conversa(conn.id, `55549${marca}09`, { stage: "qualificado", respostas: 2 });
+
+  const r = await fetch(`${BASE}/api/portal/${token}/team-metrics?p=month`, { headers: { cookie }, cache: "no-store" });
+  const d = await r.json();
+  const linha = d.rows.find((x: { email: string }) => x.email === externo);
+  assert.ok(linha, "quem atende num número é dono das conversas dele, tendo acesso ou não");
+  assert.equal(linha.owned, 1);
+  assert.equal(linha.replies, 2);
+  assert.equal(linha.name, "carla.sem.acesso", "sem cadastro, o nome sai do e-mail");
+});
