@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download, Smartphone } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
 interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null;
   // Já vinham na resposta de /conversations e o portal não usava: são o tempo de
   // espera e o estado que a EQUIPE compartilha (o app já lê os dois).
-  lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
+  conexaoId?: string | null; conexaoNome?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -159,6 +159,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [me, setMe] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [attendants, setAttendants] = useState<Attendant[]>([]);
+  // Números do cliente. Um cliente pode atender por vários (a Jardim do Lago tem
+  // seis, três da consultoria e três da captação) e a caixa junta todos; este
+  // filtro é o que deixa olhar UM deles de cada vez.
+  const [conexoes, setConexoes] = useState<{ id: string; nome: string; equipe: string | null }[]>([]);
+  const [conexaoFiltro, setConexaoFiltro] = useState<string | null>(null);
+  const [conexaoModal, setConexaoModal] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [assigning, setAssigning] = useState(false);
@@ -249,14 +255,16 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       // Arquivadas vivem FORA da caixa: o servidor as exclui por padrão e só as
       // devolve quando pedidas. Sem isto, arquivar não tiraria nada da frente.
       if (tab === "arquivadas") sp.set("arquivadas", "1");
+      if (conexaoFiltro) sp.set("conexao", conexaoFiltro); // filtro por número, no SERVIDOR
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setConexoes(d.conexoes ?? []);
         setHasMore(!!d.hasMore); setList(d.conversations ?? []);
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q, mineOnly, tab]);
+  }, [token, q, mineOnly, tab, conexaoFiltro]);
 
   // Auto-atualização: quem manda mensagem SOBE PARA O TOPO, como no WhatsApp.
   //
@@ -279,9 +287,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
       if (mineOnly) sp.set("owner", "me");
       if (tab === "arquivadas") sp.set("arquivadas", "1");
+      if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setConexoes(d.conexoes ?? []);
         const frescas: Row[] = d.conversations ?? [];
         const naPrimeira = new Set(frescas.map((c) => c.contactId));
         setList((antiga) => {
@@ -295,7 +305,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token, mineOnly, tab]);
+  }, [token, mineOnly, tab, conexaoFiltro]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -305,6 +315,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (q.trim()) sp.set("q", q.trim());
     if (mineOnly) sp.set("owner", "me");
     if (tab === "arquivadas") sp.set("arquivadas", "1");
+    if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
@@ -1044,6 +1055,40 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
+        {/* NÚMEROS — só existe para quem atende por mais de um.
+            No DESKTOP são abas: os números cabem na linha e trocar é um clique.
+            No CELULAR é um seletor que abre a lista inteira, pelo mesmo motivo
+            das campanhas: com seis números, chips na horizontal ficariam
+            cortados e seria preciso arrastar para descobrir o que existe. */}
+        {conexoes.length > 1 && (
+          isMobile ? (
+            <div style={{ padding: "0 14px 10px" }}>
+              <button onClick={() => setConexaoModal(true)}
+                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${conexaoFiltro ? "var(--p-accent)" : "var(--p-border)"}`, background: conexaoFiltro ? "var(--p-accent-soft)" : "var(--p-bg)", color: conexaoFiltro ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+                <Smartphone size={14} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {conexoes.find((c) => c.id === conexaoFiltro)?.nome ?? "Todos os números"}
+                </span>
+                <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.6 }} />
+              </button>
+            </div>
+          ) : (
+            <div role="tablist" aria-label="Número de WhatsApp"
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
+              {[{ id: null as string | null, nome: "Todos", equipe: null }, ...conexoes].map((c) => {
+                const on = conexaoFiltro === c.id;
+                return (
+                  <button key={c.id ?? "todos"} role="tab" aria-selected={on}
+                    onClick={() => setConexaoFiltro(c.id)}
+                    style={{ padding: "5px 12px", border: "none", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: on ? 700 : 500, flexShrink: 0, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>
+                    {c.nome}
+                  </button>
+                );
+              })}
+            </div>
+          )
+        )}
+
         {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
             Como chip solto na linha das abas ela competia com os filtros e
             parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
@@ -1080,6 +1125,41 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
+        {conexaoModal && (
+          <>
+            <div onClick={() => setConexaoModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
+            <div role="dialog" aria-label="Escolher número" className={isMobile ? "psheet" : undefined}
+              style={isMobile
+                ? { position: "fixed", zIndex: 61, left: 0, right: 0, bottom: 0, maxHeight: "76vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", borderRadius: "18px 18px 0 0", boxShadow: "0 -12px 40px rgba(0,0,0,.22)", overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }
+                : { position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
+              {isMobile && (
+                <div aria-hidden style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
+                  <span style={{ width: 38, height: 4, borderRadius: 2, background: "var(--p-border)" }} />
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
+                <Smartphone size={16} style={{ color: "var(--p-accent)" }} />
+                <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>Números</strong>
+                <button onClick={() => setConexaoModal(false)} aria-label="Fechar" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ overflowY: "auto", padding: 6 }}>
+                {[{ id: null as string | null, nome: "Todos os números", equipe: null as string | null }, ...conexoes].map((c) => {
+                  const on = conexaoFiltro === c.id;
+                  return (
+                    <button key={c.id ?? "todos"} onClick={() => { setConexaoFiltro(c.id); setConexaoModal(false); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", border: "none", borderRadius: 10, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nome}</span>
+                      {c.equipe && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--wa-muted)", flexShrink: 0 }}>{c.equipe}</span>}
+                      {on && <Check size={15} style={{ flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
         {campanhaModal && (
           <>
             <div onClick={() => setCampanhaModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
@@ -1156,6 +1236,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
                       )}
                       <StageBadge stage={c.funnelStage} />
+                      {/* DE QUAL NÚMERO veio. Só aparece quando há mais de um e
+                          nenhum filtro está ativo — com filtro, repetir o número
+                          em toda linha seria eco do que a aba já diz. */}
+                      {conexoes.length > 1 && !conexaoFiltro && c.conexaoNome && (
+                        <span title={`Chegou no número ${c.conexaoNome}`} style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 12%, transparent)", padding: "1px 6px", borderRadius: 20, whiteSpace: "nowrap", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>{c.conexaoNome}</span>
+                      )}
                       {(c.tags ?? []).map((t) => (
                         <span key={t.id} title={t.name} style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: t.color, padding: "1px 6px", borderRadius: 20, letterSpacing: 0.2, whiteSpace: "nowrap", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>{t.name}</span>
                       ))}

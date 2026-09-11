@@ -231,3 +231,36 @@ test("conversa de OUTRO cliente continua fora de alcance", async () => {
   const r = await fetch(`${BASE}/api/portal/${token}/conversations/${alheio.id}`, { headers: { cookie } });
   assert.equal(r.status, 404, "abrir por contato não pode virar porta para outro cliente");
 });
+
+// ── o filtro por número ──────────────────────────────────────────────────────
+// A caixa junta os números; o filtro é o que deixa olhar um de cada vez (abas no
+// desktop, seletor no celular). O filtro é do SERVIDOR de propósito: filtrar na
+// tela mentiria assim que a lista passasse de uma página.
+
+test("a resposta traz os números do cliente, com equipe", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/conversations?limit=5`, { headers: { cookie } });
+  const d = await r.json();
+  assert.equal(d.conexoes.length, 3, "três números, mesmo os que não têm conversa nesta página");
+  const equipes = d.conexoes.map((c: { equipe: string | null }) => c.equipe);
+  assert.deepEqual(equipes, ["consultoria", "captacao", null]);
+});
+
+test("filtrar por um número devolve só as conversas dele", async () => {
+  const lista = await (await fetch(`${BASE}/api/portal/${token}/conversations?limit=50`, { headers: { cookie } })).json();
+  const daAna = lista.conexoes[0].id;
+  const r = await fetch(`${BASE}/api/portal/${token}/conversations?limit=50&conexao=${daAna}`, { headers: { cookie } });
+  const d = await r.json();
+  assert.ok(d.conversations.length > 0);
+  for (const c of d.conversations) assert.equal(c.conexaoId, daAna, "conversa de outro número vazou pelo filtro");
+  assert.ok(d.conversations.length < lista.conversations.length, "o filtro precisa filtrar de verdade");
+});
+
+test("filtro apontando para número de outro cliente é ignorado, não obedecido", async () => {
+  const outro = await db.waConnection.findFirst({ where: { clientId: { not: clientId } }, select: { id: true } });
+  if (!outro) return; // base sem outro cliente: nada a provar aqui
+  const r = await fetch(`${BASE}/api/portal/${token}/conversations?limit=50&conexao=${outro.id}`, { headers: { cookie } });
+  const d = await r.json();
+  assert.ok(d.conversations.length > 0, "cair num filtro alheio não pode esvaziar a caixa");
+  const meus = new Set(d.conexoes.map((c: { id: string }) => c.id));
+  for (const c of d.conversations) assert.ok(meus.has(c.conexaoId), "só números deste cliente");
+});

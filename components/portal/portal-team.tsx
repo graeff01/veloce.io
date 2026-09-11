@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 
-interface Row { email: string; name: string; isMe: boolean; newLeads: number; owned: number; waiting: number; qualified: number; converted: number; revenue: number; replies: number; avgFirstResponseSec: number | null }
+interface Row { email: string; name: string; isMe: boolean; equipe?: string | null; newLeads: number; owned: number; waiting: number; qualified: number; converted: number; revenue: number; replies: number; avgFirstResponseSec: number | null }
 interface Team { newLeads: number; owned: number; waiting: number; qualified: number; converted: number; revenue: number; replies: number }
-interface Data { me: string | null; isAdmin: boolean; period: string; periodLabel: string; rows: Row[]; team: Team | null; unassigned: number }
+/** Totais de UMA equipe (consultoria, captação…). `null` quando o cliente não separa. */
+interface Equipe extends Team { equipe: string; avgFirstResponseSec: number | null }
+interface Data { me: string | null; isAdmin: boolean; period: string; periodLabel: string; rows: Row[]; team: Team | null; teams: Equipe[] | null; unassigned: number }
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const fmtDur = (s: number | null) => (s == null ? "—" : s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}min` : `${(s / 3600).toFixed(1)}h`);
@@ -78,6 +80,34 @@ export function PortalTeam({ token }: { token: string }) {
               </div>
             )}
 
+            {/* POR EQUIPE — só existe para quem separa os números em equipes.
+                Vem antes do ranking de propósito: quem tem consultoria e
+                captação quer primeiro saber como vai cada frente, e só depois
+                quem puxa dentro dela. */}
+            {data?.isAdmin && data.teams && data.teams.length > 0 && (
+              <div className="p-panel">
+                <div className="p-phead"><h2>Por equipe</h2><span className="hint">{data.periodLabel}</span></div>
+                <div className="p-scroll">
+                  <table className="p-table" style={{ minWidth: 620 }}>
+                    <thead><tr><th>Equipe</th><th>Convertidos</th><th>Receita</th><th>Leads</th><th>Aguardando</th><th>1ª resp.</th><th>Respostas</th></tr></thead>
+                    <tbody>
+                      {data.teams.map((t) => (
+                        <tr key={t.equipe}>
+                          <td><b style={{ textTransform: "capitalize" }}>{t.equipe}</b></td>
+                          <td className="tnum" style={{ fontWeight: 750 }}>{t.converted}</td>
+                          <td>{tdBar(t.revenue)}</td>
+                          <td className="tnum">{t.owned}</td>
+                          <td className="tnum" style={{ color: t.waiting > 0 ? "var(--p-good)" : "var(--p-muted)", fontWeight: t.waiting > 0 ? 700 : 400 }}>{t.waiting}</td>
+                          <td className="tnum">{fmtDur(t.avgFirstResponseSec)}</td>
+                          <td className="tnum">{t.replies}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Ranking (admin) */}
             {!data?.isAdmin ? (
               <p style={{ fontSize: 12, color: "var(--p-muted)", lineHeight: 1.5, padding: "0 2px" }}>Você vê apenas os seus números. O ranking da equipe fica disponível para o admin do painel.</p>
@@ -94,6 +124,7 @@ export function PortalTeam({ token }: { token: string }) {
                             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                               <Avatar name={r.name} />
                               <b style={{ fontWeight: r.isMe ? 800 : 600 }}>{r.name}</b>
+                              {r.equipe && <span style={{ color: "var(--p-muted)", fontSize: 10.5, fontWeight: 600, textTransform: "capitalize" }}>{r.equipe}</span>}
                               {r.isMe && <span style={{ color: "var(--p-accent)", fontSize: 10.5, fontWeight: 700 }}>você</span>}
                             </span>
                           </td>
@@ -126,7 +157,9 @@ export function PortalTeam({ token }: { token: string }) {
               <p style={{ fontSize: 12, color: "var(--p-muted)" }}>⚠️ {data.unassigned} lead(s) aguardando <b>sem dono</b> — o primeiro a responder pelo painel vira o dono.</p>
             )}
             <p style={{ fontSize: 11, color: "var(--p-muted)", opacity: 0.85, lineHeight: 1.5 }}>
-              O dono do lead é definido pela 1ª resposta pelo painel (e pode ser transferido na conversa). Respostas pelo app do WhatsApp não entram na contagem individual.
+              {data?.teams && data.teams.length > 0
+                ? "Cada número tem um responsável: as conversas que chegam nele são dele, e as respostas enviadas pelo próprio celular contam. Atribuir a conversa a outra pessoa, na tela da conversa, tem prioridade sobre isso."
+                : "O dono do lead é definido pela 1ª resposta pelo painel (e pode ser transferido na conversa). Respostas pelo app do WhatsApp não entram na contagem individual."}
             </p>
           </>
         )}

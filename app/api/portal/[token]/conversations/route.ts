@@ -13,7 +13,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const conns = await prisma.waConnection.findMany({
     where: { clientId: portal.clientId },
-    select: { id: true, name: true, displayPhone: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, displayPhone: true, equipe: true },
   });
   if (conns.length === 0) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
   const connIds = conns.map((c) => c.id);
@@ -26,6 +27,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get("limit")) || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
   const owner = url.searchParams.get("owner"); // "me" → só as conversas da vendedora logada (dona)
+  // Filtro por NÚMERO. Só faz sentido com mais de um; o parâmetro é ignorado se
+  // apontar para um número que não é deste cliente.
+  const conexao = url.searchParams.get("conexao");
+  const idsVisiveis = conexao && connIds.includes(conexao) ? [conexao] : connIds;
   // "arquivadas=1" mostra o que foi tirado da caixa. Sem o parâmetro a resposta
   // é a de sempre — o PWA não manda e continua vendo tudo.
   const arquivadas = url.searchParams.get("arquivadas") === "1";
@@ -48,7 +53,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     : {};
 
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: { in: connIds }, ...search, ...ownerFilter, ...arquivoFilter },
+    where: { connectionId: { in: idsVisiveis }, ...search, ...ownerFilter, ...arquivoFilter },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,
@@ -75,6 +80,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     hasMore,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),
+    // Os números do cliente, para a caixa oferecer o filtro. Vem do servidor e
+    // não das conversas carregadas: um número sem conversa nesta página ainda é
+    // um número do cliente, e sumir dele seria mentir sobre a operação.
+    conexoes: conns.map((c) => ({
+      id: c.id, nome: c.name || c.displayPhone || "Número", equipe: c.equipe,
+    })),
     conversations: contacts.map((c) => {
       const lead = leadBy.get(c.id);
       const last = c.messages[0];
