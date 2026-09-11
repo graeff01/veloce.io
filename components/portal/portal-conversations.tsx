@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -969,21 +969,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   };
 
   // Item da barra flutuante inferior (mobile, estilo WhatsApp): ícone + rótulo, ativo destacado.
-  const bottomItem = (k: "all" | "ads" | "waiting", label: string, icon: React.ReactNode, badge: number) => {
-    const on = tab === k;
-    return (
-      <button key={k} onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 4px", border: "none", cursor: "pointer", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease" }}>
-        <span style={{ position: "relative", display: "inline-flex", opacity: on ? 1 : 0.75 }}>
-          {icon}
-          {badge > 0 && <span style={{ position: "absolute", top: -5, right: -10, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, background: "#1FA855", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{badge > 99 ? "99+" : badge}</span>}
-        </span>
-        <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: "-0.01em" }}>{label}</span>
-      </button>
-    );
-  };
-
-  // Mesmo visual do bottomItem, mas é um ATALHO que leva a outra tela do portal
-  // (não é filtro). Usado pra "Orçamentos" → tela de Revisão (ver PDF + aprovar).
   const bottomLink = (href: string, label: string, icon: React.ReactNode, badge = 0) => (
     <Link key={label} href={href} prefetch style={{ flex: 1, textDecoration: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 4px", borderRadius: 16, color: "var(--wa-muted)", transition: "color .2s ease, background .2s ease" }}>
       <span style={{ position: "relative", display: "inline-flex", opacity: 0.75 }}>
@@ -1175,15 +1160,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           )}
         </div>
 
-        {/* Barra flutuante inferior (mobile) — estilo WhatsApp: vidro fosco, sutil, entra deslizando. Só na lista. */}
-        {isMobile && (
-          <nav style={{ position: "fixed", left: 16, right: 16, bottom: "calc(12px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", gap: 2, padding: 5, background: "color-mix(in srgb, var(--p-surface) 78%, transparent)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)", border: "1px solid color-mix(in srgb, var(--p-border) 50%, transparent)", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,.10)", animation: "portalBarUp .34s cubic-bezier(.22,1,.36,1) both" }}>
-            {bottomItem("all", "Conversas", <MessageCircle size={20} />, 0)}
-            {bottomItem("waiting", "Aguardando", <Clock size={20} />, waitingCount)}
-            {bottomItem("ads", "Anúncios", <Megaphone size={20} />, 0)}
-            {quotesEnabled && bottomLink(`/r/${token}/revisao`, "Orçamentos", <FileText size={20} />, reviewCount)}
-          </nav>
-        )}
       </aside>
 
       {/* ── Chat ── */}
