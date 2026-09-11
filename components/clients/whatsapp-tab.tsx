@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Loader2, AlertTriangle, CheckCircle2, MessageSquare, ExternalLink, Settings2, FileText, RefreshCw,
+  Plus, Trash2, Users,
 } from "lucide-react";
 import { WaConversation, type WaConversationContact } from "@/components/clients/wa-conversation";
 import { OperationDashboard } from "@/components/whatsapp/operation-dashboard";
@@ -15,9 +16,15 @@ interface Connection {
   phoneNumberId: string;
   displayPhone: string | null;
   name: string | null;
+  /** Quem atende neste número. Vira a métrica individual da pessoa. */
+  ownerEmail: string | null;
+  /** Consultoria, captação… Agrupa os números em times no painel. */
+  equipe: string | null;
   lastEventAt: string | null;
   _count?: { contacts: number; leads: number; messages: number };
 }
+
+interface PortalUser { email: string; name: string | null }
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function timeAgo(iso: string) {
@@ -30,9 +37,11 @@ function timeAgo(iso: string) {
 }
 
 export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; readOnly?: boolean }) {
-  const [conn, setConn] = useState<Connection | null>(null);
+  const [conns, setConns] = useState<Connection[]>([]);
+  const [ativoId, setAtivoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"painel" | "conversas" | "leads">("painel");
+  const [view, setView] = useState<"painel" | "conversas" | "leads" | "numeros">("painel");
+  const [novoNumero, setNovoNumero] = useState(false);
   const [open, setOpen] = useState<WaConversationContact | null>(null);
   const [editing, setEditing] = useState(false);
   const [recalcing, setRecalcing] = useState(false);
@@ -55,7 +64,10 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
   const loadConn = useCallback(async () => {
     setLoading(true);
     const r = await fetch(`/api/clients/${clientId}/whatsapp`);
-    if (r.ok) setConn(await r.json());
+    if (r.ok) {
+      const d = await r.json();
+      setConns(Array.isArray(d) ? d : d ? [d] : []);
+    }
     setLoading(false);
   }, [clientId]);
 
@@ -66,7 +78,7 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
   useEffect(() => {
     const id = setInterval(() => {
       if (document.hidden) return; // aba oculta → não consome
-      fetch(`/api/clients/${clientId}/whatsapp`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setConn(c); }).catch(() => {});
+      fetch(`/api/clients/${clientId}/whatsapp`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (Array.isArray(d)) setConns(d); }).catch(() => {});
     }, 20000);
     return () => clearInterval(id);
   }, [clientId]);
@@ -77,6 +89,9 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
     </div>
   );
 
+  // O número em foco. Com um só, é ele; com vários, o escolhido na barra.
+  const conn = conns.find((c) => c.id === ativoId) ?? conns[0] ?? null;
+
   // Gestor (read-only) não configura conexão: se não houver, mostra aviso.
   if (readOnly && !conn) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 48, color: "var(--text-muted)", fontSize: 13 }}>
@@ -84,18 +99,22 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
     </div>
   );
 
-  if (!conn || editing) return (
+  if (!conn || editing || novoNumero) return (
     <Setup
       clientId={clientId}
-      initial={conn ? {
+      // Adicionar número entra com a ficha em branco, mesmo já havendo conexão:
+      // é um WhatsApp novo, não a edição do atual.
+      initial={conn && !novoNumero ? {
         wabaId: conn.wabaId,
         phoneNumberId: conn.phoneNumberId,
         accessToken: "",
         appSecret: "",
         displayPhone: conn.displayPhone ?? "",
+        name: conn.name ?? "",
+        equipe: conn.equipe ?? "",
       } : undefined}
-      onSaved={() => { setEditing(false); void loadConn(); }}
-      onCancel={conn ? () => setEditing(false) : undefined}
+      onSaved={() => { setEditing(false); setNovoNumero(false); void loadConn(); }}
+      onCancel={conn ? () => { setEditing(false); setNovoNumero(false); } : undefined}
     />
   );
 
@@ -128,12 +147,38 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
             <button onClick={() => setEditing(true)} title="Atualizar conexão" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               <Settings2 size={13} /> Atualizar conexão
             </button>
+            <button onClick={() => setNovoNumero(true)} title="Conectar mais um WhatsApp a este cliente" style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              <Plus size={13} /> Adicionar número
+            </button>
             </>)}
           </div>
         </div>
+        {/* Seletor de número. Só aparece com mais de um: com um só ele seria um
+            rótulo repetindo o que o cabeçalho já diz. */}
+        {conns.length > 1 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {conns.map((c) => {
+              const on = c.id === conn.id;
+              return (
+                <button key={c.id} onClick={() => setAtivoId(c.id)} style={{
+                  padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer",
+                  fontWeight: on ? 700 : 500,
+                  border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
+                  background: on ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--bg-elevated)",
+                  color: on ? "var(--accent)" : "var(--text-secondary)",
+                }}>
+                  {c.name || c.displayPhone || "Número"}
+                  {c.equipe && <span style={{ opacity: 0.7, fontWeight: 500 }}> · {c.equipe}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 2 }}>
-          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"]] as const).map(([k, label]) => (
+          {([["painel", "Painel"], ["leads", "Leads de anúncio"], ["conversas", "Conversas"],
+             ...(readOnly ? [] : [["numeros", "Números"] as const])] as const).map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{
               padding: "8px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13,
               fontWeight: view === k ? 600 : 500, color: view === k ? "var(--text-primary)" : "var(--text-muted)",
@@ -143,7 +188,11 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
         </div>
       </div>
 
-      {view === "conversas" ? (
+      {view === "numeros" ? (
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
+          <NumerosView clientId={clientId} conns={conns} onChange={loadConn} onAdicionar={() => setNovoNumero(true)} />
+        </div>
+      ) : view === "conversas" ? (
         <div style={{ flex: 1, minHeight: 0, padding: "16px 28px" }}>
           <ConversationsView clientId={clientId} readOnly={readOnly} />
         </div>
@@ -179,14 +228,137 @@ export function WhatsAppTab({ clientId, readOnly = false }: { clientId: string; 
   );
 }
 
+// ── Números do cliente ───────────────────────────────────────────────────────
+// Um cliente pode atender por vários WhatsApps — a Jardim do Lago tem seis, três
+// da consultoria e três da captação, cada um no celular de uma pessoa.
+//
+// É aqui que se diz DE QUEM é cada número e a que equipe ele pertence. Sem isso
+// as métricas individuais não existem: como cada pessoa responde pelo próprio
+// telefone (coexistência), ninguém atribui conversa na mão, e o único vínculo
+// entre a conversa e a pessoa é o número em que ela chegou.
+
+function NumerosView({ clientId, conns, onChange, onAdicionar }: {
+  clientId: string; conns: Connection[]; onChange: () => void; onAdicionar: () => void;
+}) {
+  const [users, setUsers] = useState<PortalUser[]>([]);
+  const [salvando, setSalvando] = useState<string | null>(null);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/portal-access`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.users) setUsers(d.users); })
+      .catch(() => { /* sem lista, o campo vira texto livre */ });
+  }, [clientId]);
+
+  async function salvar(connectionId: string, campo: "ownerEmail" | "equipe", valor: string) {
+    setSalvando(connectionId); setErro("");
+    const r = await fetch(`/api/clients/${clientId}/whatsapp`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId, [campo]: valor }),
+    }).catch(() => null);
+    setSalvando(null);
+    // Recarrega SEMPRE: se a gravação falhou, a tela tem que voltar a mostrar o
+    // que está no banco, e não o que a pessoa digitou.
+    if (!r?.ok) setErro((await r?.json().catch(() => null))?.error ?? "Não foi possível salvar.");
+    onChange();
+  }
+
+  async function remover(c: Connection) {
+    const nome = c.name || c.displayPhone || c.phoneNumberId;
+    if (!window.confirm(`Remover o número ${nome}? As conversas e mensagens dele saem junto, e isso não tem volta.`)) return;
+    const r = await fetch(`/api/clients/${clientId}/whatsapp?connectionId=${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch(() => null);
+    if (!r?.ok) setErro("Não foi possível remover o número.");
+    onChange();
+  }
+
+  const equipes = [...new Set(conns.map((c) => c.equipe).filter(Boolean) as string[])];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 860 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: 0, lineHeight: 1.6, maxWidth: 560 }}>
+          Cada número pode ter um responsável e uma equipe. O responsável vira dono
+          das conversas que chegam nele — é assim que as métricas individuais
+          aparecem sem ninguém precisar atribuir lead na mão.
+        </p>
+        <button onClick={onAdicionar} style={{ height: 34, padding: "0 14px", borderRadius: 9, border: "none", background: "#25D366", color: "#fff", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+          <Plus size={14} /> Adicionar número
+        </button>
+      </div>
+
+      {erro && <div style={{ padding: "10px 14px", borderRadius: 9, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", fontSize: 12, color: "#DC2626", display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={13} /> {erro}</div>}
+
+      {conns.map((c) => (
+        <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--bg-surface)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+                {c.name || c.displayPhone || "Número sem nome"}
+              </p>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0" }}>
+                {c._count?.contacts ?? 0} contatos · {c._count?.messages ?? 0} mensagens
+                {c.lastEventAt ? ` · última atividade ${timeAgo(c.lastEventAt)}` : " · aguardando 1ª mensagem"}
+              </p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {salvando === c.id && <Loader2 size={13} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />}
+              <button onClick={() => remover(c)} title="Remover este número" style={{ height: 30, width: 30, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <Field label="Quem atende neste número">
+              <select
+                value={c.ownerEmail ?? ""}
+                onChange={(e) => salvar(c.id, "ownerEmail", e.target.value)}
+                style={{ ...inp, cursor: "pointer" }}
+              >
+                <option value="">— ninguém (número da casa)</option>
+                {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
+                {/* Dono que não está (mais) na lista de acessos do portal: sem
+                    isto o campo apareceria vazio e a primeira edição o apagaria. */}
+                {c.ownerEmail && !users.some((u) => u.email === c.ownerEmail) && (
+                  <option value={c.ownerEmail}>{c.ownerEmail} (fora do portal)</option>
+                )}
+              </select>
+            </Field>
+            <Field label="Equipe">
+              <input
+                list={`equipes-${clientId}`}
+                defaultValue={c.equipe ?? ""}
+                placeholder="consultoria, captação…"
+                onBlur={(e) => { if ((e.target.value.trim() || null) !== (c.equipe ?? null)) salvar(c.id, "equipe", e.target.value); }}
+                style={inp}
+              />
+            </Field>
+          </div>
+        </div>
+      ))}
+
+      <datalist id={`equipes-${clientId}`}>
+        {equipes.map((e) => <option key={e} value={e} />)}
+      </datalist>
+
+      {conns.length > 1 && (
+        <p style={{ fontSize: 11.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
+          <Users size={12} /> {conns.length} números · {equipes.length || "nenhuma"} {equipes.length === 1 ? "equipe" : "equipes"}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 function Setup({ clientId, initial, onSaved, onCancel }: {
   clientId: string;
-  initial?: { wabaId: string; phoneNumberId: string; accessToken: string; appSecret: string; displayPhone: string };
+  initial?: { wabaId: string; phoneNumberId: string; accessToken: string; appSecret: string; displayPhone: string; name: string; equipe: string };
   onSaved: () => void;
   onCancel?: () => void;
 }) {
-  const [f, setF] = useState(initial ?? { wabaId: "", phoneNumberId: "", accessToken: "", appSecret: "", displayPhone: "" });
+  const [f, setF] = useState(initial ?? { wabaId: "", phoneNumberId: "", accessToken: "", appSecret: "", displayPhone: "", name: "", equipe: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -223,6 +395,8 @@ function Setup({ clientId, initial, onSaved, onCancel }: {
           <Field label="WABA ID (conta WhatsApp Business)"><input value={f.wabaId} onChange={set("wabaId")} placeholder="118714174662593" required style={inp} /></Field>
           <Field label="Phone Number ID"><input value={f.phoneNumberId} onChange={set("phoneNumberId")} placeholder="ID do número (na config da API)" required style={inp} /></Field>
           <Field label="Número exibido (opcional)"><input value={f.displayPhone} onChange={set("displayPhone")} placeholder="+55 54 ..." style={inp} /></Field>
+          <Field label="Nome do número (quem/o que atende nele)"><input value={f.name} onChange={set("name")} placeholder="Ana — consultoria" style={inp} /></Field>
+          <Field label="Equipe (opcional)"><input value={f.equipe} onChange={set("equipe")} placeholder="consultoria, captação…" style={inp} /></Field>
           <Field label="Access Token (System User)"><textarea value={f.accessToken} onChange={set("accessToken")} placeholder="EAAG..." required rows={3} style={{ ...inp, height: "auto", padding: "10px 12px", resize: "none", fontFamily: "monospace", fontSize: 11 }} /></Field>
           <Field label="App Secret (opcional, valida a assinatura)"><input value={f.appSecret} onChange={set("appSecret")} placeholder="••••••" style={inp} /></Field>
 
