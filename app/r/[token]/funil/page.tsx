@@ -7,6 +7,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
+import { PortalMobileHeader } from "@/components/portal/portal-mobile-header";
 import { PortalFunnel } from "@/components/portal/portal-funnel";
 
 export const runtime = "nodejs";
@@ -50,6 +51,7 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="funil" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"funil"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileHeader token={token} titulo="Funil" account={shell.account} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}

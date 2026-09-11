@@ -154,7 +154,7 @@ export function PortalRevisao({ token }: { token: string }) {
       `}</style>
 
       <div className="rhead">
-        <h1>Revisão de orçamentos</h1>
+        <h1 className="pm-titulo-conteudo">Revisão de orçamentos</h1>
         {reviews.length > 0 && <span className="rcount">{reviews.length}</span>}
       </div>
       <p className="rsub">Nenhum orçamento vai ao cliente sem o seu aval. Confira o PDF, ajuste um desconto se quiser e <b>aprove para enviar</b> — ou rejeite e assuma a conversa.</p>

@@ -6,6 +6,7 @@ import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
+import { PortalMobileHeader } from "@/components/portal/portal-mobile-header";
 import { PortalTeam } from "@/components/portal/portal-team";
 
 export const runtime = "nodejs";
@@ -47,6 +48,7 @@ export default async function EquipePage({ params }: { params: Promise<{ token: 
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="equipe" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={null} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileHeader token={token} titulo="Equipe" account={shell.account} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .tmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @media(min-width:1024px){ .tmain{margin-left:236px} }`}</style>

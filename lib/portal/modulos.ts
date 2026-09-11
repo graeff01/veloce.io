@@ -51,3 +51,31 @@ export function modulosPortal(
   }
   return out;
 }
+
+// ── Ferramentas: o que NÃO tem tela no celular ───────────────────────────────
+// Decisão de produto, a mesma do aplicativo: a barra leva só o que se usa o dia
+// inteiro. Painel, Equipe, Frete, Consumo, IA, Aprendizado e Objeções são
+// trabalho de MESA — relatório, configuração, auditoria — e continuam no portal
+// web, numa tela grande onde cabem.
+//
+// Elas aparecem na folha "Mais" mesmo assim, e é de propósito: sumir em silêncio
+// faz o produto parecer incompleto; dizer ONDE estão faz parecer deliberado.
+
+export interface Ferramenta { chave: string; rotulo: string }
+
+/** Mesma ordem e mesmos rótulos do aplicativo, para as duas telas concordarem. */
+const FERRAMENTAS: Ferramenta[] = [
+  { chave: "equipe", rotulo: "Equipe" },
+  { chave: "painel", rotulo: "Painel" },
+  { chave: "ia", rotulo: "IA" },
+  { chave: "aprendizado", rotulo: "Aprendizado" },
+  { chave: "objecoes", rotulo: "Objeções" },
+  { chave: "consumo", rotulo: "Consumo" },
+  { chave: "frete", rotulo: "Frete" },
+];
+
+/** As que ESTE usuário tem — sem link, porque no celular elas não têm tela. */
+export function ferramentasDoPortal(sections: string[] | null | undefined): Ferramenta[] {
+  const semConfiguracao = sections == null || sections.length === 0;
+  return FERRAMENTAS.filter((f) => semConfiguracao || sections.includes(f.chave));
+}
