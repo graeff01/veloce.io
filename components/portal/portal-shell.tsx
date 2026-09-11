@@ -92,7 +92,8 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
         @keyframes waShine{0%{transform:translateX(-130%)}55%,100%{transform:translateX(240%)}}
         @media(prefers-reduced-motion:reduce){ .wa-shine::after{animation:none} }
         @media(min-width:760px){ .padvisor{display:contents} }
-        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain,.qmain{margin-left:236px} }`}</style>
+        @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain,.qmain{margin-left:236px} }
+        @media(max-width:1023px){ .pmain,.fmain,.imain,.amain,.tmain,.qmain{padding-top:env(safe-area-inset-top)} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>
         {/* marca do cliente */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, height: 56, padding: "0 6px", borderBottom: "1px solid var(--p-border)", flexShrink: 0 }}>
