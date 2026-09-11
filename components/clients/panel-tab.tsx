@@ -39,9 +39,17 @@ export function PanelTab({ clientId }: { clientId: string }) {
 
   async function loadPortal() { const r = await fetch(`/api/clients/${clientId}/portal`); if (r.ok) setPortal(await r.json()); }
   async function loadUsers() { const r = await fetch(`/api/clients/${clientId}/portal-access`); if (r.ok) { const d = await r.json(); setUsers(d.users ?? []); } }
+  /**
+   * Grava e RESSINCRONIZA. Quem chama já marcou a caixa na tela; se a gravação
+   * falhar, a tela precisa voltar para o que está no banco — senão o admin sai
+   * daqui achando que configurou algo que não existe.
+   */
   async function savePortal(body: Record<string, unknown>) {
-    const r = await fetch(`/api/clients/${clientId}/portal`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (r.ok) setPortal(await r.json());
+    const r = await fetch(`/api/clients/${clientId}/portal`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    if (r && r.ok) { setPortal(await r.json()); return; }
+    const d = r ? await r.json().catch(() => ({})) : {};
+    alert(d.error || "Não foi possível salvar as seções do painel.");
+    void loadPortal();   // devolve a tela ao que está gravado
   }
   async function removeUser(email: string) {
     if (!confirm(`Remover o acesso de ${email}? A sessão dele é derrubada e a vaga fica livre.`)) return;
@@ -55,7 +63,15 @@ export function PanelTab({ clientId }: { clientId: string }) {
   }
   async function setUserSections(email: string, keys: string[]) {
     setUsers((prev) => prev?.map((u) => (u.email === email ? { ...u, sections: keys } : u)) ?? prev); // otimista
-    await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, sections: keys }) });
+    const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, sections: keys }) })
+      .catch(() => null);
+    if (!r || !r.ok) {
+      const d = r ? await r.json().catch(() => ({})) : {};
+      alert(d.error || "Não foi possível salvar as abas deste usuário.");
+    }
+    // Recarrega SEMPRE, dê certo ou errado: a tela passa a mostrar o que está
+    // gravado, não o que se esperava gravar.
+    loadUsers();
   }
   async function resetPassword(email: string) {
     if (!confirm(`Resetar a senha de ${email}? A sessão dele cai e ele define uma nova senha no próximo acesso (tela "Criar conta", com o mesmo e-mail).`)) return;
