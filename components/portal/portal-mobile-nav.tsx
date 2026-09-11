@@ -51,8 +51,7 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   }, [token]);
 
   const modulos = modulosPortal(sections, !!quotesEnabled);
-  // Um destino só não é barra de navegação — é um botão sem função.
-  if (modulos.length < 2) return null;
+  if (modulos.length === 0) return null;
 
   const contagem = (chave: ModuloPortal) =>
     chave === "conversas" ? waiting : chave === "revisao" ? reviews : 0;
