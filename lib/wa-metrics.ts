@@ -360,10 +360,12 @@ export function fmtDuration(sec: number | null): string {
 }
 
 export async function computeAttendanceMetrics(
-  connectionId: string,
+  /** Um número OU todos os números do cliente. */
+  connectionIds: string | string[],
   start: Date,
   end: Date,
 ): Promise<AttendanceMetrics> {
+  const connectionId = typeof connectionIds === "string" ? connectionIds : filtroConexoes(connectionIds);
   const leads = await prisma.waLead.findMany({
     where: { connectionId, enteredAt: { gte: start, lt: end } },
     orderBy: { enteredAt: "desc" },

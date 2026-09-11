@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { filtroConexoes } from "@/lib/wa-connections";
 import { requireAuth } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { buildReport, type ReportData } from "@/components/audit/report-document";
@@ -24,14 +25,18 @@ export async function GET(req: Request) {
   const start = month ? new Date(year, month - 1, 1) : new Date(year, 0, 1);
   const end = month ? new Date(year, month, 1) : new Date(year + 1, 0, 1);
 
-  const conn = await prisma.waConnection.findFirst({
-    where: { clientId },
+  // A auditoria é do cliente: todos os números entram. O cabeçalho mostra o
+  // primeiro, ou "vários números" quando há mais de um.
+  const conns = await prisma.waConnection.findMany({
+    where: { clientId }, orderBy: { createdAt: "asc" },
     include: { client: { select: { name: true } } },
   });
+  const conn = conns[0];
   if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
+  const connIds = conns.map((c) => c.id);
 
   const leads = await prisma.waLead.findMany({
-    where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } },
+    where: { connectionId: filtroConexoes(connIds), enteredAt: { gte: start, lt: end } },
     orderBy: { enteredAt: "desc" },
   });
 
@@ -55,11 +60,12 @@ export async function GET(req: Request) {
     }))
     .sort((a, b) => b.total - a.total);
 
-  const m = await computeAttendanceMetrics(conn.id, start, end);
+  const m = await computeAttendanceMetrics(connIds, start, end);
 
   const data: ReportData = {
     clientName: conn.client.name,
-    accountName: conn.displayPhone ? `WhatsApp ${conn.displayPhone}` : "WhatsApp",
+    accountName: conns.length > 1 ? `WhatsApp · ${conns.length} números`
+      : conn.displayPhone ? `WhatsApp ${conn.displayPhone}` : "WhatsApp",
     periodLabel: month ? `${MONTHS[month - 1]} de ${year}` : `Ano de ${year}`,
     totalLeads: leads.length,
     groups,

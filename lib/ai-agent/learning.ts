@@ -8,6 +8,7 @@
 // É o padrão recomendado (monitor → aprovação humana → só então age).
 
 import { prisma, prismaUnscoped } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 
 export type Outcome = "won" | "qualified" | "lost" | "open";
 
@@ -70,8 +71,9 @@ export function aggregatePerformance(
 // Junção real: conversas (desfecho) × variante usada, por cliente e janela.
 export async function learnFromOutcomes(clientId: string, days = 30): Promise<LearningReport> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000);
-  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
-  if (!conn) return { clientId, days, totalConversations: 0, variants: [], leader: null, note: "Cliente sem WhatsApp conectado." };
+  const connIds = await idsDasConexoes(clientId);
+  if (connIds.length === 0) return { clientId, days, totalConversations: 0, variants: [], leader: null, note: "Cliente sem WhatsApp conectado." };
+  const conn = { id: filtroConexoes(connIds) };
 
   const convos = await prismaUnscoped.waConversation.findMany({
     where: { connectionId: conn.id, lastMessageAt: { gte: since } },

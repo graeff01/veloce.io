@@ -19,8 +19,14 @@ export async function sendQuotePdf(opts: {
   if (!quote) return { ok: false, error: "Orçamento não encontrado." };
   if (quote.status === "sent" || quote.status === "approved") return { ok: false, error: "Este orçamento já foi enviado." };
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: opts.clientId }, select: { phoneNumberId: true, accessToken: true } });
-  const contact = await prisma.waContact.findUnique({ where: { id: quote.contactId }, select: { waId: true, name: true, displayName: true } });
+  // O orçamento sai pelo número em que a conversa acontece — não pelo primeiro
+  // número do cliente. Mandar por outra linha faria a mensagem chegar de um
+  // remetente que o lead nunca viu, fora da conversa dele.
+  const contact = await prisma.waContact.findFirst({
+    where: { id: quote.contactId, connection: { clientId: opts.clientId } },
+    select: { waId: true, name: true, displayName: true, connection: { select: { phoneNumberId: true, accessToken: true } } },
+  });
+  const conn = contact?.connection ?? null;
   if (!conn || !contact) return { ok: false, error: "Conexão de WhatsApp ou contato indisponível." };
 
   const ficha = quote.intake as IntakeData | null;

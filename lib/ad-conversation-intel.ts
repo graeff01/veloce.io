@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { groqChat, extractJson } from "@/lib/groq";
 
 // ── Inteligência de criativo a partir das CONVERSAS REAIS ────────────────────
@@ -43,8 +44,9 @@ export async function analyzeAdConversations(
   end: Date,
 ): Promise<AdConversationIntel> {
   const empty: AdConversationIntel = { leadCount: 0, messageCount: 0, intents: [], topOpeners: [], ai: null };
-  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
-  if (!wa) return empty;
+  const connIds = await idsDasConexoes(clientId);
+  if (connIds.length === 0) return empty;
+  const wa = { id: filtroConexoes(connIds) };
 
   // Leads atribuídos a ESTE anúncio (por ad_id; cai para o modelo se não houver id).
   const where = opts.adId

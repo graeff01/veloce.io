@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
 // Etapas ORDENADAS do funil (frio → quente). A cor é a "temperatura" do lead:
@@ -32,8 +33,9 @@ export type FunnelData = {
 };
 
 export async function getClientFunnel(clientId: string): Promise<FunnelData | null> {
-  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
-  if (!wa) return null;
+  const connIds = await idsDasConexoes(clientId);
+  if (connIds.length === 0) return null;
+  const wa = { id: filtroConexoes(connIds) }; // todos os números do cliente
 
   const [convsRaw, excl] = await Promise.all([
     prisma.waConversation.findMany({

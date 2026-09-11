@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { filtroConexoes } from "@/lib/wa-connections";
 import { canonicalAdName } from "@/lib/wa-leads";
 import { onlyDigits } from "@/lib/whatsapp";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
@@ -84,7 +85,9 @@ function ratios(spend: number, impressions: number, clicks: number, leads: numbe
 export async function computeMetaAdsView(clientId: string, start: Date, end: Date): Promise<MetaAdsView> {
   const [metaConn, waConn, excl] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
-    prisma.waConnection.findFirst({ where: { clientId }, select: { id: true, displayPhone: true } }),
+    // Todos os números: os leads de anúncio podem cair em qualquer um deles.
+    prisma.waConnection.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, displayPhone: true } })
+      .then((cs) => (cs.length ? { id: filtroConexoes(cs.map((c) => c.id)), displayPhone: cs[0]!.displayPhone } : null)),
     excludedTokens(clientId),
   ]);
 

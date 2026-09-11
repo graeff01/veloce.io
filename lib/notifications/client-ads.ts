@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { periodRanges, type Period } from "@/lib/notifications/client-report";
 
 // ── Transparência de anúncios (portal do cliente) ─────────────────────────────
@@ -30,7 +31,7 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const [metaConn, wa] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true, currency: true } }),
-    prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } }),
+    idsDasConexoes(clientId).then((ids) => (ids.length ? { id: filtroConexoes(ids) } : null)),
   ]);
 
   const empty: ClientAds = {
