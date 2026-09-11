@@ -1139,7 +1139,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               const urgencia = urgenciaDe(desde, agora);
               const corEspera = corDaUrgencia(urgencia);
               return (
-                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? `3px solid ${corEspera}` : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? `color-mix(in srgb, ${corEspera} 5%, transparent)` : "transparent", cursor: "pointer" }}>
+                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? `3px solid ${corEspera}` : "3px solid transparent", background: on ? "var(--p-accent-soft)" : naoLida ? `color-mix(in srgb, ${corEspera} 6%, transparent)` : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
