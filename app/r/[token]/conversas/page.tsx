@@ -6,6 +6,7 @@ import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme"
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
+import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
 import { PortalConversations } from "@/components/portal/portal-conversations";
 
 export const runtime = "nodejs";
@@ -52,6 +53,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
     <main className="cmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="conversas" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileNav token={token} active={"conversas"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .cmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);
