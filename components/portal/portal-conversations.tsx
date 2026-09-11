@@ -151,6 +151,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // A BARRA INFERIOR aparece em tudo abaixo de 1024px (onde o menu lateral
+  // assume). Não é a mesma pergunta que `isMobile` (≤760px, que decide o layout
+  // de uma coluna) — e confundir as duas deixava a última conversa escondida
+  // atrás da barra nas larguras intermediárias.
+  const [temBarra, setTemBarra] = useState(false);
   const [me, setMe] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [attendants, setAttendants] = useState<Attendant[]>([]);
@@ -222,10 +227,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 760px)");
-    const apply = () => setIsMobile(mq.matches);
+    const mqBarra = window.matchMedia("(max-width: 1023px)");
+    const apply = () => { setIsMobile(mq.matches); setTemBarra(mqBarra.matches); };
     apply();
     mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    mqBarra.addEventListener("change", apply);
+    return () => { mq.removeEventListener("change", apply); mqBarra.removeEventListener("change", apply); };
   }, []);
 
   // Lista de conversas — carrega e AUTO-ATUALIZA (novos leads/mensagens sem F5).
@@ -1104,7 +1111,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         )}
         {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
-        <div style={{ flex: 1, overflowY: "auto", paddingBottom: isMobile ? "calc(84px + env(safe-area-inset-bottom))" : 0 }}>
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
             : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
