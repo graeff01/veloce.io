@@ -885,6 +885,13 @@ model WaConnection {
   appSecret     String?   // cifrado — valida a assinatura do webhook
   name          String?
   lastEventAt   DateTime?
+
+  // Quem atende neste número (PortalAccess.email). Nulo = número da empresa,
+  // sem dona — é o caso de quem tem um número só.
+  ownerEmail    String?
+  // Time a que este número pertence (ex.: "consultoria", "captacao"). Livre de
+  // propósito: cada cliente organiza o seu, e a tela só agrupa pelo que vier.
+  equipe        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
