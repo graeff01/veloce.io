@@ -25,6 +25,8 @@ const BRUNO = "bruno.e2e@teste.local";   // captação, número próprio
 let clientId = "";
 let token = "";
 let cookie = "";
+let contatoDaAna = "";
+let contatoDoBruno = "";
 const criados: string[] = [];
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -94,9 +96,10 @@ before(async () => {
   const nBruno = await numero(BRUNO, "captacao", "bruno");
   const nLoja = await numero(null, null, "loja"); // número da casa, sem dono
 
-  await conversa(nAna.id, `55549${marca}01`, { stage: "convertido", venda: 1000, respostas: 3 });
+  contatoDaAna = await conversa(nAna.id, `55549${marca}01`, { stage: "convertido", venda: 1000, respostas: 3 });
   await conversa(nAna.id, `55549${marca}02`, { stage: "qualificado", respostas: 1 });
-  await conversa(nBruno.id, `55549${marca}03`, { stage: "negociacao", respostas: 2 });
+  // O SEGUNDO número: é a conversa que, antes, o portal não conseguia abrir.
+  contatoDoBruno = await conversa(nBruno.id, `55549${marca}03`, { stage: "negociacao", respostas: 2 });
   await conversa(nLoja.id, `55549${marca}04`, { stage: "recebido" });
 
   cookie = `vp_session=${await createSession(clientId, GERENTE)}`;
@@ -176,4 +179,55 @@ test("atribuição MANUAL continua mandando mais que o dono do número", async (
   const d = await metricas();
   assert.equal(d.rows.find((r: { email: string }) => r.email === ANA).owned, anaAntes);
   assert.equal(d.rows.find((r: { email: string }) => r.email === BRUNO).owned, brunoAntes + 1);
+});
+
+// ── o portal atravessa os números ────────────────────────────────────────────
+// A lista de conversas já somava os números; abrir, marcar funil, contar badge e
+// baixar mídia ainda procuravam o contato dentro de "a" conexão do cliente — a
+// primeira. Toda conversa dos outros cinco números respondia "não encontrada".
+
+test("a caixa lista conversas de TODOS os números", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/conversations?limit=50`, { headers: { cookie } });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  const ids = new Set(d.conversations.map((c: { contactId: string }) => c.contactId));
+  assert.ok(ids.has(contatoDaAna), "conversa do primeiro número");
+  assert.ok(ids.has(contatoDoBruno), "conversa do SEGUNDO número");
+});
+
+test("abrir uma conversa do segundo número responde 200", async () => {
+  for (const [rotulo, contactId] of [["primeiro", contatoDaAna], ["segundo", contatoDoBruno]] as const) {
+    const r = await fetch(`${BASE}/api/portal/${token}/conversations/${contactId}`, { headers: { cookie } });
+    assert.equal(r.status, 200, `conversa do ${rotulo} número`);
+  }
+});
+
+test("mudar a etapa do funil funciona em qualquer número", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/funnel/${contatoDoBruno}`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ stage: "qualificado" }),
+  });
+  assert.equal(r.status, 200);
+});
+
+test("o contador da barra soma os números", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/badges`, { headers: { cookie }, cache: "no-store" });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  // Toda conversa criada aqui tem eco de SAÍDA como última mensagem, menos a do
+  // número da casa — que não tem mensagem nenhuma. Ninguém está aguardando.
+  assert.equal(typeof d.waiting, "number", "o badge não pode virar nulo com vários números");
+});
+
+test("conversa de OUTRO cliente continua fora de alcance", async () => {
+  const intruso = await db.client.create({ data: { name: `Intruso ${marca}`, slug: `intruso-${marca}` } });
+  criados.push(intruso.id);
+  const conn = await db.waConnection.create({
+    data: { clientId: intruso.id, wabaId: `waba-x-${marca}`, phoneNumberId: `pn-x-${marca}`, accessToken: "fake" },
+  });
+  const alheio = await db.waContact.create({
+    data: { connectionId: conn.id, waId: `5554900${marca}`, displayName: "Lead alheio", lastMessageAt: agora },
+  });
+  const r = await fetch(`${BASE}/api/portal/${token}/conversations/${alheio.id}`, { headers: { cookie } });
+  assert.equal(r.status, 404, "abrir por contato não pode virar porta para outro cliente");
 });

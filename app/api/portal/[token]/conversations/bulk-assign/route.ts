@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
@@ -31,8 +32,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   // Só as conversas DESTE cliente: o id do contato vem do aparelho e não é prova
   // de nada. A conexão é a fronteira do tenant.
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
-  if (!conn) return NextResponse.json({ error: "Sem conexão de WhatsApp." }, { status: 404 });
+  const connIds = await idsDasConexoes(portal.clientId);
+  if (connIds.length === 0) return NextResponse.json({ error: "Sem conexão de WhatsApp." }, { status: 404 });
+  const conn = { id: filtroConexoes(connIds) }; // vale para qualquer número do cliente
 
   // E só as LIVRES (sem dono, ou já minhas). Lead de outra vendedora não é
   // tocado — e o número de ignoradas volta para a tela poder dizer isso.

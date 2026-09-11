@@ -14,9 +14,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   // (sem isso, o link sozinho permitia abrir milhares de streams e saturar o pool).
   const { error, portal } = await guardPortal(req, token, { section: "conversas", cost: "stream" });
   if (error) return error;
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
-  if (!conn) return new Response("WhatsApp não conectado", { status: 404 });
-  const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id }, select: { id: true } });
+  const contact = await prisma.waContact.findFirst({
+    where: { id: contactId, connection: { clientId: portal.clientId } }, select: { id: true },
+  });
   if (!contact) return new Response("Conversa não encontrada", { status: 404 });
 
   // Marco inicial: a última mensagem existente. Só empurra o que chegar DEPOIS disso

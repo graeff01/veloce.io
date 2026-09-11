@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireClientAccess } from "@/lib/api-helpers";
 import { deriveBadge, monthStart, isStrongAd } from "@/lib/wa-leads";
 
@@ -11,8 +12,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  // Todas as conversas do cliente, venham do número que vierem.
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  const connectionId = filtroConexoes(connIds);
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -30,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   // take+1 para saber se há próxima página sem um count extra.
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: conn.id, ...search },
+    where: { connectionId, ...search },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,
@@ -43,7 +46,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const contacts = hasMore ? rows.slice(0, limit) : rows;
 
   const leads = await prisma.waLead.findMany({
-    where: { connectionId: conn.id, contactId: { in: contacts.map((c) => c.id) } },
+    where: { connectionId, contactId: { in: contacts.map((c) => c.id) } },
   });
   const leadByContact = new Map(leads.map((l) => [l.contactId, l]));
   const period = monthStart();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { conexaoDoContato } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
@@ -15,8 +16,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { error, portal } = await guardPortal(req, token, { section: "funil" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  // A conexão vem do CONTATO: com vários números, "a" conexão do cliente não
+  // existe — e criar a conversa na conexão errada a esconderia da caixa.
+  const { conn } = await conexaoDoContato(portal.clientId, contactId);
+  if (!conn) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
   const stage = body?.stage;

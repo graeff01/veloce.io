@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireAuth } from "@/lib/api-helpers";
 import { backfillFunnelForConnection } from "@/lib/wa-funnel";
 
@@ -12,10 +13,16 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { error } = await requireAuth("clients:update");
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
-  if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
 
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: id }, select: { vertical: true } });
-  const res = await backfillFunnelForConnection(conn.id, cfg?.vertical);
+  // Número a número: o recálculo é por conexão, e recalcular só o primeiro
+  // deixaria o funil dos outros congelado no que estava.
+  const res = { scanned: 0, updated: 0 };
+  for (const connId of connIds) {
+    const r = await backfillFunnelForConnection(connId, cfg?.vertical);
+    res.scanned += r.scanned; res.updated += r.updated;
+  }
   return NextResponse.json(res);
 }

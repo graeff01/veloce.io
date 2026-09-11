@@ -22,11 +22,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true, accessToken: true } });
-  if (!conn) return new NextResponse("sem conexão", { status: 404 });
-
+  // A credencial certa é a do número em que a mensagem chegou — baixar mídia de
+  // um número com o token de outro simplesmente não funciona. A checagem de dono
+  // continua: a conexão da mensagem tem que ser DESTE cliente.
   const msg = await prisma.waMessage.findUnique({ where: { id: messageId }, select: { connectionId: true, type: true, raw: true, media: { select: { mime: true, data: true } } } });
-  if (!msg || msg.connectionId !== conn.id) return new NextResponse("não encontrado", { status: 404 });
+  if (!msg) return new NextResponse("não encontrado", { status: 404 });
+
+  const conn = await prisma.waConnection.findFirst({
+    where: { id: msg.connectionId, clientId: id },
+    select: { id: true, accessToken: true },
+  });
+  if (!conn) return new NextResponse("não encontrado", { status: 404 });
 
   // 1) Já persistido → serve do banco (permanente, rápido).
   if (msg.media) {

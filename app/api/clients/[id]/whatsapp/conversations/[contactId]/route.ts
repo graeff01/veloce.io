@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { conexaoDoContato } from "@/lib/wa-connections";
 import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { logWaEvent } from "@/lib/wa-events";
 import { explainHistory } from "@/lib/wa-funnel";
@@ -20,12 +21,10 @@ const patchSchema = z.object({
   eraseAiData: z.boolean().optional(),      // LGPD: apagar dados que a IA guardou deste contato
 });
 
-async function getConnAndContact(clientId: string, contactId: string) {
-  const conn = await prisma.waConnection.findFirst({ where: { clientId } });
-  if (!conn) return { conn: null, contact: null };
-  const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id } });
-  return { conn, contact };
-}
+// Quem manda é o CONTATO: ele pode estar em qualquer um dos números do cliente.
+// Antes isto procurava o contato dentro da "conexão do cliente" — com mais de um
+// número, toda conversa fora do primeiro virava "conversa não encontrada".
+const getConnAndContact = conexaoDoContato;
 
 // GET — histórico de mensagens de uma conversa (somente leitura).
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; contactId: string }> }) {

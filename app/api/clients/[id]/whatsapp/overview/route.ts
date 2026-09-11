@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes } from "@/lib/wa-connections";
 import { requireClientAccess } from "@/lib/api-helpers";
 import { computeOverview, WA_THRESHOLDS } from "@/lib/wa-metrics";
 import { computeCplByModel } from "@/lib/wa-cpl";
@@ -13,8 +14,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  // O panorama é do CLIENTE: soma todos os números por onde ele atende.
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
   const url = new URL(req.url);
   const fromParam = url.searchParams.get("from");
@@ -38,11 +40,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const prevStart = new Date(start.getTime() - durationMs);
 
   // Mantém o rótulo "closed" fresco sem depender de cron (updateMany indexado).
-  await closeInactiveConversations(conn.id, WA_THRESHOLDS.closeAfterHours);
+  for (const connId of connIds) await closeInactiveConversations(connId, WA_THRESHOLDS.closeAfterHours);
 
   const [overview, prev] = await Promise.all([
-    computeOverview(conn.id, start, end),
-    computeOverview(conn.id, prevStart, prevEnd),
+    computeOverview(connIds, start, end),
+    computeOverview(connIds, prevStart, prevEnd),
   ]);
 
   // CPL: PREFERE atribuição determinística por ad_id (MetaAd/MetaAdInsight ×
@@ -55,7 +57,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   let campaignsWithLeads = 0;
 
   if (metaConn && adCount > 0) {
-    const attr = await computeRealAttribution(metaConn.id, conn.id, start, end);
+    const attr = await computeRealAttribution(metaConn.id, connIds, start, end);
     cpl = attr.porAnuncio
       .filter((a) => a.spend > 0 || a.leads > 0)
       .map((a) => ({
@@ -94,7 +96,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // Receita por campanha (venda confirmada → origem). Campo NOVO no payload —
   // não altera o contrato existente. metaConn?.id pode ser null (sem Meta): a
   // função devolve tudo em "não atribuída", sem inventar origem.
-  const revenue = await computeRevenueAttribution(metaConn?.id ?? null, conn.id, start, end);
+  const revenue = await computeRevenueAttribution(metaConn?.id ?? null, connIds, start, end);
 
   return NextResponse.json({
     ...overview,

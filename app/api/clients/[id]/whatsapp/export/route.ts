@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireClientAccess } from "@/lib/api-helpers";
 import { deriveBadge, BADGE_LABEL } from "@/lib/wa-leads";
 import { fmtDuration } from "@/lib/wa-metrics";
@@ -30,8 +31,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
-  if (!conn) return new Response("WhatsApp não conectado", { status: 404 });
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return new Response("WhatsApp não conectado", { status: 404 });
+  const connectionId = filtroConexoes(connIds);
 
   const url = new URL(req.url);
   const year = Number(url.searchParams.get("year")) || new Date().getFullYear();
@@ -53,11 +55,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   type Unit = { contactId: string; enteredAt: Date; adModel: string | null; adTitle: string | null; adId: string | null; ctwaClid: string | null; imported: boolean; origin: string };
   let units: Unit[];
   if (type === "ads") {
-    const leads = await prisma.waLead.findMany({ where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } }, orderBy: { enteredAt: "desc" } });
+    const leads = await prisma.waLead.findMany({ where: { connectionId, enteredAt: { gte: start, lt: end } }, orderBy: { enteredAt: "desc" } });
     units = leads.map((l) => ({ contactId: l.contactId, enteredAt: l.enteredAt, adModel: l.adModel, adTitle: l.adTitle, adId: l.adId, ctwaClid: l.ctwaClid, imported: l.imported, origin: "Anúncio" }));
   } else {
-    const convs = await prisma.waConversation.findMany({ where: { connectionId: conn.id, firstInboundAt: { gte: start, lt: end } }, select: { contactId: true, firstInboundAt: true } });
-    const leadByContact = new Map((await prisma.waLead.findMany({ where: { connectionId: conn.id, contactId: { in: convs.map((c) => c.contactId) } } })).map((l) => [l.contactId, l]));
+    const convs = await prisma.waConversation.findMany({ where: { connectionId, firstInboundAt: { gte: start, lt: end } }, select: { contactId: true, firstInboundAt: true } });
+    const leadByContact = new Map((await prisma.waLead.findMany({ where: { connectionId, contactId: { in: convs.map((c) => c.contactId) } } })).map((l) => [l.contactId, l]));
     units = convs.map((c) => {
       const l = leadByContact.get(c.contactId);
       return { contactId: c.contactId, enteredAt: c.firstInboundAt ?? start, adModel: l?.adModel ?? null, adTitle: l?.adTitle ?? null, adId: l?.adId ?? null, ctwaClid: l?.ctwaClid ?? null, imported: l?.imported ?? false, origin: l ? "Anúncio" : "Orgânico" };

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireAuth } from "@/lib/api-helpers";
 import { rebuildConversations, closeInactiveConversations, backfillAdLeads } from "@/lib/wa-conversation";
 import { WA_THRESHOLDS } from "@/lib/wa-metrics";
@@ -11,11 +12,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { error } = await requireAuth("clients:update");
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
-  const rebuilt = await rebuildConversations(conn.id);
-  const closed = await closeInactiveConversations(conn.id, WA_THRESHOLDS.closeAfterHours);
-  const adLeads = await backfillAdLeads(conn.id);
+  let rebuilt = 0, closed = 0, adLeads = 0;
+  for (const connId of connIds) {
+    rebuilt += await rebuildConversations(connId);
+    closed += await closeInactiveConversations(connId, WA_THRESHOLDS.closeAfterHours);
+    adLeads += await backfillAdLeads(connId);
+  }
   return NextResponse.json({ rebuilt, closed, adLeads });
 }

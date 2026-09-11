@@ -20,11 +20,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true, accessToken: true } });
-  if (!conn) return new NextResponse("sem conexão", { status: 404 });
-
+  // A credencial é a do número em que a mensagem chegou — token de outro número
+  // não baixa esta mídia. E a conexão tem que ser deste cliente.
   const msg = await prisma.waMessage.findUnique({ where: { id: messageId }, select: { connectionId: true, contactId: true, type: true, raw: true, media: { select: { mime: true, data: true } } } });
-  if (!msg || msg.connectionId !== conn.id || msg.contactId !== contactId) return new NextResponse("não encontrado", { status: 404 });
+  if (!msg || msg.contactId !== contactId) return new NextResponse("não encontrado", { status: 404 });
+
+  const conn = await prisma.waConnection.findFirst({
+    where: { id: msg.connectionId, clientId: portal.clientId }, select: { id: true, accessToken: true },
+  });
+  if (!conn) return new NextResponse("não encontrado", { status: 404 });
 
   if (msg.media) {
     return new NextResponse(new Uint8Array(msg.media.data), { status: 200, headers: HEADERS(msg.media.mime) });

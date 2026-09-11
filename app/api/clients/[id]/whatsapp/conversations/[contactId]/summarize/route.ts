@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { conexaoDoContato } from "@/lib/wa-connections";
 import { requireAuth } from "@/lib/api-helpers";
 import { groqChat, extractJson, GroqError } from "@/lib/groq";
 
@@ -14,11 +15,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { error } = await requireAuth("clients:update");
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
-
-  const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id } });
-  if (!contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
+  const { conn, contact } = await conexaoDoContato(id, contactId);
+  if (!conn || !contact) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const messages = await prisma.waMessage.findMany({
     where: { contactId: contact.id },

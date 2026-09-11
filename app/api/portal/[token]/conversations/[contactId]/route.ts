@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { conexaoDoContato } from "@/lib/wa-connections";
 import { isWithin24h } from "@/lib/wa-window";
 import { guardPortal } from "@/lib/portal-guard";
 import { isStrongAd } from "@/lib/wa-leads";
@@ -12,8 +13,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  // O contato decide em que número ele está. Procurar dentro de "a" conexão do
+  // cliente fazia toda conversa fora do primeiro número sumir.
+  const { conn } = await conexaoDoContato(portal.clientId, contactId);
+  if (!conn) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   // escopo: o contato tem que ser da conexão deste cliente
   const contact = await prisma.waContact.findFirst({

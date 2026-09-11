@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { filtroConexoes } from "@/lib/wa-connections";
 import { requireAuth } from "@/lib/api-helpers";
 
 function startOfMonth(year: number, month: number) {
@@ -38,23 +39,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const from = startOfMonth(year, month);
   const to = endOfMonth(year, month);
 
-  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
-  if (!conn) return NextResponse.json({ connected: false });
+  const conns = await prisma.waConnection.findMany({
+    where: { clientId: id }, orderBy: { createdAt: "asc" },
+    select: { id: true, displayPhone: true, phoneNumberId: true, lastEventAt: true },
+  });
+  if (conns.length === 0) return NextResponse.json({ connected: false });
+  const connectionId = filtroConexoes(conns.map((c) => c.id));
 
   const [contactsTotal, messages, leads, contacts] = await Promise.all([
-    prisma.waContact.count({ where: { connectionId: conn.id } }),
+    prisma.waContact.count({ where: { connectionId } }),
     prisma.waMessage.findMany({
-      where: { connectionId: conn.id, timestamp: { gte: from, lt: to } },
+      where: { connectionId, timestamp: { gte: from, lt: to } },
       orderBy: { timestamp: "asc" },
       select: { id: true, contactId: true, direction: true, text: true, type: true, timestamp: true },
     }),
     prisma.waLead.findMany({
-      where: { connectionId: conn.id, enteredAt: { gte: from, lt: to } },
+      where: { connectionId, enteredAt: { gte: from, lt: to } },
       orderBy: { enteredAt: "desc" },
       select: { id: true, contactId: true, name: true, waId: true, adId: true, adTitle: true, sourceType: true, enteredAt: true },
     }),
     prisma.waContact.findMany({
-      where: { connectionId: conn.id },
+      where: { connectionId },
       select: { id: true, waId: true, name: true, lastMessageAt: true, createdAt: true },
     }),
   ]);
@@ -129,10 +134,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   return NextResponse.json({
     connected: true,
+    // O cabeçalho descreve o cliente, que pode atender por vários números: mostra
+    // o primeiro e diz quantos são, e a atividade mais recente entre todos —
+    // senão um número parado esconderia que os outros estão trabalhando.
     connection: {
-      displayPhone: conn.displayPhone,
-      phoneNumberId: conn.phoneNumberId,
-      lastEventAt: conn.lastEventAt,
+      displayPhone: conns[0]!.displayPhone,
+      phoneNumberId: conns[0]!.phoneNumberId,
+      lastEventAt: conns.reduce<Date | null>((maior, c) =>
+        c.lastEventAt && (!maior || c.lastEventAt > maior) ? c.lastEventAt : maior, null),
+      numeros: conns.length,
     },
     period: { year, month },
     totals: {
