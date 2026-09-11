@@ -1018,6 +1018,13 @@ model WaConversation {
   connectionId     String
   contactId        String    @unique
   status           String    @default("open") // open | waiting | closed (rótulo interno)
+
+  // Estado COMPARTILHADO pela equipe do cliente (app + portal). Compartilhado, e
+  // não por pessoa, porque a caixa é de um número só atendido por várias
+  // vendedoras — marcar como lida vale para o time. O PWA ignora estes campos.
+  portalReadAt     DateTime? // quando alguém da equipe abriu a conversa
+  portalReadBy     String?   // e-mail de quem abriu — só para exibir "lida por"
+  portalArchivedAt DateTime? // tirada da caixa de entrada, sem apagar nada
   funnelStage      String?    // recebido|respondido|qualificado|negociacao|perdido|convertido
   funnelManual     Boolean   @default(false) // operador definiu a etapa → auto-classificador não toca
   funnelEvidence   String?    // frase que justificou a etapa (auditoria do classificador)
@@ -1430,6 +1437,7 @@ model AiInteraction {
   promptVariant    String?  // chave da variante A/B aplicada (null = padrão do cliente)
   contextUsed      Json?    // trechos de conhecimento (RAG) usados na resposta
   idempotencyKey   String?  // chave de dedupe (ex: waMessageId) — contrato p/ fila durável futura
+  turnId           String?  // correlação forense: liga este turno aos AiSecurityEvent dele
   inboundMediaType String?  // text|audio|image|document|... — proveniência da entrada
   stages     Json?    // timeline por etapa: [{name,ms}] (context|rag|llm|guardrail) — logs avançados
   guardrails Json?    // guardrails acionados nesta resposta: string[] (motivos) — logs avançados
@@ -1898,6 +1906,26 @@ model PortalPushSubscription {
   @@index([clientId, email])
 }
 
+// Aparelho iOS do vendedor (app nativo). IRMÃO de PortalPushSubscription, não
+// substituto: o PWA continua no Web Push (VAPID) exatamente como hoje, e o app
+// recebe pelo APNs. Mesma decisão de QUANDO notificar; só muda o transporte.
+model DeviceToken {
+  id           String   @id @default(cuid())
+  clientId     String
+  email        String   // vendedor (PortalAccess.email)
+  deviceId     String   // mesmo id da PortalSession — permite revogar junto
+  token        String   @unique // device token do APNs
+  platform     String   @default("ios")
+  environment  String   @default("production") // production | sandbox (build de dev)
+  failureCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([clientId, email])
+  @@index([deviceId])
+}
+
 // Código OTP temporário (guardado como hash), enviado por e-mail.
 model PortalOtp {
   id        String   @id @default(cuid())
@@ -1921,8 +1949,16 @@ model PortalSession {
   lastSeenAt   DateTime @default(now())
   createdAt    DateTime @default(now())
 
+  // Sessão de APARELHO (app iOS). null = sessão de navegador (cookie), como sempre foi.
+  // Existe para revogar UM celular perdido sem derrubar as demais sessões do usuário —
+  // o cookie do navegador não precisava disso, uma credencial de 30 dias num aparelho precisa.
+  deviceId       String?
+  deviceName     String?
+  devicePlatform String?
+
   @@index([clientId])
   @@index([email])
+  @@index([clientId, email, deviceId])
 }
 
 // ── Shadow do classificador de funil (LLM lê contexto) ─────────────────────────
@@ -1977,4 +2013,40 @@ model GeocodeCache {
   lng       Float
   label     String?  // geocoding REVERSO (coordenada→endereço): JSON {city,suburb} cacheado
   createdAt DateTime @default(now())
+}
+
+// ── Camada de segurança da IA (docs/rfc-camada-seguranca-ia.md) ───────────────
+
+// Trilha append-only dos controles de segurança. `shadow=true` = o controle apenas
+// observou (não agiu). `evidence` passa por redactPII + teto de 500 chars: a trilha
+// de segurança não pode virar um novo repositório de dado pessoal.
+model AiSecurityEvent {
+  id        String   @id @default(cuid())
+  clientId  String
+  contactId String?
+  turnId    String?  // correlaciona com AiInteraction.turnId (um turno completo)
+  ring      String   // admission | input | context | tool | egress | anomaly | auth
+  control   String   // C-05 | C-11 | C-12 ...
+  severity  String   // info | low | medium | high | critical
+  score     Float?
+  labels    Json?    // string[] — rótulos do detector
+  action    String   // observed | rigor | toolset_reduced | contained | blocked | sanitized
+  evidence  String?  // trecho REDIGIDO e truncado
+  shadow    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([control, severity, createdAt])
+}
+
+// Contador de janela fixa para rate limiting/quotas. Fica no BANCO (e não em memória)
+// de propósito: com mais de uma instância, contador em processo afrouxa em silêncio.
+model RateBucket {
+  key       String   @id // "<escopo>:<chave>:<inicioDaJanela>"
+  scope     String
+  count     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }

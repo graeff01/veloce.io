@@ -66,8 +66,30 @@ export async function getOrCreatePortal(clientId: string): Promise<PortalState> 
   return { token: portal.token, link: `${APP_URL}/r/${portal.token}`, accentColor: portal.accentColor, mode: portal.mode, active: portal.active, requireLogin: portal.requireLogin, maxUsers: portal.maxUsers, sections: parseSections(portal.sections) };
 }
 
+// Sentinela do app nativo no lugar do token na URL: "/api/portal/_session/...".
+// Nunca colide com um token real (gerados por randomBytes(18) → sempre 24 caracteres).
+export const SESSION_SCOPED = "_session";
+
 // Resolve o token (capability) → cliente + tema, só se ativo.
+//
+// APP NATIVO: com `_session`, o tenant NÃO vem da URL — vem da PortalSession do
+// Authorization: Bearer. É o que permite o app parar de carregar o token do portal
+// depois do vínculo inicial (o token é credencial sensível; a sessão é revogável).
+// Sem sessão válida devolve null → a rota responde 404 "Link inválido", como sempre.
 export async function resolvePortal(token: string): Promise<{ clientId: string; accentColor: string | null; mode: string } | null> {
+  if (token === SESSION_SCOPED) {
+    const { readSessionToken } = await import("@/lib/portal-auth");
+    const sessionToken = await readSessionToken();
+    if (!sessionToken) return null;
+    const s = await prisma.portalSession.findUnique({
+      where: { sessionToken },
+      select: { clientId: true, expiresAt: true },
+    });
+    if (!s || s.expiresAt < new Date()) return null;
+    const p = await prisma.clientPortal.findUnique({ where: { clientId: s.clientId } });
+    if (!p || !p.active) return null;
+    return { clientId: p.clientId, accentColor: p.accentColor, mode: p.mode };
+  }
   const portal = await prisma.clientPortal.findUnique({ where: { token } });
   if (!portal || !portal.active) return null;
   return { clientId: portal.clientId, accentColor: portal.accentColor, mode: portal.mode };

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { recordAudit } from "@/lib/audit";
 import { z } from "zod";
 
@@ -36,18 +35,19 @@ const freightSchema = z.object({
 });
 const putSchema = z.object({ freight: z.array(freightSchema).max(2000) });
 
-async function auth(token: string) {
-  const portal = await resolvePortal(token);
-  if (!portal) return { error: NextResponse.json({ error: "Link inválido" }, { status: 404 }) };
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return { error: NextResponse.json({ error: "Faça login." }, { status: 401 }) };
-  }
-  return { clientId: portal.clientId };
+// Passa pelo GATE do portal, como as demais rotas. Antes decidia a autorização
+// por conta própria e ficava fora da checagem de seção: uma atendente sem a
+// seção "frete" LIA e GRAVAVA a tabela de frete do cliente (o PUT usa o mesmo
+// auth do GET). Encontrado testando com o acesso real de uma vendedora da JR.
+async function auth(req: Request, token: string) {
+  const { error, portal } = await guardPortal(req, token, { section: "frete" });
+  if (error) return { error };
+  return { clientId: portal.clientId, email: portal.email };
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { clientId, error } = await auth(token);
+  const { clientId, error } = await auth(req, token);
   if (error) return error;
   const pc = await prisma.pricingConfig.findUnique({ where: { clientId } });
   const rules = (pc?.rules ?? {}) as { freight?: unknown };
@@ -56,7 +56,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 
 export async function PUT(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { clientId, error } = await auth(token);
+  const { clientId, email, error } = await auth(req, token);
   if (error) return error;
 
   const parsed = putSchema.safeParse(await req.json());
@@ -74,7 +74,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ token: s
   // Histórico (frete = dinheiro): registra QUEM mudou QUAL preço QUANDO. Best-effort.
   const diff = freightDiff(before, parsed.data.freight);
   if (diff.priceChanges.length || diff.added.length || diff.removed.length) {
-    const email = await getPortalSessionEmail(clientId).catch(() => null);
     await recordAudit({ clientId, action: "freight.update", meta: { by: email ?? "portal", ...diff } });
   }
 

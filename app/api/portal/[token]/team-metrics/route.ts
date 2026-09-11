@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalUser, isAdminRole } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { normalizePeriod, periodRanges } from "@/lib/notifications/client-report";
 
 export const runtime = "nodejs";
@@ -11,13 +10,13 @@ const CLOSED_QUALIFIED = ["qualificado", "negociacao", "convertido"];
 // GET — métricas por atendente (dono do lead) + totais. Período via ?p=.
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-
-  const user = await getPortalUser(portal.clientId);
-  const me = user?.email ?? null;
-  const isAdmin = isAdminRole(user?.role);
-  if (await isProtected(portal.clientId) && !me) return NextResponse.json({ error: "Faça login." }, { status: 401 });
+  // Passa pelo GATE do portal, como as demais rotas. Antes decidia a autorização
+  // por conta própria e, por isso, ficava de fora da checagem de seção: um
+  // usuário restrito a "conversas" lia os números da equipe inteira.
+  const { error, portal } = await guardPortal(req, token, { section: "equipe" });
+  if (error) return error;
+  const me = portal.email;
+  const isAdmin = portal.isAdmin;
 
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ me, isAdmin, period: "month", rows: [], team: null, unassigned: 0 });

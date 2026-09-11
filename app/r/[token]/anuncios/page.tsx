@@ -9,6 +9,7 @@ import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalPeriod } from "@/components/portal/portal-period";
 import { PortalCreativeMedia } from "@/components/portal/portal-creative-media";
+import { AreaChart, Sparkline } from "@/components/portal/portal-charts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,6 +118,19 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
             </div>
           </div>
 
+          {data.series.length > 1 && (
+            <div style={{ padding: "4px 18px 16px" }}>
+              <div className="p-eyebrow" style={{ marginBottom: 8 }}>Leads por dia</div>
+              <AreaChart points={data.series.map((d) => d.leads)} height={150} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                <span style={{ fontSize: 11.5, color: "var(--p-muted)", flexShrink: 0 }}>Investimento</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Sparkline points={data.series.map((d) => d.spend)} height={26} />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="p-split">
             {/* Pra onde foi o investimento */}
             <div>
@@ -124,14 +138,22 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
               {data.topCampaigns.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 12 }}>Assim que houver gasto em campanhas, a divisão do investimento aparece aqui.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 13, marginTop: 14 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
                   {data.topCampaigns.map((c, i) => (
-                    <div key={i}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
-                        <span style={{ fontSize: 12.5, color: "var(--p-text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                        <span className="tnum" style={{ fontSize: 12, color: "var(--p-muted)", flexShrink: 0 }}>{money(c.spend, cur)} · {int(c.leads)} lead{c.leads !== 1 ? "s" : ""}{c.cpl != null ? ` · ${money(c.cpl, cur)}/lead` : ""}</span>
+                    <div key={i} style={{ display: "flex", gap: 11, alignItems: "center", padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
+                      <div style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 9, overflow: "hidden", background: "var(--p-raise)", border: "1px solid var(--p-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {c.image
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : <span style={{ fontSize: 17, opacity: 0.35 }} aria-hidden>📣</span>}
                       </div>
-                      <div className="p-track"><span style={{ width: `${c.pctSpend}%` }} /></div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: "var(--p-text)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                        <div className="tnum" style={{ fontSize: 11.5, color: "var(--p-muted)", marginTop: 2 }}>
+                          {money(c.spend, cur)} · {int(c.leads)} lead{c.leads !== 1 ? "s" : ""}{c.cpl != null ? ` · ${money(c.cpl, cur)}/lead` : ""}
+                        </div>
+                        <div className="p-track" style={{ marginTop: 6 }}><span style={{ width: `${c.pctSpend}%` }} /></div>
+                      </div>
                     </div>
                   ))}
                 </div>

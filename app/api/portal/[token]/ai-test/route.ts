@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { runAgent } from "@/lib/ai-agent/orchestrator";
 import { transcribeAudio } from "@/lib/transcribe";
 import type { ChatMessage } from "@/lib/openai";
@@ -21,13 +20,11 @@ function aiTestOn(sections: string | null | undefined): boolean {
 // envia WhatsApp nem grava nada). Stateless: o cliente mantém o transcript e reenvia.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-
-  // Login obrigatório (se o portal exige) + flag de teste habilitada.
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login para testar a IA." }, { status: 401 });
-  }
+  // Passa pelo GATE do portal, como as demais rotas. A checagem da flag abaixo
+  // é do CLIENTE (o teste está habilitado?); faltava a do USUÁRIO — quem não tem
+  // a seção "ia" gastava modelo aqui. `cost: "llm"` porque esta rota consome.
+  const { error, portal } = await guardPortal(req, token, { section: "ia", cost: "llm" });
+  if (error) return error;
   const cp = await prisma.clientPortal.findUnique({ where: { clientId: portal.clientId }, select: { sections: true } });
   if (!aiTestOn(cp?.sections)) return NextResponse.json({ error: "Teste da IA não está habilitado." }, { status: 403 });
 

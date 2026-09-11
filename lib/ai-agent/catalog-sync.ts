@@ -14,20 +14,42 @@ interface Offer {
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s);
 
-// GET tolerante a cadeia de certificado incompleta (caso do m.autocarro.com.br).
+// ── Segurança (F-01 da auditoria) ─────────────────────────────────────────────
+// Antes: `rejectUnauthorized: false` para QUALQUER host, seguindo redirect livre.
+// Isso permitia MITM envenenar a fonte de verdade de PREÇO — que vai direto ao prompt
+// da IA e ao WhatsApp do lead. Agora a verificação de TLS é PADRÃO; a tolerância à
+// cadeia incompleta fica restrita a uma allowlist explícita (o fornecedor conhecido),
+// e o redirect só segue para https em host permitido.
+const INSECURE_TLS_HOSTS = new Set(
+  (process.env.CATALOG_SYNC_INSECURE_HOSTS ?? "m.autocarro.com.br,www.autocarro.com.br,autocarro.com.br")
+    .split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
+);
+const ALLOWED_SCHEMES = new Set(["https:"]);
+const FETCH_TIMEOUT_MS = Number(process.env.CATALOG_SYNC_TIMEOUT_MS || 20_000);
+
 function fetchInsecure(url: string, redirects = 0): Promise<string> {
   return new Promise((resolve, reject) => {
     if (redirects > 4) return reject(new Error("muitos redirects"));
-    https.get(url, { rejectUnauthorized: false, headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    let u: URL;
+    try { u = new URL(url); } catch { return reject(new Error("url inválida")); }
+    if (!ALLOWED_SCHEMES.has(u.protocol)) return reject(new Error(`esquema não permitido: ${u.protocol}`));
+    const host = u.hostname.toLowerCase();
+    // Só relaxa a validação do certificado nos hosts explicitamente listados.
+    const rejectUnauthorized = !INSECURE_TLS_HOSTS.has(host);
+
+    const req = https.get(url, { rejectUnauthorized, headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       const code = res.statusCode ?? 0;
       if (code >= 300 && code < 400 && res.headers.location) {
         res.resume();
-        return resolve(fetchInsecure(new URL(res.headers.location, url).toString(), redirects + 1));
+        const next = new URL(res.headers.location, url);
+        if (!ALLOWED_SCHEMES.has(next.protocol)) return reject(new Error("redirect para esquema não permitido"));
+        return resolve(fetchInsecure(next.toString(), redirects + 1));
       }
       let data = ""; res.setEncoding("utf8");
       res.on("data", (c) => (data += c));
       res.on("end", () => resolve(data));
     }).on("error", reject);
+    req.setTimeout(FETCH_TIMEOUT_MS, () => req.destroy(new Error("timeout no sync de catálogo")));
   });
 }
 

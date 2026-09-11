@@ -4,6 +4,11 @@ import { recordUsage, type Pipeline } from "@/lib/ai-agent/usage";
 
 const OPENAI_URL = "https://api.openai.com/v1";
 
+// Limites de recurso (C-18 do RFC de segurança). Toda chamada de rede precisa de teto:
+// o custo de não ter é indisponibilidade global da IA, não lentidão.
+const CHAT_TIMEOUT_MS = Number(process.env.AI_LLM_TIMEOUT_MS || 45_000);
+const EMBED_TIMEOUT_MS = Number(process.env.AI_EMBED_TIMEOUT_MS || 20_000);
+
 export class OpenAIError extends Error {}
 
 // Atribuição de uso/limite por chamada (opcional; quando ausente, só não mede custo).
@@ -60,6 +65,10 @@ export async function openaiChat(opts: {
     const res = await fetch(`${OPENAI_URL}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      // TIMEOUT (C-18): sem isto, uma conexão PENDURADA com a OpenAI segura um slot do
+      // semáforo global para sempre — 8 conexões presas = nenhum cliente atendido, e o
+      // circuit breaker nunca abre porque conexão pendurada não gera erro.
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
       body: JSON.stringify({
         model, messages: opts.messages,
         ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
@@ -92,6 +101,7 @@ export async function embed(texts: string[], meta?: LLMMeta): Promise<number[][]
     const res = await fetch(`${OPENAI_URL}/embeddings`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS), // C-18: idem chat
       body: JSON.stringify({ model: "text-embedding-3-small", input: texts }),
     });
     if (!res.ok) throw new OpenAIError(`OpenAI embeddings ${res.status}: ${await res.text()}`);

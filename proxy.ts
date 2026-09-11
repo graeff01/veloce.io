@@ -13,7 +13,9 @@ export async function proxy(req: NextRequest) {
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  if (!token) {
+  // Sem token OU token sem papel (sessão revogada pela revalidação em lib/auth.ts:
+  // usuário desativado/excluído) → volta pro login.
+  if (!token || !token.role) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);

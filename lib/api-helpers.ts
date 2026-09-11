@@ -16,7 +16,9 @@ type Permission =
 export async function requireAuth(permission?: Permission) {
   const session = await getServerSession(authOptions);
 
-  if (!session) {
+  // Sem sessão OU sessão sem identidade/papel (usuário desativado/excluído — a
+  // revalidação do JWT em lib/auth.ts limpa os campos). Ambos são 401.
+  if (!session?.user?.id || !session.user.role) {
     return { error: NextResponse.json({ error: "Não autenticado" }, { status: 401 }), session: null };
   }
 
@@ -41,7 +43,7 @@ export async function requireAuth(permission?: Permission) {
 export async function requireClientAccess(clientId: string) {
   const session = await getServerSession(authOptions);
 
-  if (!session) {
+  if (!session?.user?.id || !session.user.role) {
     return { error: NextResponse.json({ error: "Não autenticado" }, { status: 401 }), session: null };
   }
 

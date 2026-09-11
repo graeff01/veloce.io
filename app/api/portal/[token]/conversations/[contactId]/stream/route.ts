@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +10,10 @@ export const dynamic = "force-dynamic";
 // segue como rede de segurança. Sem custo externo — é só o nosso servidor.
 export async function GET(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return new Response("Link inválido", { status: 404 });
+  // SSE segura conexão + consulta o banco a cada 1,2s: exige sessão e tem cota própria
+  // (sem isso, o link sozinho permitia abrir milhares de streams e saturar o pool).
+  const { error, portal } = await guardPortal(req, token, { section: "conversas", cost: "stream" });
+  if (error) return error;
   const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return new Response("WhatsApp não conectado", { status: 404 });
   const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id }, select: { id: true } });

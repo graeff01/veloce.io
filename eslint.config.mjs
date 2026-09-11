@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // App mobile (Expo/RN): toolchain propria em apps/mobile.
+    "apps/**",
   ]),
 ]);
 

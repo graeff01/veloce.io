@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 import { decryptSecret } from "@/lib/crypto";
 
 export const runtime = "nodejs";
@@ -15,10 +15,10 @@ const TTL_MS = 30 * 60 * 1000;
 
 // Resolve a fonte do vídeo do criativo destaque e redireciona (302). Escopado pelo
 // token do portal → cliente; só serve criativos da conexão Meta daquele cliente.
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string; creativeId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string; creativeId: string }> }) {
   const { token, creativeId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return new NextResponse(null, { status: 404 });
+  const { error, portal } = await guardPortal(req, token, { section: "anuncios" });
+  if (error) return error;
 
   const cached = cache.get(creativeId);
   if (cached && cached.exp > Date.now()) return NextResponse.redirect(cached.url, 302);

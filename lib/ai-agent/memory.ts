@@ -1,5 +1,8 @@
 import { prismaUnscoped } from "@/lib/prisma";
 import { openaiChat, type ChatMessage } from "@/lib/openai";
+import { stripInstructionLines } from "./security/detect";
+import { securityMode } from "./security/policy";
+import { emitSecurityEventAsync } from "./security/events";
 
 // ── Sprint 1: arquitetura de memória em 3 camadas ──────────────────────────────
 // 1) Short-term: janela recente com ORÇAMENTO de tokens (não explode contexto).
@@ -71,8 +74,28 @@ export async function updateRollingMemory(contactId: string, clientId?: string, 
     .map((m) => `${m.direction === "in" ? "Lead" : "Loja"}: ${m.text}`).join("\n");
   if (!convoText) return;
 
-  const summary = await summarizeConversation(convo.agentMemory || "", convoText, model, clientId);
+  let summary = await summarizeConversation(convo.agentMemory || "", convoText, model, clientId);
   if (!summary || summary === (convo.agentMemory || "")) return;
+
+  // ── Segurança · Anel 2: quarentena de ESCRITA da memória (C-07) ─────────────
+  // Este resumo é gerado por um LLM a partir do texto do LEAD e volta como bloco
+  // `system` em TODO turno seguinte — é o caminho da injeção PERSISTENTE. Um resumo
+  // factual legítimo não contém instrução em 2ª pessoa. Se contiver, a memória NÃO
+  // regride: mantemos a anterior e só deixamos de incorporar o turno contaminado.
+  const q = stripInstructionLines(summary);
+  if (q.removed > 0) {
+    const enforce = securityMode() === "enforce";
+    emitSecurityEventAsync({
+      clientId: clientId ?? "-", contactId, ring: "context", control: "C-07",
+      severity: "high", action: enforce ? "sanitized" : "observed",
+      labels: ["memory_write_poison", `linhas:${q.removed}`], evidence: summary,
+      shadow: !enforce,
+    });
+    if (enforce) {
+      if (!q.text.trim()) return; // resumo era só instrução → preserva o anterior
+      summary = q.text;
+    }
+  }
 
   await prismaUnscoped.waConversation.update({
     where: { contactId },

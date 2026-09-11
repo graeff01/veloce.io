@@ -2,10 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut } from "lucide-react";
+import { Search, Eye, Sparkles, Send, ArrowLeft, MessageCircle, Clock, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
+import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
-interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
+interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null;
+  // Já vinham na resposta de /conversations e o portal não usava: são o tempo de
+  // espera e o estado que a EQUIPE compartilha (o app já lê os dois).
+  lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -46,15 +50,57 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 }
 // Miniatura de imagem recebida (o lead mandou foto). Fallback pro rótulo se falhar.
+// A foto abria em ABA NOVA (`target="_blank"`): tirava a vendedora da conversa e
+// ainda punha o endereço da API — que carrega o token do portal — na barra e no
+// histórico do navegador. Agora abre num VISOR sobre a página, com zoom nativo
+// (a própria imagem cresce no clique) e sem sair de onde ela está.
 function ThreadImage({ src, caption }: { src: string; caption: string | null }) {
   const [err, setErr] = useState(false);
+  const [aberta, setAberta] = useState(false);
+  const [zoom, setZoom] = useState(false);
+
+  // Esc fecha, como em qualquer visor. Só escuta enquanto está aberto.
+  useEffect(() => {
+    if (!aberta) return;
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setAberta(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aberta]);
+
   if (err) return <span>📷 Foto{caption ? ` · ${caption}` : ""}</span>;
   return (
-    <a href={src} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="Foto do lead" loading="lazy" onError={() => setErr(true)} style={{ maxWidth: 240, width: "100%", borderRadius: 9, display: "block" }} />
-      {caption && caption.trim() && <span style={{ display: "block", marginTop: 5 }}>{caption}</span>}
-    </a>
+    <>
+      <button onClick={() => { setAberta(true); setZoom(false); }} aria-label="Abrir a foto" style={{ display: "block", border: "none", background: "transparent", padding: 0, cursor: "zoom-in", width: "100%", textAlign: "left", color: "inherit" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="Foto do lead" loading="lazy" onError={() => setErr(true)} style={{ maxWidth: 240, width: "100%", borderRadius: 9, display: "block" }} />
+        {caption && caption.trim() && <span style={{ display: "block", marginTop: 5 }}>{caption}</span>}
+      </button>
+
+      {aberta && (
+        <div role="dialog" aria-label="Foto do lead" onClick={() => setAberta(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,.94)", display: "flex", alignItems: "center", justifyContent: "center", overflow: zoom ? "auto" : "hidden" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="Foto do lead"
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => !z); }}
+            style={zoom
+              ? { width: "auto", maxWidth: "none", height: "auto", cursor: "zoom-out" }
+              : { maxWidth: "94vw", maxHeight: "88vh", objectFit: "contain", cursor: "zoom-in" }} />
+          <button onClick={(e) => { e.stopPropagation(); setAberta(false); }} aria-label="Fechar foto"
+            style={{ position: "fixed", top: 18, right: 18, width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "none", background: "rgba(255,255,255,.14)", color: "#fff", cursor: "pointer" }}>
+            <X size={18} />
+          </button>
+          {/* A foto do lead é material de trabalho: vai para o orçamento e para o
+              instalador. O download é o "salvar" do navegador. */}
+          <a href={src} download onClick={(e) => e.stopPropagation()} aria-label="Salvar a foto"
+            style={{ position: "fixed", top: 18, left: 18, width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "rgba(255,255,255,.14)", color: "#fff", textDecoration: "none" }}>
+            <Download size={17} />
+          </a>
+          {caption && caption.trim() && (
+            <span style={{ position: "fixed", left: 0, right: 0, bottom: 22, textAlign: "center", color: "#fff", fontSize: 13, padding: "0 24px", textShadow: "0 1px 4px rgba(0,0,0,.6)" }}>{caption}</span>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 function avatarColor(name: string) { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 42% 52%)`; }
@@ -86,7 +132,15 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [list, setList] = useState<Row[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [tab, setTab] = useState<"all" | "ads" | "waiting">("all");
+  const [tab, setTab] = useState<"all" | "ads" | "waiting" | "arquivadas">("all");
+  const [campanhaModal, setCampanhaModal] = useState(false);
+  // Relógio único da lista: o rótulo "há 12min" precisa envelhecer sozinho, e um
+  // intervalo por linha seria desperdício. Mesma cadência do aplicativo.
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [adFilter, setAdFilter] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(initialContact ?? null);
@@ -162,7 +216,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // ?tab=waiting/ads pra manter o filtro ao voltar. Só na montagem.
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "waiting" || t === "ads") setTab(t);
+    if (t === "waiting" || t === "ads" || t === "arquivadas") setTab(t);
   }, []);
 
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
@@ -185,6 +239,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
       if (q.trim()) sp.set("q", q.trim());
       if (mineOnly) sp.set("owner", "me"); // "Minhas conversas" no SERVIDOR (pega todas, não só a página)
+      // Arquivadas vivem FORA da caixa: o servidor as exclui por padrão e só as
+      // devolve quando pedidas. Sem isto, arquivar não tiraria nada da frente.
+      if (tab === "arquivadas") sp.set("arquivadas", "1");
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
@@ -192,24 +249,46 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q, mineOnly]);
+  }, [token, q, mineOnly, tab]);
 
-  // Auto-atualização (novas conversas/mensagens) — só na 1ª página e fora de busca, para NÃO
-  // resetar o histórico já carregado com "Carregar mais".
+  // Auto-atualização: quem manda mensagem SOBE PARA O TOPO, como no WhatsApp.
+  //
+  // Dois defeitos corrigidos aqui:
+  //   1. A consulta não levava `arquivadas=1`. Estando na aba Arquivadas, a cada
+  //      seis segundos a lista era trocada pela caixa NORMAL — a aba se desfazia
+  //      sozinha na frente da pessoa.
+  //   2. Depois de "Carregar mais" o refresh era desligado PARA SEMPRE
+  //      (loadedMoreRef), para não descartar as páginas já carregadas. O efeito
+  //      colateral era este: a lista parava de reordenar, e o lead que acabou de
+  //      escrever ficava enterrado onde estava.
+  //
+  // Agora FUNDE em vez de substituir: a primeira página (que o servidor já manda
+  // ordenada pela mensagem mais recente) vem na frente, e o que foi carregado
+  // além dela segue embaixo, na ordem em que estava. Assim reordena sem perder
+  // histórico, e o "Carregar mais" deixa de ser um caminho sem volta.
   useEffect(() => {
     const reload = () => {
-      if (document.hidden || qRef.current || loadedMoreRef.current) return;
-      fetch(`/api/portal/${token}/conversations?limit=${PAGE}&offset=0${mineOnly ? "&owner=me" : ""}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (document.hidden || qRef.current) return;
+      const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
+      if (mineOnly) sp.set("owner", "me");
+      if (tab === "arquivadas") sp.set("arquivadas", "1");
+      fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
-        setHasMore(!!d.hasMore); setList(d.conversations ?? []);
+        const frescas: Row[] = d.conversations ?? [];
+        const naPrimeira = new Set(frescas.map((c) => c.contactId));
+        setList((antiga) => {
+          if (!antiga || !loadedMoreRef.current) { setHasMore(!!d.hasMore); return frescas; }
+          // Só as páginas EXTRAS ficam embaixo; `hasMore` segue sendo delas.
+          return [...frescas, ...antiga.filter((c) => !naPrimeira.has(c.contactId))];
+        });
       }).catch(() => {});
     };
     const iv = setInterval(reload, 6000);
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token, mineOnly]);
+  }, [token, mineOnly, tab]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -218,6 +297,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     const sp = new URLSearchParams({ limit: String(PAGE), offset: String(list?.length ?? 0) });
     if (q.trim()) sp.set("q", q.trim());
     if (mineOnly) sp.set("owner", "me");
+    if (tab === "arquivadas") sp.set("arquivadas", "1");
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
@@ -229,7 +309,23 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (!sel) { setConv(null); return; }
     let alive = true;
     nearBottomRef.current = true; // ao abrir uma conversa, começa no fim
-    setDraft(""); setSendError(null); // compositor limpo por conversa
+    setDraft(lerRascunho(sel)); setSendError(null); // volta o que ela tinha escrito
+
+    // Corte do divisor: a última visita ANTES de registrar a de agora.
+    try {
+      const anterior = localStorage.getItem(visitaKey(sel));
+      setCorteNovas(anterior ? Number(anterior) || null : null);
+      localStorage.setItem(visitaKey(sel), String(Date.now()));
+    } catch { setCorteNovas(null); }
+
+    // Abrir marca como lida para a EQUIPE, no servidor — não só neste navegador.
+    // São três vendedoras no MESMO número: lido por uma precisa sumir do negrito
+    // das outras, e do aplicativo. Melhor esforço: falhar aqui não pode
+    // atrapalhar a leitura da conversa.
+    fetch(`/api/portal/${token}/conversations/${sel}/state`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lida: true }),
+    }).catch(() => {});
+    setList((l) => (l ? l.map((row) => (row.contactId === sel ? { ...row, lida: true } : row)) : l));
     const load = (silent: boolean) => {
       if (!silent) setLoadingConv(true);
       return fetch(`/api/portal/${token}/conversations/${sel}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -277,8 +373,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   // A aba "Leads de anúncio" só aparece se o cliente REALMENTE tem leads de anúncio
   // (cliente que só usa a IA não vê um atalho vazio). Se sumir, volta pra "Conversas".
-  const hasAds = adGroups.length > 0;
-  useEffect(() => { if (!hasAds && (tab === "ads")) { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
+  // A aba de anúncio some quando a LISTA CARREGADA não tem lead de anúncio — e
+  // em "Arquivadas" ela quase nunca tem. Resultado: entrar em Arquivadas fazia a
+  // aba Anúncio desaparecer. A pergunta certa é "este CLIENTE tem leads de
+  // anúncio?", que não muda ao trocar de filtro. Uma vez visto, fica.
+  const [clienteTemAds, setClienteTemAds] = useState(false);
+  useEffect(() => { if (adGroups.length > 0) setClienteTemAds(true); }, [adGroups.length]);
+  const hasAds = clienteTemAds;
+  useEffect(() => { if (!hasAds && tab === "ads") { setTab("all"); setAdFilter(null); } }, [hasAds, tab]);
 
   const items = (list ?? []).filter((c) => {
     if (mineOnly && (!me || c.assignedEmail !== me)) return false;
@@ -316,37 +418,366 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     } finally { setAiReplying(false); }
   }
 
+  // ── Respostas rápidas ─────────────────────────────────────────────────────
+  // Sem isto a vendedora redigita as mesmas frases o dia inteiro: saudação,
+  // condições de frete, chave PIX. O aplicativo já tem; aqui vai o mesmo.
+  //
+  // POR NAVEGADOR, não por equipe — igual ao app, que guarda no aparelho.
+  // Compartilhar entre as três vendedoras seria melhor produto (a Maria escreve,
+  // a Ana usa), mas exige tabela nova e migration; fica anotado como decisão,
+  // não resolvido por conta própria.
+  const respostasKey = `vp-respostas-${token}`;
+  const [respostas, setRespostas] = useState<string[]>([]);
+  const [respostasAbertas, setRespostasAbertas] = useState(false);
+
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(respostasKey);
+      const v = cru ? JSON.parse(cru) : [];
+      if (Array.isArray(v)) setRespostas(v.filter((x) => typeof x === "string"));
+    } catch { /* lista corrompida é lista vazia */ }
+  }, [respostasKey]);
+
+  const gravarRespostas = (lista: string[]) => {
+    setRespostas(lista);
+    try { localStorage.setItem(respostasKey, JSON.stringify(lista)); } catch { /* segue em memória */ }
+  };
+
+  function novaResposta() {
+    const t = window.prompt("Nova resposta rápida:\n\nEla fica guardada neste navegador e entra no compositor com um clique.");
+    if (t && t.trim()) gravarRespostas([...respostas, t.trim()]);
+  }
+
+  // ── Busca dentro da conversa ──────────────────────────────────────────────
+  // O Ctrl+F do navegador acha, mas não navega entre ocorrências nem diz quantas
+  // são — e numa conversa de meses isso é a diferença entre achar o endereço e
+  // rolar procurando. O aplicativo já tinha; aqui vai o mesmo.
+  const [buscaThread, setBuscaThread] = useState("");
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [achadoAtual, setAchadoAtual] = useState(0);
+
+  const achados = useMemo(() => {
+    const termo = buscaThread.trim().toLowerCase();
+    if (!termo) return [] as string[];
+    return (conv?.items ?? [])
+      .filter((m) => ((m.text ?? "") + " " + (m.transcription ?? "")).toLowerCase().includes(termo))
+      .map((m) => m.id);
+  }, [buscaThread, conv]);
+
+  useEffect(() => { setAchadoAtual(0); }, [buscaThread]);
+  useEffect(() => { if (!sel) { setBuscaAberta(false); setBuscaThread(""); } }, [sel]);
+
+  /** Rola até a ocorrência e a destaca por um instante. */
+  const irParaAchado = (passo: number) => {
+    if (achados.length === 0) return;
+    const i = (achadoAtual + passo + achados.length) % achados.length;
+    setAchadoAtual(i);
+    const el = document.getElementById(`msg-${achados[i]}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  /**
+   * Devolve a conversa ao estado de pendente PARA A EQUIPE. Passou a importar
+   * mais agora que a leitura é compartilhada: o que uma abre some do negrito das
+   * outras, e sem isto não havia como desfazer — "abri, li, respondo depois"
+   * virava uma conversa que ninguém mais via como pendente.
+   */
+  async function marcarNaoLida() {
+    if (!sel) return;
+    const id = sel;
+    await fetch(`/api/portal/${token}/conversations/${id}/state`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lida: false }),
+    }).catch(() => {});
+    setList((l) => (l ? l.map((row) => (row.contactId === id ? { ...row, lida: false } : row)) : l));
+    // Volta para a lista: ficar dentro da conversa que acabou de ser marcada
+    // como não lida é contraditório — e o efeito de abrir a marcaria de novo.
+    setSel(null);
+  }
+
+  // ── Rascunho por conversa ─────────────────────────────────────────────────
+  // Antes o compositor era LIMPO ao trocar de conversa ("compositor limpo por
+  // conversa"). Na prática: escreveu meia resposta, pulou para outra conversa
+  // conferir um preço, voltou — e o texto tinha sumido. O aplicativo guarda por
+  // conversa, e é o que passa a valer aqui.
+  const rascunhoKey = (id: string) => `vp-rascunho-${token}-${id}`;
+  const lerRascunho = (id: string) => {
+    try { return localStorage.getItem(rascunhoKey(id)) ?? ""; } catch { return ""; }
+  };
+  const gravarRascunho = (id: string, texto: string) => {
+    try {
+      if (texto.trim()) localStorage.setItem(rascunhoKey(id), texto);
+      else localStorage.removeItem(rascunhoKey(id));
+    } catch { /* sem espaço: o rascunho segue só em memória */ }
+  };
+
+  // ── Divisor "mensagens novas" ─────────────────────────────────────────────
+  // Guarda o instante da ÚLTIMA visita a cada conversa, NESTE navegador. É
+  // legitimamente por aparelho: o divisor responde "onde eu parei", não "onde a
+  // equipe parou" — para a equipe existe o `lida`, que mora no servidor.
+  const visitaKey = (id: string) => `vp-visita-${token}-${id}`;
+  const [corteNovas, setCorteNovas] = useState<number | null>(null);
+  // O divisor aparece UMA vez. Sem esta trava ele nasceria antes de cada
+  // mensagem nova, e viraria listra em vez de marcação.
+  const marcouNovas = useRef(false);
+  useEffect(() => { marcouNovas.current = false; }, [sel, corteNovas, conv]);
+
+  // ── Fila de envio ─────────────────────────────────────────────────────────
+  // Antes: falhou a rede, a mensagem voltava para a caixa de texto com um aviso
+  // e a vendedora tinha de reenviar na mão. Agora ela fica guardada e sai
+  // sozinha — o mesmo comportamento do aplicativo.
+  //
+  // Vive no localStorage por CONVERSA: recarregar a aba ou fechar o navegador no
+  // meio de uma queda não pode perder o que a pessoa escreveu.
+  interface Pendente { id: string; chave: string; contactId: string; text: string; tentativas: number; criadoEm: number }
+  const FILA_CHAVE = `vp-fila-${token}`;
+  const VALIDADE_MS = 60 * 60_000;   // 1h, como no app: depois disso o contexto morreu
+  const [fila, setFila] = useState<Pendente[]>([]);
+
+  // Lê a fila salva UMA vez, na montagem. localStorage pode falhar (modo privado,
+  // cota) e isso nunca pode impedir a tela de abrir.
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(FILA_CHAVE);
+      const salvos: Pendente[] = cru ? JSON.parse(cru) : [];
+      const vivos = Array.isArray(salvos) ? salvos.filter((p) => Date.now() - p.criadoEm < VALIDADE_MS) : [];
+      if (vivos.length) setFila(vivos);
+    } catch { /* fila corrompida é fila vazia, nunca um erro na tela */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(FILA_CHAVE, JSON.stringify(fila)); } catch { /* sem espaço: a fila segue em memória */ }
+  }, [fila, FILA_CHAVE]);
+
+  const enfileirar = (p: Pendente) => setFila((f) => [...f, p]);
+
+  // Uma tentativa por ciclo, do mais antigo para o mais novo: manter a ORDEM das
+  // mensagens importa mais do que despachar rápido. O intervalo cresce com as
+  // tentativas para não martelar um servidor que já está com problema.
+  useEffect(() => {
+    if (fila.length === 0) return;
+    const primeiro = fila[0];
+    const espera = Math.min(30_000, 2_000 * Math.pow(2, Math.min(primeiro.tentativas, 4)));
+    const id = setTimeout(async () => {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setFila((f) => f.map((x) => (x.id === primeiro.id ? { ...x, tentativas: x.tentativas + 1 } : x)));
+        return;
+      }
+      try {
+        const r = await fetch(`/api/portal/${token}/conversations/${primeiro.contactId}/send`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: primeiro.text, key: primeiro.chave }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+          // Saiu (ou já tinha saído, e o servidor disse `duplicada`). Fora da fila.
+          setFila((f) => f.filter((x) => x.id !== primeiro.id));
+          if (d?.message && sel === primeiro.contactId) {
+            setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === primeiro.id ? (d.message as Msg) : m)) } : c));
+          }
+          return;
+        }
+        // O servidor RESPONDEU e recusou: insistir não muda nada. Sai da fila e
+        // o texto volta para a caixa, com o motivo à vista.
+        setFila((f) => f.filter((x) => x.id !== primeiro.id));
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== primeiro.id) } : c));
+        if (sel === primeiro.contactId) {
+          setDraft((cur) => cur || primeiro.text);
+          setSendError(d?.error || "Não foi possível enviar a mensagem.");
+        }
+      } catch {
+        // Ainda sem rede: conta a tentativa e espera mais da próxima vez.
+        setFila((f) => f.map((x) => (x.id === primeiro.id ? { ...x, tentativas: x.tentativas + 1 } : x)));
+      }
+    }, espera);
+    return () => clearTimeout(id);
+  }, [fila, token, sel]);
+
+  // Passou da validade: o contexto da conversa morreu e mandar agora seria pior
+  // do que não mandar. Sai da fila e o texto volta para a caixa.
+  useEffect(() => {
+    const velhas = fila.filter((p) => Date.now() - p.criadoEm >= VALIDADE_MS);
+    if (velhas.length === 0) return;
+    setFila((f) => f.filter((p) => Date.now() - p.criadoEm < VALIDADE_MS));
+    setConv((c) => (c ? { ...c, items: c.items.filter((m) => !velhas.some((v) => v.id === m.id)) } : c));
+    const minha = velhas.find((p) => p.contactId === sel);
+    if (minha) { setDraft((cur) => cur || minha.text); setSendError("A mensagem esperou mais de uma hora sem conexão e não foi enviada."); }
+  }, [fila, sel, VALIDADE_MS]);
+
   // Envio MANUAL da equipe (texto livre) pelo painel. Otimista: mostra a bolha na hora e
   // reconcilia com a mensagem real do servidor (dedup por id no polling). aiGenerated=false
   // → o backend aciona o takeover e pausa o bot.
+  //
+  // FILA: quando a rede falha, a mensagem NÃO volta para a caixa de texto — fica
+  // guardada e sai sozinha quando a conexão voltar, como no aplicativo. Cada item
+  // carrega uma CHAVE, e o servidor recusa a segunda vez que ela aparece: sem
+  // isso, um reenvio de uma tentativa que na verdade chegou mandaria a mesma
+  // mensagem duas vezes para o WhatsApp de uma pessoa.
+  //
+  // Erro do SERVIDOR (janela de 24h fechada, sem permissão) não entra na fila:
+  // insistir não resolveria e a mensagem ficaria voltando para sempre. Aí sim o
+  // texto volta para a caixa, com o motivo na tela.
   async function send() {
     const text = draft.trim();
     if (!sel || !text || sending || !conv?.windowOpen) return;
     setSending(true); setSendError(null);
     const optId = "opt-" + Date.now();
+    const chave = `${optId}-${Math.random().toString(36).slice(2, 10)}`;
     const optimistic: Msg = { id: optId, text, direction: "out", type: "text", timestamp: new Date().toISOString(), aiGenerated: false, pending: true };
     nearBottomRef.current = true;
     setConv((c) => (c ? { ...c, items: [...c.items, optimistic] } : c));
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
     try {
+      gravarRascunho(sel, ""); // saiu do compositor: o rascunho morreu aqui
       const r = await fetch(`/api/portal/${token}/conversations/${sel}/send`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, key: chave }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d?.message) {
+      if (!r.ok) {
+        // O servidor respondeu e recusou: insistir não muda nada.
         setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
         setDraft((cur) => cur || text); // devolve o texto pra não perder o que digitou
         setSendError(d?.error || "Não foi possível enviar a mensagem.");
         return;
       }
+      if (!d?.message) {
+        // `duplicada: true` — uma tentativa anterior já entregou. A bolha
+        // otimista sai e o polling traz a real; não há nada a reenviar.
+        setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
+        return;
+      }
       // reconcilia a otimista pela mensagem real (id do banco → polling não duplica)
       setConv((c) => (c ? { ...c, items: c.items.map((m) => (m.id === optId ? (d.message as Msg) : m)) } : c));
     } catch {
-      setConv((c) => (c ? { ...c, items: c.items.filter((m) => m.id !== optId) } : c));
-      setDraft((cur) => cur || text);
-      setSendError("Falha de conexão. Tente de novo.");
+      // Falha de REDE: a mensagem fica na fila com a bolha em cinza na tela, e
+      // sai sozinha quando a conexão voltar.
+      enfileirar({ id: optId, chave, contactId: sel, text, tentativas: 0, criadoEm: Date.now() });
     } finally { setSending(false); }
+  }
+
+  /**
+   * "A IA errou aqui". Até agora, AiCorrection só nascia quando alguém REJEITAVA
+   * um orçamento — o aprendizado enxergava erro de preço e mais nada. Quem vê a
+   * IA errar em tempo real é a vendedora, dentro da conversa. Mesma rota do
+   * aplicativo; o servidor busca o texto da IA e a pergunta do lead.
+   */
+  async function corrigirIA(messageId: string) {
+    const nota = window.prompt(
+      "O que a IA deveria ter respondido?\n\nIsso vai para a fila de aprendizado da Veloce — o lead não recebe nada.",
+    );
+    if (!nota || !nota.trim() || !sel) return;
+    const r = await fetch(`/api/portal/${token}/conversations/${sel}/correction`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, note: nota.trim() }),
+    }).catch(() => null);
+    const d = await r?.json().catch(() => ({}));
+    if (!r?.ok) { alert(d?.error || "Não foi possível registrar."); return; }
+    alert("Obrigado. A correção foi registrada.");
+  }
+
+  /**
+   * Arquivar tira da caixa SEM apagar nada, e some para a equipe inteira — o
+   * estado mora no servidor, como no aplicativo. É o que permite a JR encarar
+   * 1.271 conversas: o que já morreu sai da frente.
+   */
+  /**
+   * Assumir em LOTE as conversas LIVRES que estão na tela. A JR abriu com ~1.250
+   * sem dona: pegar uma a uma não é trabalho, é desistência. O filtro é a
+   * seleção — por isso o aviso diz o número exato antes de agir.
+   *
+   * O servidor ignora em silêncio o que já tem outra responsável e devolve a
+   * contagem; dizer isso evita a vendedora achar que pegou conversa alheia.
+   */
+  const [assumindoLote, setAssumindoLote] = useState(false);
+  // Teto de 100 por chamada é regra do SERVIDOR; a tela mostra o mesmo número
+  // que vai agir, para o aviso não prometer mais do que acontece.
+  const livresNaTela = Math.min(100, items.filter((c) => !c.assignedEmail).length);
+  async function assumirLote() {
+    const livres = items.filter((c) => !c.assignedEmail).slice(0, 100);
+    if (livres.length === 0 || assumindoLote) return;
+    if (!window.confirm(`Assumir ${livres.length} conversa${livres.length > 1 ? "s" : ""}?\n\nVocê passa a ser a responsável por todas elas.`)) return;
+    setAssumindoLote(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/bulk-assign`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: livres.map((c) => c.contactId) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d?.error || "Não foi possível assumir agora."); return; }
+      setList((l) => (l ? l.map((row) => (livres.some((x) => x.contactId === row.contactId) ? { ...row, assignedEmail: me ?? row.assignedEmail } : row)) : l));
+      alert(`${d.assumidas} assumida${d.assumidas === 1 ? "" : "s"}.${d.ignoradas > 0 ? ` ${d.ignoradas} já tinham outra responsável.` : ""}`);
+    } finally { setAssumindoLote(false); }
+  }
+
+  // ── Catálogo no meio do atendimento ───────────────────────────────────────
+  // A vendedora precisava sair da conversa (ou abrir o site) para consultar
+  // preço. O aplicativo trouxe o catálogo para dentro da conversa; aqui vai o
+  // mesmo, pela MESMA rota somente-leitura (/catalog).
+  const [catalogoAberto, setCatalogoAberto] = useState(false);
+  const [catalogoBusca, setCatalogoBusca] = useState("");
+  const [catalogo, setCatalogo] = useState<{ id: string; title: string; price: number | null; imageUrl: string | null }[] | null>(null);
+  const [enviandoItem, setEnviandoItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!catalogoAberto) return;
+    let vivo = true;
+    const sp = catalogoBusca.trim() ? `?q=${encodeURIComponent(catalogoBusca.trim())}` : "";
+    // Debounce curto: digitar "churrasqueira" não vale doze consultas.
+    const id = setTimeout(() => {
+      fetch(`/api/portal/${token}/catalog${sp}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (vivo) setCatalogo(Array.isArray(d?.items) ? d.items : []); })
+        .catch(() => { if (vivo) setCatalogo([]); });
+    }, 220);
+    return () => { vivo = false; clearTimeout(id); };
+  }, [catalogoAberto, catalogoBusca, token]);
+
+  const precoBR = (v: number | null) =>
+    v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  /** Insere o item no compositor, para a vendedora completar antes de mandar. */
+  function inserirItem(it: { title: string; price: number | null }) {
+    const linha = it.price != null ? `${it.title} — ${precoBR(it.price)}` : it.title;
+    setDraft((d) => (d.trim() ? `${d.trim()}\n${linha}` : linha));
+    setCatalogoAberto(false);
+    taRef.current?.focus();
+  }
+
+  /**
+   * Manda a FOTO com o nome e o preço na legenda — que é o que o lead quer ver.
+   * A imagem do catálogo pode estar em outro domínio; se o navegador barrar,
+   * dizemos isso em vez de falhar em silêncio, e o texto ainda pode ser inserido.
+   */
+  async function enviarItemComFoto(it: { id: string; title: string; price: number | null; imageUrl: string | null }) {
+    if (!it.imageUrl || !sel || enviandoItem) return;
+    setEnviandoItem(it.id);
+    try {
+      const resp = await fetch(it.imageUrl);
+      if (!resp.ok) throw new Error("imagem indisponível");
+      const blob = await resp.blob();
+      const nome = `catalogo-${it.id}.jpg`;
+      const legenda = it.price != null ? `${it.title} — ${precoBR(it.price)}` : it.title;
+      await sendMedia("image", new File([blob], nome, { type: blob.type || "image/jpeg" }), legenda);
+      setCatalogoAberto(false);
+    } catch {
+      alert("Não foi possível baixar a foto deste item. Use “inserir texto” e envie a imagem manualmente.");
+    } finally { setEnviandoItem(null); }
+  }
+
+  const [arquivando, setArquivando] = useState(false);
+  async function arquivar(arquivada: boolean) {
+    if (!sel || arquivando) return;
+    setArquivando(true);
+    try {
+      const r = await fetch(`/api/portal/${token}/conversations/${sel}/state`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ arquivada }),
+      });
+      if (!r.ok) { alert("Não foi possível arquivar agora."); return; }
+      // Sai da lista na hora: esperar o polling faria a linha ficar piscando.
+      setList((l) => (l ? l.filter((row) => row.contactId !== sel) : l));
+      setSel(null);
+    } finally { setArquivando(false); }
   }
 
   // Assumir/transferir/remover o dono do lead (atribuição).
@@ -512,6 +943,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   };
   const onComposerInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(e.target.value);
+    if (sel) gravarRascunho(sel, e.target.value); // sobrevive a trocar de conversa e a recarregar
     const el = e.target; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 120) + "px";
   };
 
@@ -524,7 +956,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     return false;
   })();
 
-  const tabChip = (k: "all" | "ads" | "waiting", label: string) => {
+  const tabChip = (k: "all" | "ads" | "waiting" | "arquivadas", label: string) => {
     const on = tab === k;
     const isWait = k === "waiting";
     return (
@@ -532,15 +964,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {isWait && <span style={{ width: 7, height: 7, borderRadius: "50%", background: on ? "#1FA855" : "var(--wa-muted)" }} />}
         {label}
         {isWait && waitingCount > 0 && <span style={{ fontSize: 11, fontWeight: 800 }}>{waitingCount}</span>}
-      </button>
-    );
-  };
-
-  const adChip = (label: string | null, text: string, count: number) => {
-    const on = adFilter === label;
-    return (
-      <button key={text} onClick={() => setAdFilter(label)} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", border: `1px solid ${on ? "var(--p-accent)" : "var(--p-border)"}`, cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: 20, whiteSpace: "nowrap", background: on ? "var(--p-accent-soft)" : "var(--p-bg)", color: on ? "var(--p-accent)" : "var(--p-text)" }}>
-        {text} <span style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>{count}</span>
       </button>
     );
   };
@@ -573,7 +996,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}`}</style>
+      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
@@ -602,22 +1025,97 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar por nome ou número" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: isMobile ? 16 : 13.5 }} />
           </div>
         </div>
-        {/* filtro "Meus leads" (só com login + equipe) */}
-        {me && attendants.length > 1 && (
-          <div style={{ padding: "0 14px 8px" }}>
-            <button onClick={() => setMineOnly((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", border: `1px solid ${mineOnly ? "var(--p-accent)" : "var(--p-border)"}`, borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 600, background: mineOnly ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOnly ? "var(--p-accent)" : "var(--p-text)" }}>
-              <UserRound size={13} /> Meus leads {myWaiting > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#1FA855" }}>{myWaiting}</span>}
+        {/* FAIXA DE FILTROS — uma linha só, que ROLA na horizontal.
+            Antes era `flexWrap: wrap` com um botão em `marginLeft: auto`: as
+            quatro abas quebravam em duas linhas e o botão caía numa terceira,
+            sozinho. Com a busca e o "Meus leads" acima, viravam cinco faixas
+            empilhadas antes da primeira conversa. Agora é UMA, e o que não cabe
+            se alcança arrastando — como as abas do WhatsApp.
+
+            Dois eixos diferentes na mesma linha (estado da conversa e dono),
+            separados por um traço para não parecerem a mesma escolha. */}
+        {!isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
+            {tabChip("all", "Conversas")}
+            {hasAds && tabChip("ads", "Anúncio")}
+            {tabChip("arquivadas", "Arquivadas")}
+            {me && attendants.length > 1 && (
+              <>
+                <span aria-hidden style={{ width: 1, height: 18, background: "var(--p-border)", margin: "0 3px", flexShrink: 0 }} />
+                <button onClick={() => setMineOnly((v) => !v)} aria-pressed={mineOnly}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", border: "none", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 600, flexShrink: 0, background: mineOnly ? "var(--p-accent-soft)" : "transparent", color: mineOnly ? "var(--p-accent)" : "var(--wa-muted)" }}>
+                  <UserRound size={13} /> Meus
+                  {myWaiting > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#1FA855" }}>{myWaiting}</span>}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
+            Como chip solto na linha das abas ela competia com os filtros e
+            parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
+            na tela, que só aparece quando há o que assumir. */}
+        {!isMobile && me && livresNaTela > 0 && (
+          <button onClick={() => void assumirLote()} disabled={assumindoLote}
+            title="Assumir as conversas sem responsável que estão nesta lista"
+            style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 14px", border: "none", borderTop: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-accent) 6%, transparent)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer", textAlign: "left" }}>
+            <UserRound size={14} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>
+              {assumindoLote ? "assumindo…" : `${livresNaTela} sem responsável nesta lista`}
+            </span>
+            {!assumindoLote && <span style={{ fontWeight: 800 }}>Assumir →</span>}
+          </button>
+        )}
+        {/* CAMPANHA — antes era uma barra de chips que rolava para o lado: com
+            várias campanhas, os nomes ficavam cortados e era preciso arrastar
+            para descobrir o que existia. No aplicativo isso é uma folha que
+            abre com a lista inteira, e é o que vale aqui: um botão diz a
+            campanha atual, e o modal mostra todas com suas contagens. */}
+        {tab === "ads" && adGroups.length > 0 && (
+          <div style={{ padding: "0 12px 9px", borderBottom: "1px solid var(--p-border)" }}>
+            <button onClick={() => setCampanhaModal(true)}
+              style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 34, padding: "0 12px", borderRadius: 10, border: `1px solid ${adFilter ? "var(--p-accent)" : "var(--p-border)"}`, background: adFilter ? "var(--p-accent-soft)" : "var(--p-bg)", color: adFilter ? "var(--p-accent)" : "var(--p-text)", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+              <Megaphone size={14} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {adFilter ?? "Todas as campanhas"}
+              </span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", flexShrink: 0 }}>
+                {adFilter ? (adGroups.find((g) => g.label === adFilter)?.count ?? 0) : adGroups.reduce((n, g) => n + g.count, 0)}
+              </span>
+              <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
             </button>
           </div>
         )}
-        {/* abas — no desktop ficam aqui em cima; no mobile viram a barra flutuante embaixo (estilo WhatsApp) */}
-        {!isMobile && <div style={{ display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" }}>{tabChip("all", "Conversas")}{tabChip("waiting", "Aguardando")}{hasAds && tabChip("ads", "Leads de anúncio")}</div>}
-        {/* filtro por anúncio (só na aba de anúncios) */}
-        {tab === "ads" && adGroups.length > 0 && (
-          <div style={{ display: "flex", gap: 6, padding: "0 12px 9px", overflowX: "auto", borderBottom: "1px solid var(--p-border)" }}>
-            {adChip(null, "Todos", adGroups.reduce((s, g) => s + g.count, 0))}
-            {adGroups.map((g) => adChip(g.label, g.label, g.count))}
-          </div>
+
+        {campanhaModal && (
+          <>
+            <div onClick={() => setCampanhaModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
+            <div role="dialog" aria-label="Escolher campanha"
+              style={{ position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
+                <Megaphone size={16} style={{ color: "var(--p-accent)" }} />
+                <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>Campanhas</strong>
+                <button onClick={() => setCampanhaModal(false)} aria-label="Fechar" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ overflowY: "auto", padding: 6 }}>
+                {[{ label: null as string | null, nome: "Todas as campanhas", count: adGroups.reduce((n, g) => n + g.count, 0) },
+                  ...adGroups.map((g) => ({ label: g.label as string | null, nome: g.label, count: g.count }))].map((op) => {
+                  const on = adFilter === op.label;
+                  return (
+                    <button key={op.nome} onClick={() => { setAdFilter(op.label); setCampanhaModal(false); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", border: "none", borderRadius: 10, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{op.nome}</span>
+                      <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>{op.count}</span>
+                      {on && <Check size={15} style={{ flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
         )}
         {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
@@ -626,21 +1124,34 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
+              // DOIS SINAIS DIFERENTES, e confundi-los seria um erro de negócio:
+              //   `waiting`  — o lead falou por último e NINGUÉM respondeu. Ler
+              //                não é responder: continua esperando depois de aberta.
+              //   `naoLida`  — ninguém da equipe ABRIU ainda. Some quando a
+              //                colega abre, no app ou aqui, porque o estado mora
+              //                no servidor (três vendedoras, um número só).
               const waiting = isWaiting(c);
+              const naoLida = waiting && c.lida !== true;
+              // HÁ QUANTO TEMPO espera, não só QUE espera. Com 1.257 aguardando,
+              // é o que separa "tenho mil conversas" de "estas cinco estão me
+              // custando venda". Igual ao aplicativo, pela mesma função.
+              const desde = esperandoDesde(c.lastInboundAt, c.lastOutboundAt);
+              const urgencia = urgenciaDe(desde, agora);
+              const corEspera = corDaUrgencia(urgencia);
               return (
-                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? "3px solid #1FA855" : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? "color-mix(in srgb, #1FA855 5%, transparent)" : "transparent", cursor: "pointer" }}>
+                <button key={c.contactId} onClick={() => setSel(c.contactId)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: isMobile ? "13px 16px" : "10px 14px", border: "none", borderBottom: "1px solid var(--p-border)", borderLeft: on ? "3px solid var(--p-accent)" : waiting ? `3px solid ${corEspera}` : "3px solid transparent", background: on ? "var(--p-accent-soft)" : waiting ? `color-mix(in srgb, ${corEspera} 5%, transparent)` : "transparent", cursor: "pointer" }}>
                   <Avatar name={c.name} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: waiting ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      <span style={{ fontSize: 14.5, fontWeight: naoLida ? 800 : 600, color: "var(--p-text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
                       {!nameIsNumber(c.name, c.waId) && formatPhoneShort(c.waId) && (
                         <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatPhoneShort(c.waId)}</span>
                       )}
-                      <span style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? "#1FA855" : "var(--wa-muted)", whiteSpace: "nowrap" }}>{listTime(c.lastMessageAt)}</span>
+                      <span title={waiting && desde ? "Esperando resposta há " + rotuloEspera(desde, agora) : undefined} style={{ fontSize: 11, fontWeight: waiting ? 800 : 400, color: waiting ? corEspera : "var(--wa-muted)", whiteSpace: "nowrap" }}>{waiting && desde ? rotuloEspera(desde, agora) : listTime(c.lastMessageAt)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: waiting ? 700 : 400, color: waiting ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
-                      {waiting && <span title="Aguardando resposta" style={{ width: 9, height: 9, borderRadius: "50%", background: "#1FA855", boxShadow: "0 0 0 3px color-mix(in srgb, #1FA855 18%, transparent)", flexShrink: 0 }} />}
+                      <span style={{ fontSize: 12.5, fontWeight: naoLida ? 700 : 400, color: naoLida ? "var(--p-text)" : "var(--wa-muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastDirection === "out" ? "✓✓ " : ""}{preview(c.lastText, c.lastType)}</span>
+                      {naoLida && <span title="Ninguém da equipe abriu ainda" style={{ width: 9, height: 9, borderRadius: "50%", background: corEspera, boxShadow: `0 0 0 3px color-mix(in srgb, ${corEspera} 18%, transparent)`, flexShrink: 0 }} />}
                       {c.fromAd && (c.adStrong
                         ? <span title="Clicou no anúncio (Click-to-WhatsApp)" style={{ fontSize: 9, fontWeight: 800, color: "var(--p-accent)", background: "var(--p-accent-soft)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>ADS</span>
                         : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
@@ -708,13 +1219,35 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {conv.lead?.adTitle && <div title={conv.lead.adStrong ? "Clicou no anúncio (Click-to-WhatsApp)" : "Menção ao anúncio: a IA identificou pelo TEXTO da mensagem, sem clique."} style={{ fontSize: 11.5, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lead.adStrong ? `veio do anúncio “${conv.lead.adTitle}”` : `mencionou o anúncio “${conv.lead.adModel ?? conv.lead.adTitle}”`}</div>}
                 </div>
               </div>
-              {/* Ações do topo — só ETIQUETA e DONO (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
+              {/* Ações do topo — ETIQUETA, DONO e ARQUIVAR (topo limpo, estilo WhatsApp). IA e etapa flutuam abaixo. */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                onClick={() => setBuscaAberta((v) => !v)}
+                title="Buscar nesta conversa"
+                aria-label="Buscar nesta conversa"
+                aria-expanded={buscaAberta}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, border: "1px solid var(--p-border)", background: buscaAberta ? "var(--p-accent-soft)" : "var(--p-surface)", color: buscaAberta ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Search size={14} />
+              </button>
+              <button
+                onClick={() => void marcarNaoLida()}
+                title="Marcar como não lida — volta a aparecer como pendente para a equipe"
+                aria-label="Marcar como não lida"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Eye size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>Não lida</span>}
+              </button>
+              <button
+                onClick={() => void arquivar(tab !== "arquivadas")}
+                disabled={arquivando}
+                title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                <Archive size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{tab === "arquivadas" ? "Desarquivar" : "Arquivar"}</span>}
+              </button>
               {/* Dono do lead (atribuição): assumir / transferir */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
                   <button onClick={() => setOwnerMenu((o) => !o)} disabled={assigning} title={assigned ? `Dono: ${conv.assignedName}` : "Sem dono — assumir/atribuir"}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: `1px solid ${assigned ? (mineOwner ? "var(--p-accent)" : "var(--p-border)") : "var(--p-border)"}`, background: mineOwner ? "var(--p-accent-soft)" : "var(--p-bg)", color: mineOwner ? "var(--p-accent)" : assigned ? "var(--p-text)" : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assigning ? "wait" : "pointer", whiteSpace: "nowrap", maxWidth: isMobile ? 120 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, boxShadow: "0 1px 3px rgba(0,0,0,.06)", border: `1px solid ${assigned ? (mineOwner ? "var(--p-accent)" : "var(--p-border)") : "var(--p-border)"}`, background: mineOwner ? "var(--p-accent-soft)" : "var(--p-surface)", color: mineOwner ? "var(--p-accent)" : assigned ? "var(--p-text)" : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: assigning ? "wait" : "pointer", whiteSpace: "nowrap", maxWidth: isMobile ? 120 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
                     <UserRound size={14} style={{ flexShrink: 0 }} />{!isMobile && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{assigned ? (mineOwner ? "Você" : conv.assignedName) : "Assumir"}</span>}
                   </button>
                 ); })()}
@@ -752,7 +1285,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {/* Etiquetas (tags) da conversa */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <button onClick={() => setTagMenu((o) => !o)} title="Etiquetas"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 32, padding: isMobile ? "0 9px" : "0 11px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                   <TagIcon size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{conv.tags?.length ? String(conv.tags.length) : "Etiquetas"}</span>}
                 </button>
                 {tagMenu && (
@@ -779,6 +1312,32 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               </div>
               </div>
             </div>
+
+            {buscaAberta && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: isMobile ? "10px 12px 0" : "10px 8% 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, height: 34, padding: "0 12px", borderRadius: 10, background: "var(--p-surface)", border: "1px solid var(--p-border)" }}>
+                  <Search size={14} style={{ color: "var(--wa-muted)", flexShrink: 0 }} />
+                  <input autoFocus value={buscaThread} onChange={(e) => setBuscaThread(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") irParaAchado(1); if (e.key === "Escape") { setBuscaAberta(false); setBuscaThread(""); } }}
+                    placeholder="Buscar nesta conversa"
+                    style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", color: "var(--p-text)", fontSize: 13.5 }} />
+                  {buscaThread.trim() && (
+                    <span className="tnum" style={{ fontSize: 11.5, color: "var(--wa-muted)", flexShrink: 0 }}>
+                      {achados.length === 0 ? "0" : `${achadoAtual + 1}/${achados.length}`}
+                    </span>
+                  )}
+                  <button onClick={() => irParaAchado(-1)} disabled={!achados.length} aria-label="Ocorrência anterior" style={{ border: "none", background: "transparent", color: achados.length ? "var(--p-accent)" : "var(--p-border)", cursor: achados.length ? "pointer" : "default", padding: 2, display: "inline-flex" }}>
+                    <ChevronDown size={14} style={{ transform: "rotate(180deg)" }} />
+                  </button>
+                  <button onClick={() => irParaAchado(1)} disabled={!achados.length} aria-label="Próxima ocorrência" style={{ border: "none", background: "transparent", color: achados.length ? "var(--p-accent)" : "var(--p-border)", cursor: achados.length ? "pointer" : "default", padding: 2, display: "inline-flex" }}>
+                    <ChevronDown size={14} />
+                  </button>
+                  <button onClick={() => { setBuscaAberta(false); setBuscaThread(""); }} aria-label="Fechar busca" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 2, display: "inline-flex" }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Pílulas flutuantes abaixo do header — ETAPA do funil + IA responder (estilo dos avisos). */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: isMobile ? "10px 12px 0" : "10px 8% 0" }}>
@@ -840,6 +1399,22 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </a>
                 </div>
               )}
+              {/* FAIXA DE ETIQUETAS. Antes elas viviam só como um NÚMERO dentro do
+                  botão "Etiquetas" do topo: para saber quais estavam aplicadas era
+                  preciso abrir o menu. No aplicativo elas aparecem coloridas junto
+                  da conversa, e é o que faz a vendedora reconhecer o lead de
+                  relance. Aqui ficam no mesmo lugar — dentro da conversa. */}
+              {(conv.tags ?? []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", margin: "2px 0 10px" }}>
+                  {(conv.tags ?? []).map((t) => (
+                    <span key={t.id} title={t.name}
+                      style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: t.color, padding: "3px 9px", borderRadius: 20, letterSpacing: 0.2, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", boxShadow: "0 1px 2px rgba(0,0,0,.12)" }}>
+                      {t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {grouped.map((g, gi) => (
                 <div key={gi}>
                   <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
@@ -848,9 +1423,23 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   {g.msgs.map((m) => {
                     const mine = m.direction === "out";
                     const body = (m.text && m.text.trim()) || mediaLabel(m.type) || "[mensagem]";
+                    // Primeira mensagem DO LEAD que chegou depois da última
+                    // visita: é onde a leitura parou. Só entrada — marcar as
+                    // nossas próprias como "novas" não diz nada a ninguém.
+                    const nova = corteNovas != null && !mine && Date.parse(m.timestamp) > corteNovas;
+                    const primeiraNova = nova && !marcouNovas.current;
+                    if (primeiraNova) marcouNovas.current = true;
                     return (
+                      <div key={`w-${m.id}`}>
+                      {primeiraNova && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0 10px" }}>
+                          <span style={{ flex: 1, height: 1, background: "color-mix(in srgb, #1FA855 45%, transparent)" }} />
+                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, color: "#1FA855", whiteSpace: "nowrap" }}>MENSAGENS NOVAS</span>
+                          <span style={{ flex: 1, height: 1, background: "color-mix(in srgb, #1FA855 45%, transparent)" }} />
+                        </div>
+                      )}
                       <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4 }}>
-                        <div style={{ maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
+                        <div data-bolha id={`msg-${m.id}`} style={{ outline: achados[achadoAtual] === m.id ? "2px solid var(--p-accent)" : undefined, outlineOffset: 2, maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
@@ -865,7 +1454,21 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           {m.reaction && (
                             <span style={{ position: "absolute", bottom: -12, [mine ? "left" : "right"]: 8, background: "var(--wa-in)", color: "var(--wa-text)", borderRadius: 11, padding: "1px 5px", fontSize: 12, lineHeight: "16px", boxShadow: "0 1px 3px rgba(0,0,0,.2)", border: "1px solid var(--p-border)" }}>{m.reaction}</span>
                           )}
+                          {/* "A IA errou aqui" — só em resposta que a IA de fato
+                              mandou, e só depois de confirmada pelo servidor.
+                              Fica discreto: aparece ao passar o mouse pelo balão. */}
+                          {mine && m.aiGenerated && !m.pending && (
+                            <button
+                              className="pc-corrigir"
+                              onClick={() => void corrigirIA(m.id)}
+                              title="A IA errou aqui — registrar correção"
+                              aria-label="A IA errou aqui — registrar correção"
+                              style={{ position: "absolute", top: -9, left: -9, width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", cursor: "pointer", padding: 0, opacity: 0, transition: "opacity .15s ease" }}>
+                              <AlertTriangle size={12} />
+                            </button>
+                          )}
                         </div>
+                      </div>
                       </div>
                     );
                   })}
@@ -873,8 +1476,95 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               ))}
             </div>
 
+            {respostasAbertas && (
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: 240, overflowY: "auto", padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <strong style={{ flex: 1, fontSize: 12, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Respostas rápidas</strong>
+                  <button onClick={novaResposta} style={{ fontSize: 12, fontWeight: 700, color: "var(--p-accent)", background: "transparent", border: "none", cursor: "pointer" }}>+ nova</button>
+                  <button onClick={() => setRespostasAbertas(false)} aria-label="Fechar" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", display: "inline-flex", padding: 2 }}><X size={14} /></button>
+                </div>
+                {respostas.length === 0 ? (
+                  <p style={{ fontSize: 12.5, color: "var(--wa-muted)", margin: 0 }}>
+                    Nenhuma ainda. Toque em “+ nova” para guardar uma frase que você repete todo dia.
+                  </p>
+                ) : respostas.map((t, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                    <button
+                      onClick={() => {
+                        setDraft((d) => (d.trim() ? `${d.trim()} ${t}` : t));
+                        if (sel) gravarRascunho(sel, t);
+                        setRespostasAbertas(false);
+                        taRef.current?.focus();
+                      }}
+                      style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 13, color: "var(--p-text)", background: "var(--p-bg)", border: "1px solid var(--p-border)", borderRadius: 9, padding: "8px 10px", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t}
+                    </button>
+                    <button onClick={() => gravarRespostas(respostas.filter((_, j) => j !== i))} aria-label={`Apagar resposta ${i + 1}`} title="Apagar" style={{ border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", display: "inline-flex", padding: 4, flexShrink: 0 }}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* CATÁLOGO — abre acima do compositor, não em outra tela: a consulta
+                de preço acontece no meio da conversa, e sair dela era o atrito. */}
+            {catalogoAberto && (
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: 300, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px 8px" }}>
+                  <Search size={15} style={{ color: "var(--wa-muted)", flexShrink: 0 }} />
+                  <input
+                    autoFocus
+                    value={catalogoBusca}
+                    onChange={(e) => setCatalogoBusca(e.target.value)}
+                    placeholder="Buscar no catálogo"
+                    style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", outline: "none", fontSize: 13.5, color: "var(--p-text)" }}
+                  />
+                  <button onClick={() => setCatalogoAberto(false)} aria-label="Fechar catálogo" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
+                    <X size={15} />
+                  </button>
+                </div>
+                <div style={{ overflowY: "auto", padding: "0 8px 10px" }}>
+                  {catalogo === null ? (
+                    <p style={{ fontSize: 12.5, color: "var(--wa-muted)", padding: "6px 6px 10px", margin: 0 }}>Carregando…</p>
+                  ) : catalogo.length === 0 ? (
+                    <p style={{ fontSize: 12.5, color: "var(--wa-muted)", padding: "6px 6px 10px", margin: 0 }}>
+                      {catalogoBusca.trim() ? "Nenhum item com esse nome." : "O catálogo deste cliente está vazio."}
+                    </p>
+                  ) : catalogo.map((it) => (
+                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 7, borderRadius: 10 }}>
+                      <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 8, overflow: "hidden", background: "var(--p-raise)", border: "1px solid var(--p-border)" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {it.imageUrl ? <img src={it.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+                        {it.price != null && <div className="tnum" style={{ fontSize: 12, color: "var(--p-accent)", fontWeight: 700 }}>{precoBR(it.price)}</div>}
+                      </div>
+                      <button onClick={() => inserirItem(it)} title="Inserir no texto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", background: "transparent", border: "1px solid var(--p-border)", borderRadius: 8, padding: "5px 9px", cursor: "pointer", flexShrink: 0 }}>
+                        texto
+                      </button>
+                      {it.imageUrl && (
+                        <button onClick={() => void enviarItemComFoto(it)} disabled={!!enviandoItem} title="Enviar a foto com nome e preço" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--p-on-accent)", background: "var(--p-accent)", border: "none", borderRadius: 8, padding: "5px 10px", cursor: enviandoItem ? "wait" : "pointer", flexShrink: 0, opacity: enviandoItem && enviandoItem !== it.id ? 0.5 : 1 }}>
+                          {enviandoItem === it.id ? "enviando…" : "enviar foto"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Compositor — a equipe responde o lead por texto livre daqui (dentro da janela de 24h). */}
             <div style={{ background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", flexShrink: 0, padding: isMobile ? `10px 12px calc(18px + env(safe-area-inset-bottom))` : `8px 12px calc(8px + env(safe-area-inset-bottom))` }}>
+              {/* Fila visível: sem isto, "mandei e não apareceu" viraria a
+                  sensação de que o portal engoliu a mensagem. */}
+              {fila.length > 0 && (
+                <div role="status" style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f5b544", animation: "portalRecBlink 1.6s steps(1) infinite", flexShrink: 0 }} />
+                  {fila.length === 1 ? "Sem conexão — 1 mensagem sai assim que a rede voltar." : `Sem conexão — ${fila.length} mensagens saem assim que a rede voltar.`}
+                </div>
+              )}
               {iaPaused && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 6px", fontSize: 11.5, color: "var(--wa-muted)" }}>
                   <Sparkles size={12} style={{ color: "var(--p-accent)" }} /> IA em pausa — sua equipe assumiu esta conversa.
@@ -906,6 +1596,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         </button>
                         <button onClick={() => imgInputRef.current?.click()} disabled={sending} aria-label="Enviar imagem" title="Enviar imagem" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer" }}>
                           <Camera size={21} />
+                        </button>
+                        <button onClick={() => setRespostasAbertas((v) => !v)} disabled={sending} aria-label="Respostas rápidas" title="Respostas rápidas — frases que você usa todo dia" aria-expanded={respostasAbertas} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: respostasAbertas ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
+                          <Zap size={20} />
+                        </button>
+                        <button onClick={() => setCatalogoAberto((v) => !v)} disabled={sending} aria-label="Consultar o catálogo" title="Catálogo — preço e foto sem sair da conversa" aria-expanded={catalogoAberto} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 44, flexShrink: 0, border: "none", background: "transparent", color: catalogoAberto ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer" }}>
+                          <Package size={21} />
                         </button>
                         <textarea
                           ref={taRef}

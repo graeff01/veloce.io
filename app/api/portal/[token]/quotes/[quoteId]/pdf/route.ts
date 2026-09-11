@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 import { renderQuotePdf } from "@/lib/quote-pdf";
 import { buildQuoteDocData, type QuoteLineIn } from "@/lib/ai-agent/tools";
 
@@ -12,8 +12,8 @@ export const runtime = "nodejs";
 // só se quotesEnabled.
 export async function GET(req: Request, { params }: { params: Promise<{ token: string; quoteId: string }> }) {
   const { token, quoteId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return new NextResponse("link inválido", { status: 404 });
+  const { error, portal } = await guardPortal(req, token);
+  if (error) return error;
 
   const ai = await prisma.aiAgentConfig.findUnique({ where: { clientId: portal.clientId }, select: { quotesEnabled: true } });
   if (!ai?.quotesEnabled) return new NextResponse("indisponível", { status: 404 });
