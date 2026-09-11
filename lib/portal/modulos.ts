@@ -38,7 +38,8 @@ export function modulosPortal(
   sections: string[] | null | undefined,
   quotesEnabled: boolean,
 ): ModuloInfo[] {
-  const tem = (s: string) => sections == null || sections.includes(s);
+  const semConfiguracao = sections == null || sections.length === 0;
+  const tem = (s: string) => semConfiguracao || sections.includes(s);
   const out: ModuloInfo[] = [];
   for (const m of CATALOGO) {
     if (m.chave === "conversas") { out.push(m); continue; }

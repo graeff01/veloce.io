@@ -9,8 +9,17 @@ import { modulosPortal } from "@/lib/portal/modulos";
 
 const chaves = (s: string[] | null, q = true) => modulosPortal(s, q).map((m) => m.chave);
 
-test("conversas aparece sempre, mesmo sem nenhuma seção", () => {
-  assert.deepEqual(chaves([]), ["conversas"]);
+test("lista VAZIA é configuração ausente, não proibição", () => {
+  // A JR ficou sem barra no celular e a Boqueirão não. A diferença era esta: uma
+  // tinha `sections` configurado, a outra nulo. Lista vazia caía no mesmo buraco
+  // e apagava a navegação inteira — sem erro, sem aviso.
+  assert.deepEqual(chaves([]), ["conversas", "anuncios", "funil", "revisao"]);
+  assert.deepEqual(chaves(null), chaves([]), "nulo e vazio significam a mesma coisa");
+});
+
+test("uma seção de verdade continua limitando", () => {
+  assert.deepEqual(chaves(["conversas"]), ["conversas"]);
+  assert.deepEqual(chaves(["conversas", "funil"]), ["conversas", "funil"]);
 });
 
 test("sections nulo = cliente sem configuração = tudo", () => {
