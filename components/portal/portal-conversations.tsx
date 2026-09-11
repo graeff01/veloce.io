@@ -988,7 +988,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}@keyframes portalSheetUp{from{transform:translateY(100%)}to{transform:none}}.psheet{animation:portalSheetUp .28s cubic-bezier(.22,1,.36,1) both}@media (prefers-reduced-motion:reduce){.psheet{animation:none}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
+      <style>{`@keyframes portalRecBlink{50%{opacity:.2}}@keyframes portalSheetUp{from{transform:translateY(100%)}to{transform:none}}.psheet{animation:portalSheetUp .28s cubic-bezier(.22,1,.36,1) both}@media (prefers-reduced-motion:reduce){.psheet{animation:none}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
