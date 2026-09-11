@@ -988,7 +988,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
   return (
     <div className="cdesk" style={{ flexDirection: "column", height: "100dvh", width: "100%" }}>
-      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
+      <style>{`@keyframes portalBarUp{from{transform:translateY(150%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes portalRecBlink{50%{opacity:.2}}@keyframes portalSheetUp{from{transform:translateY(100%)}to{transform:none}}.psheet{animation:portalSheetUp .28s cubic-bezier(.22,1,.36,1) both}@media (prefers-reduced-motion:reduce){.psheet{animation:none}}.pc-corrigir{opacity:1}@media (hover:hover){.pc-corrigir{opacity:0}[data-bolha]:hover .pc-corrigir,.pc-corrigir:focus-visible{opacity:1}}`}</style>
       {/* Topbar full-width — mantém a identidade do painel. No mobile some quando a thread abre (a thread tem header próprio com voltar). */}
       <header style={{ display: isMobile && sel ? "none" : "flex", alignItems: "center", gap: 12, padding: isMobile ? "calc(12px + env(safe-area-inset-top)) 16px 12px" : "10px 20px", borderBottom: "1px solid var(--p-border)", background: "var(--p-surface)", flexShrink: 0 }}>
         <div style={{ fontSize: isMobile ? 18 : 15, fontWeight: 800, color: "var(--p-text)", letterSpacing: "-0.01em" }}>Conversas dos leads</div>
@@ -1083,8 +1083,15 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {campanhaModal && (
           <>
             <div onClick={() => setCampanhaModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
-            <div role="dialog" aria-label="Escolher campanha"
-              style={{ position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
+            <div role="dialog" aria-label="Escolher campanha" className={isMobile ? "psheet" : undefined}
+              style={isMobile
+                ? { position: "fixed", zIndex: 61, left: 0, right: 0, bottom: 0, maxHeight: "76vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", borderRadius: "18px 18px 0 0", boxShadow: "0 -12px 40px rgba(0,0,0,.22)", overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }
+                : { position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
+              {isMobile && (
+                <div aria-hidden style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
+                  <span style={{ width: 38, height: 4, borderRadius: 2, background: "var(--p-border)" }} />
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
                 <Megaphone size={16} style={{ color: "var(--p-accent)" }} />
                 <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>Campanhas</strong>
