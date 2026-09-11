@@ -30,7 +30,7 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
   const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const [metaConn, wa] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true, currency: true } }),
-    prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
+    prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } }),
   ]);
 
   const empty: ClientAds = {

@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const [meta, wa] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId: id }, select: { lastSyncAt: true, lastAdSyncAt: true } }),
-    prisma.waConnection.findUnique({ where: { clientId: id }, select: { lastEventAt: true } }),
+    prisma.waConnection.findFirst({ where: { clientId: id }, select: { lastEventAt: true } }),
   ]);
 
   // Meta: verde se sincronizou nas últimas 24h; amarelo se conectado mas parado; vermelho se não conectado.

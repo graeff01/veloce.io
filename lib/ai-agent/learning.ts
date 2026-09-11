@@ -70,7 +70,7 @@ export function aggregatePerformance(
 // Junção real: conversas (desfecho) × variante usada, por cliente e janela.
 export async function learnFromOutcomes(clientId: string, days = 30): Promise<LearningReport> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000);
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (!conn) return { clientId, days, totalConversations: 0, variants: [], leader: null, note: "Cliente sem WhatsApp conectado." };
 
   const convos = await prismaUnscoped.waConversation.findMany({

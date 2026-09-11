@@ -91,7 +91,7 @@ export async function computeClientReport(clientId: string, year: number, month:
   const prevPeriodLabel = `${MONTHS[prevDate.getMonth()]} de ${prevDate.getFullYear()}`;
   const generatedAt = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (!conn) return empty(client.name, periodLabel, prevPeriodLabel, generatedAt);
 
   const start = new Date(year, month - 1, 1);

@@ -84,7 +84,7 @@ function ratios(spend: number, impressions: number, clicks: number, leads: numbe
 export async function computeMetaAdsView(clientId: string, start: Date, end: Date): Promise<MetaAdsView> {
   const [metaConn, waConn, excl] = await Promise.all([
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
-    prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, displayPhone: true } }),
+    prisma.waConnection.findFirst({ where: { clientId }, select: { id: true, displayPhone: true } }),
     excludedTokens(clientId),
   ]);
 

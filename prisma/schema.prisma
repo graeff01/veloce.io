@@ -115,7 +115,7 @@ model Client {
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
   googleConnection  GoogleConnection?
-  waConnection      WaConnection?
+  waConnections     WaConnection[]
   visits            Visit[]
   aiAgentConfig     AiAgentConfig?
   pricingConfig     PricingConfig?
@@ -871,9 +871,13 @@ model GoogleInsight {
 // ── WhatsApp Cloud API (oficial) ─────────────────────────────────────────────
 // Espelho do WhatsApp do cliente: recebe mensagens via webhook da Meta, guarda
 // conversas e identifica leads de anúncio pelo "referral" (Click-to-WhatsApp).
+// MULTI-NÚMERO: `clientId` deixou de ser único. Um cliente pode ter vários
+// WhatsApp — um por vendedora, cada um no celular dela, em coexistência (o Meta
+// ecoa pelo webhook o que sai do aparelho). `phoneNumberId` continua ÚNICO: é a
+// chave de roteamento do webhook, e dois clientes nunca podem dividir um número.
 model WaConnection {
   id            String    @id @default(cuid())
-  clientId      String    @unique
+  clientId      String
   wabaId        String    // ID da conta WhatsApp Business
   phoneNumberId String    @unique // ID do número (roteia os eventos do webhook)
   displayPhone  String?   // número exibido (ex: +55 54 ...)

@@ -65,7 +65,7 @@ export async function runAdsHealth(): Promise<{ sent: number; alerts: number }> 
     });
     if (activeAds.length > 0) {
       const adIds = activeAds.map((a) => a.adId);
-      const wa = await prisma.waConnection.findUnique({ where: { clientId: c.clientId }, select: { id: true } });
+      const wa = await prisma.waConnection.findFirst({ where: { clientId: c.clientId }, select: { id: true } });
       const [destSets, spendRows, leadRows] = await Promise.all([
         prisma.metaAdSet.findMany({ where: { connectionId: c.id, adsetId: { in: [...new Set(activeAds.map((a) => a.adsetId))] } }, select: { adsetId: true, destinationType: true } }),
         prisma.metaAdInsight.groupBy({ by: ["adId"], where: { connectionId: c.id, adId: { in: adIds }, date: { gte: sevenDaysAgo } }, _sum: { spend: true } }),

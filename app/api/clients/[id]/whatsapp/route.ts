@@ -24,7 +24,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({
+  const conn = await prisma.waConnection.findFirst({
     where: { clientId: id },
     include: { _count: { select: { contacts: true, leads: true, messages: true } } },
   });

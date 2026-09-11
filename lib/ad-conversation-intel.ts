@@ -43,7 +43,7 @@ export async function analyzeAdConversations(
   end: Date,
 ): Promise<AdConversationIntel> {
   const empty: AdConversationIntel = { leadCount: 0, messageCount: 0, intents: [], topOpeners: [], ai: null };
-  const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (!wa) return empty;
 
   // Leads atribuídos a ESTE anúncio (por ad_id; cai para o modelo se não houver id).

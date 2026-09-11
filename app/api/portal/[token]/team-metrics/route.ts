@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const me = portal.email;
   const isAdmin = portal.isAdmin;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ me, isAdmin, period: "month", rows: [], team: null, unassigned: 0 });
 
   const period = normalizePeriod(new URL(req.url).searchParams.get("p"));

@@ -11,7 +11,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { error } = await requireAuth("clients:update");
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
   const rebuilt = await rebuildConversations(conn.id);

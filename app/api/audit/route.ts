@@ -51,7 +51,7 @@ export async function GET(req: Request) {
   const start = month ? new Date(year, month - 1, 1) : new Date(year, 0, 1);
   const end = month ? new Date(year, month, 1) : new Date(year + 1, 0, 1);
 
-  const conn = await prisma.waConnection.findUnique({
+  const conn = await prisma.waConnection.findFirst({
     where: { clientId },
     include: { client: { select: { id: true, name: true, logoUrl: true } } },
   });

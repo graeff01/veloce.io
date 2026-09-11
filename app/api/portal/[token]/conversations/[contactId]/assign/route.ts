@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   // Trava de papel: atendente não mexe no dono de lead de outro atendente (nem remove).
   if (!isAdmin) {
-    const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+    const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
     const conv = conn ? await prisma.waConversation.findFirst({ where: { contactId, connectionId: conn.id }, select: { assignedEmail: true } }) : null;
     const current = conv?.assignedEmail ?? null;
     const claimingSelf = !!me && email === me;

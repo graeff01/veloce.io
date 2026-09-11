@@ -38,7 +38,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const from = startOfMonth(year, month);
   const to = endOfMonth(year, month);
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id } });
   if (!conn) return NextResponse.json({ connected: false });
 
   const [contactsTotal, messages, leads, contacts] = await Promise.all([

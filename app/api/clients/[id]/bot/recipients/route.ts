@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   // Não pode ser a própria linha da loja (auto-mensagem — a Meta rejeita).
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { displayPhone: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { displayPhone: true } });
   if (conn?.displayPhone && sameBrazilNumber(conn.displayPhone, waId)) {
     return NextResponse.json({ error: "Esse é o número da própria loja. Use o WhatsApp PESSOAL do dono (diferente da linha que atende cliente)." }, { status: 400 });
   }

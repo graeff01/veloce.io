@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true, accessToken: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true, accessToken: true } });
   if (!conn) return new NextResponse("sem conexão", { status: 404 });
 
   const msg = await prisma.waMessage.findUnique({ where: { id: messageId }, select: { connectionId: true, contactId: true, type: true, raw: true, media: { select: { mime: true, data: true } } } });

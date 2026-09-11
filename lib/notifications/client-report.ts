@@ -230,7 +230,7 @@ export async function getClientDashboard(clientId: string, period: Period = "mon
     connIds.length ? prisma.waConversation.findMany({ where: { connectionId: { in: connIds }, firstInboundAt: { gte: prevStart, lt: prevEnd } }, select: { firstResponseSec: true, funnelStage: true, contact: { select: { name: true } } } }) : Promise.resolve([]),
     waitingWithTemp(connIds, excluded),
     prisma.metaConnection.findUnique({ where: { clientId }, select: { id: true } }),
-    prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } }),
+    prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } }),
   ]);
   const convs = convsRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
   const prevConvs = prevConvsRaw.filter((c) => !nameExcluded(c.contact.name, excluded));
@@ -412,7 +412,7 @@ export async function getSectorBenchmark(clientId: string, period: Period = "mon
   for (const p of peers) {
     const [mc, wc] = await Promise.all([
       prisma.metaConnection.findUnique({ where: { clientId: p.id }, select: { id: true } }),
-      prisma.waConnection.findUnique({ where: { clientId: p.id }, select: { id: true } }),
+      prisma.waConnection.findFirst({ where: { clientId: p.id }, select: { id: true } }),
     ]);
     if (!mc || !wc) continue;
     const [spendAgg, adLeads] = await Promise.all([

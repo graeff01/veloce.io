@@ -83,7 +83,7 @@ export async function computeExecutiveReport(
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   if (!client) return null;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
 
   const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const periodLabel = `${MONTHS[month - 1]} de ${year}`;

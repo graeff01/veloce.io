@@ -21,7 +21,7 @@ const patchSchema = z.object({
 });
 
 async function getConnAndContact(clientId: string, contactId: string) {
-  const conn = await prisma.waConnection.findUnique({ where: { clientId } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId } });
   if (!conn) return { conn: null, contact: null };
   const contact = await prisma.waContact.findFirst({ where: { id: contactId, connectionId: conn.id } });
   return { conn, contact };

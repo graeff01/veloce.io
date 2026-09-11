@@ -8,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireClientAccess(id);
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
   if (!conn) return NextResponse.json([]);
   const tags = await prisma.waTag.findMany({ where: { connectionId: conn.id }, orderBy: { name: "asc" } });
   return NextResponse.json(tags.map((t) => ({ id: t.id, name: t.name, color: t.color })));
@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:update");
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
   const parsed = postSchema.safeParse(await req.json().catch(() => ({})));

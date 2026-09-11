@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const start = month ? new Date(year, month - 1, 1) : new Date(year, 0, 1);
   const end = month ? new Date(year, month, 1) : new Date(year + 1, 0, 1);
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId } });
   if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
 
   const metrics = await computeAttendanceMetrics(conn.id, start, end);

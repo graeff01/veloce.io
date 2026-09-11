@@ -15,7 +15,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { error, portal } = await guardPortal(req, token, { section: "funil" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));

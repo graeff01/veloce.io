@@ -32,7 +32,7 @@ export type FunnelData = {
 };
 
 export async function getClientFunnel(clientId: string): Promise<FunnelData | null> {
-  const wa = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const wa = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
   if (!wa) return null;
 
   const [convsRaw, excl] = await Promise.all([

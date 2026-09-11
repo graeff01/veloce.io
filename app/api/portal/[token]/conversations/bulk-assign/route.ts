@@ -31,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   // Só as conversas DESTE cliente: o id do contato vem do aparelho e não é prova
   // de nada. A conexão é a fronteira do tenant.
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "Sem conexão de WhatsApp." }, { status: 404 });
 
   // E só as LIVRES (sem dono, ou já minhas). Lead de outra vendedora não é

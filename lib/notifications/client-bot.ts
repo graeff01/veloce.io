@@ -71,7 +71,7 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
   });
   if (recipients.length === 0) return 0;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
 
   let sent = 0;
   for (const r of recipients) {
@@ -95,7 +95,7 @@ export async function checkClientBotHealth(clientId: string): Promise<ClientBotH
   const bot = await prisma.clientBot.findUnique({ where: { clientId } });
   if (!bot || !bot.active) return null;
   const recipients = await prisma.clientBotRecipient.count({ where: { clientId, active: true, channel: "whatsapp" } });
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
 
   const ready = !!conn; // "canal pronto" = a linha da loja está conectada
   const issues: string[] = [];

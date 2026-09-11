@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
   if (!conn) return new Response("WhatsApp não conectado", { status: 404 });
 
   const url = new URL(req.url);

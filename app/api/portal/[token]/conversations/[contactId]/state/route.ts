@@ -22,7 +22,7 @@ export async function POST(
   const body = (await req.json().catch(() => ({}))) as { lida?: boolean; arquivada?: boolean };
 
   // O contato precisa ser DESTE cliente — isolamento não depende da UI.
-  const conn = await prisma.waConnection.findUnique({
+  const conn = await prisma.waConnection.findFirst({
     where: { clientId: portal.clientId },
     select: { id: true },
   });

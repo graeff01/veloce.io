@@ -13,7 +13,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token);
   if (error) return NextResponse.json({ waiting: 0, reviews: 0 }); // badge nunca vira erro na UI
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId }, select: { id: true } });
   let waiting = 0;
   if (conn) {
     // "Aguardando" = contatos cuja ÚLTIMA mensagem é do cliente (direction != 'out').

@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const [client, conn] = await Promise.all([
     prisma.client.findUnique({ where: { id }, select: { name: true } }),
-    prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } }),
+    prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } }),
   ]);
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
   if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });

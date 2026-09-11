@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { error } = await requireClientAccess(id);
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true, accessToken: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true, accessToken: true } });
   if (!conn) return new NextResponse("sem conexão", { status: 404 });
 
   const msg = await prisma.waMessage.findUnique({ where: { id: messageId }, select: { connectionId: true, type: true, raw: true, media: { select: { mime: true, data: true } } } });

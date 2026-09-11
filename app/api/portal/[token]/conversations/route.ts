@@ -11,7 +11,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: portal.clientId } });
   if (!conn) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
 
   const url = new URL(req.url);

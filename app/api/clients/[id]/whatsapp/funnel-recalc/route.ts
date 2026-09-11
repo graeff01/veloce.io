@@ -12,7 +12,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { error } = await requireAuth("clients:update");
   if (error) return error;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId: id }, select: { id: true } });
   if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
 
   const cfg = await prisma.aiAgentConfig.findUnique({ where: { clientId: id }, select: { vertical: true } });
