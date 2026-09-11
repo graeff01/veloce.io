@@ -119,7 +119,7 @@ export function PortalFechamento({ token }: { token: string }) {
   return (
     <div className="fwrap">
       <style>{`
-        .fwrap{max-width:920px;margin:0 auto;padding:26px 22px 70px}
+        .fwrap{max-width:1440px;padding:26px 26px 70px}
         .fhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
         .fhead h1{font-size:20px;margin:0;letter-spacing:-.01em}
         .fcount{background:var(--p-accent);color:var(--p-on-accent);font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;min-width:22px;text-align:center}
@@ -127,7 +127,7 @@ export function PortalFechamento({ token }: { token: string }) {
         .fnotif{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-muted);border-radius:9px;padding:7px 12px;cursor:pointer;margin-bottom:20px}
         .fnotif.on{color:var(--p-good);border-color:color-mix(in srgb,var(--p-good) 40%,transparent)}
         .fsectitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--p-muted);margin:22px 0 10px}
-        .fcards{display:flex;flex-direction:column;gap:11px}
+        .fcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:11px;align-items:start}
         .fcard{border:1px solid var(--p-border);background:var(--p-surface);border-radius:13px;padding:15px 17px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
         .fcard.hot{border-color:color-mix(in srgb,var(--p-accent) 45%,transparent);background:linear-gradient(90deg,var(--p-accent-soft),var(--p-surface) 55%)}
         .fcard.urg{border-color:var(--p-crit);background:linear-gradient(90deg,var(--p-crit-soft),var(--p-surface) 60%)}

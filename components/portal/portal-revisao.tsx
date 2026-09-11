@@ -121,7 +121,7 @@ export function PortalRevisao({ token }: { token: string }) {
   return (
     <div className="rwrap">
       <style>{`
-        .rwrap{max-width:920px;margin:0 auto;padding:26px 22px 70px}
+        .rwrap{max-width:1440px;padding:26px 26px 70px}
         @media(max-width:760px){ .rwrap{padding-bottom:calc(104px + env(safe-area-inset-bottom))} }
         .rhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
         .rhead h1{font-size:20px;margin:0;letter-spacing:-.01em}
@@ -129,7 +129,7 @@ export function PortalRevisao({ token }: { token: string }) {
         .rsub{color:var(--p-muted);font-size:13px;margin:0 0 18px;line-height:1.5}
         .rnotif{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-muted);border-radius:9px;padding:7px 12px;cursor:pointer;margin-bottom:20px}
         .rnotif.on{color:var(--p-good);border-color:color-mix(in srgb,var(--p-good) 40%,transparent);cursor:default}
-        .rcards{display:flex;flex-direction:column;gap:13px}
+        .rcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:13px;align-items:start}
         .rcard{border:1px solid var(--p-border);background:var(--p-surface);border-radius:14px;padding:16px 18px;border-left:3px solid var(--p-accent)}
         .rtop{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
         .ric{width:40px;height:40px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--p-accent-soft);color:var(--p-accent)}
