@@ -1019,8 +1019,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
 
             Dois eixos diferentes na mesma linha (estado da conversa e dono),
             separados por um traço para não parecerem a mesma escolha. */}
-        {!isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
+        {(
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "0 14px 10px" : "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
             {tabChip("all", "Conversas")}
             {hasAds && tabChip("ads", "Anúncio")}
             {tabChip("arquivadas", "Arquivadas")}
@@ -1041,7 +1041,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             Como chip solto na linha das abas ela competia com os filtros e
             parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
             na tela, que só aparece quando há o que assumir. */}
-        {!isMobile && me && livresNaTela > 0 && (
+        {me && livresNaTela > 0 && (
           <button onClick={() => void assumirLote()} disabled={assumindoLote}
             title="Assumir as conversas sem responsável que estão nesta lista"
             style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 14px", border: "none", borderTop: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-accent) 6%, transparent)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer", textAlign: "left" }}>
