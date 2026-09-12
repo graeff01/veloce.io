@@ -11,9 +11,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, sections: true, lastLoginAt: true, passwordHash: true } });
+  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, sections: true, lastLoginAt: true, passwordHash: true, podeConectar: true } });
   // sections: null = herda tudo do cliente; senão CSV das abas liberadas (sem Conversas, que é sempre).
-  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, sections: u.sections == null ? null : u.sections.split(",").map((s) => s.trim()).filter(Boolean), lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
+  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, podeConectar: u.podeConectar, sections: u.sections == null ? null : u.sections.split(",").map((s) => s.trim()).filter(Boolean), lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
   return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
 }
 
@@ -38,6 +38,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const keys = [...new Set((body.sections as unknown[]).map((s) => String(s).trim()).filter((s) => s && s !== "conversas"))];
     await prisma.portalAccess.updateMany({ where: { clientId: id, email: e }, data: { sections: keys.join(",") } });
     return NextResponse.json({ ok: true, sections: keys });
+  }
+
+  // Permissão de CONECTAR número, ligada uma a uma. Separada do papel: quem a
+  // recebe a recebe por decisão explícita, e some da auditoria se for tirada.
+  if (typeof body?.podeConectar === "boolean") {
+    await prisma.portalAccess.updateMany({
+      where: { clientId: id, email: e }, data: { podeConectar: body.podeConectar },
+    });
+    return NextResponse.json({ ok: true, podeConectar: body.podeConectar });
   }
 
   // TRÊS papéis, e a lista é fechada de propósito — um papel desconhecido viraria

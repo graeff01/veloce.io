@@ -190,3 +190,92 @@ test("conversa do número dela atribuída a outra equipe aparece — com NOME", 
   assert.equal(d.numeros.length, 1);
   assert.equal(d.numeros[0].id, numeroDaMichele);
 });
+
+// ── Conectar número pelo portal ──────────────────────────────────────────────
+// A escrita mais poderosa do produto, feita por quem não é da agência. Quatro
+// travas, e cada uma existe por um estrago concreto que ela evita.
+
+const conectar = (cookie: string, corpo: Record<string, unknown>) =>
+  fetch(`${BASE}/api/portal/${token}/numeros`, { method: "POST", headers: H(cookie), body: JSON.stringify(corpo) });
+
+const fichaValida = (sufixo: string) => ({
+  wabaId: `waba-${marca}`, phoneNumberId: `pn-novo-${sufixo}-${marca}`,
+  accessToken: "EAAG-token-de-teste-longo-o-suficiente",
+  name: `Funcionário ${sufixo}`, equipe: "consultoria", ownerEmail: `func${sufixo}@teste.local`,
+});
+
+test("gerente SEM a permissão não conecta nada", async () => {
+  // O padrão. Ninguém ganha esse poder por causa de um deploy.
+  const r = await conectar(cookieM, fichaValida("a"));
+  assert.equal(r.status, 403);
+  assert.match((await r.json()).error, /permiss/i);
+});
+
+test("nem o ATENDENTE, nem por engano", async () => {
+  assert.equal((await conectar(cookieA, fichaValida("b"))).status, 403);
+});
+
+test("com a permissão, ela conecta — e o número nasce no escopo dela", async () => {
+  await db.portalAccess.updateMany({ where: { clientId, email: MICHELE }, data: { podeConectar: true } });
+
+  const r = await conectar(cookieM, fichaValida("c"));
+  const d = await r.json();
+  assert.equal(r.status, 201, JSON.stringify(d));
+  assert.equal(d.numero.name, "Funcionário c");
+
+  // Aparece no painel DELA, sem mais nenhum passo.
+  const meus = await (await get(cookieM, "numeros")).json();
+  assert.ok(meus.numeros.some((n: { nome: string }) => n.nome === "Funcionário c"));
+  // E NÃO no da outra.
+  const dela = await (await get(cookieV, "numeros")).json();
+  assert.ok(!dela.numeros.some((n: { nome: string }) => n.nome === "Funcionário c"));
+});
+
+test("o token NUNCA volta pela API", async () => {
+  const r = await conectar(cookieM, fichaValida("d"));
+  const bruto = await r.text();
+  assert.ok(!bruto.includes("EAAG"), "o token não pode voltar na resposta da criação");
+  const lista = await (await get(cookieM, "numeros")).text();
+  assert.ok(!lista.includes("EAAG") && !lista.includes("accessToken"), "nem na listagem");
+});
+
+test("número de OUTRO cliente é recusado", async () => {
+  // Sem esta trava, digitar o id de um número alheio sequestraria as conversas
+  // dele para cá.
+  const outro = await db.client.create({ data: { name: `Alheio ${marca}`, slug: `alheio-${marca}` } });
+  const conn = await db.waConnection.create({
+    data: { clientId: outro.id, wabaId: "w", phoneNumberId: `pn-alheio-${marca}`, accessToken: "x" },
+  });
+
+  const r = await conectar(cookieM, { ...fichaValida("e"), phoneNumberId: conn.phoneNumberId });
+  assert.equal(r.status, 409);
+
+  // E nada mudou de dono.
+  const depois = await db.waConnection.findUnique({ where: { id: conn.id }, select: { clientId: true } });
+  assert.equal(depois?.clientId, outro.id, "o número continua sendo do cliente dele");
+
+  await db.waConnection.delete({ where: { id: conn.id } });
+  await db.client.delete({ where: { id: outro.id } });
+});
+
+test("uma gerente não reescreve o número da outra", async () => {
+  // Mesmo cliente, mesma permissão — e ainda assim não encosta no que é da
+  // colega. "Corrigir" o número da outra é como isso começaria.
+  const r = await conectar(cookieM, {
+    ...fichaValida("f"),
+    phoneNumberId: (await db.waConnection.findUnique({ where: { id: numeroDaVitoria }, select: { phoneNumberId: true } }))!.phoneNumberId,
+  });
+  assert.equal(r.status, 409);
+
+  const intacto = await db.waConnection.findUnique({ where: { id: numeroDaVitoria }, select: { gestorEmail: true, name: true } });
+  assert.equal(intacto?.gestorEmail, VITORIA, "o número continua sendo acompanhado por ela");
+  assert.equal(intacto?.name, "Numero da Vitoria", "e nem o nome foi trocado");
+});
+
+test("conectar não vira licença para escrever o resto", async () => {
+  // A permissão é de UMA coisa. Ela continua sem responder lead nem mover funil.
+  const r = await fetch(`${BASE}/api/portal/${token}/funnel/${contatoDaMichele}`, {
+    method: "POST", headers: H(cookieM), body: JSON.stringify({ stage: "qualificado" }),
+  });
+  assert.equal(r.status, 403);
+});

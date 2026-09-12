@@ -1,0 +1,13 @@
+-- PERMISSÃO DE CONECTAR NÚMERO, concedida uma a uma.
+--
+-- As gerentes da Jardim do Lago precisam cadastrar o WhatsApp de cada
+-- funcionário sem depender da agência. Isso é a escrita mais poderosa que
+-- existe no produto: liga um número real a um inquilino, com um token que
+-- controla a WABA inteira.
+--
+-- Por isso NÃO virou parte do papel. `gestor` segue significando "vê tudo o que
+-- é dele e não altera nada"; esta permissão é um extra explícito, ligado por
+-- pessoa no painel interno, e fácil de auditar justamente por ser separada.
+--
+-- Aditiva: falsa por padrão. Ninguém ganha poder por causa do deploy.
+ALTER TABLE "PortalAccess" ADD COLUMN IF NOT EXISTS "podeConectar" BOOLEAN NOT NULL DEFAULT false;

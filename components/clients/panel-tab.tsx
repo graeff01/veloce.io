@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRound } from "lucide-react";
+import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRound, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: string[]; logoUrl: string | null }
@@ -20,7 +20,7 @@ const SECTIONS: { key: string; label: string; hint: string }[] = [
   { key: "ia", label: "IA", hint: "configuração/insights da IA" },
   { key: "funil", label: "Funil", hint: "etapas dos leads" },
 ];
-interface PortalUser { id: string; email: string; name: string | null; role: string; sections: string[] | null; lastLoginAt: string | null; hasPassword: boolean }
+interface PortalUser { id: string; email: string; name: string | null; role: string; sections: string[] | null; lastLoginAt: string | null; hasPassword: boolean; podeConectar?: boolean }
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -64,6 +64,15 @@ export function PanelTab({ clientId }: { clientId: string }) {
     await fetch(`/api/clients/${clientId}/portal-access?email=${encodeURIComponent(email)}`, { method: "DELETE" });
     loadUsers();
   }
+  async function setPodeConectar(email: string, podeConectar: boolean) {
+    const r = await fetch(`/api/clients/${clientId}/portal-access`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, podeConectar }),
+    }).catch(() => null);
+    if (!r?.ok) alert("Não foi possível alterar a permissão agora.");
+    await loadUsers(); // recarrega SEMPRE: falhando, a tela volta ao que está no banco
+  }
+
   async function setRole(email: string, role: string) {
     const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível mudar o papel."); }
@@ -242,6 +251,19 @@ export function PanelTab({ clientId }: { clientId: string }) {
                       style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 8px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : u.role === "gestor" ? "var(--border-strong)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
                       {PAPEIS.map((p) => <option key={p.v} value={p.v}>{p.rotulo}</option>)}
                     </select>
+                    {/* Conectar número: só faz sentido para quem ACOMPANHA — é
+                        ela que cadastra o WhatsApp dos funcionários. O botão
+                        some para os demais em vez de aparecer desligado, para
+                        não sugerir um caminho que não existe para eles. */}
+                    {u.role === "gestor" && (
+                      <button onClick={() => setPodeConectar(u.email, !u.podeConectar)}
+                        title={u.podeConectar
+                          ? "Pode cadastrar o WhatsApp dos funcionários pelo painel dela. Clique para tirar."
+                          : "Deixar que ela cadastre o WhatsApp dos funcionários pelo painel dela."}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.podeConectar ? "var(--accent)" : "var(--border)"}`, background: u.podeConectar ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: u.podeConectar ? "var(--accent)" : "var(--text-muted)" }}>
+                        <Smartphone size={11} /> {u.podeConectar ? "Conecta números" : "Não conecta"}
+                      </button>
+                    )}
                     {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
                     <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
                   </div>

@@ -1899,6 +1899,12 @@ model PortalAccess {
   passwordHash String?   // bcrypt; null = ainda não cadastrou senha
   role         String    @default("attendant") // "admin" (vê tudo) | "attendant" (só o dele)
   sections     String?   // CSV de abas que o atendente PODE ver (ex: "painel,funil"). null = herda tudo do cliente (usuários antigos); "" = só Conversas. Admin ignora (vê tudo).
+  // Pode CONECTAR números de WhatsApp pelo portal. Desligado por padrão, e
+  // concedido um a um pela agência: conectar um número é a escrita mais
+  // poderosa do sistema — liga um WhatsApp real a um inquilino — e envolve um
+  // token que controla a WABA inteira. Fica separado do papel de propósito:
+  // `gestor` continua significando "não altera nada".
+  podeConectar Boolean  @default(false)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
 

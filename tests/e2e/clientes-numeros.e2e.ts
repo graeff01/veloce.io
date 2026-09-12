@@ -212,3 +212,40 @@ test("o último admin não pode virar gerente", async () => {
   await db.portalAccess.deleteMany({ where: { clientId: outro.id } });
   await db.client.delete({ where: { id: outro.id } });
 });
+
+test("a agência concede e tira a permissão de conectar, uma a uma", async () => {
+  const gerente = `gerente.${marca}@teste.local`;
+
+  // Nasce desligada: ninguém ganha esse poder por causa de um deploy.
+  const antes = await (await fetch(acesso(), { headers: { cookie } })).json();
+  assert.equal(antes.users.find((u: { email: string }) => u.email === gerente)?.podeConectar, false);
+
+  const on = await fetch(acesso(), {
+    method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, podeConectar: true }),
+  });
+  assert.equal(on.status, 200);
+  const d1 = await (await fetch(acesso(), { headers: { cookie } })).json();
+  assert.equal(d1.users.find((u: { email: string }) => u.email === gerente)?.podeConectar, true);
+
+  // E dá para TIRAR — permissão que só liga não é permissão, é caminho sem volta.
+  await fetch(acesso(), { method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, podeConectar: false }) });
+  const d2 = await (await fetch(acesso(), { headers: { cookie } })).json();
+  assert.equal(d2.users.find((u: { email: string }) => u.email === gerente)?.podeConectar, false);
+});
+
+test("mexer na permissão não mexe no papel, e vice-versa", async () => {
+  // São coisas separadas de propósito. Se um clique num arrastasse o outro, a
+  // separação seria só aparente.
+  const gerente = `gerente.${marca}@teste.local`;
+  // Parte de um estado conhecido: um teste acima mexeu no papel, e depender
+  // disso faria este aqui acusar o produto por sujeira dele mesmo.
+  await fetch(acesso(), { method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, role: "gestor" }) });
+
+  await fetch(acesso(), { method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, podeConectar: true }) });
+  assert.equal(await papelDe(gerente), "gestor", "ligar a permissão não pode rebaixar o papel");
+
+  await fetch(acesso(), { method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, role: "gestor" }) });
+  const d = await (await fetch(acesso(), { headers: { cookie } })).json();
+  assert.equal(d.users.find((u: { email: string }) => u.email === gerente)?.podeConectar, true,
+    "reconfirmar o papel não pode apagar a permissão");
+});

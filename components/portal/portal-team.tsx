@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PortalConectarNumero } from "@/components/portal/portal-conectar-numero";
 import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff, PlugZap } from "lucide-react";
 
 // ── Equipe: o que o gestor DECIDE ────────────────────────────────────────────
@@ -304,6 +305,11 @@ export function PortalTeam({ token }: { token: string }) {
                 </div>
               </div>
             )}
+
+            {/* Cadastrar o WhatsApp de quem trabalha com ela. Mora aqui porque
+                é aqui que a equipe dela vive — neste modelo, um número É uma
+                pessoa. Só aparece para quem tem a permissão. */}
+            <PortalConectarNumero token={token} onConectado={() => setPeriod((p) => p)} />
 
             {/* ── Pessoas ─────────────────────────────────────────────────── */}
             <div className="p-panel">

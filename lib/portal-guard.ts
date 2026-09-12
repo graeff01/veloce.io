@@ -29,6 +29,8 @@ export interface PortalIdentity {
   isAdmin: boolean;
   /** Gestor: acompanha tudo, não altera nada. Ver `isSomenteLeitura`. */
   somenteLeitura: boolean;
+  /** Pode conectar número de WhatsApp pelo portal. Concedido um a um. */
+  podeConectar: boolean;
   /**
    * Números que ESTA pessoa alcança, ou `null` para todos os do cliente.
    *
@@ -62,6 +64,14 @@ export interface PortalGuardOptions {
    * pedir uma análise), e cada uma está anotada na sua rota.
    */
   permiteLeitor?: boolean;
+  /**
+   * Esta rota conecta/edita NÚMERO — a escrita mais poderosa do produto.
+   *
+   * Exige a permissão `podeConectar`, concedida uma a uma. É separada do papel
+   * de propósito: um gestor comum continua sem poder escrever nada, e quem
+   * recebe esta permissão a recebe por decisão explícita, não por herança.
+   */
+  exigeConectar?: boolean;
 }
 
 const SECTION_ENFORCE = process.env.PORTAL_SECTION_ENFORCE === "1";
@@ -138,6 +148,7 @@ export async function guardPortal(
     // não a falta de visão.
     isAdmin: isAdminRole(user?.role) || isSomenteLeitura(user?.role),
     somenteLeitura: isSomenteLeitura(user?.role),
+    podeConectar: !!user?.podeConectar,
     // Só quem acompanha é recortado: quem atende trabalha na caixa inteira.
     conexoesVisiveis: isSomenteLeitura(user?.role)
       ? await conexoesDoGestor(portal.clientId, user?.email ?? null)
@@ -150,8 +161,19 @@ export async function guardPortal(
   // 4.1) SOMENTE LEITURA. Vale desde já, sem modo observação: nenhum usuário
   //      existente tem este papel, então não há o que medir — quem o receber
   //      terá sido posto nele de propósito.
+  // 4.0) Conectar número: permissão própria, checada antes de tudo e para
+  //      QUALQUER papel — nem um admin do cliente conecta sem ela.
+  if (opts.exigeConectar && !identity.podeConectar) {
+    emitSecurityEventAsync({
+      clientId: portal.clientId, ring: "auth", control: "A-06", severity: "medium",
+      action: "blocked", labels: ["portal_conectar_numero"],
+      evidence: `${identity.email ?? "-"} tentou conectar número sem permissão`, shadow: false,
+    });
+    return deny(403, "Você não tem permissão para conectar números. Peça à agência.");
+  }
+
   const escreve = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
-  if (identity.somenteLeitura && escreve && !opts.permiteLeitor) {
+  if (identity.somenteLeitura && escreve && !opts.permiteLeitor && !opts.exigeConectar) {
     emitSecurityEventAsync({
       clientId: portal.clientId, ring: "auth", control: "A-05", severity: "low",
       action: "blocked", labels: ["portal_somente_leitura", req.method],
