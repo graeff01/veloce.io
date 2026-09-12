@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardPortal } from "@/lib/portal-guard";
 import { encryptSecret } from "@/lib/crypto";
+import { assinarAppNaWaba } from "@/lib/whatsapp-assinar";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -125,10 +126,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       equipe: vazioVira(d.equipe),
       ownerEmail: vazioVira(d.ownerEmail),
     },
-    select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true },
+    select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true, accessToken: true, wabaId: true },
   });
+
+  // ASSINA O APP NA WABA. Sem este passo a credencial fica salva e NENHUMA
+  // mensagem chega — sem erro, sem pista. Era feito por script; quem preenchia
+  // o formulário não tinha como saber que faltava.
+  //
+  // Salvar primeiro e assinar depois é de propósito: falha de rede aqui não
+  // pode desfazer um cadastro correto — dá para tentar de novo.
+  const assinatura = await assinarAppNaWaba(conn.wabaId, conn.accessToken);
+
+  const { accessToken: _t, wabaId: _w, ...publico } = conn;
+  void _t; void _w;
 
   // TRAVA 4: o token NUNCA volta. Nem aqui, nem na listagem — uma vez colado,
   // ele só existe cifrado no banco.
-  return NextResponse.json({ ok: true, numero: { ...conn, dono: conn.ownerEmail } }, { status: 201 });
+  return NextResponse.json({
+    ok: true,
+    numero: { ...publico, dono: publico.ownerEmail },
+    // A tela precisa dizer a verdade: "salvei, mas ainda não recebe" é uma
+    // notícia diferente de "pronto".
+    recebendo: assinatura.ok,
+    aviso: assinatura.ok ? null : assinatura.erro,
+  }, { status: 201 });
 }

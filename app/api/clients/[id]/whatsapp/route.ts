@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { encryptSecret } from "@/lib/crypto";
+import { assinarAppNaWaba } from "@/lib/whatsapp-assinar";
 import { z } from "zod";
 
 const saveSchema = z.object({
@@ -106,7 +107,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     include: { _count: { select: { contacts: true, leads: true, messages: true } } },
   });
 
-  return NextResponse.json(safe(conn), { status: 201 });
+  // Mesmo passo do portal: salvar não faz a mensagem chegar. A Meta só entrega
+  // os eventos de uma conta para os apps assinados nela.
+  const assinatura = await assinarAppNaWaba(conn.wabaId, conn.accessToken);
+
+  return NextResponse.json({
+    ...safe(conn),
+    recebendo: assinatura.ok,
+    aviso: assinatura.ok ? null : assinatura.erro,
+  }, { status: 201 });
 }
 
 // PATCH — descreve o número (nome, telefone exibido, dono, equipe) SEM exigir

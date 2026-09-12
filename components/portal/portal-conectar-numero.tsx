@@ -80,6 +80,9 @@ export function FormularioConectar({ token, onFechar, onPronto }: {
   });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  // "Salvou, mas ainda não recebe" — o caso em que a credencial entrou e a
+  // assinatura na Meta não. Fechar a janela dizendo "pronto" seria mentir.
+  const [aviso, setAviso] = useState("");
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape" && !salvando) onFechar(); };
@@ -96,8 +99,16 @@ export function FormularioConectar({ token, onFechar, onPronto }: {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f),
     }).catch(() => null);
     setSalvando(false);
+    const d = await r?.json().catch(() => null);
     if (!r?.ok) {
-      setErro((await r?.json().catch(() => null))?.error ?? "Não foi possível conectar agora.");
+      setErro(d?.error ?? "Não foi possível conectar agora.");
+      return;
+    }
+    // Guardado, mas a Meta não confirmou a entrega dos eventos. A pessoa PRECISA
+    // ver isso — senão vai embora achando que está funcionando e só descobre
+    // dias depois, quando ninguém receber mensagem nenhuma.
+    if (d && d.recebendo === false) {
+      setAviso(d.aviso || "O número foi salvo, mas a Meta ainda não confirmou a entrega das mensagens.");
       return;
     }
     onPronto();
@@ -168,6 +179,27 @@ export function FormularioConectar({ token, onFechar, onPronto }: {
           {erro && (
             <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "11px 13px", borderRadius: 11, background: "var(--p-crit-soft)", color: "var(--p-crit)", fontSize: 12.5, lineHeight: 1.5 }}>
               <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} /> {erro}
+            </div>
+          )}
+
+          {aviso && (
+            <div role="alert" style={{ display: "flex", flexDirection: "column", gap: 9, padding: "12px 14px", borderRadius: 11, background: "var(--p-warn-soft)" }}>
+              <span style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, lineHeight: 1.55, color: "var(--p-text)" }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1, color: "var(--p-warn)" }} />
+                <span>
+                  <b>O número foi salvo, mas ainda não está recebendo.</b><br />{aviso}
+                </span>
+              </span>
+              <span style={{ display: "flex", gap: 8 }}>
+                <button type="submit" disabled={salvando}
+                  style={{ height: 32, padding: "0 12px", borderRadius: 9, border: "none", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                  Tentar de novo
+                </button>
+                <button type="button" onClick={onPronto}
+                  style={{ height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid var(--p-border)", background: "transparent", color: "var(--p-muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                  Resolvo depois
+                </button>
+              </span>
             </div>
           )}
 

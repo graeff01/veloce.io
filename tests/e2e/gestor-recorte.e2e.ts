@@ -300,3 +300,37 @@ test("o número cadastrado aparece NA MESMA lista, sem recarregar a página", as
   assert.equal(depois.numeros.length, antes.numeros.length + 1);
   assert.ok(depois.numeros.some((n: { nome: string }) => n.nome === "Funcionário g"));
 });
+
+// ── Assinar a WABA ───────────────────────────────────────────────────────────
+// Salvar a credencial NÃO faz a mensagem chegar: a Meta só entrega os eventos
+// de uma conta para os apps assinados nela. Esse passo era feito por script, e
+// quem preenchia o formulário não tinha como saber que faltava — via "conectado
+// com sucesso" e nunca recebia nada.
+
+test("o cadastro diz se ficou RECEBENDO, não só se salvou", async () => {
+  // O token aqui é falso, então a Meta recusa — que é justamente o caso que
+  // precisa ser visível. O número fica salvo (dá para corrigir), mas a resposta
+  // avisa que ainda não recebe, com um motivo que a pessoa consegue agir.
+  const r = await conectar(cookieM, fichaValida("h"));
+  const d = await r.json();
+
+  assert.equal(r.status, 201, "credencial errada não desfaz o cadastro — dá para tentar de novo");
+  assert.equal(d.recebendo, false, "sem assinatura confirmada, não pode dizer que está pronto");
+  assert.ok(typeof d.aviso === "string" && d.aviso.length > 20,
+    `o aviso precisa explicar o que fazer (veio: ${JSON.stringify(d.aviso)})`);
+  assert.ok(!/undefined|null|\[object/.test(d.aviso), "e ser texto de gente, não despejo de erro");
+});
+
+test("o número salvo mesmo sem assinatura aparece na lista", async () => {
+  // Ele existe e está incompleto — some da tela seria pior: a pessoa
+  // cadastraria de novo e criaria duplicata.
+  const d = await (await get(cookieM, "numeros")).json();
+  assert.ok(d.numeros.some((n: { nome: string }) => n.nome === "Funcionário h"));
+});
+
+test("o token não vaza nem quando a assinatura falha", async () => {
+  const r = await conectar(cookieM, fichaValida("i"));
+  const bruto = await r.text();
+  assert.ok(!bruto.includes("EAAG"), "nem no caminho de erro o token pode voltar");
+  assert.ok(!bruto.includes("accessToken"));
+});
