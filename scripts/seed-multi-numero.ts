@@ -271,9 +271,15 @@ async function main() {
       if (esperando) msgs.push({ dir: "in", texto: "Oi? Consegue me responder?" });
 
       let ultimaIn: Date | null = null, ultimaOut: Date | null = null, entrada = 0, saida = 0;
+      // Ritmo VARIADO de propósito. Com um intervalo fixo, toda pessoa saía com
+      // o mesmo tempo de resposta e a tela de gargalos parecia quebrada — não
+      // havia o que comparar, que é justamente o assunto daquela tela.
+      const ritmo = 4 + ((i * 5 + k * 3) % 26); // 4 a 29 minutos por turno
+      let minutos = 0;
       for (let j = 0; j < msgs.length; j++) {
         const m = msgs[j]!;
-        const ts = new Date(inicio.getTime() + j * 11 * 60_000);
+        minutos += j === 0 ? 0 : ritmo + ((j * 7 + i) % 9);
+        const ts = new Date(inicio.getTime() + minutos * 60_000);
         await prisma.waMessage.create({
           data: {
             connectionId: conn.id, contactId: contact.id,
@@ -298,7 +304,7 @@ async function main() {
           ...(etapa === "convertido" ? { saleValue: 1800 + ((i * 7 + k) % 9) * 320, saleConfirmedAt: dAgo(Math.max(0, diasAtras - 1)) } : {}),
           ...(manual ? { assignedEmail: manual, assignedAt: dAgo(diasAtras) } : {}),
           firstInboundAt: inicio,
-          ...(saida > 0 ? { firstResponseAt: new Date(inicio.getTime() + 11 * 60_000), firstResponseSec: (3 + ((i + k) % 9)) * 60 } : {}),
+          ...(saida > 0 ? { firstResponseAt: new Date(inicio.getTime() + ritmo * 60_000), firstResponseSec: ritmo * 60 } : {}),
           lastInboundAt: ultimaIn, lastOutboundAt: ultimaOut, lastMessageAt: ultima,
           inboundCount: entrada, outboundCount: saida, createdAt: inicio,
         },

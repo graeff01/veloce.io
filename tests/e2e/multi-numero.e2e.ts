@@ -34,6 +34,7 @@ const db = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 const agora = new Date();
 const marca = Date.now();
+const dozeDiasAtras = new Date(Date.now() - 12 * 86_400_000);
 
 async function numero(ownerEmail: string | null, equipe: string | null, sufixo: string) {
   return db.waConnection.create({
@@ -312,4 +313,80 @@ test("responsável SEM acesso ao portal ainda vira linha de métrica", async () 
   assert.equal(linha.owned, 1);
   assert.equal(linha.replies, 2);
   assert.equal(linha.name, "carla.sem.acesso", "sem cadastro, o nome sai do e-mail");
+});
+
+// ── Equipe: o que o gestor decide ────────────────────────────────────────────
+// A tela repetia convertidos, receita e qualificados — as perguntas do Funil,
+// ditas de outro jeito. Ficou tempo, fila e o diagnóstico que sai deles.
+
+test("os gargalos saem de regras, não de achismo", async () => {
+  // O caso que o gargalo existe para pegar: o lead escreveu e NADA saiu. Criado
+  // aqui, num número próprio, para não mexer nas contas que os testes acima já
+  // afirmaram — eles rodam antes deste.
+  const abandonado = await numero("gabriel.demo@teste.local", "captacao", `abandono${marca}`);
+  const contact = await db.waContact.create({
+    data: { connectionId: abandonado.id, waId: `55549${marca}77`, displayName: "Lead abandonado", lastMessageAt: dozeDiasAtras },
+  });
+  await db.waMessage.create({
+    data: { connectionId: abandonado.id, contactId: contact.id, waMessageId: `abandono-${marca}`,
+            direction: "in", type: "text", text: "oi, ainda tem?", timestamp: dozeDiasAtras },
+  });
+  await db.waConversation.create({
+    data: {
+      connectionId: abandonado.id, contactId: contact.id, funnelStage: "recebido", status: "waiting",
+      firstInboundAt: dozeDiasAtras, lastInboundAt: dozeDiasAtras,
+      lastOutboundAt: null, // NINGUÉM respondeu — é o ponto
+      lastMessageAt: dozeDiasAtras, createdAt: dozeDiasAtras,
+    },
+  });
+
+  const r = await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+
+  assert.ok(d.geral.esperando > 0, "a fila tem que ser contada");
+  assert.ok(d.geral.semResposta > 0, "lead sem nenhuma resposta tem que ser contado");
+  const tipos = d.gargalos.map((g: { tipo: string }) => g.tipo);
+  assert.ok(tipos.includes("sem_resposta"), `lead sem nenhuma resposta precisa virar gargalo (veio: ${tipos})`);
+
+  // Todo gargalo precisa dizer o que é E o que fazer — senão é só um alarme.
+  for (const g of d.gargalos) {
+    assert.ok(g.titulo.length > 5, "gargalo sem título");
+    assert.ok(g.detalhe.length > 20, `gargalo "${g.titulo}" sem explicação`);
+    assert.ok(["alta", "media"].includes(g.gravidade));
+  }
+});
+
+test("a Equipe não repete o que é do Funil", async () => {
+  // Número repetido em duas telas não informa duas vezes: faz duvidar de qual
+  // das duas está certa. Conversão e receita moram no Funil.
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie } })).json();
+  const bruto = JSON.stringify(d);
+  for (const campo of ["revenue", "converted", "qualified", "receita", "convertidos"]) {
+    assert.ok(!bruto.includes(`"${campo}"`), `"${campo}" é assunto do Funil e voltou para a Equipe`);
+  }
+});
+
+test("cada pessoa tem o detalhe que abre no modal", async () => {
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie } })).json();
+  assert.ok(d.pessoas.length >= 2);
+  for (const p of d.pessoas) {
+    for (const campo of ["nome", "leads", "esperando", "esperaMaxMin", "semResposta", "primeiraRespostaSec", "respostaSec"]) {
+      assert.ok(campo in p, `falta ${campo} em ${p.nome}`);
+    }
+    assert.ok(!p.nome.includes("@"), `o nome não pode ser o e-mail cru (veio "${p.nome}")`);
+  }
+});
+
+test("o formato que o APLICATIVO consome não mudou", async () => {
+  // `team-metrics` continua existindo com a forma antiga: apps/mobile lê dali.
+  // Trocar a tela do portal não pode quebrar o app que ainda nem foi lançado.
+  const d = await (await fetch(`${BASE}/api/portal/${token}/team-metrics?p=month`, { headers: { cookie } })).json();
+  for (const campo of ["me", "isAdmin", "rows", "team", "unassigned", "periodLabel"]) {
+    assert.ok(campo in d, `team-metrics perdeu "${campo}" — o app depende disso`);
+  }
+  const linha = d.rows[0];
+  for (const campo of ["email", "name", "converted", "revenue", "replies", "avgFirstResponseSec"]) {
+    assert.ok(campo in linha, `a linha de team-metrics perdeu "${campo}"`);
+  }
 });
