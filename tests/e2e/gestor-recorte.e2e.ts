@@ -334,3 +334,92 @@ test("o token não vaza nem quando a assinatura falha", async () => {
   assert.ok(!bruto.includes("EAAG"), "nem no caminho de erro o token pode voltar");
   assert.ok(!bruto.includes("accessToken"));
 });
+
+// ── Corrigir e remover ───────────────────────────────────────────────────────
+// O cadastro só sabia adicionar. Errar o Phone Number ID criava um fantasma
+// permanente no painel dela.
+
+test("ela corrige o que descreve o número", async () => {
+  const meus = await (await get(cookieM, "numeros")).json();
+  const alvo = meus.numeros.find((n: { nome: string }) => n.nome === "Funcionário c");
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: alvo.id, name: "Ana Prado", equipe: "captacao" }),
+  });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.numero.nome ?? d.numero.name, "Ana Prado");
+});
+
+test("corrigir NÃO mexe em credencial", async () => {
+  // Trocar token ou WABA exige cadastrar de novo. Assim um engano de digitação
+  // no nome nunca passa perto do que faz a conexão funcionar.
+  const meus = await (await get(cookieM, "numeros")).json();
+  const alvo = meus.numeros[0];
+  const antes = await db.waConnection.findUnique({ where: { id: alvo.id }, select: { accessToken: true, wabaId: true } });
+
+  await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: alvo.id, name: "Renomeado", accessToken: "EAAG-tentativa", wabaId: "999" }),
+  });
+
+  const depois = await db.waConnection.findUnique({ where: { id: alvo.id }, select: { accessToken: true, wabaId: true } });
+  assert.equal(depois?.accessToken, antes?.accessToken, "o token não pode ser trocado por aqui");
+  assert.equal(depois?.wabaId, antes?.wabaId, "nem a WABA");
+});
+
+test("número VAZIO sai direto — é o caso do erro de digitação", async () => {
+  const criado = await conectar(cookieM, fichaValida("vazio"));
+  const { numero } = await criado.json();
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numero.id}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(r.status, 200);
+  const resta = await (await get(cookieM, "numeros")).json();
+  assert.ok(!resta.numeros.some((n: { id: string }) => n.id === numero.id));
+});
+
+test("número COM conversa exige confirmar pelo nome", async () => {
+  // Apagar um número em operação leva junto o histórico de leads reais. Um
+  // clique distraído não pode fazer isso.
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaMichele}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(r.status, 409);
+  const d = await r.json();
+  assert.equal(d.exigeConfirmacao, true);
+  assert.ok(d.conversas > 0, "e diz quantas conversas se perderiam");
+
+  // O número continua lá.
+  assert.ok(await db.waConnection.findUnique({ where: { id: numeroDaMichele } }));
+
+  // Com o nome certo, sai.
+  const ok = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaMichele}&confirmar=${encodeURIComponent(d.nome)}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(ok.status, 200);
+});
+
+test("ela não corrige nem remove o número da OUTRA", async () => {
+  const patch = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: numeroDaVitoria, name: "invadido" }),
+  });
+  assert.equal(patch.status, 404);
+
+  const del = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaVitoria}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(del.status, 404);
+
+  const intacto = await db.waConnection.findUnique({ where: { id: numeroDaVitoria }, select: { name: true } });
+  assert.equal(intacto?.name, "Numero da Vitoria");
+});
+
+test("sem a permissão de conectar, não corrige nem remove", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieV),
+    body: JSON.stringify({ connectionId: numeroDaVitoria, name: "x" }),
+  });
+  assert.equal(r.status, 403, "editar número é a mesma permissão de cadastrar");
+});
