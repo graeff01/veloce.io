@@ -26,7 +26,13 @@ interface Grupo { equipe: string; leads: number; esperando: number; esperaMaxMin
 interface Gargalo { tipo: string; gravidade: "alta" | "media"; titulo: string; detalhe: string; pessoa?: string }
 interface Geral { leads: number; esperando: number; semResposta: number; primeiraRespostaSec: number | null; respostaSec: number | null }
 interface Mudo { nome: string; dono: string | null; horas: number }
-interface Dados { periodLabel: string; geral: Geral | null; pessoas: Pessoa[]; equipes: Grupo[] | null; gargalos: Gargalo[]; mudos?: Mudo[] }
+interface Hora { hora: number; leads: number; primeiraRespostaSec: number | null }
+interface Anterior { leads: number; primeiraRespostaSec: number | null }
+interface HorarioFraco { deHora: number; ateHora: number; leads: number; fatia: number; primeiraRespostaSec: number }
+interface Dados {
+  periodLabel: string; geral: Geral | null; pessoas: Pessoa[]; equipes: Grupo[] | null;
+  gargalos: Gargalo[]; mudos?: Mudo[]; anterior?: Anterior | null; horas?: Hora[]; horarioFraco?: HorarioFraco | null;
+}
 
 const PERIODS = [{ v: "week", label: "Semana" }, { v: "month", label: "Mês" }];
 
@@ -44,6 +50,16 @@ function espera(min: number): string {
   const h = Math.round(min / 60);
   return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
 }
+// Uma escala só, consumida pela cor da barra E pela legenda. Duas definições
+// fariam a legenda mentir sobre o gráfico ao lado dela.
+const FAIXAS = [
+  { ate: 30 * 60, rotulo: "até 30min", cor: "var(--p-good)" },
+  { ate: 2 * 3600, rotulo: "até 2h", cor: "var(--p-warn)" },
+  { ate: Infinity, rotulo: "mais de 2h", cor: "var(--p-crit)" },
+] as const;
+const faixaDe = (sec: number | null) =>
+  sec == null ? null : FAIXAS.find((f) => sec <= f.ate)!;
+
 function inicial(nome: string) { return nome.trim()[0]?.toUpperCase() ?? "?"; }
 function corDoNome(nome: string) {
   let h = 0; for (const c of nome) h = (h * 31 + c.charCodeAt(0)) % 360;
@@ -75,6 +91,24 @@ export function PortalTeam({ token }: { token: string }) {
   // consequência de nada estar chegando, e a tela precisa dizer isso.
   const mudoDe = (email: string) => (d?.mudos ?? []).find((m) => m.dono === email) ?? null;
   /** Caminho da Equipe para a caixa, já recortada no caso que motivou o clique. */
+  /**
+   * Comparação com o período anterior, em PALAVRA — a cor é reforço, não o
+   * recado. Sem base de comparação não devolve nada: inventar "0%" faria parecer
+   * estabilidade onde não há histórico.
+   *
+   * Atenção ao sentido: em TEMPO, cair é melhorar. Usar o verde de "subiu" aqui
+   * diria o contrário do que aconteceu.
+   */
+  const tendencia = (agora: number | null, antes: number | null) => {
+    if (agora == null || antes == null || antes === 0) return null;
+    const dif = agora - antes;
+    const pct = Math.round((dif / antes) * 100);
+    if (Math.abs(pct) < 10) return { texto: "estável", classe: "flat" as const };
+    return dif < 0
+      ? { texto: `${dur(Math.abs(dif))} mais rápido`, classe: "up" as const }
+      : { texto: `${dur(dif)} mais lento`, classe: "down" as const };
+  };
+
   const rota = (estado: "sem-resposta" | "aguardando", dono?: string | null) =>
     `/r/${token}/conversas?estado=${estado}${dono ? `&dono=${encodeURIComponent(dono)}` : ""}`;
 
@@ -199,10 +233,47 @@ export function PortalTeam({ token }: { token: string }) {
               <div className="p-panel">
                 <div className="p-phead"><h2>Tempos</h2><span className="hint">mediana, não média</span></div>
                 <div className="p-metrics">
-                  <Metrica k="1ª resposta" v={dur(geral.primeiraRespostaSec)} rodape="até alguém atender o lead novo" />
+                  <Metrica k="1ª resposta" v={dur(geral.primeiraRespostaSec)}
+                    rodape="até alguém atender o lead novo"
+                    tendencia={tendencia(geral.primeiraRespostaSec, d!.anterior?.primeiraRespostaSec ?? null)} />
                   <Metrica k="Resposta seguinte" v={dur(geral.respostaSec)} rodape="a cada vez que ele escreve depois" />
                   <Metrica k="Aguardando agora" v={String(geral.esperando)} tom={geral.esperando > 0 ? "warn" : undefined} rodape="lead falou, ninguém voltou" />
                   <Metrica k="Sem resposta" v={String(geral.semResposta)} tom={geral.semResposta > 0 ? "crit" : undefined} rodape="nunca receberam nada" />
+                </div>
+              </div>
+            )}
+
+            {/* ── Horários ────────────────────────────────────────────────
+                Decisão de ESCALA, não de cobrança: se um terço dos leads cai
+                depois das 19h e ninguém está atendendo, o problema é o turno.
+                O dado sempre existiu, diluído dentro da média do dia. */}
+            {d!.horas && d!.horas.filter((h) => h.leads > 0).length >= 3 && (
+              <div className="p-panel">
+                <div className="p-phead"><h2>Horários</h2><span className="hint">quando chega, quando é atendido</span></div>
+
+                {d!.horarioFraco && (
+                  // O recado em PALAVRA, antes do gráfico: é ele que vira
+                  // decisão. O gráfico mostra a forma; a frase diz o que fazer.
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--p-border)" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "var(--p-warn-soft)", color: "var(--p-warn)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                        <Timer size={15} />
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--p-text)", letterSpacing: "-0.01em" }}>
+                          {d!.horarioFraco.fatia}% dos leads chegam a partir das {d!.horarioFraco.deHora}h
+                        </span>
+                        <span style={{ display: "block", fontSize: 12.5, color: "var(--p-muted)", lineHeight: 1.55, marginTop: 3, maxWidth: "62ch" }}>
+                          São {d!.horarioFraco.leads} pessoas, e nesse horário a primeira resposta leva {dur(d!.horarioFraco.primeiraRespostaSec)} —
+                          contra {dur(geral?.primeiraRespostaSec ?? null)} no resto do dia. Não é lentidão de ninguém: é turno descoberto.
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ padding: "16px 18px" }}>
+                  <GraficoHoras horas={d!.horas} />
                 </div>
               </div>
             )}
@@ -269,11 +340,19 @@ export function PortalTeam({ token }: { token: string }) {
   );
 }
 
-function Metrica({ k, v, tom, rodape }: { k: string; v: string; tom?: "warn" | "crit"; rodape?: string }) {
+function Metrica({ k, v, tom, rodape, tendencia }: {
+  k: string; v: string; tom?: "warn" | "crit"; rodape?: string;
+  tendencia?: { texto: string; classe: "up" | "down" | "flat" } | null;
+}) {
   return (
     <div className="p-metric">
       <div className="k">{k}</div>
       <div className="v" style={{ color: tom === "crit" ? "var(--p-crit)" : tom === "warn" ? "var(--p-warn)" : "var(--p-text)" }}>{v}</div>
+      {tendencia && (
+        <div style={{ marginTop: 7 }}>
+          <span className={`p-chip ${tendencia.classe}`}>{tendencia.texto}</span>
+        </div>
+      )}
       {rodape && <div className="foot">{rodape}</div>}
     </div>
   );
@@ -363,6 +442,64 @@ function Detalhe({ p, geral, mudo, rota, onFechar }: {
             <Nota tom="good">Nada travado com {p.nome.split(" ")[0]} no momento.</Nota>
           )}
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── Chegada por hora ────────────────────────────────────────────────────────
+// ALTURA = quantos leads chegaram naquela hora. COR = quanto demorou a primeira
+// resposta ali. São duas variáveis diferentes, não a mesma duas vezes — pintar
+// a barra de acordo com a própria altura não acrescentaria nada.
+//
+// A cor NUNCA é o único sinal: há legenda com o que cada faixa significa, cada
+// barra carrega os números em `aria-label` e no `title`, e o recado que importa
+// está escrito em cima do gráfico. No celular não existe passar o mouse.
+function GraficoHoras({ horas }: { horas: Hora[] }) {
+  const max = Math.max(1, ...horas.map((h) => h.leads));
+  return (
+    <>
+      <style>{`
+        .gh{display:flex;align-items:flex-end;gap:2px;height:88px}
+        .gh-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+        /* Cantos arredondados só no TOPO: a barra nasce da linha de base. */
+        .gh-b{border-radius:3px 3px 0 0;min-height:2px;transition:opacity .15s}
+        .gh-col:hover .gh-b{opacity:.75}
+        .gh-eixo{display:flex;gap:2px;margin-top:6px;border-top:1px solid var(--p-border);padding-top:5px}
+        .gh-eixo span{flex:1;min-width:0;font-size:9.5px;color:var(--p-muted);text-align:center;
+          font-variant-numeric:tabular-nums;white-space:nowrap}
+        .gh-leg{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+        .gh-leg span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--p-muted)}
+        .gh-leg i{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+      `}</style>
+
+      <div className="gh" role="img" aria-label="Leads recebidos por hora do dia e tempo da primeira resposta em cada hora">
+        {horas.map((h) => {
+          const faixa = faixaDe(h.primeiraRespostaSec);
+          const alt = h.leads === 0 ? 0 : Math.max(6, Math.round((h.leads / max) * 100));
+          const descricao = h.leads === 0
+            ? `${h.hora}h: nenhum lead`
+            : `${h.hora}h: ${h.leads} ${h.leads === 1 ? "lead" : "leads"}, 1ª resposta ${dur(h.primeiraRespostaSec)}`;
+          return (
+            <span key={h.hora} className="gh-col" title={descricao} aria-label={descricao}>
+              <span className="gh-b" style={{
+                height: `${alt}%`,
+                background: h.leads === 0 ? "var(--p-border)" : (faixa?.cor ?? "var(--p-line-strong)"),
+              }} />
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="gh-eixo" aria-hidden>
+        {horas.map((h) => <span key={h.hora}>{h.hora % 6 === 0 ? `${h.hora}h` : ""}</span>)}
+      </div>
+
+      <div className="gh-leg">
+        {FAIXAS.map((f) => (
+          <span key={f.rotulo}><i style={{ background: f.cor }} />1ª resposta {f.rotulo}</span>
+        ))}
+        <span><i style={{ background: "var(--p-border)" }} />sem lead</span>
       </div>
     </>
   );

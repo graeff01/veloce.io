@@ -12,6 +12,8 @@
 import "dotenv/config";
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -501,4 +503,42 @@ test("'aguardando' não perde o lead que espera há mais tempo", async () => {
   const lista = await caixa("estado=aguardando");
   assert.ok(lista.some((c) => c.contactId === antigo!.contactId),
     "conversa marcada como fechada por inatividade continua aguardando resposta");
+});
+
+// ── Tendência e horários ─────────────────────────────────────────────────────
+// Tudo na tela era "agora": ela não sabia se o trabalho do mês adiantou, nem se
+// o problema era a pessoa ou o turno.
+
+test("a comparação com o período anterior existe e tem base", async () => {
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  assert.ok(d.anterior, "sem o período anterior, todo número é um retrato sem sentido");
+  assert.equal(typeof d.anterior.leads, "number");
+  assert.ok("primeiraRespostaSec" in d.anterior);
+});
+
+test("a distribuição por hora cobre o dia inteiro, em ordem", async () => {
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  assert.equal(d.horas.length, 24, "24 baldes, sempre — hora sem lead também é informação");
+  d.horas.forEach((h: { hora: number }, i: number) => assert.equal(h.hora, i, "as horas têm que vir em ordem"));
+  const soma = d.horas.reduce((n: number, h: { leads: number }) => n + h.leads, 0);
+  assert.equal(soma, d.geral.leads, `a soma das horas (${soma}) tem que bater com o total (${d.geral.leads})`);
+});
+
+test("a faixa descoberta exige volume, não só lentidão", async () => {
+  // Ninguém muda a escala da equipe por dois leads. A regra é deliberadamente
+  // difícil de disparar: piso absoluto + proporção + lentidão de verdade.
+  const insights = readFileSync(join(process.cwd(), "lib", "portal", "equipe-insights.ts"), "utf8");
+  assert.match(insights, /MIN_LEADS_FAIXA = 5/, "piso absoluto de leads na faixa");
+  assert.match(insights, /fatia >= 0\.12/, "proporção mínima do dia");
+  assert.match(insights, /\* 2\b/, "pelo menos o dobro da mediana");
+});
+
+test("quando dispara, a faixa descreve o que aconteceu", async () => {
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  if (!d.horarioFraco) return; // cenário sem padrão noturno: nada a provar
+  const f = d.horarioFraco;
+  assert.ok(f.leads >= 5, "não pode apontar faixa com punhado de lead");
+  assert.ok(f.fatia >= 12);
+  assert.ok(f.primeiraRespostaSec > d.geral.primeiraRespostaSec, "a faixa apontada tem que ser MAIS lenta que o dia");
+  assert.ok(f.deHora >= 0 && f.ateHora <= 23 && f.deHora <= f.ateHora);
 });

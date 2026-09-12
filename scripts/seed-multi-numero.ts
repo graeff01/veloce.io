@@ -51,6 +51,24 @@ const agora = new Date();
 const hAgo = (h: number) => new Date(agora.getTime() - h * 3_600_000);
 const dAgo = (d: number) => new Date(agora.getTime() - d * DIA);
 
+// Quando o lead chegou: N dias atrás, NAQUELA hora do dia.
+// `dAgo` sozinho preserva a hora de agora — e aí todo lead do cenário nasce no
+// mesmo horário, o gráfico vira uma barra só e não há o que analisar.
+function quando(diasAtras: number, hora: number): Date {
+  const d = dAgo(diasAtras);
+  d.setHours(hora, (hora * 7) % 60, 0, 0);
+  return d;
+}
+
+// Curva de chegada de um comércio no WhatsApp: manhã, fim de tarde e um PICO À
+// NOITE — que é quando o consumidor pega o telefone, e quando ninguém está mais
+// atendendo. É esse descompasso que a tela de horários existe para revelar, e
+// sem ele no cenário não há como conferir se ela revela.
+const HORAS_CHEGADA = [
+  8, 9, 10, 10, 11, 11, 13, 14, 14, 15, 16, 16, 17, 18,
+  19, 19, 20, 20, 20, 21, 21, 22,
+];
+
 // ── As pessoas ───────────────────────────────────────────────────────────────
 // Nenhuma tem acesso ao portal, de propósito: é o caso real — quem atende
 // responde pelo próprio celular e nunca entra no sistema. O vínculo entre a
@@ -241,16 +259,28 @@ async function main() {
   let seq = 0, totalMsgs = 0, totalConvs = 0;
   for (let i = 0; i < conexoes.length; i++) {
     const conn = conexoes[i]!;
-    const quantas = 6 + (i % 3); // 6 a 8 por número, para o ranking não empatar
+    // 12 a 16 por número. Espalhados por 45 dias, dá volume suficiente no
+    // período atual E no anterior — com poucos, a comparação e o gráfico de
+    // horários ficam sem nada para mostrar.
+    const quantas = 12 + (i % 5);
 
     for (let k = 0; k < quantas; k++) {
       const nome = NOMES[(i * 3 + k) % NOMES.length]!;
       const etapa = ETAPAS[(i + k) % ETAPAS.length]!;
-      const diasAtras = (k * 2 + i) % 20;
-      const inicio = dAgo(diasAtras);
+      // Espalha por ~45 dias: parte no período atual, parte no anterior — sem
+      // isso a comparação "está melhorando?" nasce sem base contra a qual medir.
+      const diasAtras = (k * 6 + i * 2) % 45;
+      const horaChegada = HORAS_CHEGADA[(i * 7 + k * 5) % HORAS_CHEGADA.length]!;
+      const inicio = quando(diasAtras, horaChegada);
+      const noturno = horaChegada >= 19;
       // Uma em cada quatro fica ESPERANDO: o lead falou por último e ninguém
       // respondeu. É o que pinta a lista e enche o contador da barra.
-      const esperando = k % 4 === 0;
+      //
+      // O lead da NOITE fica de fora deste sorteio de propósito: ele é
+      // respondido, só que devagar — na manhã seguinte. Se ele também caísse em
+      // "nunca respondido", a tela de horários não teria tempo nenhum para
+      // mostrar naquela faixa, que é justamente o que ela precisa revelar.
+      const esperando = !noturno && (i * 3 + k) % 4 === 0;
       // Uma em cada número é atribuída NA MÃO a outra pessoa, para provar que a
       // atribuição manual tem prioridade sobre o dono do número.
       const manual = k === 5 ? PESSOAS[(i + 1) % PESSOAS.length]!.email : null;
@@ -277,7 +307,12 @@ async function main() {
       // Ritmo VARIADO de propósito. Com um intervalo fixo, toda pessoa saía com
       // o mesmo tempo de resposta e a tela de gargalos parecia quebrada — não
       // havia o que comparar, que é justamente o assunto daquela tela.
-      const ritmo = 4 + ((i * 5 + k * 3) % 26); // 4 a 29 minutos por turno
+      // Lead que chega depois das 19h só é visto na manhã seguinte — o turno
+      // acabou. É o achado que a tela de horários existe para mostrar, e sem
+      // ele no cenário não há como conferir se ela mostra.
+      const ritmo = noturno
+        ? 11 * 60 + ((i + k) % 5) * 30   // ~11h a 13h: dorme e responde de manhã
+        : 4 + ((i * 5 + k * 3) % 26);    // 4 a 29 minutos no expediente
       let minutos = 0;
       for (let j = 0; j < msgs.length; j++) {
         const m = msgs[j]!;

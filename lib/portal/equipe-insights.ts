@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { normalizePeriod, periodRanges } from "@/lib/notifications/client-report";
 import { numerosMudos } from "@/lib/portal/numero-mudo";
+import { criarHoraLocal } from "@/lib/tz";
 
 // ── O que a gestora precisa DECIDIR ──────────────────────────────────────────
 // A tela de Equipe mostrava convertidos, receita e qualificados — as mesmas
@@ -48,7 +49,7 @@ export interface Gargalo {
  */
 export async function calcularInsightsEquipe(clientId: string, periodo?: string | null) {
   const period = normalizePeriod(periodo ?? null);
-  const { start, end, label } = periodRanges(period);
+  const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const agora = Date.now();
 
   const conns = await prisma.waConnection.findMany({
@@ -56,7 +57,7 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
     select: { id: true, name: true, displayPhone: true, ownerEmail: true, equipe: true },
   });
   if (conns.length === 0) {
-    return { periodLabel: label, period, geral: null, pessoas: [], equipes: null, gargalos: [], mudos: [], numeros: [] };
+    return { periodLabel: label, period, geral: null, anterior: null, horas: [], horarioFraco: null, pessoas: [], equipes: null, gargalos: [], mudos: [], numeros: [] };
   }
   const connIds = conns.map((c) => c.id);
   const donoDoNumero = new Map(conns.map((c) => [c.id, c.ownerEmail]));
@@ -146,6 +147,36 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
   // Quem atende quase nunca tem acesso ao portal — atende pelo próprio celular.
   // Então o nome vem, nesta ordem: cadastro do portal, nome do NÚMERO (que é
   // onde o nome da pessoa costuma estar), e só então o pedaço do e-mail.
+  // ── Está melhorando ou piorando? ─────────────────────────────────────────
+  // Sem comparação, todo número é um retrato: 16min é bom? Ruim? Ela não tinha
+  // como saber se o trabalho do mês adiantou. O período anterior sai de graça —
+  // as conversas já estão todas carregadas.
+  const noAnterior = (d: Date | null) => !!d && d >= prevStart && d < prevEnd;
+  const primeirasAntes: number[] = [];
+  let leadsAntes = 0;
+  for (const c of convs) {
+    if (noAnterior(c.firstInboundAt)) leadsAntes++;
+    if (c.firstResponseSec != null && noAnterior(c.firstResponseAt)) primeirasAntes.push(c.firstResponseSec);
+  }
+  const anterior = {
+    leads: leadsAntes,
+    primeiraRespostaSec: mediana(primeirasAntes),
+  };
+
+  // ── A que horas chegam, e a que horas são atendidos ──────────────────────
+  // Decisão de escala, não de cobrança: se metade dos leads cai às 19h e a
+  // primeira resposta nesse horário leva horas, o problema é o turno, não a
+  // pessoa. O dado sempre existiu, diluído dentro da média do dia.
+  const horaLocal = criarHoraLocal("America/Sao_Paulo");
+  const porHora = Array.from({ length: 24 }, () => ({ leads: 0, primeiras: [] as number[] }));
+  for (const c of convs) {
+    if (!noPeriodo(c.firstInboundAt)) continue;
+    const h = horaLocal(c.firstInboundAt!);
+    porHora[h]!.leads++;
+    if (c.firstResponseSec != null) porHora[h]!.primeiras.push(c.firstResponseSec);
+  }
+  const horas = porHora.map((x, h) => ({ hora: h, leads: x.leads, primeiraRespostaSec: mediana(x.primeiras) }));
+
   const nomeDe = (email: string) =>
     atendentes.find((a) => a.email === email)?.name
     || conns.find((c) => c.ownerEmail === email)?.name
@@ -180,6 +211,42 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
     primeiraRespostaSec: mediana([...porPessoa.values()].flatMap((a) => a.primeiras)),
     respostaSec: mediana([...porPessoa.values()].flatMap((a) => a.respostas)),
   };
+
+  // ── A faixa do dia que está descoberta ───────────────────────────────────
+  // Um gráfico de 24 barras não é uma decisão. A decisão é "vale cobrir outro
+  // turno?", e para isso o que importa é: existe um pedaço do dia onde chega
+  // lead de verdade E a resposta demora muito mais que no resto?
+  //
+  // Três condições, e a mais importante é o PISO ABSOLUTO: ninguém muda a escala
+  // da equipe por dois leads. Antes de proporção, tem que haver gente suficiente
+  // naquela faixa para justificar cobrir um turno.
+  //
+  //   • pelo menos 5 leads na faixa lenta (senão é anedota, não padrão);
+  //   • pelo menos 12% do total (senão é uma ponta irrelevante do dia);
+  //   • pelo menos o dobro da mediana E 15 minutos a mais (lentidão de verdade).
+  const MIN_LEADS_FAIXA = 5;
+  const totalLeadsHora = horas.reduce((n, h) => n + h.leads, 0);
+  let horarioFraco: { deHora: number; ateHora: number; leads: number; fatia: number; primeiraRespostaSec: number } | null = null;
+  if (totalLeadsHora >= 10 && geral.primeiraRespostaSec != null) {
+    const lentas = horas.filter((h) =>
+      h.primeiraRespostaSec != null
+      && h.primeiraRespostaSec >= geral.primeiraRespostaSec! * 2
+      && h.primeiraRespostaSec - geral.primeiraRespostaSec! >= 900);
+    if (lentas.length) {
+      const leadsLentos = lentas.reduce((n, h) => n + h.leads, 0);
+      const fatia = leadsLentos / totalLeadsHora;
+      if (leadsLentos >= MIN_LEADS_FAIXA && fatia >= 0.12) {
+        const ordenadas = [...lentas].sort((a, b) => a.hora - b.hora);
+        horarioFraco = {
+          deHora: ordenadas[0]!.hora,
+          ateHora: ordenadas[ordenadas.length - 1]!.hora,
+          leads: leadsLentos,
+          fatia: Math.round(fatia * 100),
+          primeiraRespostaSec: mediana(lentas.map((h) => h.primeiraRespostaSec!))!,
+        };
+      }
+    }
+  }
 
   // ── Gargalos ───────────────────────────────────────────────────────────────
   // Regras explícitas, não "a IA achou". Cada uma diz o que está acontecendo e
@@ -258,7 +325,7 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
 
   return {
     periodLabel: label, period,
-    geral, pessoas, equipes, gargalos,
+    geral, anterior, horas, horarioFraco, pessoas, equipes, gargalos,
     // Quem está mudo: a tela marca a linha da pessoa, senão ela continua
     // parecendo a melhor do time.
     mudos: mudos.map((m) => ({ nome: m.nome, dono: m.dono, horas: m.horasEmSilencio })),
