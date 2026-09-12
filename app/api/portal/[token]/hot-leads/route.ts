@@ -17,7 +17,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (error) return error;
   const me = portal.email;
 
-  const connIds = (await prisma.waConnection.findMany({ where: { clientId: portal.clientId }, select: { id: true } })).map((c) => c.id);
+  // Respeita o recorte: uma gerente não vê a fila de fechamento dos números da
+  // outra. Sem isto ela abriria o painel dela e encontraria leads que não são
+  // da equipe dela.
+  const connIds = (await prisma.waConnection.findMany({
+    where: {
+      clientId: portal.clientId,
+      ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+    },
+    select: { id: true },
+  })).map((c) => c.id);
   if (!connIds.length) return NextResponse.json({ leads: [], unclaimed: 0, me });
 
   const convs = await prisma.waConversation.findMany({

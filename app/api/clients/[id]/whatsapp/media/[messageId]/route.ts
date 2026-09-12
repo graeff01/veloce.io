@@ -30,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const conn = await prisma.waConnection.findFirst({
     where: { id: msg.connectionId, clientId: id },
-    select: { id: true, accessToken: true },
+    select: { id: true, accessToken: true, phoneNumberId: true },
   });
   if (!conn) return new NextResponse("não encontrado", { status: 404 });
 

@@ -151,3 +151,104 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     aviso: assinatura.ok ? null : assinatura.erro,
   }, { status: 201 });
 }
+
+
+// ── Corrigir e remover ───────────────────────────────────────────────────────
+// O cadastro só sabia ADICIONAR. Como o POST atualiza pelo `phoneNumberId`,
+// errar justamente ESSE campo criava um número fantasma que aparecia no painel
+// dela para sempre e que ela não tinha como apagar: um erro de digitação virava
+// dívida permanente.
+
+const editarSchema = z.object({
+  connectionId: z.string().min(1),
+  name: z.string().min(1).max(80).optional(),
+  displayPhone: z.string().max(40).optional(),
+  equipe: z.string().max(60).optional(),
+  ownerEmail: z.string().email().optional().or(z.literal("")),
+});
+
+/**
+ * O número é DESTE cliente e de quem está pedindo para mexer nele?
+ *
+ * Para ESCRITA a regra é explícita, e de propósito diferente da de leitura:
+ * quem acompanha só altera número que é DELA (`gestorEmail`).
+ *
+ * A regra de leitura tem um fallback — gerente sem nenhum número designado
+ * enxerga todos, para a tela não nascer vazia no primeiro acesso. Aplicar esse
+ * fallback à escrita seria um buraco: bastava a gerente ficar sem números para
+ * ganhar poder de editar e apagar os das colegas. Foi exatamente o que um teste
+ * pegou aqui, depois de outro teste remover o último número dela.
+ */
+async function meuNumero(portal: { clientId: string; email: string | null; somenteLeitura: boolean }, connectionId: string) {
+  return prisma.waConnection.findFirst({
+    where: {
+      id: connectionId,
+      clientId: portal.clientId,
+      // Gestor: só o que é dele, sem fallback. Admin do cliente com permissão
+      // de conectar: qualquer número da casa.
+      ...(portal.somenteLeitura ? { gestorEmail: portal.email } : {}),
+    },
+    select: { id: true, name: true },
+  });
+}
+
+// PATCH — corrige o que descreve o número. NÃO mexe em credencial: para trocar
+// token ou WABA, cadastra de novo pelo POST. Assim um engano de digitação no
+// nome nunca passa perto do que faz a conexão funcionar.
+export async function PATCH(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const { error, portal } = await guardPortal(req, token, { exigeConectar: true });
+  if (error) return error;
+
+  const parsed = editarSchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  const d = parsed.data;
+
+  if (!(await meuNumero(portal, d.connectionId))) {
+    return NextResponse.json({ error: "Número não encontrado." }, { status: 404 });
+  }
+
+  const conn = await prisma.waConnection.update({
+    where: { id: d.connectionId },
+    data: {
+      ...(d.name !== undefined ? { name: d.name.trim() } : {}),
+      ...(d.displayPhone !== undefined ? { displayPhone: vazioVira(d.displayPhone) } : {}),
+      ...(d.equipe !== undefined ? { equipe: vazioVira(d.equipe) } : {}),
+      ...(d.ownerEmail !== undefined ? { ownerEmail: vazioVira(d.ownerEmail) } : {}),
+    },
+    select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true },
+  });
+  return NextResponse.json({ ok: true, numero: { ...conn, dono: conn.ownerEmail } });
+}
+
+// DELETE ?connectionId= — remove o número e tudo dele.
+//
+// Exige `confirmar=<nome do número>` quando ele já tem conversa: apagar um
+// número em operação leva junto o histórico de leads reais, e um clique
+// distraído não pode fazer isso. Número recém-cadastrado e vazio sai direto —
+// é o caso do erro de digitação, e obrigar confirmação ali só atrapalharia.
+export async function DELETE(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const { error, portal } = await guardPortal(req, token, { exigeConectar: true });
+  if (error) return error;
+
+  const url = new URL(req.url);
+  const connectionId = url.searchParams.get("connectionId");
+  if (!connectionId) return NextResponse.json({ error: "Informe qual número remover." }, { status: 400 });
+
+  const alvo = await meuNumero(portal, connectionId);
+  if (!alvo) return NextResponse.json({ error: "Número não encontrado." }, { status: 404 });
+
+  const conversas = await prisma.waContact.count({ where: { connectionId } });
+  if (conversas > 0 && url.searchParams.get("confirmar") !== (alvo.name ?? "")) {
+    return NextResponse.json({
+      error: `Este número tem ${conversas} conversa(s). Para remover, confirme digitando o nome dele.`,
+      exigeConfirmacao: true,
+      nome: alvo.name,
+      conversas,
+    }, { status: 409 });
+  }
+
+  await prisma.waConnection.delete({ where: { id: connectionId } }); // cascata leva contatos e mensagens
+  return NextResponse.json({ ok: true, removidas: conversas });
+}

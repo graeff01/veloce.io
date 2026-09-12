@@ -896,6 +896,11 @@ model WaConnection {
   // gerentes no mesmo cliente enxergavam a operação inteira; com isto cada uma
   // vê só os números dela. Nulo = sem gerente designada.
   gestorEmail   String?
+  // Quando a Meta recusou o token deste número por AUTENTICAÇÃO, e o que ela
+  // disse. Enquanto marcado, o número recebe mas não envia — e é isso que o
+  // detector de "número mudo" não pegava: `lastEventAt` continua atualizando.
+  tokenFalhouEm DateTime?
+  tokenErro     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

@@ -1,4 +1,5 @@
 import { decryptSecret } from "@/lib/crypto";
+import { registrarDesfecho } from "@/lib/whatsapp-saude";
 
 // Envio de texto pela Cloud API. Usado SOMENTE pelo agente (controlado e logado).
 // opts.replyTo = message_id do lead que estamos RESPONDENDO (cita a mensagem — "threading").
@@ -25,6 +26,11 @@ export async function sendWhatsAppText(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -52,7 +58,11 @@ export async function sendWhatsAppReaction(
       reaction: { message_id: messageId, emoji },
     }),
   });
-  if (!res.ok) { const p = await res.json().catch(() => ({})); return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` }; }
+  const p = res.ok ? null : await res.json().catch(() => ({}));
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: p?.error?.code, mensagem: p?.error?.message ?? "" });
+  if (!res.ok) return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` };
   return { ok: true };
 }
 
@@ -85,6 +95,11 @@ export async function sendWhatsAppInteractiveButtons(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -113,6 +128,11 @@ export async function sendWhatsAppMediaById(
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: toWaId, type: kind, [kind]: media }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -140,6 +160,11 @@ export async function sendWhatsAppImage(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -164,6 +189,11 @@ export async function sendWhatsAppVideo(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -191,7 +221,11 @@ export async function sendWhatsAppReadReceipt(
       ...(opts?.typing ? { typing_indicator: { type: "text" } } : {}),
     }),
   });
-  if (!res.ok) { const p = await res.json().catch(() => ({})); return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` }; }
+  const p = res.ok ? null : await res.json().catch(() => ({}));
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: p?.error?.code, mensagem: p?.error?.message ?? "" });
+  if (!res.ok) return { ok: false, error: p?.error?.message ?? `Erro ${res.status}` };
   return { ok: true };
 }
 
@@ -216,6 +250,11 @@ export async function sendWhatsAppLocation(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -244,6 +283,11 @@ export async function sendWhatsAppLocationRequest(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -268,6 +312,11 @@ export async function uploadWhatsAppMedia(
     method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form,
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, mediaId: payload?.id };
 }
@@ -294,6 +343,11 @@ export async function sendWhatsAppDocument(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }
@@ -317,6 +371,11 @@ export async function sendWhatsAppDocumentByUrl(
     }),
   });
   const payload = await res.json().catch(() => ({}));
+  // Reporta o desfecho: é daqui que sai o aviso de token expirado, que antes
+  // não existia em lugar nenhum. Best-effort — nunca derruba o envio.
+  registrarDesfecho(conn.phoneNumberId, res.ok
+    ? { ok: true }
+    : { ok: false, codigo: payload?.error?.code, mensagem: payload?.error?.message ?? "" });
   if (!res.ok) return { ok: false, error: payload?.error?.message ?? `Erro ${res.status}` };
   return { ok: true, waMessageId: payload?.messages?.[0]?.id };
 }

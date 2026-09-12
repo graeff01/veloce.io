@@ -334,3 +334,151 @@ test("o token não vaza nem quando a assinatura falha", async () => {
   assert.ok(!bruto.includes("EAAG"), "nem no caminho de erro o token pode voltar");
   assert.ok(!bruto.includes("accessToken"));
 });
+
+// ── Corrigir e remover ───────────────────────────────────────────────────────
+// O cadastro só sabia adicionar. Errar o Phone Number ID criava um fantasma
+// permanente no painel dela.
+
+test("ela corrige o que descreve o número", async () => {
+  const meus = await (await get(cookieM, "numeros")).json();
+  const alvo = meus.numeros.find((n: { nome: string }) => n.nome === "Funcionário c");
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: alvo.id, name: "Ana Prado", equipe: "captacao" }),
+  });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.numero.nome ?? d.numero.name, "Ana Prado");
+});
+
+test("corrigir NÃO mexe em credencial", async () => {
+  // Trocar token ou WABA exige cadastrar de novo. Assim um engano de digitação
+  // no nome nunca passa perto do que faz a conexão funcionar.
+  const meus = await (await get(cookieM, "numeros")).json();
+  const alvo = meus.numeros[0];
+  const antes = await db.waConnection.findUnique({ where: { id: alvo.id }, select: { accessToken: true, wabaId: true } });
+
+  await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: alvo.id, name: "Renomeado", accessToken: "EAAG-tentativa", wabaId: "999" }),
+  });
+
+  const depois = await db.waConnection.findUnique({ where: { id: alvo.id }, select: { accessToken: true, wabaId: true } });
+  assert.equal(depois?.accessToken, antes?.accessToken, "o token não pode ser trocado por aqui");
+  assert.equal(depois?.wabaId, antes?.wabaId, "nem a WABA");
+});
+
+test("número VAZIO sai direto — é o caso do erro de digitação", async () => {
+  const criado = await conectar(cookieM, fichaValida("vazio"));
+  const { numero } = await criado.json();
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numero.id}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(r.status, 200);
+  const resta = await (await get(cookieM, "numeros")).json();
+  assert.ok(!resta.numeros.some((n: { id: string }) => n.id === numero.id));
+});
+
+test("número COM conversa exige confirmar pelo nome", async () => {
+  // Apagar um número em operação leva junto o histórico de leads reais. Um
+  // clique distraído não pode fazer isso.
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaMichele}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(r.status, 409);
+  const d = await r.json();
+  assert.equal(d.exigeConfirmacao, true);
+  assert.ok(d.conversas > 0, "e diz quantas conversas se perderiam");
+
+  // O número continua lá.
+  assert.ok(await db.waConnection.findUnique({ where: { id: numeroDaMichele } }));
+
+  // Com o nome certo, sai.
+  const ok = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaMichele}&confirmar=${encodeURIComponent(d.nome)}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(ok.status, 200);
+});
+
+test("ela não corrige nem remove o número da OUTRA", async () => {
+  const patch = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieM),
+    body: JSON.stringify({ connectionId: numeroDaVitoria, name: "invadido" }),
+  });
+  assert.equal(patch.status, 404);
+
+  const del = await fetch(`${BASE}/api/portal/${token}/numeros?connectionId=${numeroDaVitoria}`, {
+    method: "DELETE", headers: H(cookieM),
+  });
+  assert.equal(del.status, 404);
+
+  const intacto = await db.waConnection.findUnique({ where: { id: numeroDaVitoria }, select: { name: true } });
+  assert.equal(intacto?.name, "Numero da Vitoria");
+});
+
+test("sem a permissão de conectar, não corrige nem remove", async () => {
+  const r = await fetch(`${BASE}/api/portal/${token}/numeros`, {
+    method: "PATCH", headers: H(cookieV),
+    body: JSON.stringify({ connectionId: numeroDaVitoria, name: "x" }),
+  });
+  assert.equal(r.status, 403, "editar número é a mesma permissão de cadastrar");
+});
+
+// ── O número que recebe e não responde ───────────────────────────────────────
+// O caso que nada pegava: o token morre, as mensagens continuam chegando, o
+// detector de número mudo diz que está tudo bem — e a foto não abre nem a IA
+// responde.
+
+test("token recusado vira alerta, mesmo com o número recebendo normalmente", async () => {
+  const conn = await db.waConnection.findFirst({ where: { clientId, gestorEmail: VITORIA }, select: { id: true } });
+
+  // O número está ATIVO: recebeu agora há pouco. É o que engana.
+  await db.waConnection.update({
+    where: { id: conn!.id },
+    data: { lastEventAt: new Date(), tokenFalhouEm: new Date(Date.now() - 30 * 3_600_000), tokenErro: "Token expirado ou revogado" },
+  });
+
+  const d = await (await get(cookieV, "equipe-insights?p=month")).json();
+
+  // Número mudo NÃO pega — e é esse o ponto.
+  assert.ok(!d.gargalos.some((g: { tipo: string }) => g.tipo === "numero_mudo"),
+    "recebendo há pouco, ele não é mudo — por isso precisava de outro alerta");
+
+  const alerta = d.gargalos.find((g: { tipo: string }) => g.tipo === "token_quebrado");
+  assert.ok(alerta, "o token recusado tem que virar gargalo");
+  assert.equal(alerta.gravidade, "alta");
+  assert.match(alerta.detalhe, /continuam chegando/i, "precisa explicar por que parece que está tudo bem");
+  assert.match(alerta.detalhe, /reconectar/i, "e dizer o que fazer");
+
+  // E a tela sabe marcar a linha de QUEM ATENDE naquele número — que é outra
+  // pessoa que a gerente: `dono` é ownerEmail, `gestorEmail` é quem acompanha.
+  assert.equal(d.semToken.length, 1);
+  assert.equal(d.semToken[0].erro, "Token expirado ou revogado");
+
+  await db.waConnection.update({ where: { id: conn!.id }, data: { tokenFalhouEm: null, tokenErro: null } });
+});
+
+test("sem falha de credencial, nenhum alerta aparece", async () => {
+  // Rede de segurança: se o teste acima falhar antes de limpar, este não pode
+  // acusar o produto por sujeira do vizinho.
+  await db.waConnection.updateMany({ where: { clientId }, data: { tokenFalhouEm: null, tokenErro: null } });
+  const d = await (await get(cookieV, "equipe-insights?p=month")).json();
+  assert.ok(!d.gargalos.some((g: { tipo: string }) => g.tipo === "token_quebrado"));
+  assert.deepEqual(d.semToken, [], "número saudável não pode aparecer como quebrado");
+});
+
+test("a gerente só vê a falha dos números DELA", async () => {
+  const conn = await db.waConnection.findFirst({ where: { clientId, gestorEmail: VITORIA }, select: { id: true } });
+  await db.waConnection.update({
+    where: { id: conn!.id },
+    data: { tokenFalhouEm: new Date(), tokenErro: "Token expirado ou revogado" },
+  });
+
+  const daVitoria = await (await get(cookieV, "equipe-insights?p=month")).json();
+  assert.equal(daVitoria.semToken.length, 1);
+
+  const daMichele = await (await get(cookieM, "equipe-insights?p=month")).json();
+  assert.deepEqual(daMichele.semToken, [], "problema da colega não entra no painel dela");
+
+  await db.waConnection.update({ where: { id: conn!.id }, data: { tokenFalhouEm: null, tokenErro: null } });
+});

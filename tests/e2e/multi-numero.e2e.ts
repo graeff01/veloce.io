@@ -542,3 +542,41 @@ test("quando dispara, a faixa descreve o que aconteceu", async () => {
   assert.ok(f.primeiraRespostaSec > d.geral.primeiraRespostaSec, "a faixa apontada tem que ser MAIS lenta que o dia");
   assert.ok(f.deHora >= 0 && f.ateHora <= 23 && f.deHora <= f.ateHora);
 });
+
+// ── Dois sobreviventes do "um número por cliente" ────────────────────────────
+// Achados numa revisão do próprio trabalho, depois da varredura original.
+
+test("marcar como lida funciona numa conversa do SEGUNDO número", async () => {
+  // `state` procurava "a" conexão do cliente com findFirst e só então a conversa
+  // dentro dela. Com vários números, marcar uma conversa do segundo respondia
+  // "Conversa não encontrada" — para uma conversa aberta na tela.
+  for (const [rotulo, contactId] of [["primeiro", contatoDaAna], ["segundo", contatoDoBruno]] as const) {
+    const r = await fetch(`${BASE}/api/portal/${token}/conversations/${contactId}/state`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ lida: true }),
+    });
+    assert.equal(r.status, 200, `marcar lida na conversa do ${rotulo} número`);
+  }
+
+  const conv = await db.waConversation.findUnique({ where: { contactId: contatoDoBruno }, select: { portalReadAt: true } });
+  assert.ok(conv?.portalReadAt, "e o estado precisa ter sido gravado de verdade");
+});
+
+test("a fila de fechamento soma todos os números do cliente", async () => {
+  // `hot-leads` carregava as conexões sem recorte. Para o cliente inteiro isso
+  // está certo; o que faltava era respeitar o recorte da gerente — coberto no
+  // e2e de recorte. Aqui garante que a soma continua completa para quem vê tudo.
+  // Um teste acima deixou o cliente com três seções; `fechamento` não é uma
+  // delas, e com PORTAL_SECTION_ENFORCE ligado o gate barra — corretamente.
+  await db.clientPortal.update({ where: { clientId }, data: { sections: "conversas,funil,equipe,fechamento" } });
+  await db.waConversation.update({
+    where: { contactId: contatoDoBruno },
+    data: { quoteApprovedAt: new Date(), closedAt: null },
+  });
+  const r = await fetch(`${BASE}/api/portal/${token}/hot-leads`, { headers: { cookie }, cache: "no-store" });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  const lista = d.leads ?? d.hotLeads ?? d;
+  assert.ok(JSON.stringify(lista).includes(contatoDoBruno),
+    "lead do segundo número tem que entrar na fila de fechamento");
+});

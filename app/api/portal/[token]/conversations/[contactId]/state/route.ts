@@ -21,15 +21,22 @@ export async function POST(
 
   const body = (await req.json().catch(() => ({}))) as { lida?: boolean; arquivada?: boolean };
 
-  // O contato precisa ser DESTE cliente — isolamento não depende da UI.
-  const conn = await prisma.waConnection.findFirst({
-    where: { clientId: portal.clientId },
-    select: { id: true },
-  });
-  if (!conn) return NextResponse.json({ error: "Sem conexão de WhatsApp." }, { status: 404 });
-
+  // A conversa precisa ser DESTE cliente e estar no alcance de quem pediu — o
+  // isolamento não depende da UI.
+  //
+  // Esta rota escapou da varredura de multi-número: procurava "a" conexão do
+  // cliente com `findFirst` e só então a conversa dentro dela. Com vários
+  // números, marcar como lida numa conversa do SEGUNDO número não encontrava
+  // nada e devolvia "Conversa não encontrada" — para uma conversa que está ali,
+  // na tela, aberta.
   const conversa = await prisma.waConversation.findFirst({
-    where: { contactId, connectionId: conn.id },
+    where: {
+      contactId,
+      connection: {
+        clientId: portal.clientId,
+        ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+      },
+    },
     select: { id: true },
   });
   if (!conversa) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });

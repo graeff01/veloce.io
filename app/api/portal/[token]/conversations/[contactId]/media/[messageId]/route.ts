@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
       id: msg.connectionId, clientId: portal.clientId,
       ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
     },
-    select: { id: true, accessToken: true },
+    select: { id: true, accessToken: true, phoneNumberId: true },
   });
   if (!conn) return new NextResponse("não encontrado", { status: 404 });
 

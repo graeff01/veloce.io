@@ -7,6 +7,7 @@ import { claimDispatch, recipientsFor, MAX_ATTEMPTS } from "@/lib/notifications/
 import { nowParts } from "@/lib/tz";
 import { prisma } from "@/lib/prisma";
 import { numerosMudos } from "@/lib/portal/numero-mudo";
+import { numerosComTokenQuebrado } from "@/lib/whatsapp-saude";
 
 const TZ = "America/Sao_Paulo";
 // Dia-calendário em BRT, p/ as chaves de dedupe baterem com a janela do scheduler.
@@ -107,6 +108,14 @@ export async function runNumeroMudoAlerts(): Promise<{ sent: number; alerts: num
   const dia = brtDay();
   const alerts: { clientId: string; clientName: string; nome: string; horas: number; dedupeKey: string }[] = [];
   for (const c of clientes) {
+    // Token recusado: mais grave que silêncio, porque não aparece em lugar
+    // nenhum — o número segue recebendo e parece saudável.
+    for (const t of await numerosComTokenQuebrado(c.id).catch(() => [])) {
+      alerts.push({
+        clientId: c.id, clientName: c.name, nome: `${t.nome} — ${t.erro}`, horas: t.horas,
+        dedupeKey: `wa-token:${t.connectionId}:${dia}`,
+      });
+    }
     for (const m of await numerosMudos(c.id).catch(() => [])) {
       alerts.push({
         clientId: c.id, clientName: c.name, nome: m.nome, horas: m.horasEmSilencio,
