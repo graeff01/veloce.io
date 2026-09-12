@@ -39,8 +39,12 @@ const DOMINIO = "@exemplo.local";
 const SLUG_DEMO = "demo-multi-numero";
 const MARCA_DEMO = "★ DEMONSTRAÇÃO — Multi-WhatsApp";
 const TOKEN_DEMO = "demo-multi-numero";
-/** Senha das gerentes, usada só quando o script precisa CRIAR o acesso. */
-const SENHA = process.env.SENHA_DEMO ?? "demo2026";
+/**
+ * Senha das gerentes de demonstração. Fraca de propósito e sem problema: o
+ * cliente é falso, os dados são inventados e o portal é de validação. Num
+ * perfil que vá receber conversa de verdade, passe SENHA_DEMO.
+ */
+const SENHA = process.env.SENHA_DEMO ?? "12345678";
 
 const DIA = 86_400_000;
 const agora = new Date();
@@ -313,7 +317,7 @@ Pronto — ${cliente.name}
 
   Portal: ${url ? `${url}/r/${portal!.token}` : `/r/${portal!.token}`}
   Seções: ${portal!.sections ?? "(todas)"}${portalAtual && portalAtual.sections != null && !tem("secoes") ? "  ← mantidas; use --secoes para trocar por WhatsApp/Funil/Equipe" : ""}
-  ${criadas.length ? `Acessos criados: ${criadas.join(", ")} (senha: a de SENHA_DEMO, ou a constante no topo do script)` : "Acessos: os que já existiam, intocados"}
+  ${criadas.length ? `Acessos: ${criadas.join("  ou  ")}\n  Senha:   ${SENHA}` : "Acessos: os que já existiam, intocados"}
 
   Desfazer:  npm run db:seed:multi${slugPedido ? ` -- --cliente ${slugPedido} --remover` : " -- --remover"}
   (apaga só os ${conexoes.length} números de demonstração; número real fica)
