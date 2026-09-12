@@ -444,3 +444,61 @@ test("número recém-conectado não vira alerta", async () => {
     "número que nunca trabalhou não pode ser acusado de ter parado");
   await db.waConnection.delete({ where: { id: novo.id } });
 });
+
+// ── Do diagnóstico para o caso ───────────────────────────────────────────────
+// "12 leads nunca responderam" era um número sem saída: a gestora via o
+// problema e não tinha como chegar em nenhuma das conversas.
+
+const caixa = async (qs: string) =>
+  (await (await fetch(`${BASE}/api/portal/${token}/conversations?limit=100&${qs}`, { headers: { cookie }, cache: "no-store" })).json())
+    .conversations as { contactId: string; conexaoId: string; lastDirection: string | null; assignedEmail: string | null }[];
+
+test("filtro 'sem resposta' devolve só quem nunca foi respondido", async () => {
+  const todas = await caixa("");
+  const nenhuma = await caixa("estado=sem-resposta");
+  assert.ok(nenhuma.length > 0, "o cenário tem lead sem resposta");
+  assert.ok(nenhuma.length < todas.length, "o filtro precisa filtrar de verdade");
+  for (const c of nenhuma) {
+    assert.notEqual(c.lastDirection, "out", `${c.contactId} tem saída e apareceu como sem resposta`);
+  }
+});
+
+test("o número da tela de Equipe bate com o tamanho da lista", async () => {
+  // Se o diagnóstico disser 12 e a caixa abrir 9, ela deixa de confiar nos dois.
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  const lista = await caixa("estado=sem-resposta");
+  assert.equal(lista.length, d.geral.semResposta,
+    `a Equipe diz ${d.geral.semResposta} e a caixa abre ${lista.length}`);
+});
+
+test("filtro por pessoa segue a MESMA regra de dono das métricas", async () => {
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  const alvo = d.pessoas.find((p: { esperando: number }) => p.esperando > 0);
+  if (!alvo) return; // cenário sem fila: nada a provar
+
+  const dela = await caixa(`estado=aguardando&dono=${encodeURIComponent(alvo.email)}`);
+  assert.equal(dela.length, alvo.esperando,
+    `a Equipe diz ${alvo.esperando} aguardando com ${alvo.nome} e a caixa abre ${dela.length}`);
+
+  // Atribuição manual manda mais que o número — igual às métricas.
+  const numerosDela = new Set(d.numeros.filter((n: { dono: string }) => n.dono === alvo.email).map((n: { id: string }) => n.id));
+  for (const c of dela) {
+    const ok = c.assignedEmail === alvo.email || (c.assignedEmail == null && numerosDela.has(c.conexaoId));
+    assert.ok(ok, `${c.contactId} não é dela nem por atribuição nem por número`);
+  }
+});
+
+test("'aguardando' não perde o lead que espera há mais tempo", async () => {
+  // `status: "waiting"` viraria "closed" depois de 24h de inatividade — usá-lo
+  // sumiria exatamente com os leads mais antigos, que são os que importam.
+  const antigo = await db.waConversation.findFirst({
+    where: { connection: { clientId }, lastOutboundAt: null, lastInboundAt: { not: null } },
+    orderBy: { lastInboundAt: "asc" }, select: { contactId: true, lastInboundAt: true },
+  });
+  assert.ok(antigo, "o cenário precisa de um lead esperando");
+  await db.waConversation.update({ where: { contactId: antigo!.contactId }, data: { status: "closed" } });
+
+  const lista = await caixa("estado=aguardando");
+  assert.ok(lista.some((c) => c.contactId === antigo!.contactId),
+    "conversa marcada como fechada por inatividade continua aguardando resposta");
+});

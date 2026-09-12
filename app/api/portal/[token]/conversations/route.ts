@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const conns = await prisma.waConnection.findMany({
     where: { clientId: portal.clientId },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, displayPhone: true, equipe: true },
+    select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true },
   });
   if (conns.length === 0) return NextResponse.json({ conversations: [], me: null, attendants: [], hasMore: false });
   const connIds = conns.map((c) => c.id);
@@ -31,6 +31,52 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   // apontar para um número que não é deste cliente.
   const conexao = url.searchParams.get("conexao");
   const idsVisiveis = conexao && connIds.includes(conexao) ? [conexao] : connIds;
+
+  // ── Filtros que a tela de Equipe usa para levar ao caso concreto ──────────
+  // "12 leads nunca responderam" era um número sem saída: a gestora via o
+  // problema e não tinha como chegar nas conversas. Estes dois parâmetros são
+  // o caminho de volta do diagnóstico para o atendimento.
+  const estado = url.searchParams.get("estado"); // sem-resposta | aguardando
+  const dono = url.searchParams.get("dono");     // e-mail de quem atende
+
+  // DONO = a mesma regra das métricas: atribuição manual quando existe, senão
+  // quem atende naquele número. Uma regra diferente aqui faria a lista
+  // discordar do número que levou a pessoa até ela.
+  const numerosDaPessoa = dono ? conns.filter((c) => c.ownerEmail === dono).map((c) => c.id) : [];
+  const donoFilter = dono
+    ? { OR: [
+        { conversation: { is: { assignedEmail: dono } } },
+        ...(numerosDaPessoa.length
+          ? [{ connectionId: { in: numerosDaPessoa }, conversation: { is: { assignedEmail: null } } }]
+          : []),
+      ] }
+    : {};
+
+  // AGUARDANDO = a última mensagem é do lead. Isso compara duas colunas, o que
+  // o Prisma não expressa — daí o SQL cru.
+  //
+  // E NÃO dá para usar `status: "waiting"`: o fechamento por inatividade troca
+  // esse rótulo por "closed" depois de 24h, então o filtro perderia exatamente
+  // os leads que esperam há mais tempo — os que mais importam aqui.
+  let idsAguardando: string[] | null = null;
+  if (estado === "aguardando") {
+    const linhas = await prisma.$queryRaw<{ contactId: string }[]>`
+      SELECT c."contactId" FROM "WaConversation" c
+      WHERE c."connectionId" = ANY(${idsVisiveis}::text[])
+        AND c."lastInboundAt" IS NOT NULL
+        AND (c."lastOutboundAt" IS NULL OR c."lastInboundAt" > c."lastOutboundAt")
+      ORDER BY c."lastInboundAt" ASC
+      LIMIT 2000`.catch(() => [] as { contactId: string }[]);
+    idsAguardando = linhas.map((l) => l.contactId);
+  }
+
+  const estadoFilter =
+    estado === "sem-resposta"
+      // Nunca respondida: o lead falou e não saiu NADA. Não é demora, é ausência.
+      ? { conversation: { is: { lastOutboundAt: null, lastInboundAt: { not: null } } } }
+      : idsAguardando
+        ? { id: { in: idsAguardando } }
+        : {};
   // "arquivadas=1" mostra o que foi tirado da caixa. Sem o parâmetro a resposta
   // é a de sempre — o PWA não manda e continua vendo tudo.
   const arquivadas = url.searchParams.get("arquivadas") === "1";
@@ -53,7 +99,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     : {};
 
   const rows = await prisma.waContact.findMany({
-    where: { connectionId: { in: idsVisiveis }, ...search, ...ownerFilter, ...arquivoFilter },
+    where: { connectionId: { in: idsVisiveis }, ...search, ...ownerFilter, ...arquivoFilter, ...donoFilter, ...estadoFilter },
     orderBy: { lastMessageAt: "desc" },
     skip: offset,
     take: limit + 1,

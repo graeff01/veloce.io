@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff, PlugZap } from "lucide-react";
 
 // ── Equipe: o que o gestor DECIDE ────────────────────────────────────────────
@@ -73,6 +74,9 @@ export function PortalTeam({ token }: { token: string }) {
   // Quem está com o número mudo. A fila vazia dessa pessoa não é mérito — é
   // consequência de nada estar chegando, e a tela precisa dizer isso.
   const mudoDe = (email: string) => (d?.mudos ?? []).find((m) => m.dono === email) ?? null;
+  /** Caminho da Equipe para a caixa, já recortada no caso que motivou o clique. */
+  const rota = (estado: "sem-resposta" | "aguardando", dono?: string | null) =>
+    `/r/${token}/conversas?estado=${estado}${dono ? `&dono=${encodeURIComponent(dono)}` : ""}`;
 
   return (
     <div>
@@ -155,9 +159,14 @@ export function PortalTeam({ token }: { token: string }) {
                   const cor = grave ? "var(--p-crit)" : "var(--p-warn)";
                   const fundo = grave ? "var(--p-crit-soft)" : "var(--p-warn-soft)";
                   const pessoa = pessoas.find((p) => p.email === g.pessoa);
-                  return (
-                    <button key={i} className="eq-alerta" data-click={pessoa ? "1" : "0"}
-                      onClick={() => pessoa && setAberta(pessoa)} disabled={!pessoa}>
+                  // Onde o alerta LEVA. Um diagnóstico que não abre as conversas
+                  // deixa a gestora com o número e sem o caso: ela vê "12 leads
+                  // nunca responderam" e não tem como chegar em nenhum deles.
+                  const destino = g.tipo === "sem_resposta" ? rota("sem-resposta", g.pessoa)
+                    : g.tipo === "espera_longa" || g.tipo === "fila_concentrada" ? rota("aguardando", g.pessoa)
+                    : null;
+                  const corpo = (
+                    <>
                       <span className="eq-faixa" style={{ background: cor }} />
                       <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: fundo, color: cor, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                         {g.tipo === "numero_mudo" ? <PlugZap size={15} />
@@ -169,8 +178,17 @@ export function PortalTeam({ token }: { token: string }) {
                         <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--p-text)", letterSpacing: "-0.01em" }}>{g.titulo}</span>
                         <span style={{ display: "block", fontSize: 12.5, color: "var(--p-muted)", lineHeight: 1.55, marginTop: 3, maxWidth: "62ch" }}>{g.detalhe}</span>
                       </span>
-                      {pessoa && <ChevronRight size={16} style={{ color: "var(--p-muted)", flexShrink: 0, alignSelf: "center" }} />}
-                    </button>
+                      {(destino || pessoa) && <ChevronRight size={16} style={{ color: "var(--p-muted)", flexShrink: 0, alignSelf: "center" }} />}
+                    </>
+                  );
+                  // Número mudo não leva a lugar nenhum na caixa: não há
+                  // conversa para abrir — é justamente o problema.
+                  if (destino) {
+                    return <Link key={i} href={destino} prefetch className="eq-alerta" data-click="1" style={{ textDecoration: "none" }}>{corpo}</Link>;
+                  }
+                  return (
+                    <button key={i} className="eq-alerta" data-click={pessoa ? "1" : "0"}
+                      onClick={() => pessoa && setAberta(pessoa)} disabled={!pessoa}>{corpo}</button>
                   );
                 })
               )}
@@ -246,7 +264,7 @@ export function PortalTeam({ token }: { token: string }) {
         )}
       </div>
 
-      {aberta && <Detalhe p={aberta} geral={geral} mudo={mudoDe(aberta.email)} onFechar={() => setAberta(null)} />}
+      {aberta && <Detalhe p={aberta} geral={geral} mudo={mudoDe(aberta.email)} rota={rota} onFechar={() => setAberta(null)} />}
     </div>
   );
 }
@@ -263,7 +281,11 @@ function Metrica({ k, v, tom, rodape }: { k: string; v: string; tom?: "warn" | "
 
 // ── Detalhe de uma pessoa ────────────────────────────────────────────────────
 // Mesmo padrão das outras abas: a lista fica limpa e o detalhe abre por cima.
-function Detalhe({ p, geral, mudo, onFechar }: { p: Pessoa; geral: Geral | null; mudo: Mudo | null; onFechar: () => void }) {
+function Detalhe({ p, geral, mudo, rota, onFechar }: {
+  p: Pessoa; geral: Geral | null; mudo: Mudo | null;
+  rota: (estado: "sem-resposta" | "aguardando", dono?: string | null) => string;
+  onFechar: () => void;
+}) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
     window.addEventListener("keydown", onKey);
@@ -310,11 +332,16 @@ function Detalhe({ p, geral, mudo, onFechar }: { p: Pessoa; geral: Geral | null;
             <Grande titulo="Resposta seguinte" sub="a cada vez que o lead escreve depois" valor={dur(p.respostaSec)} nota={compara(p.respostaSec, geral?.respostaSec ?? null)} />
           </div>
 
+          {/* Os dois números que pedem ação ABREM as conversas. Um painel que
+              só informa deixa a gestora anotando num papel para procurar
+              depois — e o "depois" é o que faz o lead esfriar. */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div className="eq-cx"><div className="k">Leads no período</div><div className="v" style={{ color: "var(--p-text)" }}>{p.leads}</div></div>
-            <div className="eq-cx"><div className="k">Aguardando agora</div><div className="v" style={{ color: p.esperando > 0 ? "var(--p-warn)" : "var(--p-text)" }}>{p.esperando || "—"}</div></div>
+            <Caixa k="Aguardando agora" v={p.esperando || "—"} tom={p.esperando > 0 ? "warn" : undefined}
+              href={p.esperando > 0 ? rota("aguardando", p.email) : null} />
             <div className="eq-cx"><div className="k">Espera mais longa</div><div className="v" style={{ color: p.esperaMaxMin >= 24 * 60 ? "var(--p-warn)" : "var(--p-text)" }}>{espera(p.esperaMaxMin)}</div></div>
-            <div className="eq-cx"><div className="k">Sem resposta nenhuma</div><div className="v" style={{ color: p.semResposta > 0 ? "var(--p-crit)" : "var(--p-text)" }}>{p.semResposta || "—"}</div></div>
+            <Caixa k="Sem resposta nenhuma" v={p.semResposta || "—"} tom={p.semResposta > 0 ? "crit" : undefined}
+              href={p.semResposta > 0 ? rota("sem-resposta", p.email) : null} />
           </div>
 
           {mudo ? (
@@ -339,6 +366,22 @@ function Detalhe({ p, geral, mudo, onFechar }: { p: Pessoa; geral: Geral | null;
       </div>
     </>
   );
+}
+
+function Caixa({ k, v, tom, href }: {
+  k: string; v: string | number; tom?: "warn" | "crit"; href?: string | null;
+}) {
+  const cor = tom === "crit" ? "var(--p-crit)" : tom === "warn" ? "var(--p-warn)" : "var(--p-text)";
+  const dentro = (
+    <>
+      <div className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {k}{href && <ChevronRight size={11} style={{ opacity: 0.7 }} />}
+      </div>
+      <div className="v" style={{ color: cor }}>{v}</div>
+    </>
+  );
+  if (!href) return <div className="eq-cx">{dentro}</div>;
+  return <Link href={href} prefetch className="eq-cx" style={{ textDecoration: "none", display: "block" }}>{dentro}</Link>;
 }
 
 function Grande({ titulo, sub, valor, nota }: {

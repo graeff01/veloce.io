@@ -176,6 +176,16 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // Como está na URL, a escolha sobrevive a recarregar e pode virar link.
   const searchParams = useSearchParams();
   const conexaoFiltro = searchParams?.get("conexao") || null;
+  // Recorte vindo da tela de Equipe: "os 12 que nunca responderam", "a fila da
+  // Ana". Sem isto, o diagnóstico apontava o problema e parava ali — ela via o
+  // número e não tinha como chegar nas conversas.
+  const estadoFiltro = searchParams?.get("estado") || null;
+  const donoFiltro = searchParams?.get("dono") || null;
+  /** Acrescenta o recorte na consulta. Num lugar só: três cópias divergiriam. */
+  const recorte = (sp: URLSearchParams) => {
+    if (estadoFiltro) sp.set("estado", estadoFiltro);
+    if (donoFiltro) sp.set("dono", donoFiltro);
+  };
   const [mineOnly, setMineOnly] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [assigning, setAssigning] = useState(false);
@@ -267,6 +277,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       // devolve quando pedidas. Sem isto, arquivar não tiraria nada da frente.
       if (tab === "arquivadas") sp.set("arquivadas", "1");
       if (conexaoFiltro) sp.set("conexao", conexaoFiltro); // filtro por número, no SERVIDOR
+      recorte(sp);
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
@@ -276,7 +287,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q, mineOnly, tab, conexaoFiltro]);
+  }, [token, q, mineOnly, tab, conexaoFiltro, estadoFiltro, donoFiltro]);
 
   // Auto-atualização: quem manda mensagem SOBE PARA O TOPO, como no WhatsApp.
   //
@@ -300,6 +311,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       if (mineOnly) sp.set("owner", "me");
       if (tab === "arquivadas") sp.set("arquivadas", "1");
       if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
+      recorte(sp);
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
@@ -318,7 +330,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token, mineOnly, tab, conexaoFiltro]);
+  }, [token, mineOnly, tab, conexaoFiltro, estadoFiltro, donoFiltro]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -329,6 +341,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (mineOnly) sp.set("owner", "me");
     if (tab === "arquivadas") sp.set("arquivadas", "1");
     if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
+    recorte(sp);
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
@@ -1068,6 +1081,30 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
+        {/* RECORTE ATIVO — a caixa está mostrando um pedaço, e precisa dizer.
+            Sem esta faixa, a gestora chega da tela de Equipe, vê 12 conversas
+            onde havia 42 e conclui que perdeu conversas. E a saída fica aqui,
+            porque tirar o filtro pela URL não é uma opção que exista para ela. */}
+        {(estadoFiltro || donoFiltro) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: isMobile ? "0 14px 10px" : "0 12px 9px" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0, padding: "7px 12px", borderRadius: 10, background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 600 }}>
+              <Search size={13} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {estadoFiltro === "sem-resposta" ? "Sem nenhuma resposta"
+                  : estadoFiltro === "aguardando" ? "Aguardando resposta"
+                  : "Filtrado"}
+                {donoFiltro && ` · ${attendants.find((a) => a.email === donoFiltro)?.name
+                  ?? conexoes.find((c) => c.id === conexaoFiltro)?.nome
+                  ?? donoFiltro.split("@")[0]}`}
+              </span>
+            </span>
+            <Link href={`/r/${token}/conversas`} prefetch
+              style={{ flexShrink: 0, padding: "7px 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+              Ver todas
+            </Link>
+          </div>
+        )}
+
         {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
             Como chip solto na linha das abas ela competia com os filtros e
             parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
@@ -1144,7 +1181,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {/* rows */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
-            : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
+            : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)", lineHeight: 1.5 }}>{
+                q ? "Nada encontrado."
+                : estadoFiltro === "sem-resposta" ? "Nenhuma conversa sem resposta aqui — todas já foram atendidas."
+                : estadoFiltro === "aguardando" ? "Ninguém aguardando resposta neste recorte."
+                : donoFiltro ? "Nenhuma conversa desta pessoa."
+                : tab === "ads" ? "Nenhum lead de anúncio."
+                : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
               // DOIS SINAIS DIFERENTES, e confundi-los seria um erro de negócio:
