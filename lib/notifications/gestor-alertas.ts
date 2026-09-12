@@ -3,6 +3,7 @@ import { sendPushToPortalClient } from "./web-push";
 import { sendPushToPortalDevices } from "./device-push";
 import { gateOnce } from "./dispatch";
 import { calcularInsightsEquipe, type Gargalo } from "@/lib/portal/equipe-insights";
+import { conexoesDoGestor } from "@/lib/wa-connections";
 
 // ── Avisar quem acompanha ────────────────────────────────────────────────────
 // A tela de Equipe diagnostica bem e não serve para nada se ninguém abrir. Uma
@@ -51,28 +52,29 @@ export async function alertarGestores(clientId: string): Promise<number> {
   });
   if (!portal?.active) return 0;
 
-  const { gargalos } = await calcularInsightsEquipe(clientId, "week");
-  const urgentes = gargalos.filter((g) => g.gravidade === "alta" && URGENTES.has(g.tipo));
-  if (urgentes.length === 0) return 0;
-
   let enviados = 0;
-  for (const g of urgentes.slice(0, MAX_POR_RODADA)) {
-    if (!(await gateOnce(chaveDoDia(clientId, g)))) continue;
+  // Um cálculo POR GERENTE, não um para o cliente: cada uma acompanha os seus
+  // números, e avisá-la de um problema que não é dela é ruído — e, pior, expõe
+  // a operação da outra.
+  for (const { email } of gestores) {
+    const { gargalos } = await calcularInsightsEquipe(
+      clientId, "week", await conexoesDoGestor(clientId, email),
+    );
+    const urgentes = gargalos.filter((g) => g.gravidade === "alta" && URGENTES.has(g.tipo));
 
-    const payload = {
-      title: g.titulo,
-      body: g.detalhe,
-      url: `/r/${portal.token}/equipe`,
-    };
-    for (const { email } of gestores) {
+    for (const g of urgentes.slice(0, MAX_POR_RODADA)) {
+      // A chave carrega o e-mail: o mesmo problema avisa cada gerente uma vez.
+      if (!(await gateOnce(`${chaveDoDia(clientId, g)}:${email}`))) continue;
+
+      const payload = { title: g.titulo, body: g.detalhe, url: `/r/${portal.token}/equipe` };
       // Os dois canais: navegador (PWA) e aparelho (app). Cada um sai sozinho —
       // um indisponível não pode levar o outro junto.
       await sendPushToPortalClient(clientId, payload, { onlyEmail: email }).catch(() => 0);
       await sendPushToPortalDevices(clientId, {
         title: g.titulo, body: g.detalhe, route: "equipe", collapseId: `gestor:${g.tipo}`,
       }, { onlyEmail: email }).catch(() => 0);
+      enviados++;
     }
-    enviados++;
   }
   return enviados;
 }

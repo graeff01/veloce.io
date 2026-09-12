@@ -26,7 +26,7 @@ let outroId = "";
 const H = () => ({ cookie, "Content-Type": "application/json" });
 const url = () => `${BASE}/api/clients/${clientId}/whatsapp`;
 const lista = async () => (await (await fetch(url(), { headers: { cookie } })).json()) as {
-  id: string; ownerEmail: string | null; equipe: string | null;
+  id: string; ownerEmail: string | null; equipe: string | null; gestorEmail: string | null;
 }[];
 
 async function criarNumero(sufixo: string, equipe: string) {
@@ -139,4 +139,26 @@ test("sem sessão interna, nada disso responde", async () => {
     body: JSON.stringify({ connectionId: resto.id, equipe: "x" }),
   });
   assert.equal(r.status, 401);
+});
+
+test("designar a gerente de um número não exige re-colar a credencial", async () => {
+  const [numero] = await lista();
+  const r = await fetch(url(), {
+    method: "PATCH", headers: H(),
+    body: JSON.stringify({ connectionId: numero.id, gestorEmail: "michele@teste.local" }),
+  });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.gestorEmail, "michele@teste.local");
+  assert.ok(!("accessToken" in d), "o token não pode sair junto");
+});
+
+test("tirar a gerente devolve o número para 'sem designação'", async () => {
+  const [numero] = await lista();
+  const r = await fetch(url(), {
+    method: "PATCH", headers: H(),
+    body: JSON.stringify({ connectionId: numero.id, gestorEmail: "" }),
+  });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).gestorEmail, null, "vazio tem que virar nulo, não string vazia");
 });

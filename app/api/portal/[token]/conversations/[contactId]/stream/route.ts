@@ -15,7 +15,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas", cost: "stream" });
   if (error) return error;
   const contact = await prisma.waContact.findFirst({
-    where: { id: contactId, connection: { clientId: portal.clientId } }, select: { id: true },
+    where: {
+      id: contactId,
+      connection: { clientId: portal.clientId, ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}) },
+    },
+    select: { id: true },
   });
   if (!contact) return new Response("Conversa não encontrada", { status: 404 });
 

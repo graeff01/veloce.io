@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { idsDasConexoes } from "@/lib/wa-connections";
+import { idsVisiveis } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token);
   if (error) return NextResponse.json({ waiting: 0, reviews: 0 }); // badge nunca vira erro na UI
 
-  const connIds = await idsDasConexoes(portal.clientId);
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
   let waiting = 0;
   if (connIds.length) {
     // "Aguardando" = contatos cuja ÚLTIMA mensagem é do cliente (direction != 'out').

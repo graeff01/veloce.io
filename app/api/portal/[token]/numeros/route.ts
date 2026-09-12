@@ -18,7 +18,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (error) return error;
 
   const conns = await prisma.waConnection.findMany({
-    where: { clientId: portal.clientId },
+    where: {
+      clientId: portal.clientId,
+      // Só os números dela: o atalho não pode oferecer o que ela não alcança.
+      ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true },
   });

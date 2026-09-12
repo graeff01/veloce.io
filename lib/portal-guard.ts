@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { resolvePortal, effectiveSections, SESSION_SCOPED, type PortalSection } from "@/lib/notifications/client-portal";
 import { getPortalUser, isProtected, isAdminRole, isSomenteLeitura, bearerFromHeader } from "@/lib/portal-auth";
+import { conexoesDoGestor } from "@/lib/wa-connections";
 import { consume, LIMITS, clientIp } from "@/lib/ai-agent/security/quota";
 import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
 import { securityMode } from "@/lib/ai-agent/security/policy";
@@ -28,6 +29,13 @@ export interface PortalIdentity {
   isAdmin: boolean;
   /** Gestor: acompanha tudo, não altera nada. Ver `isSomenteLeitura`. */
   somenteLeitura: boolean;
+  /**
+   * Números que ESTA pessoa alcança, ou `null` para todos os do cliente.
+   *
+   * Resolvido aqui, no gate, e não em cada rota: um recorte de visibilidade que
+   * cada lugar precisa lembrar de aplicar é um vazamento esperando acontecer.
+   */
+  conexoesVisiveis: string[] | null;
 }
 
 export type PortalGuardResult =
@@ -130,6 +138,10 @@ export async function guardPortal(
     // não a falta de visão.
     isAdmin: isAdminRole(user?.role) || isSomenteLeitura(user?.role),
     somenteLeitura: isSomenteLeitura(user?.role),
+    // Só quem acompanha é recortado: quem atende trabalha na caixa inteira.
+    conexoesVisiveis: isSomenteLeitura(user?.role)
+      ? await conexoesDoGestor(portal.clientId, user?.email ?? null)
+      : null,
   };
 
   // 4) Papel admin do painel do cliente.

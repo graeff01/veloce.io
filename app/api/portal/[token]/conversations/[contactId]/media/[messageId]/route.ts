@@ -26,7 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!msg || msg.contactId !== contactId) return new NextResponse("não encontrado", { status: 404 });
 
   const conn = await prisma.waConnection.findFirst({
-    where: { id: msg.connectionId, clientId: portal.clientId }, select: { id: true, accessToken: true },
+    where: {
+      id: msg.connectionId, clientId: portal.clientId,
+      ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+    },
+    select: { id: true, accessToken: true },
   });
   if (!conn) return new NextResponse("não encontrado", { status: 404 });
 

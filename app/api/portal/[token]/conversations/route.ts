@@ -11,8 +11,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
 
+  // O recorte da gerente entra aqui, na origem: tudo nesta rota — lista,
+  // filtro por número, contagem — deriva desta consulta. Aplicar depois seria
+  // deixar a porta aberta em algum caminho esquecido.
   const conns = await prisma.waConnection.findMany({
-    where: { clientId: portal.clientId },
+    where: {
+      clientId: portal.clientId,
+      ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, displayPhone: true, equipe: true, ownerEmail: true },
   });

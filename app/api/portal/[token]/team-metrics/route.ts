@@ -19,7 +19,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const isAdmin = portal.isAdmin;
 
   const conns = await prisma.waConnection.findMany({
-    where: { clientId: portal.clientId },
+    where: {
+      clientId: portal.clientId,
+      // Mesmo recorte da tela: uma gerente que acompanha três números não
+      // aparece somando os seis no ranking.
+      ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}),
+    },
     select: { id: true, ownerEmail: true, equipe: true },
   });
   if (conns.length === 0) return NextResponse.json({ me, isAdmin, period: "month", rows: [], team: null, unassigned: 0 });

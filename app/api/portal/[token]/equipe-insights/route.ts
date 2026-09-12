@@ -13,5 +13,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (error) return error;
 
   const p = new URL(req.url).searchParams.get("p");
-  return NextResponse.json(await calcularInsightsEquipe(portal.clientId, p));
+  return NextResponse.json(await calcularInsightsEquipe(portal.clientId, p, portal.conexoesVisiveis));
 }

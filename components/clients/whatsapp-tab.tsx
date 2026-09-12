@@ -20,6 +20,8 @@ interface Connection {
   ownerEmail: string | null;
   /** Consultoria, captação… Agrupa os números em times no painel. */
   equipe: string | null;
+  /** Quem acompanha este número no portal. Recorta o que a gerente enxerga. */
+  gestorEmail: string | null;
   lastEventAt: string | null;
   _count?: { contacts: number; leads: number; messages: number };
 }
@@ -251,7 +253,7 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
       .catch(() => { /* sem lista, o campo vira texto livre */ });
   }, [clientId]);
 
-  async function salvar(connectionId: string, campo: "ownerEmail" | "equipe", valor: string) {
+  async function salvar(connectionId: string, campo: "ownerEmail" | "equipe" | "gestorEmail", valor: string) {
     setSalvando(connectionId); setErro("");
     const r = await fetch(`/api/clients/${clientId}/whatsapp`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -283,6 +285,11 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
           aparecem sem ninguém precisar atribuir lead na mão. O e-mail do
           responsável <b>não precisa ter acesso ao portal</b>: ele serve para
           identificar quem atende, não para entrar no sistema.
+          <br />
+          A <b>gerente</b> é outra coisa: é quem acompanha no portal. Designar
+          números a ela faz o painel dela mostrar <b>só esses</b> — é assim que
+          duas gerentes dividem a operação em vez de dividirem uma conta.
+          Sem nenhum número designado, ela enxerga tudo.
         </p>
         <button onClick={onAdicionar} style={{ height: 34, padding: "0 14px", borderRadius: 9, border: "none", background: "#25D366", color: "#fff", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
           <Plus size={14} /> Adicionar número
@@ -337,6 +344,21 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
                 style={inp}
               />
             </Field>
+            <Field label="Gerente que acompanha">
+              {/* Lista FECHADA, ao contrário de "quem atende": o gerente precisa
+                  existir no portal — é a conta dele que vai ser recortada. */}
+              <select
+                value={c.gestorEmail ?? ""}
+                onChange={(e) => salvar(c.id, "gestorEmail", e.target.value)}
+                style={{ ...inp, cursor: "pointer" }}
+              >
+                <option value="">— sem gerente designada</option>
+                {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
+                {c.gestorEmail && !users.some((u) => u.email === c.gestorEmail) && (
+                  <option value={c.gestorEmail}>{c.gestorEmail} (fora do portal)</option>
+                )}
+              </select>
+            </Field>
           </div>
         </div>
       ))}
@@ -351,6 +373,12 @@ function NumerosView({ clientId, conns, onChange, onAdicionar }: {
       {conns.length > 1 && (
         <p style={{ fontSize: 11.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
           <Users size={12} /> {conns.length} números · {equipes.length || "nenhuma"} {equipes.length === 1 ? "equipe" : "equipes"}
+          {(() => {
+            const gerentes = new Set(conns.map((c) => c.gestorEmail).filter(Boolean));
+            const semGerente = conns.filter((c) => !c.gestorEmail).length;
+            if (gerentes.size === 0) return null;
+            return ` · ${gerentes.size} ${gerentes.size === 1 ? "gerente" : "gerentes"}${semGerente ? ` · ${semGerente} sem gerente` : ""}`;
+          })()}
         </p>
       )}
     </div>

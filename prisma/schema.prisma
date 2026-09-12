@@ -892,6 +892,10 @@ model WaConnection {
   // Time a que este número pertence (ex.: "consultoria", "captacao"). Livre de
   // propósito: cada cliente organiza o seu, e a tela só agrupa pelo que vier.
   equipe        String?
+  // Quem ACOMPANHA este número (PortalAccess.email de um papel `gestor`). Duas
+  // gerentes no mesmo cliente enxergavam a operação inteira; com isto cada uma
+  // vê só os números dela. Nulo = sem gerente designada.
+  gestorEmail   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -902,6 +906,10 @@ model WaConnection {
   conversations WaConversation[]
   events        WaEvent[]
   tags          WaTag[]
+
+  @@index([clientId])
+  @@index([clientId, ownerEmail])
+  @@index([clientId, gestorEmail]) // "quais números são desta gerente"
 }
 
 model WaContact {

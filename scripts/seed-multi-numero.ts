@@ -82,9 +82,11 @@ const PESSOAS = [
   { nome: "Felipe Cruz",  email: "felipe.demo@exemplo.local", equipe: "captacao",    fone: "+55 51 90000-0203" },
 ];
 
+// Cada gerente acompanha UMA frente. É o ponto: elas dividem a operação, não
+// dividem uma conta — a Michele não enxerga os números da Vitória e vice-versa.
 const GERENTES = [
-  { nome: "Michele", email: "michele@exemplo.local" },
-  { nome: "Vitória", email: "vitoria@exemplo.local" },
+  { nome: "Michele", email: "michele@exemplo.local", equipe: "consultoria" },
+  { nome: "Vitória", email: "vitoria@exemplo.local", equipe: "captacao" },
 ];
 
 const NOMES = ["Marcos Vieira", "Juliana Reis", "Paulo Andrade", "Renata Lopes", "Tiago Moura",
@@ -250,6 +252,7 @@ async function main() {
         name: p.nome,
         ownerEmail: p.email,
         equipe: p.equipe,
+        gestorEmail: GERENTES.find((g) => g.equipe === p.equipe)?.email ?? null,
         lastEventAt: hAgo(1 + Math.random() * 20),
       },
     }));
@@ -361,7 +364,7 @@ Pronto — ${cliente.name}
 
   Portal: ${url ? `${url}/r/${portal!.token}` : `/r/${portal!.token}`}
   Seções: ${portal!.sections ?? "(todas)"}${portalAtual && portalAtual.sections != null && !tem("secoes") ? "  ← mantidas; use --secoes para trocar por WhatsApp/Funil/Equipe" : ""}
-  ${criadas.length ? `Acessos: ${criadas.join("  ou  ")}  (papel: gestor — só acompanha)\n  Senha:   ${SENHA}` : "Acessos: os que já existiam, intocados"}
+  ${criadas.length ? GERENTES.map((g) => `${g.email}  → acompanha ${g.equipe} (3 números)`).join("\n  ") + `\n  Senha:   ${SENHA}   (papel: gestor — só acompanha)` : "Acessos: os que já existiam, intocados"}
 
   Desfazer:  npm run db:seed:multi${slugPedido ? ` -- --cliente ${slugPedido} --remover` : " -- --remover"}
   (apaga só os ${conexoes.length} números de demonstração; número real fica)

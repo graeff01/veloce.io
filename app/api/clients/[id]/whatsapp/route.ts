@@ -16,6 +16,9 @@ const saveSchema = z.object({
   // WhatsApp — ninguém precisa atribuir conversa na mão.
   ownerEmail: z.string().email().optional().or(z.literal("")),
   equipe: z.string().max(60).optional(),
+  // Quem ACOMPANHA este número. Com duas gerentes num cliente, é o que separa
+  // "os números da Michele" dos "da Vitória" — sem isso as duas veem tudo.
+  gestorEmail: z.string().email().optional().or(z.literal("")),
 });
 
 /** Edição sem re-colar o token: só o que descreve o número. */
@@ -25,6 +28,7 @@ const patchSchema = z.object({
   displayPhone: z.string().max(40).optional(),
   ownerEmail: z.string().email().optional().or(z.literal("")),
   equipe: z.string().max(60).optional(),
+  gestorEmail: z.string().email().optional().or(z.literal("")),
 });
 
 const vazioVira = (v: string | undefined) => (v && v.trim() ? v.trim() : null);
@@ -86,6 +90,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       name: d.name ?? null,
       ownerEmail: vazioVira(d.ownerEmail),
       equipe: vazioVira(d.equipe),
+      gestorEmail: vazioVira(d.gestorEmail),
     },
     update: {
       wabaId: d.wabaId.trim(),
@@ -96,6 +101,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       name: d.name ?? null,
       ...(d.ownerEmail !== undefined ? { ownerEmail: vazioVira(d.ownerEmail) } : {}),
       ...(d.equipe !== undefined ? { equipe: vazioVira(d.equipe) } : {}),
+      ...(d.gestorEmail !== undefined ? { gestorEmail: vazioVira(d.gestorEmail) } : {}),
     },
     include: { _count: { select: { contacts: true, leads: true, messages: true } } },
   });
@@ -129,6 +135,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(d.displayPhone !== undefined ? { displayPhone: vazioVira(d.displayPhone) } : {}),
       ...(d.ownerEmail !== undefined ? { ownerEmail: vazioVira(d.ownerEmail) } : {}),
       ...(d.equipe !== undefined ? { equipe: vazioVira(d.equipe) } : {}),
+      ...(d.gestorEmail !== undefined ? { gestorEmail: vazioVira(d.gestorEmail) } : {}),
     },
     include: { _count: { select: { contacts: true, leads: true, messages: true } } },
   });

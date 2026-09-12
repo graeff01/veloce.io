@@ -39,13 +39,59 @@ export function filtroConexoes(ids: string[]): string | { in: string[] } {
  * Rotas de um contato específico (abrir conversa, baixar mídia, resumir) não
  * podem mais assumir "a" conexão do cliente: o contato pode estar em qualquer
  * um dos números. Quem manda é o contato; o cliente é a permissão.
+ *
+ * `visiveis` é a SEGUNDA permissão: uma gerente que só acompanha três números
+ * não alcança a conversa de um quarto digitando a URL. Sem isto o recorte seria
+ * só da tela — ou seja, não seria recorte nenhum.
  */
-export async function conexaoDoContato(clientId: string, contactId: string) {
+export async function conexaoDoContato(clientId: string, contactId: string, visiveis?: string[] | null) {
   const contact = await prisma.waContact.findFirst({
-    where: { id: contactId, connection: { clientId } },
+    where: {
+      id: contactId,
+      connection: { clientId, ...(visiveis ? { id: { in: visiveis } } : {}) },
+    },
     include: { connection: true },
   });
   if (!contact) return { conn: null, contact: null };
   const { connection, ...rest } = contact;
   return { conn: connection, contact: { ...rest, connectionId: connection.id } };
+}
+
+// ── Quais números ESTA pessoa alcança ────────────────────────────────────────
+// Segunda dimensão de escopo, depois do cliente. Duas gerentes na mesma conta
+// enxergavam a operação inteira — não havia como dizer "estes três números são
+// da Michele, estes três da Vitória", que é como o trabalho delas é dividido.
+//
+// Vale só para quem ACOMPANHA (`gestor`). Quem atende trabalha na caixa inteira
+// do cliente, como sempre — dividir a caixa de quem responde seria outra coisa,
+// e não é o que se pediu.
+//
+// REGRA DA VOLTA: gerente sem NENHUM número atribuído vê todos. É o estado de
+// quem ainda não configurou, e a alternativa — tela vazia — faria parecer que o
+// sistema quebrou justamente no primeiro acesso.
+
+export async function conexoesDoGestor(clientId: string, email: string | null): Promise<string[] | null> {
+  if (!email) return null;
+  const meus = await prisma.waConnection.findMany({
+    where: { clientId, gestorEmail: email },
+    select: { id: true },
+  });
+  return meus.length ? meus.map((c) => c.id) : null; // nenhum designado = vê tudo
+}
+
+/**
+ * Aplica o recorte da pessoa sobre os números do cliente.
+ *
+ * `visiveis` nulo = sem recorte (quem atende, ou gerente ainda sem números
+ * designados). Nunca devolve mais do que o cliente tem: o recorte só estreita.
+ */
+export function recortar(doCliente: string[], visiveis: string[] | null): string[] {
+  if (!visiveis) return doCliente;
+  const permitidos = new Set(visiveis);
+  return doCliente.filter((id) => permitidos.has(id));
+}
+
+/** Ids do cliente já recortados para esta pessoa. Atalho dos dois acima. */
+export async function idsVisiveis(clientId: string, visiveis: string[] | null): Promise<string[]> {
+  return recortar(await idsDasConexoes(clientId), visiveis);
 }

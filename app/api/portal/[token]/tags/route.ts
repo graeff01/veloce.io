@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
+import { idsVisiveis, filtroConexoes } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 import { z } from "zod";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (error) return error;
   // Etiquetas são do cliente, não de um número: lista as de todos e junta as
   // repetidas pelo nome.
-  const connIds = await idsDasConexoes(portal.clientId);
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
   if (connIds.length === 0) return NextResponse.json([]);
   const todas = await prisma.waTag.findMany({ where: { connectionId: filtroConexoes(connIds) }, orderBy: { name: "asc" } });
   const porNome = new Map<string, (typeof todas)[number]>();
@@ -31,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
   // Etiqueta nova nasce no primeiro número; a listagem acima junta todos.
-  const connIds = await idsDasConexoes(portal.clientId);
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
   const conn = connIds.length ? { id: connIds[0]! } : null;
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 

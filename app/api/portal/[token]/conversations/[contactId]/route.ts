@@ -15,7 +15,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   // O contato decide em que número ele está. Procurar dentro de "a" conexão do
   // cliente fazia toda conversa fora do primeiro número sumir.
-  const { conn } = await conexaoDoContato(portal.clientId, contactId);
+  const { conn } = await conexaoDoContato(portal.clientId, contactId, portal.conexoesVisiveis);
   if (!conn) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   // escopo: o contato tem que ser da conexão deste cliente

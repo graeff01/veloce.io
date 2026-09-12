@@ -18,7 +18,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   // A conexão vem do CONTATO: com vários números, "a" conexão do cliente não
   // existe — e criar a conversa na conexão errada a esconderia da caixa.
-  const { conn } = await conexaoDoContato(portal.clientId, contactId);
+  const { conn } = await conexaoDoContato(portal.clientId, contactId, portal.conexoesVisiveis);
   if (!conn) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));

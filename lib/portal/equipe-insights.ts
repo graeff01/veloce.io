@@ -47,13 +47,20 @@ export interface Gargalo {
  * coisa. Com as regras duplicadas, uma hora o alerta diria "lead sem resposta"
  * numa tela que mostra tudo calmo — e a gestora deixaria de confiar nas duas.
  */
-export async function calcularInsightsEquipe(clientId: string, periodo?: string | null) {
+export async function calcularInsightsEquipe(
+  clientId: string,
+  periodo?: string | null,
+  /** Números que esta pessoa alcança. `null` = todos os do cliente. */
+  visiveis?: string[] | null,
+) {
   const period = normalizePeriod(periodo ?? null);
   const { start, end, prevStart, prevEnd, label } = periodRanges(period);
   const agora = Date.now();
 
   const conns = await prisma.waConnection.findMany({
-    where: { clientId },
+    // O recorte na origem: tudo abaixo — pessoas, equipes, gargalos, horários —
+    // deriva daqui. Uma gerente vê o diagnóstico DELA, não o da casa.
+    where: { clientId, ...(visiveis ? { id: { in: visiveis } } : {}) },
     select: { id: true, name: true, displayPhone: true, ownerEmail: true, equipe: true },
   });
   if (conns.length === 0) {
@@ -64,7 +71,7 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
   const equipeDoNumero = new Map(conns.map((c) => [c.id, c.equipe]));
   const nomeDoNumero = new Map(conns.map((c) => [c.id, c.name || c.displayPhone || "Número"]));
 
-  const [convs, atendentes, mudos] = await Promise.all([
+  const [convs, atendentes, nomesDeQuemAtende, mudos] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId: { in: connIds } },
       select: {
@@ -76,7 +83,16 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
     prisma.portalAccess.findMany({
       where: { clientId }, select: { email: true, name: true },
     }),
-    numerosMudos(clientId),
+    // Nomes de quem atende em QUALQUER número do cliente, mesmo fora do recorte.
+    // Uma conversa do número da Michele pode ter sido atribuída a alguém da
+    // outra equipe — ela precisa ver isso, e ver o NOME da pessoa. Sem esta
+    // lista o nome caía para o pedaço do e-mail, e só naquela linha: a tela
+    // parecia quebrada exatamente onde era mais importante entender.
+    prisma.waConnection.findMany({
+      where: { clientId, ownerEmail: { not: null } },
+      select: { ownerEmail: true, name: true },
+    }),
+    numerosMudos(clientId, visiveis),
   ]);
 
   // Mensagens do período, só o necessário para medir o vai-e-vem. Teto explícito:
@@ -179,7 +195,7 @@ export async function calcularInsightsEquipe(clientId: string, periodo?: string 
 
   const nomeDe = (email: string) =>
     atendentes.find((a) => a.email === email)?.name
-    || conns.find((c) => c.ownerEmail === email)?.name
+    || nomesDeQuemAtende.find((c) => c.ownerEmail === email)?.name
     || email.split("@")[0];
   const equipeDe = (email: string) =>
     conns.find((c) => c.ownerEmail === email)?.equipe ?? null;

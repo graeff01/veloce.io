@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
+import { idsVisiveis, filtroConexoes } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   // Só as conversas DESTE cliente: o id do contato vem do aparelho e não é prova
   // de nada. A conexão é a fronteira do tenant.
-  const connIds = await idsDasConexoes(portal.clientId);
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
   if (connIds.length === 0) return NextResponse.json({ error: "Sem conexão de WhatsApp." }, { status: 404 });
   const conn = { id: filtroConexoes(connIds) }; // vale para qualquer número do cliente
 

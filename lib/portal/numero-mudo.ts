@@ -33,9 +33,9 @@ export interface NumeroMudo {
   ultimaAtividade: Date;
 }
 
-export async function numerosMudos(clientId: string): Promise<NumeroMudo[]> {
+export async function numerosMudos(clientId: string, visiveis?: string[] | null): Promise<NumeroMudo[]> {
   const conns = await prisma.waConnection.findMany({
-    where: { clientId },
+    where: { clientId, ...(visiveis ? { id: { in: visiveis } } : {}) },
     select: { id: true, name: true, displayPhone: true, ownerEmail: true, equipe: true, lastEventAt: true },
   });
   if (conns.length === 0) return [];
