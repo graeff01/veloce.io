@@ -22,6 +22,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:seed:demo:jr": "tsx scripts/seed-demo-jr.ts",
+    "db:seed:multi": "tsx scripts/seed-multi-numero.ts",
     "db:studio": "prisma studio",
     "eval": "tsx scripts/run-evals.ts",
     "eval:retrieval": "tsx scripts/eval-retrieval.ts",
