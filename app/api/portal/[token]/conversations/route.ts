@@ -77,6 +77,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   return NextResponse.json({
     me,
     isAdmin,
+    // Quem só acompanha não recebe botão que o servidor vai recusar: oferecer o
+    // que vai dar erro faz a pessoa levar a culpa por um problema do produto.
+    somenteLeitura: portal.somenteLeitura,
     hasMore,
     meName: nameOf(me),
     attendants: attendants.map((a) => ({ email: a.email, name: a.name || a.email.split("@")[0] })),

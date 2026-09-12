@@ -13,7 +13,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { resolvePortal, effectiveSections, SESSION_SCOPED, type PortalSection } from "@/lib/notifications/client-portal";
-import { getPortalUser, isProtected, isAdminRole, bearerFromHeader } from "@/lib/portal-auth";
+import { getPortalUser, isProtected, isAdminRole, isSomenteLeitura, bearerFromHeader } from "@/lib/portal-auth";
 import { consume, LIMITS, clientIp } from "@/lib/ai-agent/security/quota";
 import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
 import { securityMode } from "@/lib/ai-agent/security/policy";
@@ -26,6 +26,8 @@ export interface PortalIdentity {
   name: string | null;
   role: string | null;
   isAdmin: boolean;
+  /** Gestor: acompanha tudo, não altera nada. Ver `isSomenteLeitura`. */
+  somenteLeitura: boolean;
 }
 
 export type PortalGuardResult =
@@ -43,6 +45,15 @@ export interface PortalGuardOptions {
   cost?: "llm" | "stream" | "default";
   /** Desliga o rate limit (só para rotas de altíssima frequência já protegidas). */
   noRateLimit?: boolean;
+  /**
+   * Esta rota ESCREVE, mas um gestor pode usá-la mesmo assim.
+   *
+   * A regra é negar por padrão: rota de escrita nova nasce barrada para quem só
+   * acompanha, e liberar exige dizer aqui — em vez de lembrar de barrar. São
+   * poucas as exceções legítimas (entrar, sair, notificação do próprio aparelho,
+   * pedir uma análise), e cada uma está anotada na sua rota.
+   */
+  permiteLeitor?: boolean;
 }
 
 const SECTION_ENFORCE = process.env.PORTAL_SECTION_ENFORCE === "1";
@@ -114,11 +125,28 @@ export async function guardPortal(
   const identity: PortalIdentity = {
     clientId: portal.clientId, accentColor: portal.accentColor, mode: portal.mode,
     email: user?.email ?? null, name: user?.name ?? null, role: user?.role ?? null,
-    isAdmin: isAdminRole(user?.role),
+    // O gestor enxerga como admin de propósito: ele acompanha a equipe inteira,
+    // e o que o protege de mexer em algo é o bloqueio de escrita logo abaixo,
+    // não a falta de visão.
+    isAdmin: isAdminRole(user?.role) || isSomenteLeitura(user?.role),
+    somenteLeitura: isSomenteLeitura(user?.role),
   };
 
   // 4) Papel admin do painel do cliente.
   if (opts.requireAdmin && !identity.isAdmin) return deny(403, "Ação restrita ao administrador do painel.");
+
+  // 4.1) SOMENTE LEITURA. Vale desde já, sem modo observação: nenhum usuário
+  //      existente tem este papel, então não há o que medir — quem o receber
+  //      terá sido posto nele de propósito.
+  const escreve = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
+  if (identity.somenteLeitura && escreve && !opts.permiteLeitor) {
+    emitSecurityEventAsync({
+      clientId: portal.clientId, ring: "auth", control: "A-05", severity: "low",
+      action: "blocked", labels: ["portal_somente_leitura", req.method],
+      evidence: `${identity.email} acompanha o painel e tentou ${req.method}`, shadow: false,
+    });
+    return deny(403, "Seu acesso é de acompanhamento: você vê as conversas, mas não responde nem altera.");
+  }
 
   // 5) Permissão por SEÇÃO. Hoje `effectiveSections` só pinta o menu — a API não
   //    validava nada (achado A-04). Entra em modo observação: só bloqueia com

@@ -193,6 +193,19 @@ export async function getPortalUser(clientId: string): Promise<{ email: string; 
 
 export const isAdminRole = (role: string | null | undefined) => role === "admin";
 
+/**
+ * GESTOR: vê tudo, não muda nada.
+ *
+ * É o papel de quem acompanha a operação sem fazer parte dela — as duas gerentes
+ * da Jardim do Lago, que monitoram seis pessoas atendendo pelo próprio celular.
+ * Deixá-las como "admin" daria a elas assumir lead, responder e mover funil; um
+ * toque errado no telefone e a conversa de alguém muda de dono.
+ *
+ * A restrição é do SERVIDOR (`guardPortal`), não da tela: esconder botão não é
+ * permissão. A tela esconde porque oferecer o que vai ser recusado é cruel.
+ */
+export const isSomenteLeitura = (role: string | null | undefined) => role === "gestor";
+
 // Encerra a sessão (logout): apaga a linha da sessão ATUAL — cookie no web, Bearer no app.
 export async function destroySession(): Promise<void> {
   const tok = await readSessionToken();

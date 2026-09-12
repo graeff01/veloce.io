@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardPortal } from "@/lib/portal-guard";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,12 +9,9 @@ export const dynamic = "force-dynamic";
 // Body { resolved?: boolean } — default true; false reabre.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string; id: string }> }) {
   const { token, id } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  if ((await isProtected(portal.clientId)) && !(await getPortalSessionEmail(portal.clientId))) {
-    return NextResponse.json({ error: "Faça login." }, { status: 401 });
-  }
-  const me = await getPortalSessionEmail(portal.clientId);
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
+  const me = portal.email;
   if (!me) return NextResponse.json({ error: "Faça login." }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
+import { guardPortal } from "@/lib/portal-guard";
 import { sendManualMedia } from "@/lib/ai-agent/respond";
 
 export const runtime = "nodejs";
@@ -12,10 +11,10 @@ type Kind = (typeof KINDS)[number];
 // Mesmo escopo/auth do envio de texto.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  const email = await getPortalSessionEmail(portal.clientId);
-  if (await isProtected(portal.clientId) && !email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
+  // Mesmo gate do envio de texto — inclusive a regra de quem só acompanha.
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
+  const email = portal.email;
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");

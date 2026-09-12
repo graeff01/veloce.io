@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
+import { guardPortal } from "@/lib/portal-guard";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 
 export const runtime = "nodejs";
@@ -65,10 +66,12 @@ const ACTIONS: Record<string, string> = { aprovar: "aprovada", rejeitar: "rejeit
 // automaticamente — a mudança de conhecimento/playbook é feita pelo humano; aqui só o status.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-  const email = (await isProtected(portal.clientId)) ? await getPortalSessionEmail(portal.clientId) : null;
-  if ((await isProtected(portal.clientId)) && !email) return NextResponse.json({ error: "Faça login." }, { status: 401 });
+  // Pelo gate central. Aprovar ou rejeitar uma recomendação é uma DECISÃO sobre
+  // o que a IA vai aprender — não é acompanhar. Quem só acompanha é barrado
+  // aqui, e antes esta rota nem chegava a passar pelo gate.
+  const { error, portal } = await guardPortal(req, token, { section: "aprendizado" });
+  if (error) return error;
+  const email = portal.email;
 
   const body = await req.json().catch(() => ({}));
   const id = String(body?.id ?? "");

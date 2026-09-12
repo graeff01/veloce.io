@@ -20,7 +20,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 // Rota que GASTA MODELO: cota reduzida (cost: "llm") — antes era ilimitada e sem login.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { error, portal } = await guardPortal(req, token, { section: "painel", cost: "llm" });
+  // É uma PERGUNTA sobre os próprios números — não muda nada. Faz todo sentido
+  // para quem acompanha, e a cota reduzida (cost: "llm") já segura o gasto.
+  const { error, portal } = await guardPortal(req, token, { section: "painel", cost: "llm", permiteLeitor: true });
   if (error) return error;
   const body = (await req.json().catch(() => ({}))) as { pergunta?: unknown; p?: unknown };
   const pergunta = typeof body.pergunta === "string" ? body.pergunta : "";

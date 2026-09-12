@@ -86,3 +86,41 @@ test("nenhuma rota crítica resolve o token por fora do gate", () => {
   }
   assert.deepEqual(suspeitas, [], `usam resolvePortal sem gate:\n  - ${suspeitas.join("\n  - ")}`);
 });
+
+// ── Papel de acompanhamento (gestor) ─────────────────────────────────────────
+// "Ela só vai ter a opção de visualizar as conversas e acompanhar." Esconder o
+// botão na tela NÃO é permissão: a regra tem que estar no servidor, e no gate
+// central, senão cada rota nova precisa lembrar de aplicá-la.
+//
+// Ao escrever este teste descobriu-se o que faltava: `send`, `send-media`,
+// `assign`, `corrections/resolve` e `recommendations` faziam a própria checagem
+// de sessão e NUNCA passavam pelo gate. Autenticavam bem — e ignoravam qualquer
+// regra que vivesse nele. Uma gestora "somente leitura" mandaria mensagem de
+// verdade para o WhatsApp de um lead.
+
+test("toda rota que ESCREVE passa pelo gate central", () => {
+  const files = routeFiles(PORTAL_API);
+  const foraDoGate: string[] = [];
+  for (const rel of files) {
+    if (rel in ANONIMAS) continue;
+    const src = readFileSync(join(PORTAL_API, rel), "utf8");
+    const escreve = /export async function (POST|PUT|PATCH|DELETE)\b/.test(src);
+    if (escreve && !src.includes("guardPortal")) foraDoGate.push(rel);
+  }
+  assert.deepEqual(foraDoGate, [],
+    `rotas que escrevem sem passar pelo gate (a regra de somente-leitura não as alcança):\n  - ${foraDoGate.join("\n  - ")}`);
+});
+
+test("liberar escrita para quem só acompanha é explícito, e são poucas", () => {
+  // `permiteLeitor` nega por padrão: rota de escrita nova nasce barrada. Esta
+  // lista é o contrato — crescer sem querer é o risco, e é o que o teste pega.
+  const PERMITIDAS = new Set([
+    "push/subscribe/route.ts", // registra o próprio aparelho para notificação
+    "advisor/route.ts",        // pergunta sobre os próprios números; não escreve
+  ]);
+  const files = routeFiles(PORTAL_API);
+  const liberadas = files.filter((rel) =>
+    readFileSync(join(PORTAL_API, rel), "utf8").includes("permiteLeitor: true"));
+  assert.deepEqual(liberadas.sort(), [...PERMITIDAS].sort(),
+    "mudou quem pode escrever acompanhando — confira se é mesmo o que se quer");
+});

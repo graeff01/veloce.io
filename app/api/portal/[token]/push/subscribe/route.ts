@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 // POST — salva/atualiza a inscrição de push do dispositivo do vendedor (clientId+email).
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { error, portal } = await guardPortal(req, token);
+  // Quem só acompanha também quer ser avisado: registrar o PRÓPRIO aparelho
+  // não altera conversa, lead nem configuração de ninguém.
+  const { error, portal } = await guardPortal(req, token, { permiteLeitor: true });
   if (error) return error;
   const email = portal.email;
   if (!email) return NextResponse.json({ error: "Faça login para ativar os avisos." }, { status: 401 });
