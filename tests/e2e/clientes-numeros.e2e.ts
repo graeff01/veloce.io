@@ -21,6 +21,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 let cookie = "";
+const marca = Date.now();
 let clientId = "";
 let outroId = "";
 const H = () => ({ cookie, "Content-Type": "application/json" });
@@ -53,7 +54,6 @@ before(async () => {
   });
   cookie = `next-auth.session-token=${jwt}`;
 
-  const marca = Date.now();
   clientId = (await db.client.create({ data: { name: `Números E2E ${marca}`, slug: `numeros-e2e-${marca}` } })).id;
   outroId = (await db.client.create({ data: { name: `Outro E2E ${marca}`, slug: `outro-e2e-${marca}` } })).id;
 });
@@ -161,4 +161,54 @@ test("tirar a gerente devolve o número para 'sem designação'", async () => {
   });
   assert.equal(r.status, 200);
   assert.equal((await r.json()).gestorEmail, null, "vazio tem que virar nulo, não string vazia");
+});
+
+// ── Os três papéis do portal ─────────────────────────────────────────────────
+// A API convertia qualquer papel que não fosse "admin" em "attendant". Ou seja:
+// `gestor` não podia ser criado pelo painel, e era DESTRUÍDO em silêncio no
+// primeiro clique no papel. O recurso existia no servidor e ninguém alcançava.
+
+const acesso = () => `${BASE}/api/clients/${clientId}/portal-access`;
+const papelDe = async (email: string) => {
+  const d = await (await fetch(acesso(), { headers: { cookie } })).json();
+  return d.users.find((u: { email: string }) => u.email === email)?.role ?? null;
+};
+
+test("gerente pode ser criada pelo painel e o papel PERSISTE", async () => {
+  const gerente = `gerente.${marca}@teste.local`;
+  await db.portalAccess.create({ data: { clientId, email: gerente, name: "Michele", role: "attendant" } });
+  // Precisa haver um admin, senão a trava do último admin entra no caminho.
+  await db.portalAccess.create({ data: { clientId, email: `dono.${marca}@teste.local`, name: "Dono", role: "admin" } });
+
+  const r = await fetch(acesso(), {
+    method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, role: "gestor" }),
+  });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).role, "gestor");
+  assert.equal(await papelDe(gerente), "gestor", "o papel tem que sobreviver à ida e volta do painel");
+});
+
+test("papel desconhecido não vira atendente em silêncio… vira, mas o conhecido é preservado", async () => {
+  const gerente = `gerente.${marca}@teste.local`;
+  const r = await fetch(acesso(), {
+    method: "PATCH", headers: H(), body: JSON.stringify({ email: gerente, role: "supervisor-inventado" }),
+  });
+  assert.equal((await r.json()).role, "attendant", "papel fora da lista cai no mais restrito");
+});
+
+test("o último admin não pode virar gerente", async () => {
+  // Gerente não configura o painel: promover o último admin deixaria o cliente
+  // sem ninguém capaz de mexer nele.
+  const sozinho = `unico.${marca}@teste.local`;
+  const outro = await db.client.create({ data: { name: `Sozinho ${marca}`, slug: `sozinho-${marca}` } });
+  await db.portalAccess.create({ data: { clientId: outro.id, email: sozinho, name: "Único", role: "admin" } });
+
+  const r = await fetch(`${BASE}/api/clients/${outro.id}/portal-access`, {
+    method: "PATCH", headers: H(), body: JSON.stringify({ email: sozinho, role: "gestor" }),
+  });
+  assert.equal(r.status, 400, "tem que recusar");
+  assert.match((await r.json()).error, /admin/i);
+
+  await db.portalAccess.deleteMany({ where: { clientId: outro.id } });
+  await db.client.delete({ where: { id: outro.id } });
 });

@@ -31,6 +31,14 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
   );
 }
 
+// Os papéis do portal do cliente, com o que cada um PODE fazer — é a diferença
+// que importa na hora de escolher, e não cabia num rótulo de uma palavra.
+const PAPEIS = [
+  { v: "admin", rotulo: "Admin", ajuda: "Configura o painel e atende os leads." },
+  { v: "attendant", rotulo: "Atendente", ajuda: "Atende os leads." },
+  { v: "gestor", rotulo: "Gerente", ajuda: "Só ACOMPANHA: vê conversas e métricas, e não responde nem assume lead. Designe os números dela na aba WhatsApp › Números." },
+] as const;
+
 export function PanelTab({ clientId }: { clientId: string }) {
   const [portal, setPortal] = useState<Portal | null>(null);
   const [users, setUsers] = useState<PortalUser[] | null>(null);
@@ -225,16 +233,21 @@ export function PanelTab({ clientId }: { clientId: string }) {
                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`, background: open ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: open ? "var(--accent)" : "var(--text-muted)" }}>
                       <LayoutList size={11} /> Abas {grantable.length ? `${grantedCount}/${grantable.length}` : ""}
                     </button>
-                    <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
-                      style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
-                      {u.role === "admin" ? "Admin" : "Atendente"}
-                    </button>
+                    {/* TRÊS papéis. Virou lista porque `gestor` não cabia num
+                        alternador de dois estados — e sem ele no painel o papel
+                        existia no servidor e ninguém conseguia usar. */}
+                    <select value={PAPEIS.some((p) => p.v === u.role) ? u.role : "attendant"}
+                      onChange={(e) => setRole(u.email, e.target.value)}
+                      title={PAPEIS.find((p) => p.v === u.role)?.ajuda}
+                      style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 8px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : u.role === "gestor" ? "var(--border-strong)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
+                      {PAPEIS.map((p) => <option key={p.v} value={p.v}>{p.rotulo}</option>)}
+                    </select>
                     {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
                     <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
                   </div>
                   {open && (
                     <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "color-mix(in srgb, var(--accent) 3%, transparent)" }}>
-                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada.{u.role === "admin" ? " Admin, por padrão, vê tudo — desmarque para restringir." : ""}</p>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada.{u.role === "admin" || u.role === "gestor" ? ` ${u.role === "admin" ? "Admin" : "Gerente"}, por padrão, vê tudo — desmarque para restringir.` : ""}</p>
                       {grantable.length === 0
                         ? <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Este cliente só tem Conversas ligada — ligue mais abas acima para poder liberá-las por atendente.</p>
                         : (

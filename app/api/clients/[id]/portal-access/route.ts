@@ -40,9 +40,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: true, sections: keys });
   }
 
-  const role = body?.role === "admin" ? "admin" : "attendant";
-  // Não deixa remover o ÚLTIMO admin do cliente.
-  if (role === "attendant") {
+  // TRÊS papéis, e a lista é fechada de propósito — um papel desconhecido viraria
+  // "attendant" em silêncio, que foi como `gestor` deixava de existir ao primeiro
+  // clique no painel.
+  //
+  //   admin     — configura e atende
+  //   attendant — atende
+  //   gestor    — ACOMPANHA: vê tudo o que é dele e não altera nada
+  const PAPEIS = ["admin", "attendant", "gestor"] as const;
+  const role = PAPEIS.includes(body?.role) ? (body.role as string) : "attendant";
+
+  // Não deixa remover o ÚLTIMO admin do cliente. Vale para virar atendente E
+  // para virar gestor: uma gerente não configura o painel, então promover o
+  // último admin a gerente deixaria o cliente sem ninguém que possa mexer nele.
+  if (role !== "admin") {
     const admins = await prisma.portalAccess.count({ where: { clientId: id, role: "admin" } });
     const isThisAdmin = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId: id, email: e } }, select: { role: true } });
     if (admins <= 1 && isThisAdmin?.role === "admin") return NextResponse.json({ error: "Precisa haver ao menos 1 admin." }, { status: 400 });
