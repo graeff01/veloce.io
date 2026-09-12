@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { normalizePeriod, periodRanges } from "@/lib/notifications/client-report";
 import { numerosMudos } from "@/lib/portal/numero-mudo";
+import { numerosComTokenQuebrado } from "@/lib/whatsapp-saude";
 import { criarHoraLocal } from "@/lib/tz";
 
 // ── O que a gestora precisa DECIDIR ──────────────────────────────────────────
@@ -33,7 +34,7 @@ interface Acc {
 const vazio = (): Acc => ({ leads: 0, esperando: 0, esperaMaxMin: 0, semResposta: 0, primeiras: [], respostas: [] });
 
 export interface Gargalo {
-  tipo: "numero_mudo" | "sem_resposta" | "espera_longa" | "primeira_resposta_lenta" | "fila_concentrada";
+  tipo: "token_quebrado" | "numero_mudo" | "sem_resposta" | "espera_longa" | "primeira_resposta_lenta" | "fila_concentrada";
   gravidade: "alta" | "media";
   titulo: string;
   detalhe: string;
@@ -64,14 +65,14 @@ export async function calcularInsightsEquipe(
     select: { id: true, name: true, displayPhone: true, ownerEmail: true, equipe: true },
   });
   if (conns.length === 0) {
-    return { periodLabel: label, period, geral: null, anterior: null, horas: [], horarioFraco: null, pessoas: [], equipes: null, gargalos: [], mudos: [], numeros: [] };
+    return { periodLabel: label, period, geral: null, anterior: null, horas: [], horarioFraco: null, pessoas: [], equipes: null, gargalos: [], mudos: [], semToken: [], numeros: [] };
   }
   const connIds = conns.map((c) => c.id);
   const donoDoNumero = new Map(conns.map((c) => [c.id, c.ownerEmail]));
   const equipeDoNumero = new Map(conns.map((c) => [c.id, c.equipe]));
   const nomeDoNumero = new Map(conns.map((c) => [c.id, c.name || c.displayPhone || "Número"]));
 
-  const [convs, atendentes, nomesDeQuemAtende, mudos] = await Promise.all([
+  const [convs, atendentes, nomesDeQuemAtende, mudos, semToken] = await Promise.all([
     prisma.waConversation.findMany({
       where: { connectionId: { in: connIds } },
       select: {
@@ -93,6 +94,7 @@ export async function calcularInsightsEquipe(
       select: { ownerEmail: true, name: true },
     }),
     numerosMudos(clientId, visiveis),
+    numerosComTokenQuebrado(clientId, visiveis),
   ]);
 
   // Mensagens do período, só o necessário para medir o vai-e-vem. Teto explícito:
@@ -269,6 +271,20 @@ export async function calcularInsightsEquipe(
   // o que fazer — e nenhuma aparece quando não há o que apontar.
   const gargalos: Gargalo[] = [];
 
+  // TOKEN RECUSADO vem antes de tudo, e é mais traiçoeiro que o número mudo:
+  // aqui as mensagens CONTINUAM chegando, então nem o alerta de número mudo
+  // pega. O que quebra é o resto — a foto que o lead mandou não abre e a IA
+  // para de responder. O número parece perfeitamente vivo.
+  for (const t of semToken) {
+    const quanto = t.horas >= 48 ? `${Math.floor(t.horas / 24)} dias` : `${t.horas}h`;
+    gargalos.push({
+      tipo: "token_quebrado", gravidade: "alta",
+      titulo: `A conexão de ${t.nome} perdeu o acesso há ${quanto}`,
+      detalhe: `${t.erro}. As mensagens continuam chegando, então parece que está tudo bem — mas a foto que o lead manda não abre e a IA não responde. Precisa reconectar o número.`,
+      pessoa: t.dono ?? undefined,
+    });
+  }
+
   // PRIMEIRO de todos, porque é o único que faz o resto da tela MENTIR: um
   // número fora do ar não recebe nada, então a pessoa dele aparece impecável —
   // fila zero, nada esperando. Sem este aviso, a gestora lê "está tranquilo".
@@ -345,6 +361,9 @@ export async function calcularInsightsEquipe(
     // Quem está mudo: a tela marca a linha da pessoa, senão ela continua
     // parecendo a melhor do time.
     mudos: mudos.map((m) => ({ nome: m.nome, dono: m.dono, horas: m.horasEmSilencio })),
+    // Quem está sem credencial válida. A tela marca a linha da pessoa: sem isso
+    // ela aparece normal, porque as mensagens continuam entrando.
+    semToken: semToken.map((t) => ({ nome: t.nome, dono: t.dono, erro: t.erro, horas: t.horas })),
     numeros: conns.map((c) => ({ id: c.id, nome: nomeDoNumero.get(c.id)!, dono: c.ownerEmail })),
   };
 }

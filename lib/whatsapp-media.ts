@@ -1,4 +1,5 @@
 import { decryptSecret } from "@/lib/crypto";
+import { registrarDesfecho } from "@/lib/whatsapp-saude";
 
 export const MAX_MEDIA_BYTES = 16 * 1024 * 1024; // 16MB — limite do WhatsApp
 export const ALLOWED_AUDIO_MIME = new Set([
@@ -33,7 +34,11 @@ export async function fetchWhatsAppImageDataUri(conn: { accessToken: string }, m
 // Baixa um media do WhatsApp (metadata → URL → bytes), com limites de mime/tamanho e
 // timeouts. Só é chamado para ÁUDIO; imagem/documento nunca são baixados.
 export async function downloadWhatsAppMedia(
-  conn: { accessToken: string },
+  // `phoneNumberId` é opcional para não quebrar quem já chamava com só o token.
+  // Quando vem, a falha de credencial fica registrada NO NÚMERO — e mídia é
+  // justamente onde a pessoa percebe primeiro que o token morreu: a foto que o
+  // lead mandou simplesmente não abre.
+  conn: { accessToken: string; phoneNumberId?: string },
   mediaId: string,
   allowMime: Set<string>,
 ): Promise<{ bytes: Buffer; mime: string } | { error: string }> {
@@ -43,7 +48,14 @@ export async function downloadWhatsAppMedia(
   const auth = { Authorization: `Bearer ${token}` };
 
   const metaRes = await fetchWithTimeout(`https://graph.facebook.com/v25.0/${mediaId}`, { headers: auth }, 10_000);
-  if (!metaRes.ok) return { error: `meta ${metaRes.status}` };
+  if (!metaRes.ok) {
+    // 401/403 aqui é credencial, não mídia sumida: registra no número.
+    if (conn.phoneNumberId && (metaRes.status === 401 || metaRes.status === 403)) {
+      const e = (await metaRes.clone().json().catch(() => ({}))) as { error?: { code?: number; message?: string } };
+      registrarDesfecho(conn.phoneNumberId, { ok: false, codigo: e.error?.code ?? 190, mensagem: e.error?.message ?? "" });
+    }
+    return { error: `meta ${metaRes.status}` };
+  }
   const meta = (await metaRes.json()) as { url?: string; mime_type?: string; file_size?: number };
   if (!meta.url) return { error: "sem url" };
 
@@ -53,6 +65,7 @@ export async function downloadWhatsAppMedia(
 
   const binRes = await fetchWithTimeout(meta.url, { headers: auth }, 15_000);
   if (!binRes.ok) return { error: `download ${binRes.status}` };
+  if (conn.phoneNumberId) registrarDesfecho(conn.phoneNumberId, { ok: true });
   const buf = Buffer.from(await binRes.arrayBuffer());
   if (buf.byteLength > MAX_MEDIA_BYTES) return { error: "arquivo grande demais" };
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PortalConectarNumero } from "@/components/portal/portal-conectar-numero";
-import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff, PlugZap } from "lucide-react";
+import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff, PlugZap, Unplug } from "lucide-react";
 
 // ── Equipe: o que o gestor DECIDE ────────────────────────────────────────────
 // Esta tela mostrava convertidos, receita e qualificados — as perguntas do
@@ -27,12 +27,13 @@ interface Grupo { equipe: string; leads: number; esperando: number; esperaMaxMin
 interface Gargalo { tipo: string; gravidade: "alta" | "media"; titulo: string; detalhe: string; pessoa?: string }
 interface Geral { leads: number; esperando: number; semResposta: number; primeiraRespostaSec: number | null; respostaSec: number | null }
 interface Mudo { nome: string; dono: string | null; horas: number }
+interface SemToken { nome: string; dono: string | null; erro: string; horas: number }
 interface Hora { hora: number; leads: number; primeiraRespostaSec: number | null }
 interface Anterior { leads: number; primeiraRespostaSec: number | null }
 interface HorarioFraco { deHora: number; ateHora: number; leads: number; fatia: number; primeiraRespostaSec: number }
 interface Dados {
   periodLabel: string; geral: Geral | null; pessoas: Pessoa[]; equipes: Grupo[] | null;
-  gargalos: Gargalo[]; mudos?: Mudo[]; anterior?: Anterior | null; horas?: Hora[]; horarioFraco?: HorarioFraco | null;
+  gargalos: Gargalo[]; mudos?: Mudo[]; semToken?: SemToken[]; anterior?: Anterior | null; horas?: Hora[]; horarioFraco?: HorarioFraco | null;
 }
 
 const PERIODS = [{ v: "week", label: "Semana" }, { v: "month", label: "Mês" }];
@@ -91,6 +92,9 @@ export function PortalTeam({ token }: { token: string }) {
   // Quem está com o número mudo. A fila vazia dessa pessoa não é mérito — é
   // consequência de nada estar chegando, e a tela precisa dizer isso.
   const mudoDe = (email: string) => (d?.mudos ?? []).find((m) => m.dono === email) ?? null;
+  // Token recusado é pior que número mudo: aqui as mensagens CONTINUAM chegando,
+  // então a linha da pessoa fica com números normais e nada denuncia o problema.
+  const semTokenDe = (email: string) => (d?.semToken ?? []).find((t) => t.dono === email) ?? null;
   /** Caminho da Equipe para a caixa, já recortada no caso que motivou o clique. */
   /**
    * Comparação com o período anterior, em PALAVRA — a cor é reforço, não o
@@ -204,7 +208,8 @@ export function PortalTeam({ token }: { token: string }) {
                     <>
                       <span className="eq-faixa" style={{ background: cor }} />
                       <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: fundo, color: cor, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                        {g.tipo === "numero_mudo" ? <PlugZap size={15} />
+                        {g.tipo === "token_quebrado" ? <Unplug size={15} />
+                          : g.tipo === "numero_mudo" ? <PlugZap size={15} />
                           : g.tipo === "sem_resposta" ? <MessageSquareOff size={15} />
                           : g.tipo === "espera_longa" ? <Timer size={15} />
                           : <AlertTriangle size={15} />}
@@ -323,6 +328,7 @@ export function PortalTeam({ token }: { token: string }) {
                       {p.equipe && <span style={{ fontSize: 11.5, color: "var(--p-muted)", textTransform: "capitalize" }}>{p.equipe}</span>}
                       {/* Sem isto, quem está DESCONECTADO aparece como o melhor
                           do time: fila zero, nada esperando. O número explica. */}
+                      {semTokenDe(p.email) && <span className="p-pill crit">conexão sem acesso</span>}
                       {mudoDe(p.email) && <span className="p-pill crit">WhatsApp fora do ar</span>}
                       {p.semResposta > 0 && <span className="p-pill crit">{p.semResposta} sem resposta</span>}
                       {p.semResposta === 0 && p.esperaMaxMin >= 24 * 60 && <span className="p-pill warn">espera {espera(p.esperaMaxMin)}</span>}
@@ -341,7 +347,7 @@ export function PortalTeam({ token }: { token: string }) {
         )}
       </div>
 
-      {aberta && <Detalhe p={aberta} geral={geral} mudo={mudoDe(aberta.email)} rota={rota} onFechar={() => setAberta(null)} />}
+      {aberta && <Detalhe p={aberta} geral={geral} mudo={mudoDe(aberta.email)} semToken={semTokenDe(aberta.email)} rota={rota} onFechar={() => setAberta(null)} />}
     </div>
   );
 }
@@ -366,8 +372,8 @@ function Metrica({ k, v, tom, rodape, tendencia }: {
 
 // ── Detalhe de uma pessoa ────────────────────────────────────────────────────
 // Mesmo padrão das outras abas: a lista fica limpa e o detalhe abre por cima.
-function Detalhe({ p, geral, mudo, rota, onFechar }: {
-  p: Pessoa; geral: Geral | null; mudo: Mudo | null;
+function Detalhe({ p, geral, mudo, semToken, rota, onFechar }: {
+  p: Pessoa; geral: Geral | null; mudo: Mudo | null; semToken: SemToken | null;
   rota: (estado: "sem-resposta" | "aguardando", dono?: string | null) => string;
   onFechar: () => void;
 }) {
@@ -429,7 +435,15 @@ function Detalhe({ p, geral, mudo, rota, onFechar }: {
               href={p.semResposta > 0 ? rota("sem-resposta", p.email) : null} />
           </div>
 
-          {mudo ? (
+          {semToken ? (
+            // Antes de qualquer leitura: os números dela estão CERTOS (as
+            // mensagens chegaram), mas a conexão não consegue mais responder.
+            <Nota tom="crit">
+              A conexão de <b>{semToken.nome}</b> perdeu o acesso há {semToken.horas >= 48 ? `${Math.floor(semToken.horas / 24)} dias` : `${semToken.horas}h`} — {semToken.erro.toLowerCase()}.
+              As mensagens continuam chegando, por isso os números acima parecem normais.
+              O que não funciona é responder e abrir mídia. Precisa reconectar o número.
+            </Nota>
+          ) : mudo ? (
             // Antes de qualquer leitura sobre a pessoa: o canal dela está fora.
             <Nota tom="crit">
               O WhatsApp <b>{mudo.nome}</b> não recebe nada há {mudo.horas >= 48 ? `${Math.floor(mudo.horas / 24)} dias` : `${mudo.horas}h`}.

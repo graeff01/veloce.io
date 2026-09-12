@@ -423,3 +423,62 @@ test("sem a permissão de conectar, não corrige nem remove", async () => {
   });
   assert.equal(r.status, 403, "editar número é a mesma permissão de cadastrar");
 });
+
+// ── O número que recebe e não responde ───────────────────────────────────────
+// O caso que nada pegava: o token morre, as mensagens continuam chegando, o
+// detector de número mudo diz que está tudo bem — e a foto não abre nem a IA
+// responde.
+
+test("token recusado vira alerta, mesmo com o número recebendo normalmente", async () => {
+  const conn = await db.waConnection.findFirst({ where: { clientId, gestorEmail: VITORIA }, select: { id: true } });
+
+  // O número está ATIVO: recebeu agora há pouco. É o que engana.
+  await db.waConnection.update({
+    where: { id: conn!.id },
+    data: { lastEventAt: new Date(), tokenFalhouEm: new Date(Date.now() - 30 * 3_600_000), tokenErro: "Token expirado ou revogado" },
+  });
+
+  const d = await (await get(cookieV, "equipe-insights?p=month")).json();
+
+  // Número mudo NÃO pega — e é esse o ponto.
+  assert.ok(!d.gargalos.some((g: { tipo: string }) => g.tipo === "numero_mudo"),
+    "recebendo há pouco, ele não é mudo — por isso precisava de outro alerta");
+
+  const alerta = d.gargalos.find((g: { tipo: string }) => g.tipo === "token_quebrado");
+  assert.ok(alerta, "o token recusado tem que virar gargalo");
+  assert.equal(alerta.gravidade, "alta");
+  assert.match(alerta.detalhe, /continuam chegando/i, "precisa explicar por que parece que está tudo bem");
+  assert.match(alerta.detalhe, /reconectar/i, "e dizer o que fazer");
+
+  // E a tela sabe marcar a linha de QUEM ATENDE naquele número — que é outra
+  // pessoa que a gerente: `dono` é ownerEmail, `gestorEmail` é quem acompanha.
+  assert.equal(d.semToken.length, 1);
+  assert.equal(d.semToken[0].erro, "Token expirado ou revogado");
+
+  await db.waConnection.update({ where: { id: conn!.id }, data: { tokenFalhouEm: null, tokenErro: null } });
+});
+
+test("sem falha de credencial, nenhum alerta aparece", async () => {
+  // Rede de segurança: se o teste acima falhar antes de limpar, este não pode
+  // acusar o produto por sujeira do vizinho.
+  await db.waConnection.updateMany({ where: { clientId }, data: { tokenFalhouEm: null, tokenErro: null } });
+  const d = await (await get(cookieV, "equipe-insights?p=month")).json();
+  assert.ok(!d.gargalos.some((g: { tipo: string }) => g.tipo === "token_quebrado"));
+  assert.deepEqual(d.semToken, [], "número saudável não pode aparecer como quebrado");
+});
+
+test("a gerente só vê a falha dos números DELA", async () => {
+  const conn = await db.waConnection.findFirst({ where: { clientId, gestorEmail: VITORIA }, select: { id: true } });
+  await db.waConnection.update({
+    where: { id: conn!.id },
+    data: { tokenFalhouEm: new Date(), tokenErro: "Token expirado ou revogado" },
+  });
+
+  const daVitoria = await (await get(cookieV, "equipe-insights?p=month")).json();
+  assert.equal(daVitoria.semToken.length, 1);
+
+  const daMichele = await (await get(cookieM, "equipe-insights?p=month")).json();
+  assert.deepEqual(daMichele.semToken, [], "problema da colega não entra no painel dela");
+
+  await db.waConnection.update({ where: { id: conn!.id }, data: { tokenFalhouEm: null, tokenErro: null } });
+});
