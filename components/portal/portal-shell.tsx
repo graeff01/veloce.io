@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PortalNumerosSheet, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
 import { useEffect, useState } from "react";
 import { Sun, Moon, LayoutDashboard, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck, GraduationCap, Gauge, Truck, FileText } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
@@ -57,6 +58,13 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     await fetch(`/api/portal/${token}/auth/logout`, { method: "POST" }).catch(() => {});
     window.location.href = `/r/${token}`;
   }
+  // Números do cliente. Com mais de um, os atalhos de WhatsApp e Funil param de
+  // ir direto e abrem a lista de pessoas — é o que evita encher a tela com uma
+  // faixa de nomes permanente acima do conteúdo.
+  const numeros = useNumerosDoPortal(token);
+  const [folha, setFolha] = useState<{ base: string; rotulo: string } | null>(null);
+  const varios = numeros.length > 1;
+
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -64,12 +72,11 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
-  const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos", href: string, label: string, icon: React.ReactNode, badge?: number, opts?: { accent?: string; shine?: boolean }) => {
+  const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos", href: string, label: string, icon: React.ReactNode, badge?: number, opts?: { accent?: string; shine?: boolean; abreNumeros?: { base: string; rotulo: string } }) => {
     const on = active === key;
     const textColor = opts?.accent ?? (on ? "var(--p-accent)" : "var(--p-muted)");
     const activeBg = opts?.accent ? "linear-gradient(90deg, rgba(37,211,102,0.14), transparent)" : "linear-gradient(90deg, var(--p-accent-soft), transparent)";
-    return (
-      <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>
+    const conteudo = (
         <div
           className={opts?.shine ? "wa-shine" : undefined}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, marginBottom: 2, fontSize: 13, fontWeight: on || opts?.accent ? 600 : 400, cursor: "pointer", transition: "background .18s, transform .18s, color .18s", background: on ? activeBg : "transparent", color: textColor }}
@@ -79,8 +86,18 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
           {icon}<span>{label}</span>
           {badge ? <span style={{ marginLeft: "auto", background: "var(--p-accent)", color: "var(--p-on-accent)", fontSize: 11, fontWeight: 700, borderRadius: 999, minWidth: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>{badge}</span> : null}
         </div>
-      </Link>
     );
+    // Abre a lista de pessoas em vez de navegar. `abreNumeros` só chega aqui
+    // quando o cliente tem mais de um número.
+    if (opts?.abreNumeros) {
+      return (
+        <button type="button" onClick={() => setFolha(opts.abreNumeros!)}
+          style={{ display: "block", width: "100%", border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit" }}>
+          {conteudo}
+        </button>
+      );
+    }
+    return <Link href={href} prefetch style={{ textDecoration: "none", display: "block" }}>{conteudo}</Link>;
   };
 
   return (
@@ -110,12 +127,12 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
         <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", opacity: 0.7 }}>Menu</div>
           {on("painel") && item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
-          {on("conversas") && item("conversas", `/r/${token}/conversas`, "WhatsApp", <WhatsAppGlyph size={16} />, undefined, { accent: "#25D366", shine: true })}
+          {on("conversas") && item("conversas", `/r/${token}/conversas`, "WhatsApp", <WhatsAppGlyph size={16} />, undefined, { accent: "#25D366", shine: true, ...(varios ? { abreNumeros: { base: "/conversas", rotulo: "Conversas de quem?" } } : {}) })}
           {on("revisao") && item("revisao", `/r/${token}/revisao`, "Revisão", <ShieldCheck size={15} />, reviewCount)}
           {on("fechamento") && item("fechamento", `/r/${token}/fechamento`, "Fechamento", <Flame size={15} />, hotCount)}
           {on("anuncios") && item("anuncios", `/r/${token}/anuncios`, "Anúncios", <Megaphone size={15} />)}
           {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
-          {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />)}
+          {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />, undefined, varios ? { abreNumeros: { base: "/funil", rotulo: "Funil de quem?" } } : undefined)}
           {quotesEnabled && item("orcamentos", `/r/${token}/orcamentos`, "Orçamentos", <FileText size={15} />)}
           {on("aprendizado") && item("aprendizado", `/r/${token}/aprendizado`, "Aprendizado", <GraduationCap size={15} />, learnCount)}
           {on("consumo") && item("consumo", `/r/${token}/consumo`, "Consumo", <Gauge size={15} />)}
@@ -153,6 +170,13 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
 
       {/* Alerta global: som + popup + notificação em QUALQUER página (fila de revisão/fechamento) */}
       <PortalAlerts token={token} sections={sections} />
+
+      {folha && (
+        <PortalNumerosSheet
+          token={token} numeros={numeros} base={folha.base} rotulo={folha.rotulo}
+          aberto onFechar={() => setFolha(null)}
+        />
+      )}
     </>
   );
 }

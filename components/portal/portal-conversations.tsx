@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
-import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download, Smartphone } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
 
@@ -163,8 +164,18 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   // seis, três da consultoria e três da captação) e a caixa junta todos; este
   // filtro é o que deixa olhar UM deles de cada vez.
   const [conexoes, setConexoes] = useState<{ id: string; nome: string; equipe: string | null }[]>([]);
-  const [conexaoFiltro, setConexaoFiltro] = useState<string | null>(null);
-  const [conexaoModal, setConexaoModal] = useState(false);
+  // Quem só ACOMPANHA (gestor). O servidor recusa qualquer escrita dela; a tela
+  // esconde as ações pelo motivo oposto do de costume: não é segurança, é não
+  // oferecer o que vai ser recusado. A pessoa levaria a culpa por um erro que o
+  // produto criou ao mostrar o botão.
+  const [somenteLeitura, setSomenteLeitura] = useState(false);
+  // De qual número é esta caixa. Vem da URL porque quem escolhe é o ATALHO — o
+  // menu lateral no computador, a barra no celular —, não um controle dentro da
+  // lista. As abas que ficavam aqui ocupavam uma faixa acima das conversas em
+  // toda tela, o tempo todo, para uma escolha que se faz de vez em quando.
+  // Como está na URL, a escolha sobrevive a recarregar e pode virar link.
+  const searchParams = useSearchParams();
+  const conexaoFiltro = searchParams?.get("conexao") || null;
   const [mineOnly, setMineOnly] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [assigning, setAssigning] = useState(false);
@@ -259,6 +270,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setSomenteLeitura(!!d.somenteLeitura);
         setConexoes(d.conexoes ?? []);
         setHasMore(!!d.hasMore); setList(d.conversations ?? []);
       }).catch(() => {});
@@ -291,6 +303,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setSomenteLeitura(!!d.somenteLeitura);
         setConexoes(d.conexoes ?? []);
         const frescas: Row[] = d.conversations ?? [];
         const naPrimeira = new Set(frescas.map((c) => c.contactId));
@@ -1055,45 +1068,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
-        {/* NÚMEROS — só existe para quem atende por mais de um.
-            No DESKTOP são abas: os números cabem na linha e trocar é um clique.
-            No CELULAR é um seletor que abre a lista inteira, pelo mesmo motivo
-            das campanhas: com seis números, chips na horizontal ficariam
-            cortados e seria preciso arrastar para descobrir o que existe. */}
-        {conexoes.length > 1 && (
-          isMobile ? (
-            <div style={{ padding: "0 14px 10px" }}>
-              <button onClick={() => setConexaoModal(true)}
-                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${conexaoFiltro ? "var(--p-accent)" : "var(--p-border)"}`, background: conexaoFiltro ? "var(--p-accent-soft)" : "var(--p-bg)", color: conexaoFiltro ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
-                <Smartphone size={14} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {conexoes.find((c) => c.id === conexaoFiltro)?.nome ?? "Todos os números"}
-                </span>
-                <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.6 }} />
-              </button>
-            </div>
-          ) : (
-            <div role="tablist" aria-label="Número de WhatsApp"
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 9px", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}>
-              {[{ id: null as string | null, nome: "Todos", equipe: null }, ...conexoes].map((c) => {
-                const on = conexaoFiltro === c.id;
-                return (
-                  <button key={c.id ?? "todos"} role="tab" aria-selected={on}
-                    onClick={() => setConexaoFiltro(c.id)}
-                    style={{ padding: "5px 12px", border: "none", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: on ? 700 : 500, flexShrink: 0, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)" }}>
-                    {c.nome}
-                  </button>
-                );
-              })}
-            </div>
-          )
-        )}
-
         {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
             Como chip solto na linha das abas ela competia com os filtros e
             parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
             na tela, que só aparece quando há o que assumir. */}
-        {me && livresNaTela > 0 && (
+        {me && !somenteLeitura && livresNaTela > 0 && (
           <button onClick={() => void assumirLote()} disabled={assumindoLote}
             title="Assumir as conversas sem responsável que estão nesta lista"
             style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 14px", border: "none", borderTop: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-accent) 6%, transparent)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer", textAlign: "left" }}>
@@ -1125,41 +1104,6 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
-        {conexaoModal && (
-          <>
-            <div onClick={() => setConexaoModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
-            <div role="dialog" aria-label="Escolher número" className={isMobile ? "psheet" : undefined}
-              style={isMobile
-                ? { position: "fixed", zIndex: 61, left: 0, right: 0, bottom: 0, maxHeight: "76vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", borderTop: "1px solid var(--p-border)", borderRadius: "18px 18px 0 0", boxShadow: "0 -12px 40px rgba(0,0,0,.22)", overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }
-                : { position: "fixed", zIndex: 61, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(420px, calc(100vw - 32px))", maxHeight: "70vh", display: "flex", flexDirection: "column", background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.28)", overflow: "hidden" }}>
-              {isMobile && (
-                <div aria-hidden style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
-                  <span style={{ width: 38, height: 4, borderRadius: 2, background: "var(--p-border)" }} />
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
-                <Smartphone size={16} style={{ color: "var(--p-accent)" }} />
-                <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>Números</strong>
-                <button onClick={() => setConexaoModal(false)} aria-label="Fechar" style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
-                  <X size={16} />
-                </button>
-              </div>
-              <div style={{ overflowY: "auto", padding: 6 }}>
-                {[{ id: null as string | null, nome: "Todos os números", equipe: null as string | null }, ...conexoes].map((c) => {
-                  const on = conexaoFiltro === c.id;
-                  return (
-                    <button key={c.id ?? "todos"} onClick={() => { setConexaoFiltro(c.id); setConexaoModal(false); }}
-                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", border: "none", borderRadius: 10, background: on ? "var(--p-accent-soft)" : "transparent", color: on ? "var(--p-accent)" : "var(--p-text)", fontSize: 13.5, fontWeight: on ? 700 : 500, cursor: "pointer", textAlign: "left" }}>
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nome}</span>
-                      {c.equipe && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--wa-muted)", flexShrink: 0 }}>{c.equipe}</span>}
-                      {on && <Check size={15} style={{ flexShrink: 0 }} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
         {campanhaModal && (
           <>
             <div onClick={() => setCampanhaModal(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.35)" }} />
@@ -1305,21 +1249,31 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, border: "1px solid var(--p-border)", background: buscaAberta ? "var(--p-accent-soft)" : "var(--p-surface)", color: buscaAberta ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Search size={14} />
               </button>
-              <button
+              {!somenteLeitura && <button
                 onClick={() => void marcarNaoLida()}
                 title="Marcar como não lida — volta a aparecer como pendente para a equipe"
                 aria-label="Marcar como não lida"
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Eye size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>Não lida</span>}
-              </button>
-              <button
+              </button>}
+              {!somenteLeitura && <button
                 onClick={() => void arquivar(tab !== "arquivadas")}
                 disabled={arquivando}
                 title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Archive size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{tab === "arquivadas" ? "Desarquivar" : "Arquivar"}</span>}
-              </button>
-              {/* Dono do lead (atribuição): assumir / transferir */}
+              </button>}
+              {/* Dono do lead (atribuição): assumir / transferir.
+                  Para quem acompanha vira ETIQUETA, não botão: saber de quem é a
+                  conversa é metade do trabalho dela; poder trocar não é. */}
+              {somenteLeitura ? (
+                conv.assignedName ? (
+                  <span title={`Dono: ${conv.assignedName}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--p-text)", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, maxWidth: isMobile ? 130 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <UserRound size={14} style={{ flexShrink: 0 }} />{conv.assignedName}
+                  </span>
+                ) : null
+              ) : (
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
                   <button onClick={() => setOwnerMenu((o) => !o)} disabled={assigning} title={assigned ? `Dono: ${conv.assignedName}` : "Sem dono — assumir/atribuir"}
@@ -1358,8 +1312,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </>
                 )}
               </div>
-              {/* Etiquetas (tags) da conversa */}
-              <div style={{ position: "relative", flexShrink: 0 }}>
+              )}
+              {/* Etiquetas (tags) da conversa. Para quem acompanha, as etiquetas
+                  da conversa continuam VISÍVEIS logo abaixo, no cabeçalho — o
+                  que some é o menu de aplicar e tirar. */}
+              {!somenteLeitura && <div style={{ position: "relative", flexShrink: 0 }}>
                 <button onClick={() => setTagMenu((o) => !o)} title="Etiquetas"
                   style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                   <TagIcon size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{conv.tags?.length ? String(conv.tags.length) : "Etiquetas"}</span>}
@@ -1385,7 +1342,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     </div>
                   </>
                 )}
-              </div>
+              </div>}
               </div>
             </div>
 
@@ -1420,7 +1377,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {/* Etapa do funil — clicável: abre menu pra mudar manualmente (trava o automático). */}
               <div style={{ position: "relative" }}>
                 {(() => { const st = conv.funnelStage; const color = st ? (STAGE[st]?.[1] ?? "var(--wa-muted)") : "var(--wa-muted)"; const label = st ? (STAGE[st]?.[0] ?? st) : "Etapa"; return (
-                  <button onClick={() => setStageMenu((o) => !o)} disabled={stageSaving} title="Mudar a etapa do funil"
+                  <button onClick={() => somenteLeitura ? undefined : setStageMenu((o) => !o)} disabled={stageSaving || somenteLeitura}
+                    title={somenteLeitura ? "Etapa do funil" : "Mudar a etapa do funil"}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 999, border: `1px solid ${st ? `color-mix(in srgb, ${color} 45%, transparent)` : "var(--p-border)"}`, background: st ? `color-mix(in srgb, ${color} 13%, var(--p-surface))` : "var(--p-surface)", color: st ? color : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: stageSaving ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: st ? color : "var(--wa-muted)", flexShrink: 0 }} />{label} <ChevronDown size={13} style={{ flexShrink: 0, opacity: 0.7 }} />
                   </button>
@@ -1440,10 +1398,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 </>)}
               </div>
               {/* IA responder */}
-              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+              {!somenteLeitura && <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 13px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--p-accent) 45%, transparent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Sparkles size={14} /> {aiReplying ? "…" : "IA responder"}
-              </button>
+              </button>}
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
@@ -1533,7 +1491,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           {/* "A IA errou aqui" — só em resposta que a IA de fato
                               mandou, e só depois de confirmada pelo servidor.
                               Fica discreto: aparece ao passar o mouse pelo balão. */}
-                          {mine && m.aiGenerated && !m.pending && (
+                          {mine && m.aiGenerated && !m.pending && !somenteLeitura && (
                             <button
                               className="pc-corrigir"
                               onClick={() => void corrigirIA(m.id)}
@@ -1649,7 +1607,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {sendError && (
                 <div role="alert" style={{ padding: "6px 10px", marginBottom: 6, fontSize: 12, borderRadius: 8, background: "color-mix(in srgb, #d6453d 12%, transparent)", color: "#d6453d" }}>{sendError}</div>
               )}
-              {conv.windowOpen ? (
+              {somenteLeitura ? (
+                // Sumir sem dizer nada faria parecer defeito. A faixa explica o
+                // papel, e o tom é de função — não de bloqueio.
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "9px 4px", color: "var(--wa-muted)", fontSize: 12, lineHeight: 1.45 }}>
+                  <Eye size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>Seu acesso é de <b style={{ color: "var(--p-text)" }}>acompanhamento</b>: você lê as conversas da equipe, e quem atende responde pelo próprio WhatsApp.</span>
+                </div>
+              ) : conv.windowOpen ? (
                 <>
                   <input ref={imgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPickFile("image")} />
                   <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={onPickFile("document")} />

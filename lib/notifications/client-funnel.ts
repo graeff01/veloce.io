@@ -32,10 +32,19 @@ export type FunnelData = {
   comparativo: { thisLeads: number; lastLeads: number; deltaPct: number | null; thisConv: number };
 };
 
-export async function getClientFunnel(clientId: string): Promise<FunnelData | null> {
+/**
+ * Funil do cliente. Com `conexaoId`, o funil de UM número — que num cliente de
+ * um número por pessoa é o funil daquela pessoa. É o que a gestora escolhe no
+ * atalho: "funil de quem?".
+ *
+ * Um id que não seja deste cliente é ignorado, não obedecido: o parâmetro vem
+ * da URL, e cair num id alheio não pode esvaziar a tela nem mostrar outra loja.
+ */
+export async function getClientFunnel(clientId: string, conexaoId?: string | null): Promise<FunnelData | null> {
   const connIds = await idsDasConexoes(clientId);
   if (connIds.length === 0) return null;
-  const wa = { id: filtroConexoes(connIds) }; // todos os números do cliente
+  const alvo = conexaoId && connIds.includes(conexaoId) ? [conexaoId] : connIds;
+  const wa = { id: filtroConexoes(alvo) };
 
   const [convsRaw, excl] = await Promise.all([
     prisma.waConversation.findMany({
