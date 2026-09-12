@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsVisiveis, filtroConexoes } from "@/lib/wa-connections";
 import { guardPortal } from "@/lib/portal-guard";
 import { z } from "zod";
 
@@ -11,9 +12,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { token } = await params;
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
-  if (!conn) return NextResponse.json([]);
-  const tags = await prisma.waTag.findMany({ where: { connectionId: conn.id }, orderBy: { name: "asc" } });
+  // Etiquetas são do cliente, não de um número: lista as de todos e junta as
+  // repetidas pelo nome.
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
+  if (connIds.length === 0) return NextResponse.json([]);
+  const todas = await prisma.waTag.findMany({ where: { connectionId: filtroConexoes(connIds) }, orderBy: { name: "asc" } });
+  const porNome = new Map<string, (typeof todas)[number]>();
+  for (const t of todas) if (!porNome.has(t.name)) porNome.set(t.name, t);
+  const tags = [...porNome.values()];
   return NextResponse.json(tags.map((t) => ({ id: t.id, name: t.name, color: t.color })));
 }
 
@@ -24,7 +30,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const { error, portal } = await guardPortal(req, token, { section: "conversas" });
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
+  // Etiqueta nova nasce no primeiro número; a listagem acima junta todos.
+  const connIds = await idsVisiveis(portal.clientId, portal.conexoesVisiveis);
+  const conn = connIds.length ? { id: connIds[0]! } : null;
   if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
 
   const parsed = postSchema.safeParse(await req.json().catch(() => ({})));

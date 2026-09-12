@@ -13,8 +13,12 @@ import { PortalFunnel } from "@/components/portal/portal-funnel";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function FunilPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function FunilPage({ params, searchParams }: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ conexao?: string }>;
+}) {
   const { token } = await params;
+  const { conexao } = await searchParams;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -44,20 +48,28 @@ export default async function FunilPage({ params }: { params: Promise<{ token: s
     );
   }
 
-  const funnel = await getClientFunnel(portal.clientId);
+  // Funil de um número só, quando o atalho escolheu uma pessoa.
+  const funnel = await getClientFunnel(portal.clientId, conexao ?? null);
+  const numero = conexao
+    ? await prisma.waConnection.findFirst({
+        where: { id: conexao, clientId: portal.clientId },
+        select: { name: true, displayPhone: true },
+      })
+    : null;
+  const tituloFunil = numero ? `Funil · ${numero.name || numero.displayPhone}` : "Funil";
 
   return (
     <main className="fmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="funil" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"funil"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
-      <PortalMobileHeader token={token} titulo="Funil" account={shell.account} sections={shell.sections} />
+      <PortalMobileHeader token={token} titulo={tituloFunil} account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_UI_CSS} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background:var(--p-bg)}
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(prefers-reduced-motion:reduce){.heatbar{animation:none!important}}`}</style>
-      <PortalFunnel token={token} data={funnel} />
+      <PortalFunnel token={token} data={funnel} titulo={tituloFunil} />
     </main>
   );
 }

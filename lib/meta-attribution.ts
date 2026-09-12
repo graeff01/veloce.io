@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { filtroConexoes } from "@/lib/wa-connections";
 
 // ── Atribuição determinística (IDs oficiais, nunca por nome) ─────────────────
 //
@@ -106,10 +107,14 @@ export interface RealAttribution {
 // conexão WhatsApp do MESMO cliente (onde vivem os leads).
 export async function computeRealAttribution(
   connectionId: string,
-  waConnectionId: string | null,
+  /** Um número OU todos os números de WhatsApp do cliente. */
+  waConnectionId: string | string[] | null,
   start: Date,
   end: Date,
 ): Promise<RealAttribution> {
+  const waFiltro = Array.isArray(waConnectionId)
+    ? (waConnectionId.length ? filtroConexoes(waConnectionId) : null)
+    : waConnectionId;
   const [spendRows, ads, campaigns, leadRows] = await Promise.all([
     prisma.metaAdInsight.groupBy({
       by: ["adId"],
@@ -118,10 +123,10 @@ export async function computeRealAttribution(
     }),
     prisma.metaAd.findMany({ where: { connectionId }, select: { adId: true, name: true, campaignId: true } }),
     prisma.metaCampaign.findMany({ where: { connectionId }, select: { campaignId: true, name: true, status: true } }),
-    waConnectionId
+    waFiltro
       ? prisma.waLead.groupBy({
           by: ["adId"],
-          where: { connectionId: waConnectionId, adId: { not: null }, enteredAt: { gte: start, lt: end } },
+          where: { connectionId: waFiltro, adId: { not: null }, enteredAt: { gte: start, lt: end } },
           _count: { _all: true },
         })
       : Promise.resolve([] as { adId: string | null; _count: { _all: number } }[]),
@@ -294,13 +299,15 @@ export function aggregateRevenue(
 // (cliente sem Meta conectado) → tudo cai em "não atribuída", sem inventar origem.
 export async function computeRevenueAttribution(
   metaConnectionId: string | null,
-  waConnectionId: string,
+  /** Um número OU todos os números de WhatsApp do cliente. */
+  waConnectionId: string | string[],
   start: Date,
   end: Date,
 ): Promise<RevenueAttribution> {
+  const waFiltro = Array.isArray(waConnectionId) ? filtroConexoes(waConnectionId) : waConnectionId;
   // Vendas confirmadas no período (recorte por saleConfirmedAt, como o client-report).
   const sales = await prisma.waConversation.findMany({
-    where: { connectionId: waConnectionId, saleConfirmedAt: { gte: start, lt: end } },
+    where: { connectionId: waFiltro, saleConfirmedAt: { gte: start, lt: end } },
     select: { contactId: true, saleValue: true },
   });
 
@@ -315,7 +322,7 @@ export async function computeRevenueAttribution(
 
   const [leads, spendRows, ads, campaigns] = await Promise.all([
     prisma.waLead.findMany({
-      where: { connectionId: waConnectionId, contactId: { in: contactIds } },
+      where: { connectionId: waFiltro, contactId: { in: contactIds } },
       select: { contactId: true, adId: true },
     }),
     metaConnectionId

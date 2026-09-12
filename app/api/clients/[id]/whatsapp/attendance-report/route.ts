@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireClientAccess } from "@/lib/api-helpers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
@@ -31,20 +32,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
 
-  const [client, conn] = await Promise.all([
+  const [client, connIds] = await Promise.all([
     prisma.client.findUnique({ where: { id }, select: { name: true } }),
-    prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } }),
+    idsDasConexoes(id), // o diagnóstico é do cliente: todos os números entram
   ]);
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
-  if (!conn) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
+  if (connIds.length === 0) return NextResponse.json({ error: "Cliente sem WhatsApp conectado" }, { status: 404 });
+  const connectionId = filtroConexoes(connIds);
 
   const [convsRaw, adLeadsRaw, excl] = await Promise.all([
     prisma.waConversation.findMany({
-      where: { connectionId: conn.id, firstInboundAt: { gte: start, lt: end } },
+      where: { connectionId, firstInboundAt: { gte: start, lt: end } },
       select: { contactId: true, firstInboundAt: true, firstResponseSec: true, funnelStage: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
     }),
     prisma.waLead.findMany({
-      where: { connectionId: conn.id, enteredAt: { gte: start, lt: end } },
+      where: { connectionId, enteredAt: { gte: start, lt: end } },
       select: { contactId: true, name: true, waId: true, enteredAt: true },
     }),
     excludedTokens(id),

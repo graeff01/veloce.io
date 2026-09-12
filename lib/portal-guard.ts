@@ -13,7 +13,8 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { resolvePortal, effectiveSections, SESSION_SCOPED, type PortalSection } from "@/lib/notifications/client-portal";
-import { getPortalUser, isProtected, isAdminRole, bearerFromHeader } from "@/lib/portal-auth";
+import { getPortalUser, isProtected, isAdminRole, isSomenteLeitura, bearerFromHeader } from "@/lib/portal-auth";
+import { conexoesDoGestor } from "@/lib/wa-connections";
 import { consume, LIMITS, clientIp } from "@/lib/ai-agent/security/quota";
 import { emitSecurityEventAsync } from "@/lib/ai-agent/security/events";
 import { securityMode } from "@/lib/ai-agent/security/policy";
@@ -26,6 +27,17 @@ export interface PortalIdentity {
   name: string | null;
   role: string | null;
   isAdmin: boolean;
+  /** Gestor: acompanha tudo, não altera nada. Ver `isSomenteLeitura`. */
+  somenteLeitura: boolean;
+  /** Pode conectar número de WhatsApp pelo portal. Concedido um a um. */
+  podeConectar: boolean;
+  /**
+   * Números que ESTA pessoa alcança, ou `null` para todos os do cliente.
+   *
+   * Resolvido aqui, no gate, e não em cada rota: um recorte de visibilidade que
+   * cada lugar precisa lembrar de aplicar é um vazamento esperando acontecer.
+   */
+  conexoesVisiveis: string[] | null;
 }
 
 export type PortalGuardResult =
@@ -43,6 +55,23 @@ export interface PortalGuardOptions {
   cost?: "llm" | "stream" | "default";
   /** Desliga o rate limit (só para rotas de altíssima frequência já protegidas). */
   noRateLimit?: boolean;
+  /**
+   * Esta rota ESCREVE, mas um gestor pode usá-la mesmo assim.
+   *
+   * A regra é negar por padrão: rota de escrita nova nasce barrada para quem só
+   * acompanha, e liberar exige dizer aqui — em vez de lembrar de barrar. São
+   * poucas as exceções legítimas (entrar, sair, notificação do próprio aparelho,
+   * pedir uma análise), e cada uma está anotada na sua rota.
+   */
+  permiteLeitor?: boolean;
+  /**
+   * Esta rota conecta/edita NÚMERO — a escrita mais poderosa do produto.
+   *
+   * Exige a permissão `podeConectar`, concedida uma a uma. É separada do papel
+   * de propósito: um gestor comum continua sem poder escrever nada, e quem
+   * recebe esta permissão a recebe por decisão explícita, não por herança.
+   */
+  exigeConectar?: boolean;
 }
 
 const SECTION_ENFORCE = process.env.PORTAL_SECTION_ENFORCE === "1";
@@ -114,11 +143,44 @@ export async function guardPortal(
   const identity: PortalIdentity = {
     clientId: portal.clientId, accentColor: portal.accentColor, mode: portal.mode,
     email: user?.email ?? null, name: user?.name ?? null, role: user?.role ?? null,
-    isAdmin: isAdminRole(user?.role),
+    // O gestor enxerga como admin de propósito: ele acompanha a equipe inteira,
+    // e o que o protege de mexer em algo é o bloqueio de escrita logo abaixo,
+    // não a falta de visão.
+    isAdmin: isAdminRole(user?.role) || isSomenteLeitura(user?.role),
+    somenteLeitura: isSomenteLeitura(user?.role),
+    podeConectar: !!user?.podeConectar,
+    // Só quem acompanha é recortado: quem atende trabalha na caixa inteira.
+    conexoesVisiveis: isSomenteLeitura(user?.role)
+      ? await conexoesDoGestor(portal.clientId, user?.email ?? null)
+      : null,
   };
 
   // 4) Papel admin do painel do cliente.
   if (opts.requireAdmin && !identity.isAdmin) return deny(403, "Ação restrita ao administrador do painel.");
+
+  // 4.1) SOMENTE LEITURA. Vale desde já, sem modo observação: nenhum usuário
+  //      existente tem este papel, então não há o que medir — quem o receber
+  //      terá sido posto nele de propósito.
+  // 4.0) Conectar número: permissão própria, checada antes de tudo e para
+  //      QUALQUER papel — nem um admin do cliente conecta sem ela.
+  if (opts.exigeConectar && !identity.podeConectar) {
+    emitSecurityEventAsync({
+      clientId: portal.clientId, ring: "auth", control: "A-06", severity: "medium",
+      action: "blocked", labels: ["portal_conectar_numero"],
+      evidence: `${identity.email ?? "-"} tentou conectar número sem permissão`, shadow: false,
+    });
+    return deny(403, "Você não tem permissão para conectar números. Peça à agência.");
+  }
+
+  const escreve = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
+  if (identity.somenteLeitura && escreve && !opts.permiteLeitor && !opts.exigeConectar) {
+    emitSecurityEventAsync({
+      clientId: portal.clientId, ring: "auth", control: "A-05", severity: "low",
+      action: "blocked", labels: ["portal_somente_leitura", req.method],
+      evidence: `${identity.email} acompanha o painel e tentou ${req.method}`, shadow: false,
+    });
+    return deny(403, "Seu acesso é de acompanhamento: você vê as conversas, mas não responde nem altera.");
+  }
 
   // 5) Permissão por SEÇÃO. Hoje `effectiveSections` só pinta o menu — a API não
   //    validava nada (achado A-04). Entra em modo observação: só bloqueia com

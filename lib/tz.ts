@@ -53,3 +53,22 @@ export function weekdayOf(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
+
+/**
+ * Fábrica de "que hora era isto, no fuso do cliente".
+ *
+ * Existe para ser usada em LOTE. `tzParts` constrói um `Intl.DateTimeFormat` a
+ * cada chamada, e construir milhares deles para classificar milhares de
+ * conversas custa caro à toa — aqui o formatador é criado uma vez e reusado.
+ *
+ * E é o fuso do cliente, não UTC: em Brasília a diferença é de três horas, o
+ * bastante para um lead que chegou às 20h aparecer como 23h. Alguém decidiria
+ * a escala da equipe pelo horário errado.
+ */
+export function criarHoraLocal(tz: string): (instant: Date) => number {
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, hour: "2-digit" });
+  return (instant: Date) => {
+    const h = dtf.formatToParts(instant).find((p) => p.type === "hour")?.value ?? "0";
+    return h === "24" ? 0 : +h;
+  };
+}

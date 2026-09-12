@@ -115,7 +115,7 @@ model Client {
   financeEntries    FinanceEntry[]
   metaConnection    MetaConnection?
   googleConnection  GoogleConnection?
-  waConnection      WaConnection?
+  waConnections     WaConnection[]
   visits            Visit[]
   aiAgentConfig     AiAgentConfig?
   pricingConfig     PricingConfig?
@@ -871,9 +871,13 @@ model GoogleInsight {
 // ── WhatsApp Cloud API (oficial) ─────────────────────────────────────────────
 // Espelho do WhatsApp do cliente: recebe mensagens via webhook da Meta, guarda
 // conversas e identifica leads de anúncio pelo "referral" (Click-to-WhatsApp).
+// MULTI-NÚMERO: `clientId` deixou de ser único. Um cliente pode ter vários
+// WhatsApp — um por vendedora, cada um no celular dela, em coexistência (o Meta
+// ecoa pelo webhook o que sai do aparelho). `phoneNumberId` continua ÚNICO: é a
+// chave de roteamento do webhook, e dois clientes nunca podem dividir um número.
 model WaConnection {
   id            String    @id @default(cuid())
-  clientId      String    @unique
+  clientId      String
   wabaId        String    // ID da conta WhatsApp Business
   phoneNumberId String    @unique // ID do número (roteia os eventos do webhook)
   displayPhone  String?   // número exibido (ex: +55 54 ...)
@@ -881,6 +885,17 @@ model WaConnection {
   appSecret     String?   // cifrado — valida a assinatura do webhook
   name          String?
   lastEventAt   DateTime?
+
+  // Quem atende neste número (PortalAccess.email). Nulo = número da empresa,
+  // sem dona — é o caso de quem tem um número só.
+  ownerEmail    String?
+  // Time a que este número pertence (ex.: "consultoria", "captacao"). Livre de
+  // propósito: cada cliente organiza o seu, e a tela só agrupa pelo que vier.
+  equipe        String?
+  // Quem ACOMPANHA este número (PortalAccess.email de um papel `gestor`). Duas
+  // gerentes no mesmo cliente enxergavam a operação inteira; com isto cada uma
+  // vê só os números dela. Nulo = sem gerente designada.
+  gestorEmail   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -891,6 +906,10 @@ model WaConnection {
   conversations WaConversation[]
   events        WaEvent[]
   tags          WaTag[]
+
+  @@index([clientId])
+  @@index([clientId, ownerEmail])
+  @@index([clientId, gestorEmail]) // "quais números são desta gerente"
 }
 
 model WaContact {
@@ -1880,6 +1899,12 @@ model PortalAccess {
   passwordHash String?   // bcrypt; null = ainda não cadastrou senha
   role         String    @default("attendant") // "admin" (vê tudo) | "attendant" (só o dele)
   sections     String?   // CSV de abas que o atendente PODE ver (ex: "painel,funil"). null = herda tudo do cliente (usuários antigos); "" = só Conversas. Admin ignora (vê tudo).
+  // Pode CONECTAR números de WhatsApp pelo portal. Desligado por padrão, e
+  // concedido um a um pela agência: conectar um número é a escrita mais
+  // poderosa do sistema — liga um WhatsApp real a um inquilino — e envolve um
+  // token que controla a WABA inteira. Fica separado do papel de propósito:
+  // `gestor` continua significando "não altera nada".
+  podeConectar Boolean  @default(false)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
 

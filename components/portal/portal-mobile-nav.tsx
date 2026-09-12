@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Megaphone, Filter, FileText } from "lucide-react";
+import { MessageCircle, Megaphone, Filter, FileText, Users } from "lucide-react";
 import { modulosPortal, type ModuloPortal } from "@/lib/portal/modulos";
+import { NumerosPopover, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
 
 // ── Barra inferior do PWA no celular ──────────────────────────────────────────
 // FONTE ÚNICA. Antes existiam DUAS barras: uma escrita dentro de
@@ -26,6 +27,7 @@ const ICONE: Record<ModuloPortal, React.ReactNode> = {
   anuncios: <Megaphone size={20} />,
   funil: <Filter size={20} />,
   revisao: <FileText size={20} />,
+  equipe: <Users size={20} />,
 };
 
 export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
@@ -39,6 +41,9 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   // dizer o mesmo número em qualquer tela, senão vira uma segunda opinião.
   const [waiting, setWaiting] = useState(0);
   const [reviews, setReviews] = useState(0);
+  // Guarda TAMBÉM onde o atalho está: o menu nasce em cima do ícone tocado e
+  // aponta para ele, em vez de aparecer no meio da tela sem origem.
+  const [folha, setFolha] = useState<{ base: string; esq: number; largura: number } | null>(null);
   useEffect(() => {
     let alive = true;
     const tick = () => fetch(`/api/portal/${token}/badges`, { cache: "no-store" })
@@ -49,6 +54,16 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
     const id = setInterval(tick, 20000);
     return () => { alive = false; clearInterval(id); };
   }, [token]);
+
+  // Mesma regra do menu lateral: com vários números, Conversas e Funil abrem a
+  // lista de pessoas em vez de ir direto. A gestora toca no atalho e escolhe de
+  // quem quer ver — em vez de a tela carregar uma faixa de nomes permanente.
+  const numeros = useNumerosDoPortal(token);
+  const varios = numeros.length > 1;
+  const ABRE_FOLHA: Partial<Record<ModuloPortal, string>> = {
+    conversas: "/conversas",
+    funil: "/funil",
+  };
 
   const modulos = modulosPortal(sections, !!quotesEnabled);
   if (modulos.length === 0) return null;
@@ -68,14 +83,21 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
         {modulos.map((m) => {
           const on = active === m.chave;
           const n = contagem(m.chave);
+          const abre = varios ? ABRE_FOLHA[m.chave] : undefined;
+          const estilo = { flex: 1, textDecoration: "none", display: "flex", flexDirection: "column" as const, alignItems: "center" as const, gap: 3, padding: "7px 4px", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease", border: "none", font: "inherit", cursor: "pointer" };
+          const Alvo = abre
+            ? ({ children }: { children: React.ReactNode }) => (
+                <button type="button" aria-current={on ? "page" : undefined} style={estilo}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setFolha({ base: abre, esq: r.left, largura: r.width });
+                  }}>{children}</button>
+              )
+            : ({ children }: { children: React.ReactNode }) => (
+                <Link href={`/r/${token}${m.caminho}`} prefetch aria-current={on ? "page" : undefined} style={estilo}>{children}</Link>
+              );
           return (
-            <Link
-              key={m.chave}
-              href={`/r/${token}${m.caminho}`}
-              prefetch
-              aria-current={on ? "page" : undefined}
-              style={{ flex: 1, textDecoration: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 4px", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease" }}
-            >
+            <Alvo key={m.chave}>
               <span style={{ position: "relative", display: "inline-flex", opacity: on ? 1 : 0.75 }}>
                 {ICONE[m.chave]}
                 {n > 0 && (
@@ -85,10 +107,17 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
                 )}
               </span>
               <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: "-0.01em" }}>{m.rotulo}</span>
-            </Link>
+            </Alvo>
           );
         })}
       </nav>
+      {folha && (
+        <NumerosPopover
+          token={token} numeros={numeros} base={folha.base}
+          ancoraEsq={folha.esq} ancoraLargura={folha.largura}
+          onFechar={() => setFolha(null)}
+        />
+      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { filtroConexoes } from "@/lib/wa-connections";
 import { canonicalAdName } from "@/lib/wa-leads";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
@@ -73,12 +74,23 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export async function computeOverview(connectionId: string, start: Date, end: Date): Promise<Overview> {
+/**
+ * Panorama do atendimento no período.
+ *
+ * Recebe TODOS os números do cliente, não um. Um cliente pode atender por
+ * vários (a Jardim do Lago tem seis) e o painel é do cliente, não do número —
+ * olhar só o primeiro mostraria uma fração da operação sem acusar erro.
+ */
+export async function computeOverview(connectionIds: string | string[], start: Date, end: Date): Promise<Overview> {
+  const ids = typeof connectionIds === "string" ? [connectionIds] : connectionIds;
+  const connectionId = filtroConexoes(ids);
   const now = Date.now();
   const waitingCut = new Date(now - WA_THRESHOLDS.waitingAlertHours * 3_600_000);
   const abandonedCut = new Date(now - WA_THRESHOLDS.abandonedHours * 3_600_000);
 
-  const connRow = await prisma.waConnection.findUnique({ where: { id: connectionId }, select: { clientId: true } });
+  const connRow = ids.length
+    ? await prisma.waConnection.findUnique({ where: { id: ids[0] }, select: { clientId: true } })
+    : null;
   const excl = connRow ? await excludedTokens(connRow.clientId) : [];
 
   const [convsRaw, adLeadsRaw, waitingNow, alertRows, inboundMsgs] = await Promise.all([
@@ -348,10 +360,12 @@ export function fmtDuration(sec: number | null): string {
 }
 
 export async function computeAttendanceMetrics(
-  connectionId: string,
+  /** Um número OU todos os números do cliente. */
+  connectionIds: string | string[],
   start: Date,
   end: Date,
 ): Promise<AttendanceMetrics> {
+  const connectionId = typeof connectionIds === "string" ? connectionIds : filtroConexoes(connectionIds);
   const leads = await prisma.waLead.findMany({
     where: { connectionId, enteredAt: { gte: start, lt: end } },
     orderBy: { enteredAt: "desc" },

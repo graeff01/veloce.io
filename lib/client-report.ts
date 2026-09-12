@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { computeOverview } from "@/lib/wa-metrics";
 import { computeMetaAdsView } from "@/lib/meta-ads-view";
 
@@ -91,16 +92,17 @@ export async function computeClientReport(clientId: string, year: number, month:
   const prevPeriodLabel = `${MONTHS[prevDate.getMonth()]} de ${prevDate.getFullYear()}`;
   const generatedAt = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
-  if (!conn) return empty(client.name, periodLabel, prevPeriodLabel, generatedAt);
+  // O relatório é do cliente: soma todos os números por onde ele atende.
+  const connIds = await idsDasConexoes(clientId);
+  if (connIds.length === 0) return empty(client.name, periodLabel, prevPeriodLabel, generatedAt);
 
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
   const prevStart = new Date(year, month - 2, 1);
 
   const [cur, prev, ads] = await Promise.all([
-    computeOverview(conn.id, start, end),
-    computeOverview(conn.id, prevStart, start),
+    computeOverview(connIds, start, end),
+    computeOverview(connIds, prevStart, start),
     computeMetaAdsView(clientId, start, end),
   ]);
 

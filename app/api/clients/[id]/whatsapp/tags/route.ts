@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { requireAuth, requireClientAccess } from "@/lib/api-helpers";
 import { z } from "zod";
 
@@ -8,9 +9,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireClientAccess(id);
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
-  if (!conn) return NextResponse.json([]);
-  const tags = await prisma.waTag.findMany({ where: { connectionId: conn.id }, orderBy: { name: "asc" } });
+  // As etiquetas são do CLIENTE, não de um número: quem organiza a caixa pensa
+  // em "orçamento enviado", não em "orçamento enviado no número da Ana". Lista
+  // todas e junta as repetidas pelo nome.
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json([]);
+  const todas = await prisma.waTag.findMany({ where: { connectionId: filtroConexoes(connIds) }, orderBy: { name: "asc" } });
+  const porNome = new Map<string, (typeof todas)[number]>();
+  for (const t of todas) if (!porNome.has(t.name)) porNome.set(t.name, t);
+  const tags = [...porNome.values()];
   return NextResponse.json(tags.map((t) => ({ id: t.id, name: t.name, color: t.color })));
 }
 
@@ -20,8 +27,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:update");
   if (error) return error;
-  const conn = await prisma.waConnection.findUnique({ where: { clientId: id }, select: { id: true } });
-  if (!conn) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  // Etiqueta nova nasce no primeiro número do cliente — é só onde ela mora; a
+  // listagem acima junta os números, então ela aparece em toda a caixa.
+  const connIds = await idsDasConexoes(id);
+  if (connIds.length === 0) return NextResponse.json({ error: "WhatsApp não conectado" }, { status: 404 });
+  const conn = { id: connIds[0]! };
 
   const parsed = postSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });

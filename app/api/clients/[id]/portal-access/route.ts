@@ -11,9 +11,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const { error } = await requireAuth("clients:read");
   if (error) return error;
-  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, sections: true, lastLoginAt: true, passwordHash: true } });
+  const rows = await prisma.portalAccess.findMany({ where: { clientId: id }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, name: true, role: true, sections: true, lastLoginAt: true, passwordHash: true, podeConectar: true } });
   // sections: null = herda tudo do cliente; senão CSV das abas liberadas (sem Conversas, que é sempre).
-  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, sections: u.sections == null ? null : u.sections.split(",").map((s) => s.trim()).filter(Boolean), lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
+  const users = rows.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, podeConectar: u.podeConectar, sections: u.sections == null ? null : u.sections.split(",").map((s) => s.trim()).filter(Boolean), lastLoginAt: u.lastLoginAt, hasPassword: !!u.passwordHash }));
   return NextResponse.json({ users, registered: users.filter((u) => u.hasPassword).length });
 }
 
@@ -40,9 +40,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: true, sections: keys });
   }
 
-  const role = body?.role === "admin" ? "admin" : "attendant";
-  // Não deixa remover o ÚLTIMO admin do cliente.
-  if (role === "attendant") {
+  // Permissão de CONECTAR número, ligada uma a uma. Separada do papel: quem a
+  // recebe a recebe por decisão explícita, e some da auditoria se for tirada.
+  if (typeof body?.podeConectar === "boolean") {
+    await prisma.portalAccess.updateMany({
+      where: { clientId: id, email: e }, data: { podeConectar: body.podeConectar },
+    });
+    return NextResponse.json({ ok: true, podeConectar: body.podeConectar });
+  }
+
+  // TRÊS papéis, e a lista é fechada de propósito — um papel desconhecido viraria
+  // "attendant" em silêncio, que foi como `gestor` deixava de existir ao primeiro
+  // clique no painel.
+  //
+  //   admin     — configura e atende
+  //   attendant — atende
+  //   gestor    — ACOMPANHA: vê tudo o que é dele e não altera nada
+  const PAPEIS = ["admin", "attendant", "gestor"] as const;
+  const role = PAPEIS.includes(body?.role) ? (body.role as string) : "attendant";
+
+  // Não deixa remover o ÚLTIMO admin do cliente. Vale para virar atendente E
+  // para virar gestor: uma gerente não configura o painel, então promover o
+  // último admin a gerente deixaria o cliente sem ninguém que possa mexer nele.
+  if (role !== "admin") {
     const admins = await prisma.portalAccess.count({ where: { clientId: id, role: "admin" } });
     const isThisAdmin = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId: id, email: e } }, select: { role: true } });
     if (admins <= 1 && isThisAdmin?.role === "admin") return NextResponse.json({ error: "Precisa haver ao menos 1 admin." }, { status: 400 });

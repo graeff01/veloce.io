@@ -1,6 +1,6 @@
 import {
   runDailyDigest, runCriticalAlerts, runEndOfDay,
-  runTokenExpiryAlerts, runMonthlyReports, runFailureAlert,
+  runTokenExpiryAlerts, runMonthlyReports, runFailureAlert, runNumeroMudoAlerts,
 } from "@/lib/notifications/run";
 import { gateOnce, recipientsFor, claimDispatch } from "@/lib/notifications/dispatch";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +13,7 @@ import { runAdsHealth } from "@/lib/notifications/ads-health";
 import { runSlaFirstResponse } from "@/lib/notifications/sla-first-response";
 import { runClientBotJobs, runClientBotHealthAudit } from "@/lib/notifications/client-bot-jobs";
 import { runFunnelAging } from "@/lib/notifications/funnel-aging";
+import { runAlertasGestor } from "@/lib/notifications/gestor-alertas";
 import { lastTickAt, recordTick } from "@/lib/notifications/heartbeat";
 
 // Núcleo de decisão "o que enviar agora", compartilhado pelo agendador interno
@@ -87,6 +88,16 @@ export async function runDueJobs(): Promise<void> {
   // Bot do CLIENTE: SLA escalonado + lead esfriando + resumo do dia (cada um se
   // auto-agenda por hora/dia; respeita flags e quiet hours de cada cliente).
   await safe("client-bot", runClientBotJobs);
+
+  // Número de WhatsApp mudo: 1x/dia de manhã, para o time interno. Um número
+  // caído é trabalho nosso, e um aviso por dia é o ritmo de quem reconecta.
+  if (morning && (await gateOnce(`gate:wa-mudo:${day}`))) await safe("wa-mudo", runNumeroMudoAlerts);
+
+  // Quem ACOMPANHA a equipe: lead sem resposta, espera de mais de um dia, número
+  // fora do ar. A cada ~4h em horário comercial — a própria função só manda o
+  // que é grave e no máximo um aviso por assunto por dia, então este gate aqui
+  // é só para não recalcular a tela de Equipe a cada cinco minutos.
+  if (businessHours && (await gateOnce(`gate:gestor:${day}:${bucket4h}`))) await safe("gestor", runAlertasGestor);
 
   // Saúde dos bots de cliente: 1x/dia de manhã, avisa o time se algum quebrou.
   if (morning && (await gateOnce(`gate:clientbot-health:${day}`))) await safe("clientbot-health", runClientBotHealthAudit);

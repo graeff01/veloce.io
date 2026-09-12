@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { computeOverview } from "@/lib/wa-metrics";
 
 // ── Relatório Executivo Mensal ───────────────────────────────────────────────
@@ -83,7 +84,8 @@ export async function computeExecutiveReport(
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   if (!client) return null;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const connIds = await idsDasConexoes(clientId);
+  const conn = connIds.length ? { id: filtroConexoes(connIds) } : null;
 
   const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   const periodLabel = `${MONTHS[month - 1]} de ${year}`;
@@ -102,8 +104,8 @@ export async function computeExecutiveReport(
   const prevEnd = start;
 
   const [cur, prev, hourRows] = await Promise.all([
-    computeOverview(conn.id, start, end),
-    computeOverview(conn.id, prevStart, prevEnd),
+    computeOverview(connIds, start, end),
+    computeOverview(connIds, prevStart, prevEnd),
     prisma.waConversation.findMany({
       where: { connectionId: conn.id, firstInboundAt: { gte: start, lt: end } },
       select: { firstInboundAt: true },

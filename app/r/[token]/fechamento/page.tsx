@@ -40,7 +40,7 @@ export default async function FechamentoPage({ params }: { params: Promise<{ tok
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="fechamento" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"revisao"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
-      <PortalMobileHeader token={token} titulo="Fechamento" account={shell.account} sections={shell.sections} />
+      <PortalMobileHeader token={token} titulo="Fechamento" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalOrcamentosAbas token={token} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);

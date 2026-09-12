@@ -183,15 +183,29 @@ export async function getPortalSessionEmail(clientId: string): Promise<string | 
 }
 
 // Usuário logado (e-mail + nome + papel) para ESTE cliente, a partir do cookie.
-export async function getPortalUser(clientId: string): Promise<{ email: string; name: string | null; role: string } | null> {
+export async function getPortalUser(clientId: string): Promise<{ email: string; name: string | null; role: string; podeConectar: boolean } | null> {
   const email = await getPortalSessionEmail(clientId);
   if (!email) return null;
-  const u = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email } }, select: { email: true, name: true, role: true } });
-  if (!u) return { email, name: null, role: "attendant" };
-  return { email: u.email, name: u.name, role: u.role };
+  const u = await prisma.portalAccess.findUnique({ where: { clientId_email: { clientId, email } }, select: { email: true, name: true, role: true, podeConectar: true } });
+  // Sessão válida sem linha de acesso: o mais restrito, e sem poder nenhum.
+  if (!u) return { email, name: null, role: "attendant", podeConectar: false };
+  return { email: u.email, name: u.name, role: u.role, podeConectar: u.podeConectar };
 }
 
 export const isAdminRole = (role: string | null | undefined) => role === "admin";
+
+/**
+ * GESTOR: vê tudo, não muda nada.
+ *
+ * É o papel de quem acompanha a operação sem fazer parte dela — as duas gerentes
+ * da Jardim do Lago, que monitoram seis pessoas atendendo pelo próprio celular.
+ * Deixá-las como "admin" daria a elas assumir lead, responder e mover funil; um
+ * toque errado no telefone e a conversa de alguém muda de dono.
+ *
+ * A restrição é do SERVIDOR (`guardPortal`), não da tela: esconder botão não é
+ * permissão. A tela esconde porque oferecer o que vai ser recusado é cruel.
+ */
+export const isSomenteLeitura = (role: string | null | undefined) => role === "gestor";
 
 // Encerra a sessão (logout): apaga a linha da sessão ATUAL — cookie no web, Bearer no app.
 export async function destroySession(): Promise<void> {

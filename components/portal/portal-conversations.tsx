@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Search, Eye, Sparkles, Send, ArrowLeft, Megaphone, Paperclip, Camera, Mic, X, UserRound, Check, Sun, Moon, ChevronDown, FileText, Tag as TagIcon, LogOut, Archive, AlertTriangle, Package, Zap, Download } from "lucide-react";
 import { MediaContent } from "@/components/whatsapp/wa-media";
 import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/portal/espera";
@@ -9,7 +10,7 @@ import { corDaUrgencia, esperandoDesde, rotuloEspera, urgenciaDe } from "@/lib/p
 interface Row { contactId: string; name: string; waId: string; lastText: string | null; lastType: string | null; lastDirection: string | null; lastMessageAt: string | null;
   // Já vinham na resposta de /conversations e o portal não usava: são o tempo de
   // espera e o estado que a EQUIPE compartilha (o app já lê os dois).
-  lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
+  conexaoId?: string | null; conexaoNome?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; lida?: boolean; lidaPor?: string | null; arquivada?: boolean; fromAd: boolean; adStrong?: boolean; adTitle: string | null; adModel: string | null; funnelStage: string | null; assignedEmail?: string | null; assignedName?: string | null; tags?: { id: string; name: string; color: string }[] }
 interface Attendant { email: string; name: string }
 
 // Rótulo do anúncio de origem (chave de agrupamento). Prioriza o modelo detectado.
@@ -159,6 +160,32 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [me, setMe] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [attendants, setAttendants] = useState<Attendant[]>([]);
+  // Números do cliente. Um cliente pode atender por vários (a Jardim do Lago tem
+  // seis, três da consultoria e três da captação) e a caixa junta todos; este
+  // filtro é o que deixa olhar UM deles de cada vez.
+  const [conexoes, setConexoes] = useState<{ id: string; nome: string; equipe: string | null }[]>([]);
+  // Quem só ACOMPANHA (gestor). O servidor recusa qualquer escrita dela; a tela
+  // esconde as ações pelo motivo oposto do de costume: não é segurança, é não
+  // oferecer o que vai ser recusado. A pessoa levaria a culpa por um erro que o
+  // produto criou ao mostrar o botão.
+  const [somenteLeitura, setSomenteLeitura] = useState(false);
+  // De qual número é esta caixa. Vem da URL porque quem escolhe é o ATALHO — o
+  // menu lateral no computador, a barra no celular —, não um controle dentro da
+  // lista. As abas que ficavam aqui ocupavam uma faixa acima das conversas em
+  // toda tela, o tempo todo, para uma escolha que se faz de vez em quando.
+  // Como está na URL, a escolha sobrevive a recarregar e pode virar link.
+  const searchParams = useSearchParams();
+  const conexaoFiltro = searchParams?.get("conexao") || null;
+  // Recorte vindo da tela de Equipe: "os 12 que nunca responderam", "a fila da
+  // Ana". Sem isto, o diagnóstico apontava o problema e parava ali — ela via o
+  // número e não tinha como chegar nas conversas.
+  const estadoFiltro = searchParams?.get("estado") || null;
+  const donoFiltro = searchParams?.get("dono") || null;
+  /** Acrescenta o recorte na consulta. Num lugar só: três cópias divergiriam. */
+  const recorte = (sp: URLSearchParams) => {
+    if (estadoFiltro) sp.set("estado", estadoFiltro);
+    if (donoFiltro) sp.set("dono", donoFiltro);
+  };
   const [mineOnly, setMineOnly] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [assigning, setAssigning] = useState(false);
@@ -249,14 +276,18 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       // Arquivadas vivem FORA da caixa: o servidor as exclui por padrão e só as
       // devolve quando pedidas. Sem isto, arquivar não tiraria nada da frente.
       if (tab === "arquivadas") sp.set("arquivadas", "1");
+      if (conexaoFiltro) sp.set("conexao", conexaoFiltro); // filtro por número, no SERVIDOR
+      recorte(sp);
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!alive || !d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setSomenteLeitura(!!d.somenteLeitura);
+        setConexoes(d.conexoes ?? []);
         setHasMore(!!d.hasMore); setList(d.conversations ?? []);
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
-  }, [token, q, mineOnly, tab]);
+  }, [token, q, mineOnly, tab, conexaoFiltro, estadoFiltro, donoFiltro]);
 
   // Auto-atualização: quem manda mensagem SOBE PARA O TOPO, como no WhatsApp.
   //
@@ -279,9 +310,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       const sp = new URLSearchParams({ limit: String(PAGE), offset: "0" });
       if (mineOnly) sp.set("owner", "me");
       if (tab === "arquivadas") sp.set("arquivadas", "1");
+      if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
+      recorte(sp);
       fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
+        setSomenteLeitura(!!d.somenteLeitura);
+        setConexoes(d.conexoes ?? []);
         const frescas: Row[] = d.conversations ?? [];
         const naPrimeira = new Set(frescas.map((c) => c.contactId));
         setList((antiga) => {
@@ -295,7 +330,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };
-  }, [token, mineOnly, tab]);
+  }, [token, mineOnly, tab, conexaoFiltro, estadoFiltro, donoFiltro]);
 
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
@@ -305,6 +340,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (q.trim()) sp.set("q", q.trim());
     if (mineOnly) sp.set("owner", "me");
     if (tab === "arquivadas") sp.set("arquivadas", "1");
+    if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
+    recorte(sp);
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
       setLoadingMore(false);
@@ -1044,11 +1081,35 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
           </div>
         )}
 
+        {/* RECORTE ATIVO — a caixa está mostrando um pedaço, e precisa dizer.
+            Sem esta faixa, a gestora chega da tela de Equipe, vê 12 conversas
+            onde havia 42 e conclui que perdeu conversas. E a saída fica aqui,
+            porque tirar o filtro pela URL não é uma opção que exista para ela. */}
+        {(estadoFiltro || donoFiltro) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: isMobile ? "0 14px 10px" : "0 12px 9px" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0, padding: "7px 12px", borderRadius: 10, background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 600 }}>
+              <Search size={13} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {estadoFiltro === "sem-resposta" ? "Sem nenhuma resposta"
+                  : estadoFiltro === "aguardando" ? "Aguardando resposta"
+                  : "Filtrado"}
+                {donoFiltro && ` · ${attendants.find((a) => a.email === donoFiltro)?.name
+                  ?? conexoes.find((c) => c.id === conexaoFiltro)?.nome
+                  ?? donoFiltro.split("@")[0]}`}
+              </span>
+            </span>
+            <Link href={`/r/${token}/conversas`} prefetch
+              style={{ flexShrink: 0, padding: "7px 12px", borderRadius: 10, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+              Ver todas
+            </Link>
+          </div>
+        )}
+
         {/* AÇÃO DE LOTE — faixa contextual, largura inteira, logo acima da lista.
             Como chip solto na linha das abas ela competia com os filtros e
             parecia mais um deles; aqui ela é o que é: uma ação sobre o que está
             na tela, que só aparece quando há o que assumir. */}
-        {me && livresNaTela > 0 && (
+        {me && !somenteLeitura && livresNaTela > 0 && (
           <button onClick={() => void assumirLote()} disabled={assumindoLote}
             title="Assumir as conversas sem responsável que estão nesta lista"
             style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "8px 14px", border: "none", borderTop: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-accent) 6%, transparent)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: assumindoLote ? "wait" : "pointer", textAlign: "left" }}>
@@ -1120,7 +1181,13 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         {/* rows */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
-            : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>{q ? "Nada encontrado." : tab === "ads" ? "Nenhum lead de anúncio." : "Nenhuma conversa."}</p>
+            : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)", lineHeight: 1.5 }}>{
+                q ? "Nada encontrado."
+                : estadoFiltro === "sem-resposta" ? "Nenhuma conversa sem resposta aqui — todas já foram atendidas."
+                : estadoFiltro === "aguardando" ? "Ninguém aguardando resposta neste recorte."
+                : donoFiltro ? "Nenhuma conversa desta pessoa."
+                : tab === "ads" ? "Nenhum lead de anúncio."
+                : "Nenhuma conversa."}</p>
             : items.map((c) => {
               const on = sel === c.contactId;
               // DOIS SINAIS DIFERENTES, e confundi-los seria um erro de negócio:
@@ -1156,6 +1223,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         : <span title="Menção ao anúncio (detectado pelo texto, sem clique)" style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 14%, transparent)", padding: "1px 6px", borderRadius: 20, letterSpacing: 0.3 }}>menção</span>
                       )}
                       <StageBadge stage={c.funnelStage} />
+                      {/* DE QUAL NÚMERO veio. Só aparece quando há mais de um e
+                          nenhum filtro está ativo — com filtro, repetir o número
+                          em toda linha seria eco do que a aba já diz. */}
+                      {conexoes.length > 1 && !conexaoFiltro && c.conexaoNome && (
+                        <span title={`Chegou no número ${c.conexaoNome}`} style={{ fontSize: 9, fontWeight: 700, color: "var(--wa-muted)", background: "color-mix(in srgb, var(--wa-muted) 12%, transparent)", padding: "1px 6px", borderRadius: 20, whiteSpace: "nowrap", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>{c.conexaoNome}</span>
+                      )}
                       {(c.tags ?? []).map((t) => (
                         <span key={t.id} title={t.name} style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: t.color, padding: "1px 6px", borderRadius: 20, letterSpacing: 0.2, whiteSpace: "nowrap", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>{t.name}</span>
                       ))}
@@ -1219,21 +1292,31 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 999, border: "1px solid var(--p-border)", background: buscaAberta ? "var(--p-accent-soft)" : "var(--p-surface)", color: buscaAberta ? "var(--p-accent)" : "var(--wa-muted)", cursor: "pointer", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Search size={14} />
               </button>
-              <button
+              {!somenteLeitura && <button
                 onClick={() => void marcarNaoLida()}
                 title="Marcar como não lida — volta a aparecer como pendente para a equipe"
                 aria-label="Marcar como não lida"
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Eye size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>Não lida</span>}
-              </button>
-              <button
+              </button>}
+              {!somenteLeitura && <button
                 onClick={() => void arquivar(tab !== "arquivadas")}
                 disabled={arquivando}
                 title={tab === "arquivadas" ? "Devolver para a caixa" : "Arquivar — sai da caixa para toda a equipe, sem apagar nada"}
                 style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: arquivando ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Archive size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{tab === "arquivadas" ? "Desarquivar" : "Arquivar"}</span>}
-              </button>
-              {/* Dono do lead (atribuição): assumir / transferir */}
+              </button>}
+              {/* Dono do lead (atribuição): assumir / transferir.
+                  Para quem acompanha vira ETIQUETA, não botão: saber de quem é a
+                  conversa é metade do trabalho dela; poder trocar não é. */}
+              {somenteLeitura ? (
+                conv.assignedName ? (
+                  <span title={`Dono: ${conv.assignedName}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: "var(--p-text)", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, maxWidth: isMobile ? 130 : 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <UserRound size={14} style={{ flexShrink: 0 }} />{conv.assignedName}
+                  </span>
+                ) : null
+              ) : (
               <div style={{ position: "relative", flexShrink: 0 }}>
                 {(() => { const mineOwner = !!me && conv.assignedEmail === me; const assigned = !!conv.assignedEmail; return (
                   <button onClick={() => setOwnerMenu((o) => !o)} disabled={assigning} title={assigned ? `Dono: ${conv.assignedName}` : "Sem dono — assumir/atribuir"}
@@ -1272,8 +1355,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                   </>
                 )}
               </div>
-              {/* Etiquetas (tags) da conversa */}
-              <div style={{ position: "relative", flexShrink: 0 }}>
+              )}
+              {/* Etiquetas (tags) da conversa. Para quem acompanha, as etiquetas
+                  da conversa continuam VISÍVEIS logo abaixo, no cabeçalho — o
+                  que some é o menu de aplicar e tirar. */}
+              {!somenteLeitura && <div style={{ position: "relative", flexShrink: 0 }}>
                 <button onClick={() => setTagMenu((o) => !o)} title="Etiquetas"
                   style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: isMobile ? "0 10px" : "0 12px", borderRadius: 999, border: "1px solid var(--p-border)", background: "var(--p-surface)", color: (conv.tags?.length ? "var(--p-text)" : "var(--wa-muted)"), fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                   <TagIcon size={14} style={{ flexShrink: 0 }} />{!isMobile && <span>{conv.tags?.length ? String(conv.tags.length) : "Etiquetas"}</span>}
@@ -1299,7 +1385,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                     </div>
                   </>
                 )}
-              </div>
+              </div>}
               </div>
             </div>
 
@@ -1334,7 +1420,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {/* Etapa do funil — clicável: abre menu pra mudar manualmente (trava o automático). */}
               <div style={{ position: "relative" }}>
                 {(() => { const st = conv.funnelStage; const color = st ? (STAGE[st]?.[1] ?? "var(--wa-muted)") : "var(--wa-muted)"; const label = st ? (STAGE[st]?.[0] ?? st) : "Etapa"; return (
-                  <button onClick={() => setStageMenu((o) => !o)} disabled={stageSaving} title="Mudar a etapa do funil"
+                  <button onClick={() => somenteLeitura ? undefined : setStageMenu((o) => !o)} disabled={stageSaving || somenteLeitura}
+                    title={somenteLeitura ? "Etapa do funil" : "Mudar a etapa do funil"}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 999, border: `1px solid ${st ? `color-mix(in srgb, ${color} 45%, transparent)` : "var(--p-border)"}`, background: st ? `color-mix(in srgb, ${color} 13%, var(--p-surface))` : "var(--p-surface)", color: st ? color : "var(--wa-muted)", fontSize: 12.5, fontWeight: 700, cursor: stageSaving ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: st ? color : "var(--wa-muted)", flexShrink: 0 }} />{label} <ChevronDown size={13} style={{ flexShrink: 0, opacity: 0.7 }} />
                   </button>
@@ -1354,10 +1441,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 </>)}
               </div>
               {/* IA responder */}
-              <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
+              {!somenteLeitura && <button onClick={aiReply} disabled={aiReplying} title="Fazer a IA responder o lead agora (mesmo em horário comercial)"
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 13px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--p-accent) 45%, transparent)", background: "var(--p-accent-soft)", color: "var(--p-accent)", fontSize: 12.5, fontWeight: 700, cursor: aiReplying ? "wait" : "pointer", opacity: aiReplying ? 0.6 : 1, whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                 <Sparkles size={14} /> {aiReplying ? "…" : "IA responder"}
-              </button>
+              </button>}
             </div>
 
             {/* Por que o lead está nesta etapa — a frase que a IA usou (transparência p/ o cliente). */}
@@ -1447,7 +1534,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           {/* "A IA errou aqui" — só em resposta que a IA de fato
                               mandou, e só depois de confirmada pelo servidor.
                               Fica discreto: aparece ao passar o mouse pelo balão. */}
-                          {mine && m.aiGenerated && !m.pending && (
+                          {mine && m.aiGenerated && !m.pending && !somenteLeitura && (
                             <button
                               className="pc-corrigir"
                               onClick={() => void corrigirIA(m.id)}
@@ -1563,7 +1650,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               {sendError && (
                 <div role="alert" style={{ padding: "6px 10px", marginBottom: 6, fontSize: 12, borderRadius: 8, background: "color-mix(in srgb, #d6453d 12%, transparent)", color: "#d6453d" }}>{sendError}</div>
               )}
-              {conv.windowOpen ? (
+              {somenteLeitura ? (
+                // Sumir sem dizer nada faria parecer defeito. A faixa explica o
+                // papel, e o tom é de função — não de bloqueio.
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "9px 4px", color: "var(--wa-muted)", fontSize: 12, lineHeight: 1.45 }}>
+                  <Eye size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>Seu acesso é de <b style={{ color: "var(--p-text)" }}>acompanhamento</b>: você lê as conversas da equipe, e quem atende responde pelo próprio WhatsApp.</span>
+                </div>
+              ) : conv.windowOpen ? (
                 <>
                   <input ref={imgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPickFile("image")} />
                   <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={onPickFile("document")} />

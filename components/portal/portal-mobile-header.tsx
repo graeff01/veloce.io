@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MoreHorizontal, UserRound, X, LogOut } from "lucide-react";
-import { ferramentasDoPortal } from "@/lib/portal/modulos";
+import { ferramentasDoPortal, modulosPortal } from "@/lib/portal/modulos";
 
 // ── Cabeçalho padrão do PWA no celular ────────────────────────────────────────
 // Réplica do que definimos no aplicativo (apps/mobile/src/ui/pilha.tsx):
@@ -19,12 +19,14 @@ import { ferramentasDoPortal } from "@/lib/portal/modulos";
 //
 // Some a partir de 1024px, onde o menu lateral assume a navegação e a identidade.
 
-export function PortalMobileHeader({ token, titulo, account, sections, comPerfil = false }: {
+export function PortalMobileHeader({ token, titulo, account, sections, quotesEnabled, comPerfil = false }: {
   token: string;
   titulo: string;
   account?: { email: string; name: string | null; role: string } | null;
   /** Seções do usuário — decidem o que a folha "Mais" lista em Ferramentas. */
   sections?: string[] | null;
+  /** Precisa casar com o da barra: é o que decide se Orçamentos ocupa um lugar. */
+  quotesEnabled?: boolean;
   /** Perfil à direita. No aplicativo, só a lista de conversas tem. */
   comPerfil?: boolean;
 }) {
@@ -61,7 +63,10 @@ export function PortalMobileHeader({ token, titulo, account, sections, comPerfil
     window.location.href = `/r/${token}`;
   }
 
-  const ferramentas = ferramentasDoPortal(sections);
+  // O que a barra já leva não é "trabalho de mesa" — dizer que está só no portal
+  // web sobre algo que está a um toque daqui seria mentira na cara da pessoa.
+  const naBarra = modulosPortal(sections, !!quotesEnabled).map((m) => m.chave);
+  const ferramentas = ferramentasDoPortal(sections, naBarra);
 
   const botao = {
     width: 34, height: 34, borderRadius: 17, display: "inline-flex" as const,

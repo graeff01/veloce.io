@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { recipientsFor, claimDispatch } from "@/lib/notifications/dispatch";
 import { esc, APP_URL } from "@/lib/notifications/digest";
 import { nowParts } from "@/lib/tz";
@@ -65,7 +66,9 @@ export async function runAdsHealth(): Promise<{ sent: number; alerts: number }> 
     });
     if (activeAds.length > 0) {
       const adIds = activeAds.map((a) => a.adId);
-      const wa = await prisma.waConnection.findUnique({ where: { clientId: c.clientId }, select: { id: true } });
+      // Leads de anúncio caem em qualquer número do cliente.
+      const waIds = await idsDasConexoes(c.clientId);
+      const wa = waIds.length ? { id: filtroConexoes(waIds) } : null;
       const [destSets, spendRows, leadRows] = await Promise.all([
         prisma.metaAdSet.findMany({ where: { connectionId: c.id, adsetId: { in: [...new Set(activeAds.map((a) => a.adsetId))] } }, select: { adsetId: true, destinationType: true } }),
         prisma.metaAdInsight.groupBy({ by: ["adId"], where: { connectionId: c.id, adId: { in: adIds }, date: { gte: sevenDaysAgo } }, _sum: { spend: true } }),

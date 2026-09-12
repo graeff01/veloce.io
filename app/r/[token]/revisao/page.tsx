@@ -39,7 +39,7 @@ export default async function RevisaoPage({ params }: { params: Promise<{ token:
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="revisao" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"revisao"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
-      <PortalMobileHeader token={token} titulo="Orçamentos" account={shell.account} sections={shell.sections} />
+      <PortalMobileHeader token={token} titulo="Orçamentos" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalOrcamentosAbas token={token} sections={shell.sections} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);

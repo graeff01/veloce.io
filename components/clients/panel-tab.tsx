@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRound } from "lucide-react";
+import { Copy, Check, RefreshCw, Trash2, Loader2, Lock, Users, LayoutList, KeyRound, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Portal { link: string; accentColor: string | null; mode: string; active: boolean; requireLogin: boolean; maxUsers: number; sections: string[]; logoUrl: string | null }
@@ -20,7 +20,7 @@ const SECTIONS: { key: string; label: string; hint: string }[] = [
   { key: "ia", label: "IA", hint: "configuração/insights da IA" },
   { key: "funil", label: "Funil", hint: "etapas dos leads" },
 ];
-interface PortalUser { id: string; email: string; name: string | null; role: string; sections: string[] | null; lastLoginAt: string | null; hasPassword: boolean }
+interface PortalUser { id: string; email: string; name: string | null; role: string; sections: string[] | null; lastLoginAt: string | null; hasPassword: boolean; podeConectar?: boolean }
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -30,6 +30,14 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
     </div>
   );
 }
+
+// Os papéis do portal do cliente, com o que cada um PODE fazer — é a diferença
+// que importa na hora de escolher, e não cabia num rótulo de uma palavra.
+const PAPEIS = [
+  { v: "admin", rotulo: "Admin", ajuda: "Configura o painel e atende os leads." },
+  { v: "attendant", rotulo: "Atendente", ajuda: "Atende os leads." },
+  { v: "gestor", rotulo: "Gerente", ajuda: "Só ACOMPANHA: vê conversas e métricas, e não responde nem assume lead. Designe os números dela na aba WhatsApp › Números." },
+] as const;
 
 export function PanelTab({ clientId }: { clientId: string }) {
   const [portal, setPortal] = useState<Portal | null>(null);
@@ -56,6 +64,15 @@ export function PanelTab({ clientId }: { clientId: string }) {
     await fetch(`/api/clients/${clientId}/portal-access?email=${encodeURIComponent(email)}`, { method: "DELETE" });
     loadUsers();
   }
+  async function setPodeConectar(email: string, podeConectar: boolean) {
+    const r = await fetch(`/api/clients/${clientId}/portal-access`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, podeConectar }),
+    }).catch(() => null);
+    if (!r?.ok) alert("Não foi possível alterar a permissão agora.");
+    await loadUsers(); // recarrega SEMPRE: falhando, a tela volta ao que está no banco
+  }
+
   async function setRole(email: string, role: string) {
     const r = await fetch(`/api/clients/${clientId}/portal-access`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "Não foi possível mudar o papel."); }
@@ -225,16 +242,34 @@ export function PanelTab({ clientId }: { clientId: string }) {
                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`, background: open ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: open ? "var(--accent)" : "var(--text-muted)" }}>
                       <LayoutList size={11} /> Abas {grantable.length ? `${grantedCount}/${grantable.length}` : ""}
                     </button>
-                    <button onClick={() => setRole(u.email, u.role === "admin" ? "attendant" : "admin")} title="Clique para alternar admin/atendente"
-                      style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
-                      {u.role === "admin" ? "Admin" : "Atendente"}
-                    </button>
+                    {/* TRÊS papéis. Virou lista porque `gestor` não cabia num
+                        alternador de dois estados — e sem ele no painel o papel
+                        existia no servidor e ninguém conseguia usar. */}
+                    <select value={PAPEIS.some((p) => p.v === u.role) ? u.role : "attendant"}
+                      onChange={(e) => setRole(u.email, e.target.value)}
+                      title={PAPEIS.find((p) => p.v === u.role)?.ajuda}
+                      style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, padding: "3px 8px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.role === "admin" ? "var(--accent)" : u.role === "gestor" ? "var(--border-strong)" : "var(--border)"}`, background: u.role === "admin" ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent", color: u.role === "admin" ? "var(--accent)" : "var(--text-muted)" }}>
+                      {PAPEIS.map((p) => <option key={p.v} value={p.v}>{p.rotulo}</option>)}
+                    </select>
+                    {/* Conectar número: só faz sentido para quem ACOMPANHA — é
+                        ela que cadastra o WhatsApp dos funcionários. O botão
+                        some para os demais em vez de aparecer desligado, para
+                        não sugerir um caminho que não existe para eles. */}
+                    {u.role === "gestor" && (
+                      <button onClick={() => setPodeConectar(u.email, !u.podeConectar)}
+                        title={u.podeConectar
+                          ? "Pode cadastrar o WhatsApp dos funcionários pelo painel dela. Clique para tirar."
+                          : "Deixar que ela cadastre o WhatsApp dos funcionários pelo painel dela."}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer", border: `1px solid ${u.podeConectar ? "var(--accent)" : "var(--border)"}`, background: u.podeConectar ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "transparent", color: u.podeConectar ? "var(--accent)" : "var(--text-muted)" }}>
+                        <Smartphone size={11} /> {u.podeConectar ? "Conecta números" : "Não conecta"}
+                      </button>
+                    )}
                     {u.hasPassword && <button onClick={() => resetPassword(u.email)} title="Resetar senha" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}><KeyRound size={12} /></button>}
                     <button onClick={() => removeUser(u.email)} title="Remover acesso" style={{ display: "inline-flex", padding: 5, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--red)", cursor: "pointer" }}><Trash2 size={12} /></button>
                   </div>
                   {open && (
                     <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "color-mix(in srgb, var(--accent) 3%, transparent)" }}>
-                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada.{u.role === "admin" ? " Admin, por padrão, vê tudo — desmarque para restringir." : ""}</p>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>Marque as abas que <b>{u.name || u.email.split("@")[0]}</b> pode ver. Conversas é sempre liberada.{u.role === "admin" || u.role === "gestor" ? ` ${u.role === "admin" ? "Admin" : "Gerente"}, por padrão, vê tudo — desmarque para restringir.` : ""}</p>
                       {grantable.length === 0
                         ? <p style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Este cliente só tem Conversas ligada — ligue mais abas acima para poder liberá-las por atendente.</p>
                         : (

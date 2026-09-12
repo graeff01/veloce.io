@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardPortal } from "@/lib/portal-guard";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { sendManualMessage } from "@/lib/ai-agent/respond";
@@ -13,11 +14,13 @@ export const runtime = "nodejs";
 // login+senha depois). Persiste com aiGenerated=false → aciona o takeover (silencia o bot).
 export async function POST(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-
-  const email = await getPortalSessionEmail(portal.clientId);
-  if (await isProtected(portal.clientId) && !email) return NextResponse.json({ error: "Faça login para responder o lead." }, { status: 401 });
+  // Passa pelo gate central. Antes fazia a própria checagem de sessão, o que
+  // bastava para AUTENTICAR mas deixava de fora as regras que vivem no gate —
+  // entre elas a de quem só acompanha, que daqui mandaria mensagem de verdade
+  // para o WhatsApp de um lead.
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
+  const email = portal.email;
 
   const body = await req.json().catch(() => ({}));
 

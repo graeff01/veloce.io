@@ -71,15 +71,24 @@ export async function sendClientAlert(clientId: string, kind: AlertKind, text: s
   });
   if (recipients.length === 0) return 0;
 
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true, phoneNumberId: true, accessToken: true } });
+  // Qualquer número do cliente serve para falar com o dono — o que decide é ter
+  // a janela de 24h aberta NAQUELE número. Com vários, procura o primeiro que
+  // esteja aberto em vez de desistir porque o primeiro da lista está fechado.
+  const conns = await prisma.waConnection.findMany({
+    where: { clientId }, orderBy: { createdAt: "asc" },
+    select: { id: true, phoneNumberId: true, accessToken: true },
+  });
 
   let sent = 0;
   for (const r of recipients) {
     const waId = r.waId!;
+    let aberta: (typeof conns)[number] | null = null;
+    for (const c of conns) {
+      if (await isWindowOpen(c.id, waId)) { aberta = c; break; }
+    }
     // Envia só se a janela estiver aberta E houver linha; senão RETÉM (nada se perde).
-    const open = conn ? await isWindowOpen(conn.id, waId) : false;
-    if (open && conn) {
-      const res = await sendWhatsAppBotMessage(conn, waId, text);
+    if (aberta) {
+      const res = await sendWhatsAppBotMessage(aberta, waId, text);
       if (res.ok) sent++;
     } else {
       await prisma.heldAlert.create({ data: { clientId, waId, kind, text, urgent: !!opts.urgent } }).catch(() => {});
@@ -95,7 +104,7 @@ export async function checkClientBotHealth(clientId: string): Promise<ClientBotH
   const bot = await prisma.clientBot.findUnique({ where: { clientId } });
   if (!bot || !bot.active) return null;
   const recipients = await prisma.clientBotRecipient.count({ where: { clientId, active: true, channel: "whatsapp" } });
-  const conn = await prisma.waConnection.findUnique({ where: { clientId }, select: { id: true } });
+  const conn = await prisma.waConnection.findFirst({ where: { clientId }, select: { id: true } });
 
   const ready = !!conn; // "canal pronto" = a linha da loja está conectada
   const issues: string[] = [];

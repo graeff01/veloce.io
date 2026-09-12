@@ -55,7 +55,7 @@ export default async function ConversasPage({ params, searchParams }: { params: 
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="conversas" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"conversas"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
-      <PortalMobileHeader token={token} titulo="Conversas" account={shell.account} sections={shell.sections} comPerfil />
+      <PortalMobileHeader token={token} titulo="Conversas" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} comPerfil />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
         .cmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);

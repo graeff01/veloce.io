@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardPortal } from "@/lib/portal-guard";
 import { prisma } from "@/lib/prisma";
-import { resolvePortal } from "@/lib/notifications/client-portal";
-import { isProtected, getPortalUser, isAdminRole } from "@/lib/portal-auth";
 import { setAssignment } from "@/lib/ai-agent/respond";
 
 export const runtime = "nodejs";
@@ -13,21 +12,26 @@ export const runtime = "nodejs";
 // para outro ou REMOVER o dono de outro atendente é exclusivo do ADMIN.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string; contactId: string }> }) {
   const { token, contactId } = await params;
-  const portal = await resolvePortal(token);
-  if (!portal) return NextResponse.json({ error: "Link inválido" }, { status: 404 });
-
-  const user = await getPortalUser(portal.clientId);
-  const me = user?.email ?? null;
-  if (await isProtected(portal.clientId) && !me) return NextResponse.json({ error: "Faça login para assumir a conversa." }, { status: 401 });
-  const isAdmin = isAdminRole(user?.role);
+  // Pelo gate central: além de autenticar, é ele que barra quem só acompanha.
+  // Trocar o dono de um lead com um toque errado no telefone da gerente seria
+  // exatamente o que o papel de acompanhamento existe para impedir.
+  const { error, portal } = await guardPortal(req, token, { section: "conversas" });
+  if (error) return error;
+  const me = portal.email;
+  const isAdmin = portal.isAdmin;
 
   const body = await req.json().catch(() => ({}));
   const email = "email" in (body || {}) ? (body.email === null ? null : String(body.email)) : me; // sem email → assume p/ mim
 
   // Trava de papel: atendente não mexe no dono de lead de outro atendente (nem remove).
   if (!isAdmin) {
-    const conn = await prisma.waConnection.findUnique({ where: { clientId: portal.clientId }, select: { id: true } });
-    const conv = conn ? await prisma.waConversation.findFirst({ where: { contactId, connectionId: conn.id }, select: { assignedEmail: true } }) : null;
+    const conv = await prisma.waConversation.findFirst({
+      where: {
+        contactId,
+        connection: { clientId: portal.clientId, ...(portal.conexoesVisiveis ? { id: { in: portal.conexoesVisiveis } } : {}) },
+      },
+      select: { assignedEmail: true },
+    });
     const current = conv?.assignedEmail ?? null;
     const claimingSelf = !!me && email === me;
     const currentlyFree = current === null || current === me;
