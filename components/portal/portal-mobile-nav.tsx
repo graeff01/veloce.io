@@ -58,8 +58,8 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   // Mesma regra do menu lateral: com vários números, Conversas e Funil abrem a
   // lista de pessoas em vez de ir direto. A gestora toca no atalho e escolhe de
   // quem quer ver — em vez de a tela carregar uma faixa de nomes permanente.
-  const numeros = useNumerosDoPortal(token);
-  const varios = numeros.length > 1;
+  const { numeros, podeConectar, recarregar } = useNumerosDoPortal(token);
+  const varios = numeros.length > 1 || podeConectar;
   const ABRE_FOLHA: Partial<Record<ModuloPortal, string>> = {
     conversas: "/conversas",
     funil: "/funil",
@@ -115,6 +115,7 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
         <NumerosPopover
           token={token} numeros={numeros} base={folha.base}
           ancoraEsq={folha.esq} ancoraLargura={folha.largura}
+          podeConectar={podeConectar} onConectado={recarregar}
           onFechar={() => setFolha(null)}
         />
       )}
