@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Megaphone, Filter, FileText, Users } from "lucide-react";
 import { modulosPortal, type ModuloPortal } from "@/lib/portal/modulos";
-import { PortalNumerosSheet, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
+import { NumerosPopover, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
 
 // ── Barra inferior do PWA no celular ──────────────────────────────────────────
 // FONTE ÚNICA. Antes existiam DUAS barras: uma escrita dentro de
@@ -41,7 +41,9 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   // dizer o mesmo número em qualquer tela, senão vira uma segunda opinião.
   const [waiting, setWaiting] = useState(0);
   const [reviews, setReviews] = useState(0);
-  const [folha, setFolha] = useState<{ base: string; rotulo: string } | null>(null);
+  // Guarda TAMBÉM onde o atalho está: o menu nasce em cima do ícone tocado e
+  // aponta para ele, em vez de aparecer no meio da tela sem origem.
+  const [folha, setFolha] = useState<{ base: string; esq: number; largura: number } | null>(null);
   useEffect(() => {
     let alive = true;
     const tick = () => fetch(`/api/portal/${token}/badges`, { cache: "no-store" })
@@ -58,9 +60,9 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   // quem quer ver — em vez de a tela carregar uma faixa de nomes permanente.
   const numeros = useNumerosDoPortal(token);
   const varios = numeros.length > 1;
-  const ABRE_FOLHA: Partial<Record<ModuloPortal, { base: string; rotulo: string }>> = {
-    conversas: { base: "/conversas", rotulo: "Conversas de quem?" },
-    funil: { base: "/funil", rotulo: "Funil de quem?" },
+  const ABRE_FOLHA: Partial<Record<ModuloPortal, string>> = {
+    conversas: "/conversas",
+    funil: "/funil",
   };
 
   const modulos = modulosPortal(sections, !!quotesEnabled);
@@ -85,7 +87,11 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
           const estilo = { flex: 1, textDecoration: "none", display: "flex", flexDirection: "column" as const, alignItems: "center" as const, gap: 3, padding: "7px 4px", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease", border: "none", font: "inherit", cursor: "pointer" };
           const Alvo = abre
             ? ({ children }: { children: React.ReactNode }) => (
-                <button type="button" onClick={() => setFolha(abre)} aria-current={on ? "page" : undefined} style={estilo}>{children}</button>
+                <button type="button" aria-current={on ? "page" : undefined} style={estilo}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setFolha({ base: abre, esq: r.left, largura: r.width });
+                  }}>{children}</button>
               )
             : ({ children }: { children: React.ReactNode }) => (
                 <Link href={`/r/${token}${m.caminho}`} prefetch aria-current={on ? "page" : undefined} style={estilo}>{children}</Link>
@@ -106,9 +112,10 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
         })}
       </nav>
       {folha && (
-        <PortalNumerosSheet
-          token={token} numeros={numeros} base={folha.base} rotulo={folha.rotulo}
-          aberto onFechar={() => setFolha(null)}
+        <NumerosPopover
+          token={token} numeros={numeros} base={folha.base}
+          ancoraEsq={folha.esq} ancoraLargura={folha.largura}
+          onFechar={() => setFolha(null)}
         />
       )}
     </>

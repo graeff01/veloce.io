@@ -1,23 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Smartphone, X, Check, Users } from "lucide-react";
+import { Check, Users } from "lucide-react";
 
-// ── Escolher o número (folha compartilhada) ──────────────────────────────────
-// Os atalhos de WhatsApp e Funil, para um cliente com vários números, param de
-// ir direto e abrem ESTA lista: "de quem você quer ver?".
+// ── Escolher o número ────────────────────────────────────────────────────────
+// Os atalhos de WhatsApp e Funil, num cliente com vários números, param de ir
+// direto e abrem a lista: "de quem você quer ver?".
 //
-// A alternativa — abas com os nomes dentro da própria tela — foi o que existia
-// antes e ocupava uma faixa inteira acima da lista, em toda tela, o tempo todo.
-// Aqui a escolha aparece quando é feita e some depois, e a tela fica com o
-// conteúdo, que é o que a pessoa veio ver.
+// A lista abre COLADA no atalho, não no meio da tela. Um diálogo centralizado
+// interrompe — cobre tudo, pede atenção e tem que ser fechado. Isto aqui é
+// navegação: nasce de onde foi tocado, e escolher já leva embora.
 //
 // Um cliente de um número só nunca vê isto: o atalho volta a ser um link.
 
 export interface NumeroPortal { id: string; nome: string; equipe: string | null; dono: string | null }
 
-/** Carrega os números do cliente. Devolve lista vazia enquanto não sabe. */
+/** Carrega os números do cliente. Lista vazia enquanto não sabe. */
 export function useNumerosDoPortal(token: string): NumeroPortal[] {
   const [numeros, setNumeros] = useState<NumeroPortal[]>([]);
   useEffect(() => {
@@ -31,106 +30,130 @@ export function useNumerosDoPortal(token: string): NumeroPortal[] {
   return numeros;
 }
 
-export function PortalNumerosSheet({ token, numeros, base, rotulo, atual, aberto, onFechar }: {
-  token: string;
-  numeros: NumeroPortal[];
-  /** Caminho de destino a partir de /r/<token> — "/conversas" ou "/funil". */
-  base: string;
-  /** O que se está escolhendo, para o título fazer sentido. */
-  rotulo: string;
-  /** Número já selecionado, se houver. */
-  atual?: string | null;
-  aberto: boolean;
-  onFechar: () => void;
-}) {
+/** Agrupa por equipe quando existe: seis nomes soltos não dizem quem é de onde. */
+function agrupar(numeros: NumeroPortal[]) {
+  const equipes = [...new Set(numeros.map((n) => n.equipe).filter(Boolean) as string[])];
+  if (!equipes.length) return [{ equipe: null as string | null, itens: numeros }];
+  return [
+    ...equipes.map((e) => ({ equipe: e as string | null, itens: numeros.filter((n) => n.equipe === e) })),
+    ...(numeros.some((n) => !n.equipe) ? [{ equipe: null as string | null, itens: numeros.filter((n) => !n.equipe) }] : []),
+  ];
+}
+
+function useIrPara(token: string, base: string, onFechar: () => void) {
   const router = useRouter();
-
-  useEffect(() => {
-    if (!aberto) return;
-    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [aberto, onFechar]);
-
-  if (!aberto) return null;
-
-  const ir = (id: string | null) => {
+  return (id: string | null) => {
     onFechar();
     router.push(`/r/${token}${base}${id ? `?conexao=${id}` : ""}`);
   };
+}
 
-  // Agrupa por equipe quando existe: numa operação com consultoria e captação,
-  // seis nomes soltos não dizem quem é de onde.
-  const equipes = [...new Set(numeros.map((n) => n.equipe).filter(Boolean) as string[])];
-  const grupos: { equipe: string | null; itens: NumeroPortal[] }[] = equipes.length
-    ? [...equipes.map((e) => ({ equipe: e, itens: numeros.filter((n) => n.equipe === e) })),
-       ...(numeros.some((n) => !n.equipe) ? [{ equipe: null, itens: numeros.filter((n) => !n.equipe) }] : [])]
-    : [{ equipe: null, itens: numeros }];
+// ── Menu lateral: abre DENTRO da navegação, empurrando o resto ───────────────
+// Não flutua por cima: cresce no lugar, como uma pasta que abre. Assim a barra
+// lateral continua sendo uma lista só, e não uma lista com um pop-up.
+export function NumerosInline({ token, numeros, base, atual, onFechar }: {
+  token: string; numeros: NumeroPortal[]; base: string; atual?: string | null; onFechar: () => void;
+}) {
+  const ir = useIrPara(token, base, onFechar);
+  return (
+    <div role="group" aria-label="Escolher número"
+      style={{ margin: "1px 0 4px 10px", paddingLeft: 10, borderLeft: "1.5px solid var(--p-border)", display: "flex", flexDirection: "column", gap: 1 }}>
+      <Opcao nome="Todos" detalhe={`${numeros.length} números`} on={!atual} onClick={() => ir(null)} icone={<Users size={13} />} compacto />
+      {agrupar(numeros).map((g) => (
+        <div key={g.equipe ?? "_"}>
+          {g.equipe && (
+            <div style={{ fontSize: 9.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "7px 8px 3px", opacity: 0.75 }}>
+              {g.equipe}
+            </div>
+          )}
+          {g.itens.map((n) => (
+            <Opcao key={n.id} nome={n.nome} on={atual === n.id} onClick={() => ir(n.id)} compacto />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Barra do celular: sobe a partir do atalho tocado ─────────────────────────
+// A barra vive no rodapé, então "abaixo dele" é para cima — o menu nasce em
+// cima do ícone e aponta para ele. Sai da tela junto com um toque fora.
+export function NumerosPopover({ token, numeros, base, atual, onFechar, ancoraEsq, ancoraLargura }: {
+  token: string; numeros: NumeroPortal[]; base: string; atual?: string | null;
+  onFechar: () => void;
+  /** Centro horizontal do atalho tocado, em px da janela. */
+  ancoraEsq: number;
+  ancoraLargura: number;
+}) {
+  const ir = useIrPara(token, base, onFechar);
+  const ref = useRef<HTMLDivElement>(null);
+  const [esq, setEsq] = useState<number | null>(null);
+
+  // Fica preso ao atalho, mas sem passar da borda da tela.
+  useEffect(() => {
+    const l = ref.current?.offsetWidth ?? 240;
+    const centro = ancoraEsq + ancoraLargura / 2;
+    setEsq(Math.max(12, Math.min(window.innerWidth - l - 12, centro - l / 2)));
+  }, [ancoraEsq, ancoraLargura]);
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onFechar]);
 
   return (
     <>
       <style>{`
-        .pnum-sheet{animation:pnumUp .26s cubic-bezier(.22,1,.36,1)}
-        @keyframes pnumUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-        @media(prefers-reduced-motion:reduce){ .pnum-sheet{animation:none} }
+        .pnumpop{animation:pnumpop .2s cubic-bezier(.22,1,.36,1)}
+        @keyframes pnumpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+        @media(prefers-reduced-motion:reduce){ .pnumpop{animation:none} }
       `}</style>
-      <div onClick={onFechar} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.38)" }} />
-      <div role="dialog" aria-label={`Escolher ${rotulo}`} className="pnum-sheet"
+      <div onClick={onFechar} style={{ position: "fixed", inset: 0, zIndex: 200 }} />
+      <div ref={ref} role="menu" aria-label="Escolher número" className="pnumpop"
         style={{
-          position: "fixed", zIndex: 201, left: "50%", top: "50%", transform: "translate(-50%,-50%)",
-          width: "min(400px, calc(100vw - 32px))", maxHeight: "min(70vh, 560px)",
-          display: "flex", flexDirection: "column", overflow: "hidden",
-          background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16,
-          boxShadow: "0 24px 64px rgba(0,0,0,.3)",
+          position: "fixed", zIndex: 201,
+          left: esq ?? ancoraEsq, visibility: esq == null ? "hidden" : "visible",
+          bottom: "calc(78px + env(safe-area-inset-bottom))",
+          width: "min(248px, calc(100vw - 24px))", maxHeight: "min(56vh, 380px)", overflowY: "auto",
+          background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 14,
+          boxShadow: "0 12px 34px rgba(0,0,0,.22)", padding: 5,
         }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px", borderBottom: "1px solid var(--p-border)" }}>
-          <Smartphone size={16} style={{ color: "var(--p-accent)" }} />
-          <strong style={{ flex: 1, fontSize: 14.5, color: "var(--p-text)" }}>{rotulo}</strong>
-          <button onClick={onFechar} aria-label="Fechar"
-            style={{ display: "inline-flex", border: "none", background: "transparent", color: "var(--wa-muted)", cursor: "pointer", padding: 4 }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        <div style={{ overflowY: "auto", padding: 6 }}>
-          <Linha nome="Todos" detalhe={`${numeros.length} números`} on={!atual} onClick={() => ir(null)} icone={<Users size={15} />} />
-          {grupos.map((g) => (
-            <div key={g.equipe ?? "_"}>
-              {g.equipe && (
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa-muted)", textTransform: "uppercase", letterSpacing: 0.5, padding: "10px 10px 4px" }}>
-                  {g.equipe}
-                </div>
-              )}
-              {g.itens.map((n) => (
-                <Linha key={n.id} nome={n.nome} detalhe={n.dono ?? undefined} on={atual === n.id} onClick={() => ir(n.id)} />
-              ))}
-            </div>
-          ))}
-        </div>
+        <Opcao nome="Todos" detalhe={`${numeros.length} números`} on={!atual} onClick={() => ir(null)} icone={<Users size={14} />} />
+        {agrupar(numeros).map((g) => (
+          <div key={g.equipe ?? "_"}>
+            {g.equipe && (
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "8px 9px 3px", opacity: 0.75 }}>
+                {g.equipe}
+              </div>
+            )}
+            {g.itens.map((n) => <Opcao key={n.id} nome={n.nome} on={atual === n.id} onClick={() => ir(n.id)} />)}
+          </div>
+        ))}
       </div>
     </>
   );
 }
 
-function Linha({ nome, detalhe, on, onClick, icone }: {
-  nome: string; detalhe?: string; on: boolean; onClick: () => void; icone?: React.ReactNode;
+function Opcao({ nome, detalhe, on, onClick, icone, compacto }: {
+  nome: string; detalhe?: string; on: boolean; onClick: () => void;
+  icone?: React.ReactNode; compacto?: boolean;
 }) {
   return (
-    <button onClick={onClick}
+    <button type="button" role="menuitem" onClick={onClick}
       style={{
-        display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px",
-        border: "none", borderRadius: 10, cursor: "pointer", textAlign: "left",
+        display: "flex", alignItems: "center", gap: 8, width: "100%",
+        padding: compacto ? "6px 8px" : "9px 10px", borderRadius: 8,
+        border: "none", cursor: "pointer", textAlign: "left", font: "inherit",
         background: on ? "var(--p-accent-soft)" : "transparent",
         color: on ? "var(--p-accent)" : "var(--p-text)",
       }}>
       {icone}
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 13.5, fontWeight: on ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nome}</span>
-        {detalhe && (
-          <span style={{ display: "block", fontSize: 11, color: "var(--wa-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detalhe}</span>
-        )}
+      <span style={{ flex: 1, minWidth: 0, fontSize: compacto ? 12.5 : 13.5, fontWeight: on ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {nome}
       </span>
-      {on && <Check size={15} style={{ flexShrink: 0 }} />}
+      {detalhe && <span style={{ fontSize: 10.5, color: "var(--p-muted)", flexShrink: 0 }}>{detalhe}</span>}
+      {on && <Check size={13} style={{ flexShrink: 0 }} />}
     </button>
   );
 }
