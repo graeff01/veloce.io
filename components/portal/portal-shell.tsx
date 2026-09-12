@@ -61,11 +61,13 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   // Números do cliente. Com mais de um, os atalhos de WhatsApp e Funil param de
   // ir direto e abrem a lista de pessoas — é o que evita encher a tela com uma
   // faixa de nomes permanente acima do conteúdo.
-  const numeros = useNumerosDoPortal(token);
+  const { numeros, podeConectar, recarregar } = useNumerosDoPortal(token);
   // Qual atalho está aberto. Só um de cada vez: dois menus abertos numa barra
   // lateral de 200px viram bagunça.
   const [aberto, setAberto] = useState<string | null>(null);
-  const varios = numeros.length > 1;
+  // O atalho vira menu quando há mais de um número OU quando ela pode cadastrar
+  // — com um número só e permissão, é por aqui que ela cadastra o segundo.
+  const varios = numeros.length > 1 || podeConectar;
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
@@ -103,7 +105,9 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
             {conteudo}
           </button>
           {on2 && (
-            <NumerosInline token={token} numeros={numeros} base={base} onFechar={() => setAberto(null)} />
+            <NumerosInline token={token} numeros={numeros} base={base}
+              podeConectar={podeConectar} onConectado={recarregar}
+              onFechar={() => setAberto(null)} />
           )}
         </div>
       );

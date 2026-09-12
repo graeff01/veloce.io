@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Users } from "lucide-react";
+import { Check, Users, Plus } from "lucide-react";
+import { FormularioConectar } from "@/components/portal/portal-conectar-numero";
 
 // ── Escolher o número ────────────────────────────────────────────────────────
 // Os atalhos de WhatsApp e Funil, num cliente com vários números, param de ir
@@ -16,18 +17,26 @@ import { Check, Users } from "lucide-react";
 
 export interface NumeroPortal { id: string; nome: string; equipe: string | null; dono: string | null }
 
-/** Carrega os números do cliente. Lista vazia enquanto não sabe. */
-export function useNumerosDoPortal(token: string): NumeroPortal[] {
+/**
+ * Números do cliente + se esta pessoa pode cadastrar mais.
+ *
+ * `recarregar` existe porque conectar um número acontece DENTRO desta lista: sem
+ * ele, o número recém-cadastrado só apareceria depois de a pessoa recarregar a
+ * página — e ela concluiria que não salvou.
+ */
+export function useNumerosDoPortal(token: string) {
   const [numeros, setNumeros] = useState<NumeroPortal[]>([]);
+  const [podeConectar, setPodeConectar] = useState(false);
+  const [versao, setVersao] = useState(0);
   useEffect(() => {
     let vivo = true;
     fetch(`/api/portal/${token}/numeros`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (vivo && d?.numeros) setNumeros(d.numeros); })
+      .then((d) => { if (vivo && d) { setNumeros(d.numeros ?? []); setPodeConectar(!!d.podeConectar); } })
       .catch(() => { /* sem a lista, o atalho segue como link direto */ });
     return () => { vivo = false; };
-  }, [token]);
-  return numeros;
+  }, [token, versao]);
+  return { numeros, podeConectar, recarregar: () => setVersao((v) => v + 1) };
 }
 
 /** Agrupa por equipe quando existe: seis nomes soltos não dizem quem é de onde. */
@@ -51,10 +60,14 @@ function useIrPara(token: string, base: string, onFechar: () => void) {
 // ── Menu lateral: abre DENTRO da navegação, empurrando o resto ───────────────
 // Não flutua por cima: cresce no lugar, como uma pasta que abre. Assim a barra
 // lateral continua sendo uma lista só, e não uma lista com um pop-up.
-export function NumerosInline({ token, numeros, base, atual, onFechar }: {
+export function NumerosInline({ token, numeros, base, atual, onFechar, podeConectar, onConectado }: {
   token: string; numeros: NumeroPortal[]; base: string; atual?: string | null; onFechar: () => void;
+  /** Mostra "+ Conectar WhatsApp" no fim da lista. */
+  podeConectar?: boolean;
+  onConectado?: () => void;
 }) {
   const ir = useIrPara(token, base, onFechar);
+  const [form, setForm] = useState(false);
   return (
     <div role="group" aria-label="Escolher número"
       style={{ margin: "1px 0 4px 10px", paddingLeft: 10, borderLeft: "1.5px solid var(--p-border)", display: "flex", flexDirection: "column", gap: 1 }}>
@@ -71,6 +84,23 @@ export function NumerosInline({ token, numeros, base, atual, onFechar }: {
           ))}
         </div>
       ))}
+
+      {/* Cadastrar um número mora AQUI, no fim da lista de números — é onde a
+          pessoa já foi procurar por eles. Estava dentro de Equipe, o que
+          obrigava a sair do caminho para fazer a coisa mais óbvia da tela. */}
+      {podeConectar && (
+        <>
+          <button type="button" onClick={() => setForm(true)}
+            style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "7px 8px", marginTop: 3, borderTop: "1px solid var(--p-border)", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", font: "inherit", color: "var(--p-accent)", fontSize: 12, fontWeight: 700 }}>
+            <Plus size={13} /> Conectar WhatsApp
+          </button>
+          {form && (
+            <FormularioConectar token={token}
+              onFechar={() => setForm(false)}
+              onPronto={() => { setForm(false); onConectado?.(); }} />
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -78,14 +108,17 @@ export function NumerosInline({ token, numeros, base, atual, onFechar }: {
 // ── Barra do celular: sobe a partir do atalho tocado ─────────────────────────
 // A barra vive no rodapé, então "abaixo dele" é para cima — o menu nasce em
 // cima do ícone e aponta para ele. Sai da tela junto com um toque fora.
-export function NumerosPopover({ token, numeros, base, atual, onFechar, ancoraEsq, ancoraLargura }: {
+export function NumerosPopover({ token, numeros, base, atual, onFechar, ancoraEsq, ancoraLargura, podeConectar, onConectado }: {
   token: string; numeros: NumeroPortal[]; base: string; atual?: string | null;
   onFechar: () => void;
+  podeConectar?: boolean;
+  onConectado?: () => void;
   /** Centro horizontal do atalho tocado, em px da janela. */
   ancoraEsq: number;
   ancoraLargura: number;
 }) {
   const ir = useIrPara(token, base, onFechar);
+  const [form, setForm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [esq, setEsq] = useState<number | null>(null);
 
@@ -130,7 +163,20 @@ export function NumerosPopover({ token, numeros, base, atual, onFechar, ancoraEs
             {g.itens.map((n) => <Opcao key={n.id} nome={n.nome} on={atual === n.id} onClick={() => ir(n.id)} />)}
           </div>
         ))}
+
+        {podeConectar && (
+          <button type="button" onClick={() => setForm(true)}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px", marginTop: 4, borderTop: "1px solid var(--p-border)", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", font: "inherit", color: "var(--p-accent)", fontSize: 13, fontWeight: 700 }}>
+            <Plus size={14} /> Conectar WhatsApp
+          </button>
+        )}
       </div>
+
+      {form && (
+        <FormularioConectar token={token}
+          onFechar={() => setForm(false)}
+          onPronto={() => { setForm(false); onConectado?.(); }} />
+      )}
     </>
   );
 }

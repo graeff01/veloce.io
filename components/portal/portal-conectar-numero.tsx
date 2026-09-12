@@ -64,14 +64,14 @@ export function PortalConectarNumero({ token, onConectado }: {
       </div>
 
       {aberto && (
-        <Formulario token={token} onFechar={() => setAberto(false)}
+        <FormularioConectar token={token} onFechar={() => setAberto(false)}
           onPronto={() => { setAberto(false); carregar(); onConectado?.(); }} />
       )}
     </div>
   );
 }
 
-function Formulario({ token, onFechar, onPronto }: {
+export function FormularioConectar({ token, onFechar, onPronto }: {
   token: string; onFechar: () => void; onPronto: () => void;
 }) {
   const [f, setF] = useState({

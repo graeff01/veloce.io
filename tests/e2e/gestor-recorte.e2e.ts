@@ -279,3 +279,24 @@ test("conectar não vira licença para escrever o resto", async () => {
   });
   assert.equal(r.status, 403);
 });
+
+test("o atalho de números diz se ela pode cadastrar", async () => {
+  // É esse sinal que faz o "+ Conectar WhatsApp" existir na lista. Sem ele a
+  // opção não aparece — que foi exatamente o que aconteceu em produção.
+  const comPermissao = await (await get(cookieM, "numeros")).json();
+  assert.equal(comPermissao.podeConectar, true);
+
+  const sem = await (await get(cookieV, "numeros")).json();
+  assert.equal(sem.podeConectar, false, "quem não tem a permissão não vê a opção");
+});
+
+test("o número cadastrado aparece NA MESMA lista, sem recarregar a página", async () => {
+  // O cadastro acontece dentro da lista de números. Se o novo só aparecesse
+  // depois de um F5, ela concluiria que não salvou e cadastraria de novo.
+  const antes = await (await get(cookieM, "numeros")).json();
+  await conectar(cookieM, fichaValida("g"));
+  const depois = await (await get(cookieM, "numeros")).json();
+
+  assert.equal(depois.numeros.length, antes.numeros.length + 1);
+  assert.ok(depois.numeros.some((n: { nome: string }) => n.nome === "Funcionário g"));
+});
