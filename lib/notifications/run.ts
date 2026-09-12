@@ -5,6 +5,8 @@ import {
 } from "@/lib/notifications/digest";
 import { claimDispatch, recipientsFor, MAX_ATTEMPTS } from "@/lib/notifications/dispatch";
 import { nowParts } from "@/lib/tz";
+import { prisma } from "@/lib/prisma";
+import { numerosMudos } from "@/lib/portal/numero-mudo";
 
 const TZ = "America/Sao_Paulo";
 // Dia-calendário em BRT, p/ as chaves de dedupe baterem com a janela do scheduler.
@@ -80,6 +82,50 @@ export async function runTokenExpiryAlerts(): Promise<{ sent: number; alerts: nu
         : `O token Meta de ${a.clientName} expira em ${a.daysLeft} dia(s). Renove antes de parar o sync.`;
       const tgText = `${emoji} <b>Token Meta — ${esc(a.clientName)}</b>\n${esc(body)}\n\n<a href="${APP_URL}/clients/${a.clientId}">Abrir cliente →</a>`;
       if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "token_expiry", { title, body, url: "/clients" }, tgText, r)) sent++;
+    }
+  }
+  return { sent, alerts: alerts.length };
+}
+
+// ── Número de WhatsApp que parou de receber ─────────────────────────────────
+// Vai para o time INTERNO, não para o cliente: quem reconecta somos nós. É o
+// tipo de falha que ninguém percebe sozinho — o cliente não vê "leads que não
+// chegaram", e no painel dele a pessoa daquele número até parece em dia, porque
+// sem nada chegando não há o que atrasar.
+//
+// Com vários números por cliente isso deixou de ser hipótese: basta uma linha
+// cair para um sexto da operação sumir em silêncio.
+export async function runNumeroMudoAlerts(): Promise<{ sent: number; alerts: number }> {
+  const recipients = await recipientsFor("criticalAlerts");
+  if (recipients.length === 0) return { sent: 0, alerts: 0 };
+
+  const clientes = await prisma.client.findMany({
+    where: { waConnections: { some: {} } },
+    select: { id: true, name: true },
+  });
+
+  const dia = brtDay();
+  const alerts: { clientId: string; clientName: string; nome: string; horas: number; dedupeKey: string }[] = [];
+  for (const c of clientes) {
+    for (const m of await numerosMudos(c.id).catch(() => [])) {
+      alerts.push({
+        clientId: c.id, clientName: c.name, nome: m.nome, horas: m.horasEmSilencio,
+        // Um aviso por número por dia: reconectar leva tempo, e repetir de 4 em
+        // 4 horas só ensina o time a ignorar.
+        dedupeKey: `wa-mudo:${m.connectionId}:${dia}`,
+      });
+    }
+  }
+  if (alerts.length === 0) return { sent: 0, alerts: 0 };
+
+  let sent = 0;
+  for (const r of recipients) {
+    for (const a of alerts) {
+      const quanto = a.horas >= 48 ? `${Math.floor(a.horas / 24)} dias` : `${a.horas}h`;
+      const title = `🔴 WhatsApp mudo — ${a.clientName}`;
+      const body = `O número "${a.nome}" não recebe nem envia nada há ${quanto}. Provável queda da conexão: os leads dele não estão chegando.`;
+      const tgText = `🔴 <b>WhatsApp mudo — ${esc(a.clientName)}</b>\n${esc(body)}\n\n<a href="${APP_URL}/clients/${a.clientId}">Abrir cliente →</a>`;
+      if (await claimDispatch(`${a.dedupeKey}:${r.userId}`, r.userId, "wa_mudo", { title, body, url: `/clients/${a.clientId}` }, tgText, r)) sent++;
     }
   }
   return { sent, alerts: alerts.length };

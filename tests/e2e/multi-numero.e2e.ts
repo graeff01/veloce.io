@@ -390,3 +390,57 @@ test("o formato que o APLICATIVO consome não mudou", async () => {
     assert.ok(campo in linha, `a linha de team-metrics perdeu "${campo}"`);
   }
 });
+
+// ── Número que parou de receber ──────────────────────────────────────────────
+// O defeito que faz a tela MENTIR: sem nada chegando, a pessoa daquele número
+// aparece impecável — fila zero, nada esperando, nenhum gargalo. A gestora lê
+// "está tranquilo" quando o certo é "está fora do ar".
+
+test("número mudo vira o PRIMEIRO alerta, e marca a pessoa", async () => {
+  const conn = await db.waConnection.findFirst({ where: { clientId, ownerEmail: ANA }, select: { id: true, lastEventAt: true } });
+
+  // Histórico: a regra só desconfia de número que JÁ TRABALHOU, e o cenário
+  // deste arquivo tem poucas mensagens. Sem isto o teste passaria por engano —
+  // o número não seria acusado por falta de histórico, não por estar vivo.
+  const alvo = await db.waContact.findFirst({ where: { connectionId: conn!.id }, select: { id: true } });
+  await db.waMessage.createMany({
+    data: Array.from({ length: 25 }, (_, n) => ({
+      connectionId: conn!.id, contactId: alvo!.id, waMessageId: `hist-${marca}-${n}`,
+      direction: n % 2 ? "out" : "in", type: "text", text: "histórico",
+      timestamp: new Date(Date.now() - (40 - n) * 86_400_000),
+    })),
+  });
+
+  const antes = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  assert.ok(!antes.gargalos.some((g: { tipo: string }) => g.tipo === "numero_mudo"), "nada mudo antes");
+
+  // A queda: última atividade há três dias.
+  await db.waConnection.update({ where: { id: conn!.id }, data: { lastEventAt: new Date(Date.now() - 3 * 86_400_000) } });
+
+  const depois = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  assert.equal(depois.gargalos[0]?.tipo, "numero_mudo",
+    "tem que vir PRIMEIRO: é o único que faz o resto da tela mentir");
+  assert.match(depois.gargalos[0].detalhe, /leads desse número não chegam/i,
+    "precisa explicar por que a pessoa parece em dia");
+  assert.ok(depois.mudos.some((m: { dono: string }) => m.dono === ANA),
+    "a tela precisa saber de quem é, para marcar a linha dela");
+
+  await db.waConnection.update({ where: { id: conn!.id }, data: { lastEventAt: conn!.lastEventAt } });
+  await db.waMessage.deleteMany({ where: { waMessageId: { startsWith: `hist-${marca}-` } } });
+});
+
+test("número recém-conectado não vira alerta", async () => {
+  // Conexão nova, sem histórico, parada há uma semana: está esperando a
+  // primeira mensagem, não caiu. Sem esta distinção, todo cliente novo nasceria
+  // com um alerta vermelho.
+  const novo = await db.waConnection.create({
+    data: {
+      clientId, wabaId: `w-novo-${marca}`, phoneNumberId: `pn-novo-${marca}`, accessToken: "fake",
+      name: "Recém-conectado", lastEventAt: new Date(Date.now() - 7 * 86_400_000),
+    },
+  });
+  const d = await (await fetch(`${BASE}/api/portal/${token}/equipe-insights?p=month`, { headers: { cookie }, cache: "no-store" })).json();
+  assert.ok(!d.mudos.some((m: { nome: string }) => m.nome === "Recém-conectado"),
+    "número que nunca trabalhou não pode ser acusado de ter parado");
+  await db.waConnection.delete({ where: { id: novo.id } });
+});

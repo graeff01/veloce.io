@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff } from "lucide-react";
+import { AlertTriangle, X, ChevronRight, Check, Timer, MessageSquareOff, PlugZap } from "lucide-react";
 
 // ── Equipe: o que o gestor DECIDE ────────────────────────────────────────────
 // Esta tela mostrava convertidos, receita e qualificados — as perguntas do
@@ -24,7 +24,8 @@ interface Pessoa {
 interface Grupo { equipe: string; leads: number; esperando: number; esperaMaxMin: number; semResposta: number; primeiraRespostaSec: number | null; respostaSec: number | null }
 interface Gargalo { tipo: string; gravidade: "alta" | "media"; titulo: string; detalhe: string; pessoa?: string }
 interface Geral { leads: number; esperando: number; semResposta: number; primeiraRespostaSec: number | null; respostaSec: number | null }
-interface Dados { periodLabel: string; geral: Geral | null; pessoas: Pessoa[]; equipes: Grupo[] | null; gargalos: Gargalo[] }
+interface Mudo { nome: string; dono: string | null; horas: number }
+interface Dados { periodLabel: string; geral: Geral | null; pessoas: Pessoa[]; equipes: Grupo[] | null; gargalos: Gargalo[]; mudos?: Mudo[] }
 
 const PERIODS = [{ v: "week", label: "Semana" }, { v: "month", label: "Mês" }];
 
@@ -69,6 +70,9 @@ export function PortalTeam({ token }: { token: string }) {
 
   const pessoas = d?.pessoas ?? [];
   const geral = d?.geral ?? null;
+  // Quem está com o número mudo. A fila vazia dessa pessoa não é mérito — é
+  // consequência de nada estar chegando, e a tela precisa dizer isso.
+  const mudoDe = (email: string) => (d?.mudos ?? []).find((m) => m.dono === email) ?? null;
 
   return (
     <div>
@@ -156,7 +160,8 @@ export function PortalTeam({ token }: { token: string }) {
                       onClick={() => pessoa && setAberta(pessoa)} disabled={!pessoa}>
                       <span className="eq-faixa" style={{ background: cor }} />
                       <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: fundo, color: cor, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                        {g.tipo === "sem_resposta" ? <MessageSquareOff size={15} />
+                        {g.tipo === "numero_mudo" ? <PlugZap size={15} />
+                          : g.tipo === "sem_resposta" ? <MessageSquareOff size={15} />
                           : g.tipo === "espera_longa" ? <Timer size={15} />
                           : <AlertTriangle size={15} />}
                       </span>
@@ -221,6 +226,9 @@ export function PortalTeam({ token }: { token: string }) {
                     <span style={{ display: "block", fontSize: 14, fontWeight: 650, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       {p.equipe && <span style={{ fontSize: 11.5, color: "var(--p-muted)", textTransform: "capitalize" }}>{p.equipe}</span>}
+                      {/* Sem isto, quem está DESCONECTADO aparece como o melhor
+                          do time: fila zero, nada esperando. O número explica. */}
+                      {mudoDe(p.email) && <span className="p-pill crit">WhatsApp fora do ar</span>}
                       {p.semResposta > 0 && <span className="p-pill crit">{p.semResposta} sem resposta</span>}
                       {p.semResposta === 0 && p.esperaMaxMin >= 24 * 60 && <span className="p-pill warn">espera {espera(p.esperaMaxMin)}</span>}
                     </span>
@@ -238,7 +246,7 @@ export function PortalTeam({ token }: { token: string }) {
         )}
       </div>
 
-      {aberta && <Detalhe p={aberta} geral={geral} onFechar={() => setAberta(null)} />}
+      {aberta && <Detalhe p={aberta} geral={geral} mudo={mudoDe(aberta.email)} onFechar={() => setAberta(null)} />}
     </div>
   );
 }
@@ -255,7 +263,7 @@ function Metrica({ k, v, tom, rodape }: { k: string; v: string; tom?: "warn" | "
 
 // ── Detalhe de uma pessoa ────────────────────────────────────────────────────
 // Mesmo padrão das outras abas: a lista fica limpa e o detalhe abre por cima.
-function Detalhe({ p, geral, onFechar }: { p: Pessoa; geral: Geral | null; onFechar: () => void }) {
+function Detalhe({ p, geral, mudo, onFechar }: { p: Pessoa; geral: Geral | null; mudo: Mudo | null; onFechar: () => void }) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
     window.addEventListener("keydown", onKey);
@@ -309,7 +317,13 @@ function Detalhe({ p, geral, onFechar }: { p: Pessoa; geral: Geral | null; onFec
             <div className="eq-cx"><div className="k">Sem resposta nenhuma</div><div className="v" style={{ color: p.semResposta > 0 ? "var(--p-crit)" : "var(--p-text)" }}>{p.semResposta || "—"}</div></div>
           </div>
 
-          {p.semResposta > 0 ? (
+          {mudo ? (
+            // Antes de qualquer leitura sobre a pessoa: o canal dela está fora.
+            <Nota tom="crit">
+              O WhatsApp <b>{mudo.nome}</b> não recebe nada há {mudo.horas >= 48 ? `${Math.floor(mudo.horas / 24)} dias` : `${mudo.horas}h`}.
+              Os números acima medem o que chegou — e não chegou nada. Reconecte antes de tirar conclusão sobre o atendimento.
+            </Nota>
+          ) : p.semResposta > 0 ? (
             <Nota tom="crit">
               {p.semResposta === 1 ? "Um lead escreveu e" : `${p.semResposta} leads escreveram e`} nunca {p.semResposta === 1 ? "recebeu" : "receberam"} nenhuma resposta.
               Isso não é demora — é ausência, e é o primeiro lugar para agir.
