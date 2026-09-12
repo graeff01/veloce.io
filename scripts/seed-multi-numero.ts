@@ -211,7 +211,10 @@ async function main() {
   const criadas: string[] = [];
   for (const g of GERENTES) {
     await prisma.portalAccess.create({
-      data: { clientId, email: g.email, name: g.nome, role: "admin", passwordHash: await hashPassword(SENHA) },
+      // `gestor`: vê a operação inteira e não altera nada. É o papel das duas
+      // gerentes — elas acompanham seis pessoas que respondem pelo próprio
+      // celular e não devem conseguir assumir lead nem responder por engano.
+      data: { clientId, email: g.email, name: g.nome, role: "gestor", passwordHash: await hashPassword(SENHA) },
     });
     criadas.push(g.email);
   }
@@ -323,7 +326,7 @@ Pronto — ${cliente.name}
 
   Portal: ${url ? `${url}/r/${portal!.token}` : `/r/${portal!.token}`}
   Seções: ${portal!.sections ?? "(todas)"}${portalAtual && portalAtual.sections != null && !tem("secoes") ? "  ← mantidas; use --secoes para trocar por WhatsApp/Funil/Equipe" : ""}
-  ${criadas.length ? `Acessos: ${criadas.join("  ou  ")}\n  Senha:   ${SENHA}` : "Acessos: os que já existiam, intocados"}
+  ${criadas.length ? `Acessos: ${criadas.join("  ou  ")}  (papel: gestor — só acompanha)\n  Senha:   ${SENHA}` : "Acessos: os que já existiam, intocados"}
 
   Desfazer:  npm run db:seed:multi${slugPedido ? ` -- --cliente ${slugPedido} --remover` : " -- --remover"}
   (apaga só os ${conexoes.length} números de demonstração; número real fica)
