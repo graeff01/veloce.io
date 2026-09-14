@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { NumerosInline, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usarPulso } from "./usar-pulso";
 import { Sun, Moon, LayoutDashboard, Filter, Sparkles, Megaphone, Users, LogOut, FlaskConical, TrendingDown, Flame, ShieldCheck, GraduationCap, Gauge, Truck, FileText } from "lucide-react";
 import { PortalAdvisor } from "@/components/portal/portal-advisor";
 import { PortalAlerts } from "@/components/portal/portal-alerts";
@@ -25,30 +26,21 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
   const [learnCount, setLearnCount] = useState(0); // correções da IA a corrigir (badge)
   const [quotesEnabled, setQuotesEnabled] = useState(!!initialQuotesEnabled); // aba Orçamentos: semeada pelo servidor (sem flash)
   useEffect(() => { setTheme(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light"); }, []);
-  useEffect(() => {
-    if (sections && !sections.includes("fechamento")) return; // seção não habilitada → não consulta
-    let alive = true;
-    const tick = () => fetch(`/api/portal/${token}/hot-leads`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setHotCount(d?.unclaimed ?? 0); }).catch(() => {});
-    tick();
-    const id = setInterval(tick, 20000);
-    return () => { alive = false; clearInterval(id); };
-  }, [token, sections]);
-  useEffect(() => {
-    if (sections && !sections.includes("revisao")) return; // seção não habilitada → não consulta
-    let alive = true;
-    const tick = () => fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setReviewCount(d?.pending ?? 0); }).catch(() => {});
-    tick();
-    const id = setInterval(tick, 20000);
-    return () => { alive = false; clearInterval(id); };
-  }, [token, sections]);
-  useEffect(() => {
-    if (sections && !sections.includes("aprendizado")) return; // seção não habilitada → não consulta
-    let alive = true;
-    const tick = () => fetch(`/api/portal/${token}/corrections`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setLearnCount(d?.pending ?? 0); }).catch(() => {});
-    tick();
-    const id = setInterval(tick, 30000);
-    return () => { alive = false; clearInterval(id); };
-  }, [token, sections]);
+  const veFechamento = !sections || sections.includes("fechamento");
+  const lerHot = useRef(() => {});
+  lerHot.current = () => { fetch(`/api/portal/${token}/hot-leads`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => setHotCount(d?.unclaimed ?? 0)).catch(() => {}); };
+  useEffect(() => { if (veFechamento) lerHot.current(); }, [token, veFechamento]);
+  usarPulso(() => lerHot.current(), 45000, veFechamento);
+  const veRevisao = !sections || sections.includes("revisao");
+  const lerRev = useRef(() => {});
+  lerRev.current = () => { fetch(`/api/portal/${token}/quote-reviews`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => setReviewCount(d?.pending ?? 0)).catch(() => {}); };
+  useEffect(() => { if (veRevisao) lerRev.current(); }, [token, veRevisao]);
+  usarPulso(() => lerRev.current(), 45000, veRevisao);
+  const veAprendizado = !sections || sections.includes("aprendizado");
+  const lerApr = useRef(() => {});
+  lerApr.current = () => { fetch(`/api/portal/${token}/corrections`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => setLearnCount(d?.pending ?? 0)).catch(() => {}); };
+  useEffect(() => { if (veAprendizado) lerApr.current(); }, [token, veAprendizado]);
+  usarPulso(() => lerApr.current(), 60000, veAprendizado);
   useEffect(() => {
     if (hasServerData) return; // servidor já entregou menu/conta — não precisa buscar
     fetch(`/api/portal/${token}/me`).then((r) => (r.ok ? r.json() : null)).then((d) => { setAccount(d?.user ?? null); setSections(d?.sections ?? null); setAiTest(!!d?.aiTest); setQuotesEnabled(!!d?.quotesEnabled); }).catch(() => {});

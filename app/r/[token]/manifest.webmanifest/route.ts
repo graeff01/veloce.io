@@ -24,19 +24,40 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const icon192 = staticIcon || `/r/${token}/logo?size=192`;
   const icon512 = staticIcon || `/r/${token}/logo?size=512`;
 
+  // Ícone adaptativo (Android recorta numa forma do sistema, cortando ~10% de
+  // cada lado). Reaproveitar o logo comum aqui cortaria a marca do cliente, e
+  // uma marca cortada é pior que o círculo branco. Então é opt-in: só entra
+  // quando existe um arquivo desenhado para isso, com a margem de segurança.
+  const maskable = client?.slug && existsSync(join(process.cwd(), "public", "icone_atalho", `${client.slug}-maskable.png`))
+    ? `/icone_atalho/${client.slug}-maskable.png`
+    : null;
+
   const manifest = {
+    // `id` fixa a identidade do app entre atualizações. Sem ele, mudar a
+    // start_url faz o Android achar que é OUTRO app e instalar duplicado.
+    id: `/r/${token}`,
     name,
     short_name: name.slice(0, 12),
     start_url: `/r/${token}/conversas`, // atalho abre direto nas mensagens (foco mobile)
     scope: `/r/${token}`,
     display: "standalone",
+    orientation: "portrait",
     background_color: "#ffffff",
     theme_color: portal.accentColor || "#111111",
+    lang: "pt-BR",
+    dir: "ltr",
     // Ícone = logo do cliente servido como imagem real (a rota /logo decodifica o data
     // URI; data URI não vale como ícone de manifest). Fallback pro ícone da Veloce.
+    //
     icons: [
       { src: icon192, sizes: "192x192", type: "image/png", purpose: "any" },
       { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" },
+      ...(maskable ? [{ src: maskable, sizes: "512x512", type: "image/png", purpose: "maskable" }] : []),
+    ],
+    // Atalhos ao segurar o ícone na tela inicial.
+    shortcuts: [
+      { name: "Conversas", short_name: "Conversas", url: `/r/${token}/conversas`, icons: [{ src: icon192, sizes: "192x192" }] },
+      { name: "Funil", short_name: "Funil", url: `/r/${token}/funil`, icons: [{ src: icon192, sizes: "192x192" }] },
     ],
   };
   return new Response(JSON.stringify(manifest), {

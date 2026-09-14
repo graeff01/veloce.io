@@ -130,6 +130,8 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
 export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, initialContact, quotesEnabled }: { token: string; brandName: string; logoUrl: string | null; chatBgUrl?: string | null; initialContact?: string | null; quotesEnabled?: boolean }) {
   // Marca d'água do chat: imagem própria do cliente (portal-bg) quando houver; senão o logo.
   const chatWatermark = chatBgUrl || logoUrl;
+  // Impressão da última lista recebida (ver lib/portal-lista-etag.ts).
+  const etagLista = useRef<string | null>(null);
   const [list, setList] = useState<Row[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -331,7 +333,16 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       if (tab === "arquivadas") sp.set("arquivadas", "1");
       if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
       recorte(sp);
-      fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      // Pergunta condicional: "mudou algo desde a impressão que eu tenho?".
+      // Quando não mudou, o servidor responde 304 sem montar nada e sem mandar
+      // um byte de corpo — que é o caso na esmagadora maioria das batidas.
+      const cabecalhos: HeadersInit = etagLista.current ? { "If-None-Match": etagLista.current } : {};
+      fetch(`/api/portal/${token}/conversations?${sp}`, { headers: cabecalhos }).then((r) => {
+        if (r.status === 304) return null;   // nada mudou: a tela já está certa
+        if (!r.ok) return null;
+        etagLista.current = r.headers.get("ETag");
+        return r.json();
+      }).then((d) => {
         if (!d) return;
         setMe(d.me ?? null); setIsAdmin(!!d.isAdmin); setAttendants(d.attendants ?? []);
         setSomenteLeitura(!!d.somenteLeitura);
@@ -345,6 +356,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         });
       }).catch(() => {});
     };
+    etagLista.current = null;  // mudou o recorte: a impressão anterior não vale
     const iv = setInterval(reload, 6000);
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
@@ -407,18 +419,35 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     };
     load(false);
     // TEMPO REAL: o servidor EMPURRA (SSE) assim que chega mensagem nova → recarrega na hora.
+    //
+    // O stream é caro do LADO DE LÁ: enquanto ele está aberto, o servidor
+    // consulta o banco a cada 1,2s procurando mensagem nova. Uma aba esquecida
+    // em segundo plano mantinha isso rodando — 50 consultas por minuto para
+    // ninguém. Então a conexão FECHA quando a aba sai de vista e reabre ao
+    // voltar, com um recarregamento na hora para não perder o que chegou no
+    // meio-tempo.
     let es: EventSource | null = null;
-    try {
-      es = new EventSource(`/api/portal/${token}/conversations/${sel}/stream`);
-      es.onmessage = () => { if (alive && !document.hidden) load(true); };
-      // onerror: o EventSource reconecta sozinho; o polling abaixo cobre qualquer buraco.
-    } catch { /* navegador sem SSE → só o polling */ }
+    const abrirStream = () => {
+      if (es || document.hidden) return;
+      try {
+        es = new EventSource(`/api/portal/${token}/conversations/${sel}/stream`);
+        es.onmessage = () => { if (alive && !document.hidden) load(true); };
+        // onerror: o EventSource reconecta sozinho; o polling abaixo cobre qualquer buraco.
+      } catch { /* navegador sem SSE → só o polling */ }
+    };
+    const fecharStream = () => { if (es) { es.close(); es = null; } };
+    abrirStream();
+
     // Rede de segurança: polling mais lento (8s) + refetch imediato ao voltar pra aba/janela.
     const iv = setInterval(() => { if (!document.hidden) load(true); }, 8000);
-    const onActive = () => { if (!document.hidden) load(true); };
+    const onActive = () => {
+      if (document.hidden) { fecharStream(); return; }
+      abrirStream();
+      load(true);
+    };
     window.addEventListener("focus", onActive);
     document.addEventListener("visibilitychange", onActive);
-    return () => { alive = false; if (es) es.close(); clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
+    return () => { alive = false; fecharStream(); clearInterval(iv); window.removeEventListener("focus", onActive); document.removeEventListener("visibilitychange", onActive); };
   }, [sel, token]);
 
   // Rola pro fim quando abre a conversa ou chega mensagem nova — mas só se já estava embaixo.
