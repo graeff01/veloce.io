@@ -251,6 +251,25 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (t === "waiting" || t === "ads" || t === "arquivadas") setTab(t);
   }, []);
 
+  // ── Dentro da conversa, no celular, o portal sai da frente ─────────────────
+  // A tela da conversa JÁ TEM o seu próprio cabeçalho (voltar, nome do lead,
+  // ações) e o seu compositor. Somados aos do portal viravam dois cabeçalhos
+  // empilhados e uma barra de atalhos flutuando POR CIMA do campo de escrever —
+  // com o botão de enviar atrás dela.
+  //
+  // A marca vai no <html> porque quem precisa sumir são componentes IRMÃOS,
+  // montados pela página, fora desta árvore. É a mesma regra do aplicativo
+  // (apps/mobile/src/ui/nav.tsx), e pelo mesmo motivo.
+  useEffect(() => {
+    const dentro = isMobile && !!sel;
+    const html = document.documentElement;
+    if (dentro) html.setAttribute("data-conversa-aberta", "1");
+    else html.removeAttribute("data-conversa-aberta");
+    // Sair da tela com a marca posta deixaria o portal sem cabeçalho nem barra
+    // na página seguinte.
+    return () => html.removeAttribute("data-conversa-aberta");
+  }, [isMobile, sel]);
+
   // Mobile-first: em telas estreitas vira 1 coluna (lista OU thread, com botão voltar).
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 760px)");
@@ -1179,7 +1198,10 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         )}
         {(tab !== "ads" || adGroups.length === 0) && <div style={{ borderBottom: "1px solid var(--p-border)" }} />}
         {/* rows */}
-        <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
+        {/* O espaço reservado para a barra só existe enquanto ela existe: dentro
+            da conversa ela some, e manter o vão deixaria uma faixa morta acima
+            do compositor. */}
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra && !(isMobile && sel) ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
           {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
             : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)", lineHeight: 1.5 }}>{
                 q ? "Nada encontrado."

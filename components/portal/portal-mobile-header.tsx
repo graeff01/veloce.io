@@ -88,6 +88,10 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
         /* O título passou para a barra: no celular, o do conteúdo viraria eco. */
         @media(max-width:1023px){ .pm-titulo-conteudo{display:none} }
         @media(min-width:1024px){ .pmhead{display:none} }
+        /* Dentro da conversa, no celular: a thread traz o próprio cabeçalho
+           (voltar, nome do lead, ações). Dois empilhados comiam meia tela e
+           deixavam a conversa começando no rodapé. */
+        html[data-conversa-aberta="1"] .pmhead{display:none}
       `}</style>
 
       <header className="pmhead">
