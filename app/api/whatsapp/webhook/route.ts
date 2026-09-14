@@ -364,7 +364,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
         void enqueueAgentJob({
           clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
           idempotencyKey: m.id,
-          payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
+          payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime, messageId: createdMsg.id },
         }).catch(() => {});
       }
 
