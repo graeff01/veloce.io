@@ -130,6 +130,18 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
 export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, initialContact, quotesEnabled }: { token: string; brandName: string; logoUrl: string | null; chatBgUrl?: string | null; initialContact?: string | null; quotesEnabled?: boolean }) {
   // Marca d'água do chat: imagem própria do cliente (portal-bg) quando houver; senão o logo.
   const chatWatermark = chatBgUrl || logoUrl;
+  // Sem rede, as buscas falham em silêncio e a lista fica em "Carregando…"
+  // para sempre — a tela passa a mentir justo quando a pessoa mais precisa
+  // entender o que está acontecendo.
+  const [semRede, setSemRede] = useState(false);
+  useEffect(() => {
+    const ler = () => setSemRede(typeof navigator !== "undefined" && navigator.onLine === false);
+    ler();
+    window.addEventListener("online", ler);
+    window.addEventListener("offline", ler);
+    return () => { window.removeEventListener("online", ler); window.removeEventListener("offline", ler); };
+  }, []);
+
   // Impressão da última lista recebida (ver lib/portal-lista-etag.ts).
   const etagLista = useRef<string | null>(null);
   const [list, setList] = useState<Row[] | null>(null);
@@ -1231,7 +1243,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             da conversa ela some, e manter o vão deixaria uma faixa morta acima
             do compositor. */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: temBarra && !(isMobile && sel) ? "calc(96px + env(safe-area-inset-bottom))" : 0 }}>
-          {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)" }}>Carregando…</p>
+          {list === null ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)", lineHeight: 1.5 }}>
+              {semRede ? "Sem conexão — as conversas aparecem assim que o sinal voltar." : "Carregando…"}
+            </p>
             : items.length === 0 && !hasMore ? <p style={{ padding: 16, fontSize: 13, color: "var(--wa-muted)", lineHeight: 1.5 }}>{
                 q ? "Nada encontrado."
                 : estadoFiltro === "sem-resposta" ? "Nenhuma conversa sem resposta aqui — todas já foram atendidas."
@@ -1314,7 +1328,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             <p style={{ fontSize: 14 }}>Selecione uma conversa para ver o histórico</p>
           </div>
         ) : loadingConv || !conv ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--wa-muted)", fontSize: 13 }}>Carregando…</div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--wa-muted)", fontSize: 13, padding: 20, textAlign: "center", lineHeight: 1.5 }}>
+            {semRede ? "Sem conexão — a conversa abre assim que o sinal voltar." : "Carregando…"}
+          </div>
         ) : (
           <>
             {/* header do chat */}
