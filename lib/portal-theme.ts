@@ -82,10 +82,11 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 .p-phead h2{font-size:13.5px;font-weight:700;margin:0;letter-spacing:-.01em;color:var(--p-text)}
 .p-phead .hint{color:var(--p-muted);opacity:.85;font-size:11.5px;margin-left:auto}
 .p-metrics{display:grid;grid-template-columns:repeat(4,1fr)}
+.p-metrics.tres{grid-template-columns:repeat(3,1fr)}
 .p-metric{padding:16px 18px;border-left:1px solid var(--p-border);min-width:0}
 .p-metric:first-child{border-left:none}
 .p-metric .k{font-size:11px;font-weight:600;color:var(--p-muted)}
-.p-metric .v{font-size:26px;font-weight:750;letter-spacing:-.03em;margin-top:7px;line-height:1;color:var(--p-text);font-variant-numeric:tabular-nums}
+.p-metric .v{font-size:clamp(19px,5.4vw,26px);font-weight:750;letter-spacing:-.03em;margin-top:7px;line-height:1.1;color:var(--p-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .p-metric .foot{font-size:11px;color:var(--p-muted);opacity:.85;margin-top:8px}
 .p-chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:20px;margin-top:8px}
 .p-chip.up{color:var(--p-good);background:var(--p-good-soft)}
@@ -105,7 +106,10 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 .p-table tbody td:first-child{text-align:left}
 .p-table tbody tr:last-child td{border-bottom:none}
 .p-scroll{overflow-x:auto}
-@media(max-width:820px){.p-metrics{grid-template-columns:repeat(2,1fr)}.p-metric:nth-child(3){border-left:none}.p-split{grid-template-columns:1fr}.p-split>div+div{border-left:none;border-top:1px solid var(--p-border)}.p-wrap{padding:16px 14px 64px}}
+@media(max-width:820px){.p-metrics{grid-template-columns:repeat(2,1fr)}.p-metric:nth-child(3){border-left:none}
+.p-metrics.tres{grid-template-columns:repeat(2,1fr)}
+.p-metrics.tres>.p-metric:nth-child(3){grid-column:1/-1;border-left:none;border-top:1px solid var(--p-border)}
+.p-metric{padding:14px 16px}.p-split{grid-template-columns:1fr}.p-split>div+div{border-left:none;border-top:1px solid var(--p-border)}.p-wrap{padding:16px 14px 64px}}
 `;
 
 // Script inline (anti-flash): define data-pt no <html> a partir do localStorage,

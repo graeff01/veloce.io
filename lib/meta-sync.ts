@@ -85,6 +85,10 @@ interface CreativeRow {
   id: string; name?: string; title?: string; body?: string; thumbnail_url?: string;
   object_story_spec?: unknown; asset_feed_spec?: unknown;
 }
+// Só a parte de imagem do criativo — vem de uma chamada SEPARADA (ver abaixo).
+interface CreativeImgRow { id: string; image_url?: string; image_hash?: string; thumbnail_url?: string }
+interface AdImageRow { hash?: string; url?: string; width?: number; height?: number }
+
 interface AdInsightRow {
   ad_id: string; date_start: string;
   spend?: string; impressions?: string; reach?: string; clicks?: string;
@@ -128,15 +132,37 @@ function extractWhatsappNumber(creative: CreativeRow | undefined): string | null
 // Imagem em alta + id do vídeo do criativo (object_story_spec / asset_feed_spec).
 // Best-effort: varre os specs por "video_id" e por uma "image_url"/"picture" de
 // resolução decente. Nunca lança — cai para a thumbnail quando não acha nada.
-function extractMedia(creative: CreativeRow | undefined): { imageUrl: string | null; videoId: string | null } {
-  if (!creative) return { imageUrl: null, videoId: null };
+function extractMedia(creative: CreativeRow | undefined): { imageUrl: string | null; picture: string | null; videoId: string | null } {
+  if (!creative) return { imageUrl: null, picture: null, videoId: null };
   const blob = JSON.stringify(creative.object_story_spec ?? "") + JSON.stringify(creative.asset_feed_spec ?? "");
   // video_id pode vir como string ("123") OU número (123) no spec — pega os dois.
   const vid = blob.match(/"video_id"\s*:\s*"?(\d+)"?/);
-  // Prioriza image_url (alta) e picture; ignora as p64x64 (thumb minúscula).
-  const img = blob.match(/"image_url"\s*:\s*"([^"]+)"/) || blob.match(/"picture"\s*:\s*"([^"]+)"/);
-  const imageUrl = img ? img[1].replace(/\\\//g, "/") : null;
-  return { imageUrl, videoId: vid ? vid[1] : null };
+  // `image_url` é a peça em tamanho cheio. `picture` costuma ser uma PRÉVIA —
+  // serve, mas só depois de esgotadas as fontes boas, por isso vai separada.
+  const limpar = (m: RegExpMatchArray | null) => (m ? m[1].replace(/\\\//g, "/") : null);
+  const imageUrl = limpar(blob.match(/"image_url"\s*:\s*"([^"]+)"/));
+  const picture = limpar(blob.match(/"picture"\s*:\s*"([^"]+)"/));
+  return { imageUrl, picture, videoId: vid ? vid[1] : null };
+}
+
+// Qual das fontes de imagem de um criativo é a melhor. Em ordem:
+//   1. image_url do spec — a peça publicada, tamanho cheio
+//   2. image_url do criativo — a imagem da biblioteca da conta
+//   3. a biblioteca resolvida pelo image_hash (criativo que só guarda o hash)
+//   4. `picture` do spec — geralmente uma prévia, serve se não houver melhor
+//   5. thumbnail_url — que agora pedimos em 1080, não nos 64×64 do padrão
+// Exportada para teste: a ordem é a regra, e regra sem teste volta a quebrar.
+export function melhorImagem(
+  doSpec: { imageUrl: string | null; picture: string | null },
+  criativo: { image_url?: string; image_hash?: string; thumbnail_url?: string },
+  porHash: Map<string, string>,
+): string | null {
+  return doSpec.imageUrl
+    || criativo.image_url
+    || (criativo.image_hash ? porHash.get(criativo.image_hash) : undefined)
+    || doSpec.picture
+    || criativo.thumbnail_url
+    || null;
 }
 
 export interface MetaSyncResult {
@@ -191,8 +217,50 @@ export async function syncMetaAds(connectionId: string, since: string, until: st
         `${GRAPH}/${acct}/adcreatives?fields=${CR_BASE}&limit=300&${auth}`, "adcreatives")
     : [];
   const waByCreative = new Map<string, string | null>();
-  const mediaByCreative = new Map<string, { imageUrl: string | null; videoId: string | null }>();
+  const mediaByCreative = new Map<string, { imageUrl: string | null; picture: string | null; videoId: string | null }>();
   for (const cr of creatives) { waByCreative.set(cr.id, extractWhatsappNumber(cr)); mediaByCreative.set(cr.id, extractMedia(cr)); }
+
+  // ── Imagem em ALTA ──────────────────────────────────────────────────────────
+  // `thumbnail_url` vem 64×64 (o padrão documentado da Meta). Esticada na largura
+  // do celular do cliente, vira um borrão — foi o que a JR e a Boqueirão viram.
+  //
+  // Esta busca é uma chamada PRÓPRIA, e best-effort, de propósito: a de cima
+  // carrega `object_story_spec`, de onde sai o número CTWA que sustenta a
+  // atribuição. Pendurar campos novos nela arriscaria a atribuição inteira por
+  // uma questão de nitidez. Se esta aqui falhar, a tela perde resolução e nada
+  // mais. Ordem de preferência: image_url do criativo → a imagem da biblioteca
+  // (resolvida pelo hash) → thumbnail grande.
+  if (creativeIds.length) {
+    try {
+      const nitidas = await graphGetAll<CreativeImgRow>(
+        `${GRAPH}/${acct}/adcreatives?fields=id,image_url,image_hash,thumbnail_url` +
+        `&thumbnail_width=1080&thumbnail_height=1080&limit=200&${auth}`);
+
+      // Criativo sem image_url mas com hash: a imagem original está na
+      // biblioteca da conta. Uma chamada resolve todos os hashes de uma vez.
+      const porHash = new Map<string, string>();
+      const hashes = [...new Set(nitidas.filter((c) => !c.image_url && c.image_hash).map((c) => c.image_hash!))];
+      if (hashes.length) {
+        try {
+          const imgs = await graphGetAll<AdImageRow>(
+            `${GRAPH}/${acct}/adimages?fields=hash,url,width,height` +
+            `&hashes=${encodeURIComponent(JSON.stringify(hashes))}&limit=200&${auth}`);
+          for (const im of imgs) if (im.hash && im.url) porHash.set(im.hash, im.url);
+        } catch (e) {
+          if (e instanceof MetaTokenError || e instanceof MetaRateLimitError) throw e;
+          console.warn("[meta-sync] biblioteca de imagens indisponivel:", e instanceof Error ? e.message : e);
+        }
+      }
+
+      for (const c of nitidas) {
+        const atual = mediaByCreative.get(c.id) ?? { imageUrl: null, picture: null, videoId: null };
+        mediaByCreative.set(c.id, { ...atual, imageUrl: melhorImagem(atual, c, porHash) });
+      }
+    } catch (e) {
+      if (e instanceof MetaTokenError || e instanceof MetaRateLimitError) throw e;
+      console.warn("[meta-sync] imagem em alta indisponivel:", e instanceof Error ? e.message : e);
+    }
+  }
 
   // 2) Insights diários em nível de anúncio (frequency cai para base se recusado).
   const timeRange = `{"since":"${since}","until":"${until}"}`;

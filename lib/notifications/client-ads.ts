@@ -94,7 +94,9 @@ export async function getClientAds(clientId: string, period: Period = "month"): 
     ? new Map((await prisma.metaCreative.findMany({
         where: { connectionId: metaConn.id, creativeId: { in: criativoIds } },
         select: { creativeId: true, thumbnailUrl: true, imageUrl: true },
-      })).map((c) => [c.creativeId, c.imageUrl || c.thumbnailUrl || null]))
+      // Caixa de 52px: a thumbnail pequena basta e poupa dados do celular. A
+      // imagem em alta fica para o destaque, que ocupa a largura toda.
+      })).map((c) => [c.creativeId, c.thumbnailUrl || c.imageUrl || null]))
     : new Map<string, string | null>();
 
   const topCampaigns = campIds.map((id) => {

@@ -10,13 +10,17 @@ import { PortalShell } from "@/components/portal/portal-shell";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
 import { PortalMobileHeader } from "@/components/portal/portal-mobile-header";
 import { PortalPeriod } from "@/components/portal/portal-period";
-import { PortalCreativeMedia } from "@/components/portal/portal-creative-media";
+import { PortalCreativeMedia, PortalThumb } from "@/components/portal/portal-creative-media";
 import { AreaChart, Sparkline } from "@/components/portal/portal-charts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const int = (v: number) => v.toLocaleString("pt-BR");
+
+// "2026-09-14" → "14/09". A série já vem em dia local, então basta recortar:
+// montar um Date aqui reintroduziria fuso onde não há.
+const diaCurto = (s: string) => { const [, m, d] = s.split("-"); return d && m ? `${d}/${m}` : s; };
 
 function money(v: number, currency: string) {
   try { return v.toLocaleString("pt-BR", { style: "currency", currency }); } catch { return `${currency} ${v.toFixed(2)}`; }
@@ -67,6 +71,14 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
   const data = await getClientAds(portal.clientId, period);
   const cur = data.currency;
 
+  // Um gráfico sem escala sobe e desce sem dizer quanto. Estes três dão o eixo:
+  // onde começa, onde termina e qual foi o melhor dia.
+  const primeiroDia = data.series[0]?.day ?? "";
+  const ultimoDia = data.series[data.series.length - 1]?.day ?? "";
+  const melhorDia = data.series.length
+    ? data.series.reduce((a, b) => (b.leads > a.leads ? b : a))
+    : { day: "", leads: 0, spend: 0 };
+
   const summary = !data.hasMeta
     ? "Assim que sua conta de anúncios estiver conectada, a transparência do investimento aparece aqui."
     : data.spend === 0
@@ -88,6 +100,11 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
         .ptop .sub{color:var(--p-muted);font-size:12.5px}
         .p-track{height:7px;border-radius:5px;background:var(--p-raise);overflow:hidden}
         .p-track>span{display:block;height:100%;border-radius:5px;background:var(--p-accent)}
+        .agrafico{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+        .agrafico .faixa{font-size:11.5px;color:var(--p-muted)}
+        .aeixo{display:flex;justify-content:space-between;font-size:11px;color:var(--p-muted);margin-top:5px}
+        .ainvest{margin-top:16px;padding-top:14px;border-top:1px solid var(--p-border)}
+        .anome{font-size:13.5px;font-weight:700;color:var(--p-text);line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         @media print{.ptop{display:none!important}}`}</style>
 
       <div className="ptop">
@@ -104,7 +121,7 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
         )}
 
         <div className="p-panel">
-          <div className="p-metrics" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+          <div className="p-metrics tres">
             <div className="p-metric">
               <div className="k">Investido</div>
               <div className="v">{money(data.spend, cur)}</div>
@@ -123,14 +140,34 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
           </div>
 
           {data.series.length > 1 && (
-            <div style={{ padding: "4px 18px 16px" }}>
-              <div className="p-eyebrow" style={{ marginBottom: 8 }}>Leads por dia</div>
-              <AreaChart points={data.series.map((d) => d.leads)} height={150} />
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-                <span style={{ fontSize: 11.5, color: "var(--p-muted)", flexShrink: 0 }}>Investimento</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Sparkline points={data.series.map((d) => d.spend)} height={26} />
+            <div style={{ padding: "4px 18px 18px" }}>
+              <div className="agrafico">
+                <div className="p-eyebrow">Leads por dia</div>
+                <span className="tnum faixa">{diaCurto(primeiroDia)} – {diaCurto(ultimoDia)}</span>
+              </div>
+              <AreaChart
+                points={data.series.map((d) => d.leads)}
+                height={150}
+                animado
+                rotuloTopo={`pico ${int(melhorDia.leads)} lead${melhorDia.leads !== 1 ? "s" : ""}/dia`}
+                descricao={`Leads por dia de ${diaCurto(primeiroDia)} a ${diaCurto(ultimoDia)}. Melhor dia: ${diaCurto(melhorDia.day)}, com ${int(melhorDia.leads)} lead${melhorDia.leads !== 1 ? "s" : ""}.`}
+              />
+              <div className="tnum aeixo">
+                <span>{diaCurto(primeiroDia)}</span>
+                <span>{diaCurto(ultimoDia)}</span>
+              </div>
+
+              <div className="ainvest">
+                <div className="agrafico">
+                  <div className="p-eyebrow">Investimento por dia</div>
+                  <span className="tnum faixa">{money(data.spend, cur)} no período</span>
                 </div>
+                <Sparkline
+                  points={data.series.map((d) => d.spend)}
+                  height={30}
+                  animado
+                  descricao={`Investimento diário, ${money(data.spend, cur)} no período.`}
+                />
               </div>
             </div>
           )}
@@ -146,10 +183,7 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
                   {data.topCampaigns.map((c, i) => (
                     <div key={i} style={{ display: "flex", gap: 11, alignItems: "center", padding: 10, borderRadius: 12, border: "1px solid var(--p-border)", background: "var(--p-surface)" }}>
                       <div style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 9, overflow: "hidden", background: "var(--p-raise)", border: "1px solid var(--p-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {c.image
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          : <span style={{ fontSize: 17, opacity: 0.35 }} aria-hidden>📣</span>}
+                        <PortalThumb src={c.image} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, color: "var(--p-text)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
@@ -178,7 +212,9 @@ export default async function AnunciosPage({ params, searchParams }: { params: P
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.bestCreative.campaignName}</div>
+                    {/* Aqui há largura: o nome da campanha cabe em duas linhas em vez
+                        de virar reticência logo no começo, como acontecia no celular. */}
+                    <div className="anome">{data.bestCreative.campaignName}</div>
                     <div style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 2 }}>{int(data.bestCreative.leads)} lead{data.bestCreative.leads !== 1 ? "s" : ""} no período</div>
                   </div>
                 </div>
