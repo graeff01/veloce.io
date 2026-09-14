@@ -1474,13 +1474,18 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
               <div style={{ padding: isMobile ? "8px 12px" : "8px 8%" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "8px 11px", borderRadius: 10, background: "color-mix(in srgb, var(--p-accent) 10%, var(--p-surface))", border: "1px solid color-mix(in srgb, var(--p-accent) 24%, transparent)", fontSize: 11.5, color: "var(--p-text)", lineHeight: 1.45 }}>
                   <Sparkles size={13} style={{ color: "var(--p-accent)", flexShrink: 0, marginTop: 1 }} />
-                  <span><span style={{ fontWeight: 700, color: "var(--p-accent)" }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”</span>
+                  {/* A evidência é um TRECHO da mensagem do lead — pode trazer a
+                      mesma URL gigante que estourava o balão. */}
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}><span style={{ fontWeight: 700, color: "var(--p-accent)" }}>Por que nesta etapa:</span> “{conv.funnelEvidence}”</span>
                 </div>
               </div>
             )}
 
             {/* mensagens */}
-            <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 12px" : "16px 8%" }}>
+            {/* `overflowX: hidden` é rede de segurança: um elemento largo que
+                escape no futuro passa a ser cortado em vez de criar rolagem
+                lateral — que é o que sequestrava a rolagem vertical no celular. */}
+            <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", padding: isMobile ? "12px 12px" : "16px 8%" }}>
               {/* Card do anúncio que originou o lead (estilo referral CTWA) */}
               {conv.lead && (conv.lead.image || conv.lead.adStrong) && (
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
@@ -1537,8 +1542,17 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                           <span style={{ flex: 1, height: 1, background: "color-mix(in srgb, #1FA855 45%, transparent)" }} />
                         </div>
                       )}
-                      <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4 }}>
-                        <div data-bolha id={`msg-${m.id}`} style={{ outline: achados[achadoAtual] === m.id ? "2px solid var(--p-accent)" : undefined, outlineOffset: 2, maxWidth: isMobile ? "82%" : "65%", padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
+                      <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: m.reaction ? 15 : 4,
+                        // item de flex não encolhe abaixo do conteúdo por padrão: sem
+                        // isto a linha empurra o container, por mais maxWidth que o
+                        // balão tenha.
+                        minWidth: 0 }}>
+                        <div data-bolha id={`msg-${m.id}`} style={{ outline: achados[achadoAtual] === m.id ? "2px solid var(--p-accent)" : undefined, outlineOffset: 2, maxWidth: isMobile ? "82%" : "65%", minWidth: 0, padding: "6px 9px 5px", fontSize: 13.5, lineHeight: 1.4,
+                          // `pre-wrap` preserva as quebras que o lead digitou, mas só
+                          // quebra em lugares NORMAIS — e uma URL não tem nenhum. O link
+                          // do anúncio estourava o balão, criava rolagem lateral no chat
+                          // e, com ela, travava a rolagem vertical.
+                          whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", boxShadow: "0 1px 1px rgba(0,0,0,.08)", position: "relative", opacity: m.pending ? 0.75 : 1,
                           background: mine ? "var(--p-accent)" : "var(--wa-in)", color: mine ? "var(--p-on-accent)" : "var(--wa-text)",
                           borderRadius: mine ? "8px 0 8px 8px" : "0 8px 8px 8px" }}>
                           {!mine && !m.pending && (m.type === "image" || m.type === "sticker")
