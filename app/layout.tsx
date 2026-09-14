@@ -22,7 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="h-full">
+    // `suppressHydrationWarning`: o script anti-flash carimba data-pt no <html>
+    // ANTES do React hidratar — o servidor não tem como saber o tema salvo no
+    // aparelho. A divergência é o desenho funcionando, não um defeito, e o
+    // aviso só escondia erros de verdade no console.
+    <html lang="pt-BR" className="h-full" suppressHydrationWarning>
       <body className="h-full antialiased">
         <Providers>{children}</Providers>
         <CookieConsent />

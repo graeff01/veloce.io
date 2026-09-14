@@ -43,9 +43,16 @@ test("cidade fora da área → unmatched", () => {
   assert.ok(r && "unmatched" in r);
 });
 
-test("montagem obrigatória entra no rótulo", () => {
+// O rótulo do frete é o que o CLIENTE lê no orçamento, e ele deixou de expor
+// "(entrega com montagem obrigatória)" de propósito — feedback da Maria: a frase
+// confundia. A obrigatoriedade continua existindo, no campo `assembly`, que é
+// interno e serve à IA. O teste antigo ainda cobrava a frase no rótulo.
+test("montagem obrigatória fica no campo interno, não no rótulo do cliente", () => {
   const r = resolveFreight(rules, "porto alegre extremo sul");
-  assert.ok(r && "label" in r && r.label.includes("montagem obrigatória"));
+  assert.ok(r && "label" in r);
+  assert.ok(!r.label.includes("montagem obrigatória"),
+    "o rótulo é lido pelo cliente e a frase confundia");
+  assert.ok("assembly" in r, "a obrigatoriedade continua sendo dita — no campo interno");
 });
 
 test("sem frete configurado → null", () => {

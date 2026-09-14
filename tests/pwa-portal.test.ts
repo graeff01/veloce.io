@@ -184,6 +184,19 @@ test("If-None-Match com vários valores é aceito", () => {
   assert.equal(etagConfere(null, etag), false);
 });
 
+test("o stream fecha quando a aba sai de vista", () => {
+  // Enquanto o SSE está aberto, o SERVIDOR consulta o banco a cada 1,2s
+  // procurando mensagem nova. Uma aba esquecida em segundo plano mantinha 50
+  // consultas por minuto rodando para ninguém.
+  const tela = ler("components", "portal", "portal-conversations.tsx");
+  assert.match(tela, /const fecharStream = \(\)/);
+  assert.match(tela, /if \(es \|\| document\.hidden\) return/, "não reabre escondido");
+  const aoVoltar = tela.slice(tela.indexOf("const onActive = () => {"), tela.indexOf("window.addEventListener(\"focus\", onActive)"));
+  assert.match(aoVoltar, /fecharStream\(\)/);
+  assert.match(aoVoltar, /abrirStream\(\)/);
+  assert.match(aoVoltar, /load\(true\)/, "ao voltar, busca o que chegou no meio-tempo");
+});
+
 // ── Acabamento ───────────────────────────────────────────────────────────────
 
 test("digitar no iPhone não dá zoom na página", () => {
