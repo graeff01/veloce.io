@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sem conexão</title>
+<style>
+  /* Esta página é servida do disco do aparelho, sem rede e sem servidor.
+     Por isso tudo mora aqui dentro: nenhuma fonte, nenhum arquivo externo. */
+  :root{color-scheme:light dark;--fundo:#f6f7f9;--cartao:#fff;--texto:#101319;--fraco:#6b7480;--borda:#e6e8ec}
+  @media (prefers-color-scheme:dark){:root{--fundo:#0e1014;--cartao:#171a21;--texto:#e9ebef;--fraco:#9aa2ad;--borda:#262a33}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+       padding:24px;background:var(--fundo);color:var(--texto);
+       font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:18px;
+          padding:28px 24px;max-width:380px;width:100%;text-align:center;
+          box-shadow:0 1px 3px rgba(16,19,28,.05),0 16px 36px rgba(16,19,28,.06)}
+  .marca{width:46px;height:46px;margin:0 auto 16px;display:block;color:var(--texto)}
+  h1{font-size:18px;margin:0 0 8px;letter-spacing:-.02em}
+  p{font-size:14px;line-height:1.55;color:var(--fraco);margin:0 0 20px}
+  button{width:100%;border:0;border-radius:12px;padding:13px;font-size:14.5px;font-weight:700;
+         background:var(--texto);color:var(--cartao);cursor:pointer;font-family:inherit}
+  button:active{opacity:.85}
+  .nota{margin:14px 0 0;font-size:12px}
+</style>
+</head>
+<body>
+  <div class="cartao">
+    <!-- Símbolo neutro de propósito: o portal ébranco (white-label) — cada cliente vê a
+         marca DELE. Pôr o logo da Veloce aqui entregaria o fornecedor logo na
+         hora em que a pessoa está com problema. -->
+    <svg class="marca" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+         stroke-linecap="round" aria-hidden="true" style="opacity:.5">
+      <path d="M2 2 L22 22"/>
+      <path d="M5 12.5a11 11 0 0 1 4.2-2.5"/>
+      <path d="M8.2 16a6.5 6.5 0 0 1 2.4-1.4"/>
+      <path d="M1.8 9a17 17 0 0 1 5-3"/>
+      <path d="M12 19.6h.01"/>
+    </svg>
+    <h1>Você está sem conexão</h1>
+    <p>Nada se perdeu. As mensagens que você escreveu ficam guardadas e saem sozinhas assim que o sinal voltar.</p>
+    <button id="tentar" type="button">Tentar de novo</button>
+    <p class="nota" id="nota"></p>
+  </div>
+<script>
+  var btn = document.getElementById("tentar");
+  btn.addEventListener("click", function () { location.reload(); });
+  // Voltou o sinal sozinho: recarrega sem a pessoa precisar tocar em nada.
+  window.addEventListener("online", function () { location.reload(); });
+  if (!navigator.onLine) document.getElementById("nota").textContent = "Aguardando o sinal voltar…";
+</script>
+</body>
+</html>

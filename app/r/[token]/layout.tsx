@@ -1,8 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { existsSync } from "fs";
 import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
+import { PortalPWA } from "@/components/portal/portal-pwa";
+
+// `viewport-fit=cover` é o que faz `env(safe-area-inset-*)` valer alguma coisa
+// no iPhone. Sem ele todo o cuidado com notch e barra inferior espalhado pelas
+// telas resolve para zero.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 // Metadata do portal do cliente: no MOBILE, o atalho na tela inicial usa o logo e o
 // nome do CLIENTE (apple-touch-icon no iOS + manifest por token no Android). O favicon
@@ -29,5 +39,10 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
 }
 
 export default function PortalTokenLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <>
+      {children}
+      <PortalPWA />
+    </>
+  );
 }

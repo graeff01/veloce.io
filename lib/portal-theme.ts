@@ -106,6 +106,31 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 .p-table tbody td:first-child{text-align:left}
 .p-table tbody tr:last-child td{border-bottom:none}
 .p-scroll{overflow-x:auto}
+
+/* ── Acabamento de toque ───────────────────────────────────────────────────
+   Detalhes que ninguém nomeia mas todo mundo sente: sem eles o portal parece
+   um site aberto no navegador; com eles, parece aplicativo. */
+
+/* Campo com fonte menor que 16px faz o iOS dar zoom na página inteira quando a
+   pessoa toca para digitar — e ela tem que desfazer o zoom na mão depois.
+   "!important" porque os tamanhos estão em style inline, que vence folha.
+   "select" fica de fora: no iOS ele abre seletor, não dá zoom, e aumentar a
+   fonte só apertaria o cabeçalho. */
+@media(max-width:1023px){
+  input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),textarea{font-size:16px!important}
+}
+/* O quadrado cinza que pisca no toque entrega que é página, não app. */
+button,[role="button"],a,input,textarea,select{-webkit-tap-highlight-color:transparent}
+button,[role="button"]{touch-action:manipulation}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+/* Sem isto, arrastar o fim de uma lista puxa a página inteira junto. */
+body{overscroll-behavior-y:contain}
+/* Foco por teclado visível — e só por teclado, não a cada toque. */
+:focus-visible{outline:2px solid var(--p-accent);outline-offset:2px;border-radius:6px}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
 @media(max-width:820px){.p-metrics{grid-template-columns:repeat(2,1fr)}.p-metric:nth-child(3){border-left:none}
 .p-metrics.tres{grid-template-columns:repeat(2,1fr)}
 .p-metrics.tres>.p-metric:nth-child(3){grid-column:1/-1;border-left:none;border-top:1px solid var(--p-border)}

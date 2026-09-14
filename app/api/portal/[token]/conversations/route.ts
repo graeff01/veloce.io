@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardPortal } from "@/lib/portal-guard";
 import { isStrongAd } from "@/lib/wa-leads";
+import { impressaoDaLista, etagConfere } from "@/lib/portal-lista-etag";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   // apontar para um número que não é deste cliente.
   const conexao = url.searchParams.get("conexao");
   const idsVisiveis = conexao && connIds.includes(conexao) ? [conexao] : connIds;
+
+  // ── Nada mudou desde a última vez? Então não monta nada ──────────────────
+  // Três agregados baratos no lugar de seis consultas + serialização. Ação da
+  // pessoa (arquivar, etiquetar, atribuir, marcar lida) move o updatedAt da
+  // conversa ou a contagem de etiquetas, então muda a impressão e a resposta
+  // volta inteira — não é preciso um caminho especial para isso.
+  const identidade = [portal.clientId, portal.email ?? "", portal.isAdmin ? "a" : "-",
+    portal.somenteLeitura ? "l" : "-", idsVisiveis.join(","), url.search].join("|");
+  // Sempre calcula: é o que a resposta cheia devolve para a próxima pergunta
+  // poder ser condicional. Sem isso o cliente nunca teria um ETag para mandar.
+  const etagAtual = await impressaoDaLista(idsVisiveis, identidade);
+  if (etagConfere(req.headers.get("if-none-match"), etagAtual)) {
+    return new Response(null, { status: 304, headers: { ETag: etagAtual, "Cache-Control": "no-store" } });
+  }
 
   // ── Filtros que a tela de Equipe usa para levar ao caso concreto ──────────
   // "12 leads nunca responderam" era um número sem saída: a gestora via o
@@ -174,5 +189,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         tags: tagsBy.get(c.id) ?? [],
       };
     }),
-  });
+  }, { headers: { ETag: etagAtual, "Cache-Control": "no-store" } });
 }
