@@ -95,7 +95,7 @@ export default async function ObjecoesPage({ params }: { params: Promise<{ token
 
             {/* Métricas topo */}
             <div className="p-panel">
-              <div className="p-metrics" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+              <div className="p-metrics tres">
                 <div className="p-metric"><div className="k">Objeção nº 1</div><div className="v" style={{ fontSize: 20 }}>{labelOf(top.type).emoji} {labelOf(top.type).label}</div></div>
                 <div className="p-metric"><div className="k">Total de objeções</div><div className="v">{int(totalObj)}</div><div className="foot">nos últimos 90 dias</div></div>
                 <div className="p-metric"><div className="k">Leads esfriando</div><div className="v" style={{ color: data.dropRiskLeads > 0 ? "var(--p-warn)" : "var(--p-good)" }}>{int(data.dropRiskLeads)}</div><div className="foot">risco de perder — priorize</div></div>
