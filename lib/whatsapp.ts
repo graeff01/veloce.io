@@ -112,9 +112,12 @@ export function messageText(m: WaIncomingMessage): string | null {
     }
     // "unsupported": tipo que a Cloud API NÃO repassa (enquete, "ver uma vez",
     // mensagem de app não suportado...). O conteúdo não chega — rótulo limpo.
-    case "unsupported": return "[Mensagem não suportada pelo WhatsApp]";
+    case "unsupported": return "[Mensagem indisponível — o WhatsApp não entregou o conteúdo]";
     case "contacts": return "[O lead compartilhou um contato]";
     case "reaction": return m.reaction?.emoji ? `[O lead reagiu: ${m.reaction.emoji}]` : "[O lead reagiu a uma mensagem]";
+    // "edit" e "revoke" não chegam aqui: o webhook os trata ANTES, aplicando a
+    // correção (ou o aviso de apagada) na mensagem original. Se um dia chegarem,
+    // o rótulo abaixo é inofensivo.
     default: return `[O lead enviou um(a) ${m.type}]`;
   }
 }

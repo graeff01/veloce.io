@@ -19,14 +19,16 @@ import { matchWaBotRecipient } from "@/lib/notifications/whatsapp-bot";
 import { handleWaBotInbound } from "@/lib/notifications/wa-bot-commands";
 import { sameBrazilNumber } from "@/lib/phone-br";
 import { transcribeWhatsAppAudio } from "@/lib/transcribe";
-import { fetchWhatsAppImageDataUri } from "@/lib/whatsapp-media";
+import { fetchWhatsAppImageDataUri, ALLOWED_IMAGE_MIME } from "@/lib/whatsapp-media";
 import { applyMessageToConversation } from "@/lib/wa-conversation";
 import { pushPortalMensagem } from "@/lib/notifications/portal-push";
 import { logWaEvent } from "@/lib/wa-events";
 import { isWithin24h } from "@/lib/wa-window";
 import { allowSend } from "@/lib/portal-send-throttle";
 
-export interface JobPayload { text?: string | null; type: string; mediaId?: string; mime?: string }
+// `messageId` é a NOSSA linha em WaMessage. Com ela a vision lê a imagem do
+// nosso próprio armazenamento em vez de rebaixá-la da Meta — ver abaixo.
+export interface JobPayload { text?: string | null; type: string; mediaId?: string; mime?: string; messageId?: string }
 export type JobOutcome = "sent" | "skipped" | "error";
 
 interface RunnerInput {
@@ -278,10 +280,28 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }
   if (mediaType === null && !inboundText.trim()) return "skipped";
 
-  // Vision (opt-in): baixa a imagem do lead p/ o modelo analisar.
+  // Vision (opt-in): entrega a imagem do lead para o modelo analisar.
+  //
+  // A imagem JÁ ESTÁ no nosso banco — o webhook a guarda no instante em que
+  // chega, justamente porque a Meta a mantém por pouco tempo. Rebaixá-la aqui
+  // eram duas chamadas de rede a mais por foto, dependentes de o token ainda
+  // estar válido, no meio do caminho de responder ao lead. Lemos do que já
+  // temos e só caímos na Meta se, por algum motivo, ela não tiver sido salva.
   let inboundImages: string[] | undefined;
-  if (cfg?.visionEnabled && input.payload.type === "image" && input.payload.mediaId) {
-    const uri = await fetchWhatsAppImageDataUri({ accessToken: conn.accessToken }, input.payload.mediaId).catch(() => null);
+  if (cfg?.visionEnabled && input.payload.type === "image") {
+    let uri: string | null = null;
+    if (input.payload.messageId) {
+      const guardada = await prisma.waMedia.findUnique({
+        where: { messageId: input.payload.messageId },
+        select: { mime: true, data: true },
+      }).catch(() => null);
+      if (guardada && ALLOWED_IMAGE_MIME.has(guardada.mime)) {
+        uri = `data:${guardada.mime};base64,${Buffer.from(guardada.data).toString("base64")}`;
+      }
+    }
+    if (!uri && input.payload.mediaId) {
+      uri = await fetchWhatsAppImageDataUri({ accessToken: conn.accessToken }, input.payload.mediaId).catch(() => null);
+    }
     if (uri) inboundImages = [uri];
   }
 

@@ -226,6 +226,40 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
       continue;
     }
 
+    // EDIÇÃO: o lead corrigiu o que escreveu. A Meta manda o texto NOVO junto com
+    // o id da mensagem original — e nós descartávamos os dois, gravando um rótulo
+    // vazio e deixando o texto ANTIGO no histórico. Resultado: a IA (e o atendente)
+    // liam a versão que a pessoa já tinha corrigido, e respondiam a ela.
+    // Agora a correção é aplicada na mensagem original, que é o que a pessoa vê
+    // no aparelho dela.
+    if (m.type === "edit") {
+      const ed = (m as { edit?: { message?: { text?: { body?: string } }; original_message_id?: string } }).edit;
+      const novoTexto = ed?.message?.text?.body;
+      if (ed?.original_message_id && novoTexto) {
+        await prisma.waMessage.updateMany({
+          where: { connectionId, waMessageId: ed.original_message_id },
+          data: { text: novoTexto },
+        }).catch(() => {});
+      }
+      continue;
+    }
+
+    // EXCLUSÃO ("apagar para todos"): o lead voltou atrás. O conteúdo sumiu do
+    // aparelho dele, mas continuava aqui — e a IA podia responder a algo que a
+    // pessoa retirou de propósito, que é constrangedor e quebra confiança.
+    // A linha NÃO é apagada (auditoria); o conteúdo é substituído por um aviso
+    // neutro, que é o que a IA e o atendente passam a ver.
+    if (m.type === "revoke") {
+      const rv = (m as { revoke?: { original_message_id?: string } }).revoke;
+      if (rv?.original_message_id) {
+        await prisma.waMessage.updateMany({
+          where: { connectionId, waMessageId: rv.original_message_id },
+          data: { text: "[mensagem apagada pelo lead]", type: "revoked" },
+        }).catch(() => {});
+      }
+      continue;
+    }
+
     const contact = await prisma.waContact.upsert({
       where: { connectionId_waId: { connectionId, waId: customerWaId } },
       create: { connectionId, waId: customerWaId, name: nameByWaId.get(customerWaId) || null, lastMessageAt: ts },
@@ -330,7 +364,7 @@ async function processMessages(conn: WaConnection, value: WaChangeValue) {
         void enqueueAgentJob({
           clientId: conn.clientId, connectionId: conn.id, contactId: contact.id,
           idempotencyKey: m.id,
-          payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime },
+          payload: { text: messageText(m), type: m.type, mediaId: media?.id, mime: media?.mime, messageId: createdMsg.id },
         }).catch(() => {});
       }
 
