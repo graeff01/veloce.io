@@ -32,6 +32,8 @@ function ehIOS(): boolean {
 export function PortalPWA() {
   const [temVersaoNova, setTemVersaoNova] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [expandido, setExpandido] = useState(false);
+  const [voltou, setVoltou] = useState(false);
   const [podeInstalar, setPodeInstalar] = useState(false);
   const [convitePassoAPasso, setConvitePassoAPasso] = useState(false);
   const esperando = useRef<ServiceWorker | null>(null);
@@ -83,9 +85,24 @@ export function PortalPWA() {
   }, []);
 
   // ── Rede ───────────────────────────────────────────────────────────────────
+  // Cair a conexão não é um detalhe de rodapé: enquanto ela está fora, a tela
+  // atrás mente (fica em "Carregando…" para sempre, porque as buscas falham em
+  // silêncio). Então o aviso entra em tela cheia, com um símbolo procurando
+  // sinal. Quem quiser ler o que já estava carregado fecha, e ele encolhe para
+  // uma barra que continua ali enquanto o sinal não volta.
   useEffect(() => {
-    const ler = () => setOffline(navigator.onLine === false);
-    ler();
+    const ler = () => {
+      const fora = navigator.onLine === false;
+      setOffline(fora);
+      if (fora) setExpandido(true);        // toda queda nova volta em tela cheia
+      else {
+        setExpandido(false);
+        setVoltou(true);                    // confirma que voltou e some sozinho
+        window.setTimeout(() => setVoltou(false), 2600);
+      }
+    };
+    setOffline(navigator.onLine === false);
+    setExpandido(navigator.onLine === false);
     window.addEventListener("online", ler);
     window.addEventListener("offline", ler);
     return () => { window.removeEventListener("online", ler); window.removeEventListener("offline", ler); };
@@ -127,7 +144,7 @@ export function PortalPWA() {
   }, []);
 
   const mostraConvite = podeInstalar || convitePassoAPasso;
-  if (!temVersaoNova && !offline && !mostraConvite) return null;
+  if (!temVersaoNova && !offline && !voltou && !mostraConvite) return null;
 
   return (
     <>
@@ -150,16 +167,86 @@ export function PortalPWA() {
         .vp-btn:focus-visible,.vp-x:focus-visible{outline:2px solid var(--p-accent);outline-offset:2px}
         .vp-off{background:#1f2430;color:#f2f4f8;border-color:#2c3341}
         @keyframes vpSobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-        @media(prefers-reduced-motion:reduce){.vp-aviso{animation:none}}
+
+        /* Barra compacta: vira botão para reabrir a tela cheia. */
+        .vp-aviso.vp-off{text-align:left;cursor:pointer;width:calc(100% - 24px);font:inherit}
+        .vp-ponto{flex-shrink:0;width:9px;height:9px;border-radius:50%;background:#ff9f45;
+          box-shadow:0 0 0 0 rgba(255,159,69,.6);animation:vpPulso 1.9s ease-out infinite}
+        @keyframes vpPulso{70%{box-shadow:0 0 0 9px rgba(255,159,69,0)}100%{box-shadow:0 0 0 0 rgba(255,159,69,0)}}
+        .vp-voltou{background:var(--p-good-soft);color:var(--p-good);border-color:transparent;font-weight:700}
+
+        /* ── Tela cheia ─────────────────────────────────────────────────── */
+        .vp-tela{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+          padding:24px;padding-top:calc(24px + env(safe-area-inset-top));
+          padding-bottom:calc(24px + env(safe-area-inset-bottom));
+          background:color-mix(in srgb,var(--p-bg) 88%,transparent);
+          backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+          animation:vpEntra .26s ease-out both;font-family:system-ui,-apple-system,sans-serif}
+        .vp-cartao{width:100%;max-width:360px;text-align:center;
+          background:var(--p-surface);border:1px solid var(--p-border);border-radius:20px;
+          padding:30px 24px 24px;box-shadow:0 20px 60px rgba(16,19,28,.22);
+          animation:vpCartao .34s cubic-bezier(.22,1,.36,1) both}
+        .vp-cartao h2{font-size:19px;font-weight:750;letter-spacing:-.02em;margin:18px 0 8px;color:var(--p-text)}
+        .vp-cartao p{font-size:14px;line-height:1.55;color:var(--p-muted);margin:0 0 22px}
+        .vp-btn.largo{width:100%;padding:13px;font-size:14.5px;border-radius:12px}
+        .vp-procurando{display:block;margin-top:14px;font-size:12px;color:var(--p-muted);opacity:.85}
+
+        .vp-onda{width:74px;height:74px;color:var(--p-accent);display:block;margin:0 auto}
+        .vp-onda .corte{stroke:var(--p-muted);opacity:.55}
+        .vp-onda .o1,.vp-onda .o2,.vp-onda .o3{opacity:.18;animation:vpOnda 2.1s ease-out infinite}
+        .vp-onda .o2{animation-delay:.22s}
+        .vp-onda .o3{animation-delay:.44s}
+        @keyframes vpOnda{0%{opacity:.18}35%{opacity:1}70%,100%{opacity:.18}}
+        @keyframes vpEntra{from{opacity:0}to{opacity:1}}
+        @keyframes vpCartao{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+
+        @media(prefers-reduced-motion:reduce){
+          .vp-aviso,.vp-tela,.vp-cartao{animation:none}
+          .vp-onda .o1,.vp-onda .o2,.vp-onda .o3{animation:none;opacity:1}
+          .vp-ponto{animation:none}
+        }
       `}</style>
 
-      {offline && (
-        <div className="vp-aviso alto vp-off" role="status">
-          <span aria-hidden>📶</span>
+      {offline && expandido && (
+        <div className="vp-tela" role="alertdialog" aria-modal="true" aria-labelledby="vp-off-titulo">
+          <div className="vp-cartao">
+            {/* As ondas pulsam de dentro para fora, como quem procura sinal.
+                É a única animação da tela e diz uma coisa só: ainda tentando. */}
+            <svg className="vp-onda" viewBox="0 0 64 64" fill="none" stroke="currentColor"
+                 strokeWidth={3.2} strokeLinecap="round" aria-hidden="true">
+              <path className="o1" d="M24 44a12 12 0 0 1 16 0" />
+              <path className="o2" d="M16 35a24 24 0 0 1 32 0" />
+              <path className="o3" d="M8 26a36 36 0 0 1 48 0" />
+              <circle cx="32" cy="52" r="2.6" fill="currentColor" stroke="none" />
+              <path className="corte" d="M12 12 L52 52" />
+            </svg>
+            <h2 id="vp-off-titulo">Sem conexão</h2>
+            <p>
+              Nada se perdeu. As mensagens que você escrever ficam guardadas aqui
+              e saem sozinhas assim que o sinal voltar.
+            </p>
+            <button className="vp-btn largo" type="button" onClick={() => setExpandido(false)}>
+              Entendi
+            </button>
+            <span className="vp-procurando">Procurando sinal…</span>
+          </div>
+        </div>
+      )}
+
+      {offline && !expandido && (
+        <button className="vp-aviso alto vp-off" type="button" onClick={() => setExpandido(true)}>
+          <span className="vp-ponto" aria-hidden />
           <div className="texto">
             <b>Sem conexão</b>
-            <div className="sub" style={{ color: "#aab3c0" }}>O que você escrever sai sozinho quando o sinal voltar.</div>
+            <div className="sub" style={{ color: "#aab3c0" }}>O que você escrever sai quando o sinal voltar.</div>
           </div>
+        </button>
+      )}
+
+      {voltou && (
+        <div className="vp-aviso alto vp-voltou" role="status">
+          <span aria-hidden>✓</span>
+          <div className="texto"><b>Conexão restabelecida</b></div>
         </div>
       )}
 

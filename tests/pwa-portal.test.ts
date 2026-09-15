@@ -214,3 +214,33 @@ test("quem pediu menos animação é respeitado no portal inteiro", () => {
 test("foco por teclado é visível", () => {
   assert.match(ler("lib", "portal-theme.ts"), /:focus-visible\{outline:/);
 });
+
+test("sem conexão, o aviso toma a tela e depois encolhe", () => {
+  // Um aviso de 40px no topo some no meio da interface — foi o que aconteceu
+  // no iPhone. E atrás dele a lista ficava em "Carregando…" para sempre.
+  const pwa = ler("components", "portal", "portal-pwa.tsx");
+  assert.match(pwa, /className="vp-tela"/, "existe a versão em tela cheia");
+  assert.match(pwa, /role="alertdialog"/);
+  assert.match(pwa, /offline && expandido/);
+  assert.match(pwa, /offline && !expandido/, "dá para encolher e continuar lendo o que já carregou");
+  assert.match(pwa, /setExpandido\(true\)/, "a barra reabre a tela cheia");
+});
+
+test("a volta do sinal é confirmada e some sozinha", () => {
+  const pwa = ler("components", "portal", "portal-pwa.tsx");
+  assert.match(pwa, /setVoltou\(true\)/);
+  assert.match(pwa, /setTimeout\(\(\) => setVoltou\(false\)/);
+});
+
+test("a animação de procurar sinal para para quem pediu", () => {
+  const pwa = ler("components", "portal", "portal-pwa.tsx");
+  const reduzido = pwa.slice(pwa.indexOf("@media(prefers-reduced-motion:reduce)"));
+  assert.match(reduzido, /\.vp-onda[\s\S]{0,120}animation:none/);
+  assert.match(reduzido, /\.vp-ponto\{animation:none\}/);
+});
+
+test("a lista não finge que está carregando quando é falta de sinal", () => {
+  const tela = ler("components", "portal", "portal-conversations.tsx");
+  assert.match(tela, /semRede \? "Sem conexão — as conversas aparecem/);
+  assert.match(tela, /semRede \? "Sem conexão — a conversa abre/);
+});
