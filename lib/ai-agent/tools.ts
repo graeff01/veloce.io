@@ -845,6 +845,23 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
           if (montagemAplica && !acesso) {
             return { result: "AINDA NÃO feche o orçamento: como vai COM MONTAGEM, preciso do ACESSO do local. Pergunte ao lead, de forma leve: \"é térreo, tem escada (quantos lances? é tradicional ou caracol) ou é por elevador?\" e passe em 'acesso' (térreo = { lances: 0 }). Depois gere o orçamento de novo." };
           }
+          // A trava acima exige que o acesso seja INFORMADO, mas não tem como saber
+          // se ele foi PERGUNTADO. Passando `{ lances: 0 }` — térreo — ela é
+          // satisfeita sem ninguém falar com o lead, e aí a suposição fica
+          // INVISÍVEL: térreo não gera linha no orçamento, então nem o lead nem a
+          // equipe percebem que foi assumida. E vale dinheiro: escada R$ 100 por
+          // lance, caracol R$ 200, elevador R$ 100.
+          // Medido na JR: 4 dos 17 orçamentos saíram sem a pergunta aparecer na
+          // conversa — um deles chegou a ser aprovado.
+          // Este aviso NÃO bloqueia nada (bloquear arriscaria travar orçamento
+          // legítimo). Só impede que a suposição passe em silêncio.
+          const acessoTerreo = montagemAplica && !!acesso
+            && !acesso.elevador
+            && acesso.caracol !== true && acesso.tipo !== "caracol"
+            && !(Number(acesso.lances) > 0);
+          if (acessoTerreo) {
+            notaExtra += " ⚠️ ACESSO: este orçamento considerou o local TÉRREO (sem escada, sem elevador). Se o lead AINDA NÃO confirmou isso, confirme com ele ANTES de fechar — escada e elevador têm custo e mudam o valor final.";
+          }
           q = appendFeeLine(q, fr);
         }
       }
