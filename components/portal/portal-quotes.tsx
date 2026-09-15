@@ -23,6 +23,10 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   sent: { label: "Enviado", color: "#0369a1", bg: "#e0f2fe" },
   approved: { label: "Aprovado", color: "#15803d", bg: "#dcfce7" },
   rejected: { label: "Recusado", color: "#b91c1c", bg: "#fee2e2" },
+  // Montado mas ainda não enviado. O rótulo diz o ESTADO, não o nome técnico:
+  // "rascunho" faria parecer descartável, e é orçamento pronto com lead ativo.
+  draft: { label: "Montado — não enviado", color: "#b45309", bg: "#fef3c7" },
+  pending_review: { label: "Aguarda seu aval", color: "#7c3aed", bg: "#ede9fe" },
 };
 
 function StatusPill({ status }: { status: string }) {
