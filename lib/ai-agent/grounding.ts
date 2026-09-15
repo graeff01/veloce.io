@@ -22,9 +22,38 @@ export interface GroundingResult {
   deadlineWarnings: string[]; // prazos sem fonte (apenas aviso, não abstém)
 }
 
+// Preços OFICIAIS do cliente (tabela de preços/frete). São fonte por definição.
+//
+// Sem eles, o embasamento dependia da janela curta de histórico (1.200 tokens):
+// numa conversa longa, a mensagem em que a PRÓPRIA IA deu o preço sai da janela,
+// e ela passa a se ABSTER de um valor que já tinha dado certo. Medido em
+// simulação contra conversa real: o lead pede de novo o preço da Prime 7 dois
+// turnos depois de recebê-lo e ouve "prefiro confirmar com um vendedor".
+//
+// A conferência é por IGUALDADE EXATA, não por substring. `sources` é comparado
+// com `includes` sobre todos os dígitos concatenados — jogar a tabela inteira lá
+// dentro afrouxaria o teste para todo mundo. Aqui o preço ou é um valor oficial,
+// ou não é.
+export function extrairPrecosOficiais(regras: unknown): Set<string> {
+  const out = new Set<string>();
+  const anda = (v: unknown, profundidade = 0): void => {
+    if (profundidade > 6 || v == null) return;
+    if (Array.isArray(v)) { for (const x of v) anda(x, profundidade + 1); return; }
+    if (typeof v !== "object") return;
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof val === "number" && /amount|price|preco|preço|montagem|spiral|elevator|stairPerFlight/i.test(k)) {
+        if (val > 0) out.add(onlyDigits(String(val)));
+      } else anda(val, profundidade + 1);
+    }
+  };
+  anda(regras);
+  return out;
+}
+
 // `sources` deve concatenar tudo que é fonte legítima: resultados de ferramentas,
 // conhecimento (RAG) e o texto da conversa (para não marcar eco do próprio lead).
-export function checkGrounding(reply: string, sources: string): GroundingResult {
+// `precosOficiais` entra como lista fechada — ver acima.
+export function checkGrounding(reply: string, sources: string, precosOficiais?: Set<string>): GroundingResult {
   const srcDigits = onlyDigits(sources);
   const srcNorm = sources.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -32,7 +61,11 @@ export function checkGrounding(reply: string, sources: string): GroundingResult 
   for (const m of reply.match(PRICE_RE) ?? []) {
     const d = onlyDigits(m);
     if (d.length < 2) continue; // "R$" solto, ignora
-    if (!srcDigits.includes(d)) priceViolations.push(m.trim());
+    if (srcDigits.includes(d)) continue;
+    // Valor da tabela oficial — igualdade exata, com e sem os centavos ("1247"
+    // e "124700" são o mesmo R$ 1.247,00).
+    if (precosOficiais?.has(d) || precosOficiais?.has(d.replace(/00$/, ""))) continue;
+    priceViolations.push(m.trim());
   }
 
   const deadlineWarnings: string[] = [];
