@@ -6,7 +6,7 @@ import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { retrieveKnowledge } from "./retrieval";
-import { checkGrounding } from "./grounding";
+import { checkGrounding, extrairPrecosOficiais } from "./grounding";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -767,7 +767,9 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const verifyOn = !!cfg?.verifyReplies || policy.forceVerify;
 
   if (status === "ok") {
-    const gr = checkGrounding(final, sources);
+    // A tabela de preços do cliente é fonte por definição (ver grounding.ts).
+    const _pc = await getPricing().catch(() => null);
+    const gr = checkGrounding(final, sources, _pc ? extrairPrecosOficiais(_pc.rules) : undefined);
     if (!gr.grounded) {
       guardrails.push(groundingOn ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
       if (groundingOn) { final = fallback; decision = "abster"; }
