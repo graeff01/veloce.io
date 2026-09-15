@@ -39,7 +39,22 @@ async function main() {
 
   // Conversas reais do cliente.
   const conns = (await prismaUnscoped.waConnection.findMany({ where: { clientId }, select: { id: true } })).map((c) => c.id);
-  const contacts = await prismaUnscoped.waContact.findMany({ where: { connectionId: { in: conns } }, select: { id: true, name: true, waId: true } });
+  // `--contains` seleciona as conversas em que o lead usou determinadas palavras.
+  // Sem isso a amostra é a ordem do banco, e um teste dirigido a uma correção
+  // específica ("lado aberto", "quantos espetos") quase nunca cai na amostra.
+  const contemArg = arg("contains");
+  const termos = contemArg ? contemArg.split("|").map((t) => t.trim()).filter(Boolean) : [];
+  let contacts = await prismaUnscoped.waContact.findMany({ where: { connectionId: { in: conns } }, select: { id: true, name: true, waId: true } });
+  if (termos.length) {
+    const comTermo = await prismaUnscoped.waMessage.findMany({
+      where: { contactId: { in: contacts.map((c) => c.id) }, direction: "in",
+        OR: termos.map((t) => ({ text: { contains: t, mode: "insensitive" as const } })) },
+      select: { contactId: true }, distinct: ["contactId"],
+    });
+    const alvo = new Set(comTermo.map((m) => m.contactId));
+    contacts = contacts.filter((c) => alvo.has(c.id));
+    console.log(`filtro "${contemArg}": ${contacts.length} conversas casaram.`);
+  }
 
   mkdirSync(outDir, { recursive: true });
   const summary: { contactId: string; name: string | null; turns: number; overall: number; errors: number; blocks: number; tools: string[] }[] = [];
@@ -70,6 +85,14 @@ async function main() {
     for (const turnText of turnsText) {
       let reply = "", decision = "erro", status = "error";
       const tools: string[] = [], artifacts: string[] = [];
+      // A mensagem ATUAL entra no transcript ANTES do runAgent. Em produção o
+      // histórico vem do banco e já inclui a mensagem recém-chegada; em
+      // `mode:"test"` quem monta o histórico é este script. Empurrando depois,
+      // o modelo respondia à mensagem ANTERIOR — lag de um turno, que faz a
+      // simulação inteira mentir (a IA "reinicia" a conversa, responde fora de
+      // hora). O mesmo conserto já existia em jr-scenarios.ts e jr-corpus.ts e
+      // nunca havia chegado aqui.
+      transcript.push({ role: "user", content: turnText });
       try {
         const out = await runAgent(
           { clientId, connectionId: "sim", contact: { id: `sim-${ct.id}`, name: ct.name, waId: "0000000000" }, inboundText: turnText },
@@ -81,7 +104,7 @@ async function main() {
       } catch (e) { reply = `[ERRO: ${String((e as Error)?.message ?? e).slice(0, 120)}]`; }
       if (status === "error") errors++;
       if (status === "blocked" || decision === "bloqueado") blocks++;
-      transcript.push({ role: "user", content: turnText }, { role: "assistant", content: reply });
+      transcript.push({ role: "assistant", content: reply });
       evalTurns.push({ inbound: turnText, outbound: reply, decision, status, guardrails: [], tools: tools.map((name) => ({ name })), intent: null });
       log.push({ lead: turnText, ia: reply, decision, status, tools, artifacts });
 
