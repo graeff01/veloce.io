@@ -15,9 +15,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const ai = await prisma.aiAgentConfig.findUnique({ where: { clientId: portal.clientId }, select: { quotesEnabled: true } });
   if (!ai?.quotesEnabled) return NextResponse.json({ quotes: [] });
 
-  // Só os que saíram como PDF pro lead (rascunho não conta no registro).
+  // `draft` = orçamento MONTADO pela IA que ainda não virou PDF (o lead não
+  // pediu o envio, ou a conversa seguiu por outro caminho). Ficava fora daqui e
+  // fora da fila de revisão, que só olha `pending_review` — ou seja, não
+  // aparecia em lugar NENHUM. Na JR isso escondeu 9 orçamentos somando R$ 27 mil,
+  // com o lead ainda conversando em todos os 9 casos. Trabalho feito e perdido.
   const quotes = await prisma.quote.findMany({
-    where: { clientId: portal.clientId, status: { in: ["sent", "approved", "rejected"] } },
+    where: { clientId: portal.clientId, status: { in: ["sent", "approved", "rejected", "draft", "pending_review"] } },
     orderBy: { number: "desc" },
     take: 500,
     select: { id: true, number: true, total: true, currency: true, status: true, summary: true, contactId: true, createdAt: true, updatedAt: true },
