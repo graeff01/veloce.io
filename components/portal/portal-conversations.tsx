@@ -1668,11 +1668,17 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
             {/* CATÁLOGO — abre acima do compositor, não em outra tela: a consulta
                 de preço acontece no meio da conversa, e sair dela era o atrito. */}
             {catalogoAberto && (
-              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: 300, display: "flex", flexDirection: "column" }}>
+              // Altura RELATIVA à tela no celular: com 300px fixos, o painel mais o
+              // compositor mais o teclado aberto não cabiam — a tela se
+              // reorganizava embaixo do dedo ao abrir o catálogo.
+              <div style={{ flexShrink: 0, borderTop: "1px solid var(--p-border)", background: "var(--p-surface)", maxHeight: isMobile ? "min(300px, 42dvh)" : 300, display: "flex", flexDirection: "column" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px 8px" }}>
                   <Search size={15} style={{ color: "var(--wa-muted)", flexShrink: 0 }} />
+                  {/* Sem autoFocus no celular: abrir o catálogo levantava o teclado
+                      sem ninguém pedir, e a tela inteira se reacomodava na hora em
+                      que a pessoa ia tocar num item. No desktop o foco ajuda. */}
                   <input
-                    autoFocus
+                    autoFocus={!isMobile}
                     value={catalogoBusca}
                     onChange={(e) => setCatalogoBusca(e.target.value)}
                     placeholder="Buscar no catálogo"
@@ -1690,7 +1696,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                       {catalogoBusca.trim() ? "Nenhum item com esse nome." : "O catálogo deste cliente está vazio."}
                     </p>
                   ) : catalogo.map((it) => (
-                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 7, borderRadius: 10 }}>
+                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 10, padding: 7, borderRadius: 10, minWidth: 0 }}>
                       <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 8, overflow: "hidden", background: "var(--p-raise)", border: "1px solid var(--p-border)" }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         {it.imageUrl ? <img src={it.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
@@ -1699,11 +1705,14 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--p-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
                         {it.price != null && <div className="tnum" style={{ fontSize: 12, color: "var(--p-accent)", fontWeight: 700 }}>{precoBR(it.price)}</div>}
                       </div>
-                      <button onClick={() => inserirItem(it)} title="Inserir no texto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", background: "transparent", border: "1px solid var(--p-border)", borderRadius: 8, padding: "5px 9px", cursor: "pointer", flexShrink: 0 }}>
+                      {/* No celular o alvo tinha ~22px de altura — menos da metade do
+                          mínimo confortável. Errar o toque num alvo desse tamanho é o
+                          que produz toque duplo sem querer. */}
+                      <button onClick={() => inserirItem(it)} title="Inserir no texto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--wa-muted)", background: "transparent", border: "1px solid var(--p-border)", borderRadius: 8, padding: isMobile ? "9px 12px" : "5px 9px", minHeight: isMobile ? 38 : undefined, cursor: "pointer", flexShrink: 0 }}>
                         texto
                       </button>
                       {it.imageUrl && (
-                        <button onClick={() => void enviarItemComFoto(it)} disabled={!!enviandoItem} title="Enviar a foto com nome e preço" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--p-on-accent)", background: "var(--p-accent)", border: "none", borderRadius: 8, padding: "5px 10px", cursor: enviandoItem ? "wait" : "pointer", flexShrink: 0, opacity: enviandoItem && enviandoItem !== it.id ? 0.5 : 1 }}>
+                        <button onClick={() => void enviarItemComFoto(it)} disabled={!!enviandoItem} title="Enviar a foto com nome e preço" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--p-on-accent)", background: "var(--p-accent)", border: "none", borderRadius: 8, padding: isMobile ? "9px 13px" : "5px 10px", minHeight: isMobile ? 38 : undefined, cursor: enviandoItem ? "wait" : "pointer", flexShrink: 0, opacity: enviandoItem && enviandoItem !== it.id ? 0.5 : 1 }}>
                           {enviandoItem === it.id ? "enviando…" : "enviar foto"}
                         </button>
                       )}
