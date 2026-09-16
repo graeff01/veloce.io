@@ -58,7 +58,7 @@ export function PortalQuotes({ token }: { token: string }) {
   return (
     <div>
       {/* Topbar */}
-      <div style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", alignItems: "center", gap: 14, padding: "14px 26px", borderBottom: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-bg) 82%, transparent)", backdropFilter: "saturate(180%) blur(12px)" }}>
+      <div className="pbarra-solida" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", alignItems: "center", gap: 14, padding: "14px 26px", borderBottom: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-bg) 82%, transparent)", backdropFilter: "saturate(180%) blur(12px)" }}>
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", margin: 0, color: "var(--p-text)" }}>Orçamentos</h1>
           <div style={{ color: "var(--p-muted)", fontSize: 12.5 }}>PDFs enviados aos leads pela IA{quotes ? ` · ${quotes.length}` : ""}</div>

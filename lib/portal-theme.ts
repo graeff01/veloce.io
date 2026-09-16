@@ -90,6 +90,18 @@ button,[role="button"]{touch-action:manipulation}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* Sem isto, arrastar o fim de uma lista puxa a página inteira junto. */
 body{overscroll-behavior-y:contain}
+/* Barra de cima SÓLIDA no celular.
+   O vidro (82% + desfoque) deixa o conteúdo passar por trás e, numa tela de
+   telefone, isso vira texto sobre texto: o cartão que rola aparece através do
+   título. No desktop sobra espaço e o efeito não atrapalha, então fica.
+   ".ptop.ptop" porque cada página declara o próprio ".ptop" DEPOIS deste
+   bloco, e media query não soma especificidade. */
+@media(max-width:1023px){
+  .ptop.ptop, .pbarra-solida{
+    background:var(--p-bg);
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+  }
+}
 /* Foco por teclado visível — e só por teclado, não a cada toque. */
 :focus-visible{outline:2px solid var(--p-accent);outline-offset:2px;border-radius:6px}
 @media(prefers-reduced-motion:reduce){

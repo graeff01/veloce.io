@@ -150,7 +150,7 @@ export function PortalTeam({ token }: { token: string }) {
       `}</style>
 
       {/* Topo */}
-      <div style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", alignItems: "center", gap: 14, padding: "14px 26px", borderBottom: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-bg) 82%, transparent)", backdropFilter: "saturate(180%) blur(12px)" }}>
+      <div className="pbarra-solida" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", alignItems: "center", gap: 14, padding: "14px 26px", borderBottom: "1px solid var(--p-border)", background: "color-mix(in srgb, var(--p-bg) 82%, transparent)", backdropFilter: "saturate(180%) blur(12px)" }}>
         <div style={{ minWidth: 0 }}>
           <h1 className="pm-titulo-conteudo" style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", margin: 0, color: "var(--p-text)" }}>Equipe</h1>
           <div style={{ color: "var(--p-muted)", fontSize: 12.5 }}>Tempo de atendimento e fila · {d?.periodLabel ?? "—"}</div>
