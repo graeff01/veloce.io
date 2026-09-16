@@ -73,9 +73,8 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
 
   return (
     <>
-      <style>{`.pmobnav{position:fixed;left:16px;right:16px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:30;display:flex;gap:2px;padding:5px;background:color-mix(in srgb, var(--p-surface) 78%, transparent);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid color-mix(in srgb, var(--p-border) 50%, transparent);border-radius:22px;box-shadow:0 4px 20px rgba(0,0,0,.10);animation:pmobnavUp .34s cubic-bezier(.22,1,.36,1)}
+      <style>{`.pmobnav{position:fixed;left:16px;right:16px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:30;display:flex;gap:2px;padding:5px;background:var(--p-surface);border:1px solid var(--p-border);border-radius:22px;box-shadow:0 4px 20px rgba(0,0,0,.10);animation:pmobnavUp .34s cubic-bezier(.22,1,.36,1)}
         @keyframes pmobnavUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-        @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){ .pmobnav{background:var(--p-surface)} }
         @media(prefers-reduced-motion:reduce){ .pmobnav{animation:none} }
         @media(min-width:1024px){ .pmobnav{display:none} }
         /* Dentro da conversa, no celular: a barra ficaria exatamente por cima do
