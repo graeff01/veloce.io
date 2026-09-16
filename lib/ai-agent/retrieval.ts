@@ -59,6 +59,18 @@ async function loadChunks(clientId: string): Promise<ChunkRow[]> {
   return rows;
 }
 
+// Todo o conhecimento do cliente, para EMBASAMENTO (não para o prompt).
+//
+// A recuperação entrega 3 blocos ao modelo — é o que cabe. Mas conferir se a
+// resposta é verdadeira contra apenas esses 3 confunde "a busca não trouxe"
+// com "a IA inventou". Medido: o auditor barrou "a JR não trabalha com cano
+// quadrado", que ESTÁ cadastrado e só não tinha sido recuperado naquele turno.
+// Para o embasamento, a verdade do cliente é o acervo inteiro.
+export async function conhecimentoCompleto(clientId: string): Promise<string> {
+  const rows = await loadChunks(clientId);
+  return rows.map((r) => `${r.title ?? ""}\n${r.content}`).join("\n");
+}
+
 export async function retrieveKnowledge(
   clientId: string,
   query: string,

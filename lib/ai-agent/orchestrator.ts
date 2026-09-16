@@ -5,8 +5,8 @@ import { buildQuoteGuidance } from "./quote-guidance";
 import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
-import { retrieveKnowledge } from "./retrieval";
-import { checkGrounding, extrairPrecosOficiais } from "./grounding";
+import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
+import { checkGrounding, extrairPrecosOficiais, medidasEmCm } from "./grounding";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -767,13 +767,21 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const verifyOn = !!cfg?.verifyReplies || policy.forceVerify;
 
   if (status === "ok") {
-    // A tabela de preços do cliente é fonte por definição (ver grounding.ts).
+    // A tabela de preços e o CONHECIMENTO INTEIRO do cliente são fonte por
+    // definição. O acervo completo (e não só os 3 blocos que a busca trouxe)
+    // porque conferir contra os 3 confunde "a busca não achou" com "a IA
+    // inventou" — e as duas coisas pedem reações opostas.
     const _pc = await getPricing().catch(() => null);
-    const gr = checkGrounding(final, sources, _pc ? extrairPrecosOficiais(_pc.rules) : undefined);
+    const _acervo = await conhecimentoCompleto(input.clientId).catch(() => "");
+    const _precos = _pc ? extrairPrecosOficiais(_pc.rules) : new Set<string>();
+    const _medidas = medidasEmCm(`${_acervo}\n${cfg?.customPrompt ?? ""}`);
+    const gr = checkGrounding(final, `${sources}\n${_acervo}`, _precos, _medidas);
     if (!gr.grounded) {
       guardrails.push(groundingOn ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
       if (groundingOn) { final = fallback; decision = "abster"; }
     }
+    // Medida sem lastro: AVISO por ora (auditoria), não abstenção — ver grounding.ts.
+    if (gr.medidaWarnings.length) guardrails.push(`grounding:medida_sem_fonte:${gr.medidaWarnings.slice(0, 5).join(",")}`);
   }
 
   // Chain-of-verification por LLM (opt-in): confere afirmações factuais contra as fontes.
