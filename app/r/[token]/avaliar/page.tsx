@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
-import { themeStyle } from "@/lib/portal-theme";
+import { PORTAL_TOQUE_CSS, themeStyle } from "@/lib/portal-theme";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export default async function AvaliarPage({ params }: { params: Promise<{ token:
 
   return (
     <main style={{ minHeight: "100dvh", background: "var(--p-bg)", color: "var(--p-text)", fontFamily: "system-ui, -apple-system, sans-serif", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <style>{`${themeStyle(portal.accentColor, portal.mode)} *{box-sizing:border-box}
+      <style>{`${themeStyle(portal.accentColor, portal.mode)} ${PORTAL_TOQUE_CSS} *{box-sizing:border-box}
         @keyframes pop{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
         .star{display:inline-block;animation:pop .4s cubic-bezier(.22,1,.36,1) both}`}</style>
 
