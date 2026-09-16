@@ -1064,7 +1064,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     const on = tab === k;
     const isWait = k === "waiting";
     return (
-      <button onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: on ? (isWait ? "color-mix(in srgb, #1FA855 15%, transparent)" : "var(--p-accent-soft)") : "transparent", color: on ? (isWait ? "#1FA855" : "var(--p-accent)") : "var(--wa-muted)" }}>
+      // `flexShrink: 0` — a barra ROLA na horizontal, então o chip não pode
+      // encolher: sem isto os rótulos se espremem uns contra os outros em vez de
+      // sair de vista, e o mais longo ("Arquivadas") é o que mais sofre.
+      // O separador ao lado já tinha; os chips não.
+      <button onClick={() => { setTab(k); if (k !== "ads") setAdFilter(null); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, padding: "5px 13px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, borderRadius: 20, background: on ? (isWait ? "color-mix(in srgb, #1FA855 15%, transparent)" : "var(--p-accent-soft)") : "transparent", color: on ? (isWait ? "#1FA855" : "var(--p-accent)") : "var(--wa-muted)" }}>
         {isWait && <span style={{ width: 7, height: 7, borderRadius: "50%", background: on ? "#1FA855" : "var(--wa-muted)" }} />}
         {label}
         {isWait && waitingCount > 0 && <span style={{ fontSize: 11, fontWeight: 800 }}>{waitingCount}</span>}
