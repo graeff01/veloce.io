@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePortal, getPortalShellData } from "@/lib/notifications/client-portal";
-import { themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
+import { PORTAL_TOQUE_CSS, themeInitScript, themeSwitchCss } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
@@ -42,7 +42,7 @@ export default async function FechamentoPage({ params }: { params: Promise<{ tok
       <PortalMobileNav token={token} active={"revisao"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileHeader token={token} titulo="Fechamento" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalOrcamentosAbas token={token} sections={shell.sections} />
-      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
+      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_TOQUE_CSS} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%);background-repeat:no-repeat;background-position:center top;background-attachment:fixed}`}</style>
       <PortalFechamento token={token} />

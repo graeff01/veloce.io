@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { resolvePortal, getPortalShellData } from "@/lib/notifications/client-portal";
-import { themeStyle, themeSwitchCss, themeInitScript } from "@/lib/portal-theme";
+import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_TOQUE_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
 import { PortalShell } from "@/components/portal/portal-shell";
@@ -56,7 +56,11 @@ export default async function ConversasPage({ params, searchParams }: { params: 
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="conversas" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileNav token={token} active={"conversas"} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileHeader token={token} titulo="Conversas" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} comPerfil />
-      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} *{box-sizing:border-box}
+      {/* PORTAL_TOQUE_CSS: esta tela NÃO carrega o PORTAL_UI_CSS (painel, tabela,
+          métricas — nada que o chat use), e por isso ficava sem as regras de
+          toque. Sem elas o iOS DAVA ZOOM ao tocar num campo, e o toque duplo
+          continuava valendo. É a tela mais usada do PWA. */}
+      <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_TOQUE_CSS} *{box-sizing:border-box}
         .cmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;
           background-color:var(--p-bg);
           background-image:radial-gradient(1100px 460px at 50% -120px, var(--p-accent-soft), transparent 70%), radial-gradient(var(--p-border) 1px, transparent 1.5px);
