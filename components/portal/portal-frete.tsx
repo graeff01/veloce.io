@@ -3,9 +3,11 @@
 // Seção "Frete" do portal — cadastro por CAMPOS (sem mapa), organizado pro dia a dia.
 // Lista por CIDADE → ZONAS → BAIRROS: busca, cadastro por autocomplete de município,
 // zonas com valor/montagem e os bairros que a IA usa pra reconhecer a zona do cliente.
-// Grava o rules.freight — a mesma tabela que a IA usa pra cotar.
+// Lê o rules.freight — a mesma tabela que a IA usa pra cotar. A GRAVAÇÃO saiu do
+// portal: frete é cadastro, e cadastro muda por quem tem acesso ao código (ver
+// SOMENTE_LEITURA abaixo e o PUT em app/api/portal/[token]/freight/route.ts).
 import { useEffect, useMemo, useState } from "react";
-import { Truck, Save, Plus, Trash2, Search, Upload, ChevronRight, X, AlertTriangle, Layers } from "lucide-react";
+import { Truck, Save, Plus, Trash2, Search, Upload, ChevronRight, X, AlertTriangle, Layers, Lock } from "lucide-react";
 import { parseFreightTable, buildImportPreview, type ImportRow } from "@/lib/freight-import";
 import { lintFreight } from "@/lib/ai-agent/freight-lint";
 
@@ -32,6 +34,12 @@ function deriveZone(f: Freight, cityName: string): string {
   return "";
 }
 const ZONE_PRESETS = ["Central", "Zona Sul", "Zona Norte", "Zona Leste", "Zona Oeste", "Rural", "Extremo Sul"];
+
+// A tabela de frete é CADASTRO: é dela que a IA tira o valor que manda pro cliente.
+// A gravação saiu do portal (a rota PUT responde 403 e registra a tentativa) — esta
+// constante é só o par visual disso, pra tela não oferecer o que o servidor recusa.
+// Quem precisa mudar um valor fala com a Veloce; a alteração é feita no código.
+const SOMENTE_LEITURA = true;
 
 export function PortalFrete({ token }: { token: string }) {
   const [freight, setFreight] = useState<Freight[] | null>(null);
@@ -173,7 +181,7 @@ export function PortalFrete({ token }: { token: string }) {
           {warns && <span title={warns.join("\n")} style={{ display: "inline-flex", flexShrink: 0 }}><AlertTriangle size={14} color="#eab308" /></span>}
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>{summary}</span>
-          <button onClick={(e) => { e.stopPropagation(); if (confirm(`Remover ${g.name} e todas as suas zonas?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={14} /></button>
+          {!SOMENTE_LEITURA && <button onClick={(e) => { e.stopPropagation(); if (confirm(`Remover ${g.name} e todas as suas zonas?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={14} /></button>}
         </div>
         {open && (
           <div style={{ borderTop: "1px solid var(--p-border)", padding: "6px 14px 12px", background: "color-mix(in srgb, var(--p-accent) 3%, transparent)" }}>
@@ -182,23 +190,23 @@ export function PortalFrete({ token }: { token: string }) {
               return (
                 <div key={i} style={{ padding: "10px 0", borderTop: g.idxs.indexOf(i) ? "1px dashed var(--p-border)" : "none" }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input value={deriveZone(f, g.name)} onChange={(e) => editAt(i, { zone: e.target.value })} placeholder="zona (ex: Central)" list="zone-presets" style={{ ...inp, flex: "1 1 130px", minWidth: 0 }} />
+                    <input readOnly={SOMENTE_LEITURA} value={deriveZone(f, g.name)} onChange={(e) => editAt(i, { zone: e.target.value })} placeholder="zona (ex: Central)" list="zone-presets" style={{ ...inp, flex: "1 1 130px", minWidth: 0 }} />
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 13, color: "var(--p-muted)" }}>R$</span>
-                      <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 88 }} />
+                      <input readOnly={SOMENTE_LEITURA} type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 88 }} />
                     </div>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--p-muted)" }}>
-                      <input type="checkbox" checked={f.assembly === "required"} onChange={(e) => editAt(i, { assembly: e.target.checked ? "required" : "optional" })} /> montagem
+                      <input disabled={SOMENTE_LEITURA} type="checkbox" checked={f.assembly === "required"} onChange={(e) => editAt(i, { assembly: e.target.checked ? "required" : "optional" })} /> montagem
                     </label>
-                    {g.idxs.length > 1 && <button onClick={() => removeAt(i)} title="Remover zona" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={13} /></button>}
+                    {!SOMENTE_LEITURA && g.idxs.length > 1 && <button onClick={() => removeAt(i)} title="Remover zona" style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", display: "flex", padding: 4 }}><Trash2 size={13} /></button>}
                   </div>
                   <Bairros value={f.neighborhoods ?? []} onChange={(v) => editAt(i, { neighborhoods: v })} inp={inp} />
                 </div>
               );
             })}
-            <button onClick={() => addZone(g.name, g.code)} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--p-border)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--p-text)" }}>
+            {!SOMENTE_LEITURA && <button onClick={() => addZone(g.name, g.code)} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, border: "1px dashed var(--p-border)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--p-text)" }}>
               <Plus size={13} /> Adicionar zona
-            </button>
+            </button>}
           </div>
         )}
       </div>
@@ -211,15 +219,25 @@ export function PortalFrete({ token }: { token: string }) {
         <Truck size={18} color="var(--p-accent)" />
         <h1 style={{ fontSize: 19, fontWeight: 700, margin: 0, color: "var(--p-text)" }}>Frete por região</h1>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setImportOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: "var(--p-surface)", color: "var(--p-text)", fontSize: 13, fontWeight: 600, border: "1px solid var(--p-border)" }}>
-          <Upload size={14} /> Importar planilha
-        </button>
+        {!SOMENTE_LEITURA && (
+          <button onClick={() => setImportOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: "var(--p-surface)", color: "var(--p-text)", fontSize: 13, fontWeight: 600, border: "1px solid var(--p-border)" }}>
+            <Upload size={14} /> Importar planilha
+          </button>
+        )}
+        {SOMENTE_LEITURA ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", color: "var(--p-muted)", fontSize: 12.5, fontWeight: 600 }}>
+            <Lock size={13} /> Somente leitura
+          </span>
+        ) : (
         <button onClick={save} disabled={!dirty || saving} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, cursor: dirty ? "pointer" : "default", background: dirty ? "var(--p-accent)" : "var(--p-surface)", color: dirty ? "var(--p-on-accent)" : "var(--p-muted)", fontSize: 13, fontWeight: 600, border: dirty ? "none" : "1px solid var(--p-border)" }}>
           <Save size={14} /> {saving ? "Salvando…" : dirty ? "Salvar alterações" : "Salvo"}
         </button>
+        )}
       </div>
       <p style={{ fontSize: 13, color: "var(--p-muted)", margin: "0 0 16px" }}>
-        Cadastre o frete por cidade. Cidades com variação (ex.: Porto Alegre) podem ter várias <b>zonas</b> (Central, Zona Sul, Rural…), cada uma com valor, montagem e os <b>bairros</b> que a IA usa para reconhecer a zona do cliente.
+        {SOMENTE_LEITURA
+          ? <>Esta é a tabela que a IA consulta para cotar o frete. Ela é <b>somente leitura</b> por aqui: como o valor vai direto para o cliente no atendimento, a alteração passa pela Veloce. Precisa mudar algum valor, cidade ou bairro? É só falar — a gente ajusta e você confere aqui.</>
+          : <>Cadastre o frete por cidade. Cidades com variação (ex.: Porto Alegre) podem ter várias <b>zonas</b> (Central, Zona Sul, Rural…), cada uma com valor, montagem e os <b>bairros</b> que a IA usa para reconhecer a zona do cliente.</>}
       </p>
 
       {/* Busca + adicionar cidade (fixo no topo enquanto rola) */}
@@ -230,6 +248,7 @@ export function PortalFrete({ token }: { token: string }) {
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cidade ou bairro…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--p-text)" }} />
             {q && <X size={14} style={{ cursor: "pointer", color: "var(--p-muted)" }} onClick={() => setQ("")} />}
           </div>
+          {!SOMENTE_LEITURA && (
           <div style={{ position: "relative", flex: "1 1 240px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 8, padding: "8px 10px" }}>
               <Plus size={14} color="var(--p-accent)" />
@@ -243,6 +262,7 @@ export function PortalFrete({ token }: { token: string }) {
               </div>
             )}
           </div>
+          )}
         </div>
         {lintTotal > 0 && (
           <div title={[...lintGeneral].join("\n")} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, color: "var(--p-text)", background: "color-mix(in srgb, #eab308 12%, transparent)", border: "1px solid color-mix(in srgb, #eab308 40%, transparent)", borderRadius: 8, padding: "6px 10px" }}>
@@ -252,7 +272,7 @@ export function PortalFrete({ token }: { token: string }) {
         )}
       </div>
 
-      {filtered.length === 0 && <div style={{ ...card, padding: 20, textAlign: "center", color: "var(--p-muted)", fontSize: 13 }}>Nenhuma cidade{q ? " encontrada" : " cadastrada"}. Use “Adicionar cidade” ou “Importar planilha”.</div>}
+      {filtered.length === 0 && <div style={{ ...card, padding: 20, textAlign: "center", color: "var(--p-muted)", fontSize: 13 }}>Nenhuma cidade{q ? " encontrada" : " cadastrada"}.{!SOMENTE_LEITURA && " Use “Adicionar cidade” ou “Importar planilha”."}</div>}
 
       {/* Seção 1 — cidades COM zonas (editor rico) */}
       {complexGroups.length > 0 && (
@@ -298,20 +318,20 @@ export function PortalFrete({ token }: { token: string }) {
                         <td style={{ padding: "6px 10px" }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                             <span style={{ fontSize: 12.5, color: "var(--p-muted)" }}>R$</span>
-                            <input type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 80 }} />
+                            <input readOnly={SOMENTE_LEITURA} type="number" value={f.amount} onChange={(e) => editAt(i, { amount: Number(e.target.value) })} style={{ ...inp, width: 80 }} />
                           </span>
                         </td>
                         <td style={{ padding: "6px 10px", textAlign: "center" }}>
-                          <button onClick={() => editAt(i, { assembly: f.assembly === "required" ? "optional" : "required" })}
+                          <button disabled={SOMENTE_LEITURA} onClick={() => editAt(i, { assembly: f.assembly === "required" ? "optional" : "required" })}
                             title="Frete com montagem obrigatória" style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 600, padding: "3px 9px", borderRadius: 999, border: "1px solid var(--p-border)", background: f.assembly === "required" ? "var(--p-accent-soft)" : "transparent", color: f.assembly === "required" ? "var(--p-text)" : "var(--p-muted)" }}>
                             ⚙ {f.assembly === "required" ? "sim" : "não"}
                           </button>
                         </td>
                         <td style={{ padding: "6px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
-                          <button onClick={() => promoteCity(g)} title="Transformar em cidade com zonas (Central, Zona Sul…)" style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 9px", borderRadius: 7, border: "1px dashed var(--p-border)", background: "transparent", color: "var(--p-text)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          {!SOMENTE_LEITURA && <button onClick={() => promoteCity(g)} title="Transformar em cidade com zonas (Central, Zona Sul…)" style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 9px", borderRadius: 7, border: "1px dashed var(--p-border)", background: "transparent", color: "var(--p-text)", display: "inline-flex", alignItems: "center", gap: 5 }}>
                             <Plus size={12} /> zona
-                          </button>
-                          <button onClick={() => { if (confirm(`Remover ${g.name}?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ marginLeft: 4, border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", padding: 5, verticalAlign: "middle" }}><Trash2 size={13} /></button>
+                          </button>}
+                          {!SOMENTE_LEITURA && <button onClick={() => { if (confirm(`Remover ${g.name}?`)) removeCity(g.idxs); }} title="Remover cidade" style={{ marginLeft: 4, border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", padding: 5, verticalAlign: "middle" }}><Trash2 size={13} /></button>}
                         </td>
                       </tr>
                     );
@@ -344,13 +364,15 @@ function Bairros({ value, onChange, inp }: { value: Neighborhood[]; onChange: (v
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
         {value.map((b, k) => (
           <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, padding: "2px 7px", borderRadius: 999, background: "var(--p-accent-soft)", color: "var(--p-text)" }}>
-            {b.name}<X size={11} style={{ cursor: "pointer" }} onClick={() => onChange(value.filter((_, j) => j !== k))} />
+            {b.name}{!SOMENTE_LEITURA && <X size={11} style={{ cursor: "pointer" }} onClick={() => onChange(value.filter((_, j) => j !== k))} />}
           </span>
         ))}
         {!value.length && <span style={{ fontSize: 11, color: "var(--p-muted)", opacity: 0.7 }}>nenhum ainda</span>}
       </div>
-      <input value={t} onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} onBlur={add}
-        placeholder="digite um bairro e Enter (ou vários por vírgula)" style={{ ...inp, width: "100%" }} />
+      {!SOMENTE_LEITURA && (
+        <input value={t} onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} onBlur={add}
+          placeholder="digite um bairro e Enter (ou vários por vírgula)" style={{ ...inp, width: "100%" }} />
+      )}
     </div>
   );
 }
