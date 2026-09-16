@@ -8,6 +8,7 @@
 // Módulo PURO — testável em tests/security-detect.test.ts.
 
 import { securityShadow, collapseSpacedLetters, decodeEmbedded, invisibleReport } from "./sanitize";
+import { CADASTRO_COMMAND_RE, DONO_SPOOF_RE, AUTORIZACAO_EMPRESTADA_RE } from "./autoridade";
 
 export interface DetectionResult {
   score: number;      // 0..1
@@ -45,6 +46,17 @@ const RULES: Rule[] = [
   { label: "false_authority", weight: 0.4, re: /\b(autorizado|aprovado|liberado)\s+(pel[oa]\s+)?(gerente|dono|diretor|supervisor|administrador|sistema|ti)\b/ },
   { label: "false_authority", weight: 0.5, re: /\b(modo|mode)\s+(desenvolvedor|developer|debug|manuten[cç][aã]o|admin|deus|god)\b|\bDAN\b|\bjailbreak\b/i },
   { label: "false_authority", weight: 0.35, re: /\b(sou|aqui\s+e)\s+(o\s+)?(desenvolvedor|programador|administrador|dono\s+do\s+sistema|suporte\s+tecnico)\b/ },
+
+  // 4b) Autoridade sobre o CADASTRO — o cliente mandando alterar dado registrado,
+  // ou se apresentando como dono/gerente. Família descoberta no caso Henrique
+  // (05/09): "Você está errada, arrume no seu sistema" não casava NENHUMA regra,
+  // score 0, e foi exatamente o turno em que a IA prometeu alterar o cadastro.
+  // Peso deliberadamente moderado: pedir correção é comportamento de cliente
+  // confuso, não de atacante. O que blinda não é o score — é a IA não ter
+  // ferramenta para obedecer. Isto só acende o rigor (embasamento) no turno.
+  { label: "cadastro_command", weight: 0.3, re: CADASTRO_COMMAND_RE },
+  { label: "false_authority", weight: 0.4, re: DONO_SPOOF_RE },
+  { label: "false_authority", weight: 0.3, re: AUTORIZACAO_EMPRESTADA_RE },
 
   // 5) Fuga de escopo / persona
   { label: "persona_shift", weight: 0.35, re: /\b(finja|pretenda|imagine|simule|atue\s+como|role\s*play|interprete)\s+(que|ser|um|uma|o|a)\b/ },

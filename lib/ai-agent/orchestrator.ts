@@ -26,6 +26,7 @@ import { detectInjection, stripInstructionLines } from "./security/detect";
 import { decidePolicy, securityMode, severityForProfile, actionForProfile } from "./security/policy";
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
+import { removerPromessaDeAlterar } from "./security/autoridade";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -794,6 +795,31 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
+
+  // ── Invariante: a IA NUNCA altera cadastro, então nunca pode dizer que altera ──
+  // Fora do AI_SECURITY_MODE de propósito. As regras da camada são heurísticas e
+  // esperam medição; esta é um invariante do sistema: nenhuma das 11 ferramentas
+  // escreve em config, conhecimento, preço ou catálogo — só na ficha do próprio
+  // contato. Toda promessa de alterar cadastro é falsa por construção, então não
+  // existe alarme falso a medir. Caso real: Henrique, 05/09, "Vou ajustar aqui
+  // para as informações ficarem corretas" — nada foi escrito (auditado no banco).
+  //
+  // Remove a FRASE, não a resposta: no caso real o resto da mensagem estava certo.
+  if (final) {
+    const pr = removerPromessaDeAlterar(final);
+    if (pr.removidas.length) {
+      guardrails.push(`autoridade:promessa_de_alterar:${pr.removidas.length}`);
+      emitSecurityEventAsync({
+        clientId: input.clientId, contactId: input.contact.id, turnId,
+        ring: "egress", control: "C-13", severity: "high", action: "sanitized",
+        labels: ["promessa_de_alterar"], evidence: pr.removidas.join(" | ").slice(0, 400),
+        shadow: false,
+      });
+      // Se a promessa era a mensagem inteira, não há o que entregar: cai no
+      // fallback do cliente, o mesmo caminho já usado pelo guardrail.
+      final = pr.texto || fallback;
+    }
+  }
 
   // ── Segurança · Anel 4: DLP de saída (C-12) ─────────────────────────────────
   // Última barreira antes do lead. Complementa o stripToolCallLeak cobrindo segredo,

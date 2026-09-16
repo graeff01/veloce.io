@@ -65,7 +65,15 @@ export function decidePolicy(detection: DetectionResult, mode = securityMode()):
   return {
     profile,
     forceGrounding: profile !== "normal",
-    forceVerify: profile === "rigor" || profile === "restricted",
+    // O auditor por LLM NÃO entra no rigor. Medido em conversas reais: pega 6/6
+    // das invenções, mas com 40–83% de falso positivo — e o falso positivo dele
+    // faz a IA se calar sobre coisa VERDADEIRA (chegou a barrar "a JR não
+    // trabalha com cano quadrado", que está cadastrado). Rigor é a faixa que o
+    // tráfego real mais toca (47 em 31.764); mandá-la para o auditor trocaria um
+    // risco raro por um dano frequente. O embasamento determinístico — que agora
+    // confere contra o ACERVO INTEIRO, não contra os 3 blocos recuperados — é o
+    // controle certo para essa faixa.
+    forceVerify: profile === "restricted",
     blockedTools: profile === "restricted" || profile === "contained" ? [...EXTERNAL_EFFECT_TOOLS] : [],
     contain: profile === "contained",
     score: detection.score,
