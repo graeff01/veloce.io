@@ -8,6 +8,7 @@ import { pushPortalReview, pushPortalFechamento } from "@/lib/notifications/port
 import { sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppDocumentByUrl, sendWhatsAppVideo, sendWhatsAppLocationRequest, sendWhatsAppReaction, sendWhatsAppLocation } from "@/lib/whatsapp-send";
 import { geocodeAddress } from "@/lib/geocode";
 import { searchCatalog } from "./catalog-search";
+import { lerCatalogos, resolverCatalogo, categoriasDisponiveis, descreverCatalogos, type CatalogoPdf } from "./catalogos";
 import { computeQuote, describeRules, resolveFreight, resolveFreightByCoords, baseCityName, cityKeyOf, normText, wordHit, appendFeeLine, type PricingRules } from "./pricing";
 import { parseSpec, sanitizeIntake, summarizeIntake, missingRequired, type IntakeData } from "./intake";
 import { renderQuotePdf, type QuoteDocData } from "@/lib/quote-pdf";
@@ -191,15 +192,22 @@ const VIDEO_TOOL: ToolDef = {
   },
 };
 
-// Catálogo completo em PDF: mandado quando o cliente quer ver TUDO (não um modelo só).
-const CATALOG_TOOL: ToolDef = {
-  type: "function",
-  function: {
-    name: "enviar_catalogo",
-    description: "Envia um CATÁLOGO COMPLETO em PDF ao lead. Use quando ele pedir 'o catálogo', 'ver os modelos', 'manda tudo', ou o catálogo completo. Escolha `categoria`: 'churrasqueira' (padrão — churrasqueiras, conjuntos, campeiros, complementos) OU 'lareira' (catálogo só das lareiras pré-moldadas). Uma vez por categoria — NÃO reenvie a mesma. Para um MODELO específico, use enviar_foto.",
-    parameters: { type: "object", properties: { categoria: { type: "string", enum: ["churrasqueira", "lareira"], description: "qual catálogo enviar (padrão churrasqueira)" } } },
-  },
-};
+// Catálogo em PDF. Um cliente pode ter só o catálogo inteiro (comportamento
+// histórico) ou também RECORTES por categoria — e aí o enum e a descrição saem
+// do que ELE configurou, não de uma lista fixa no motor.
+function catalogTool(cfg: { catalogos: CatalogoPdf[]; catalogPdfUrl?: string | null; lareirasPdfUrl?: string | null }): ToolDef {
+  const enums = categoriasDisponiveis(cfg);
+  return {
+    type: "function",
+    function: {
+      name: "enviar_catalogo",
+      description: "Envia um CATÁLOGO em PDF ao lead. Use quando ele pedir 'o catálogo', 'ver os modelos', 'manda tudo'."
+        + descreverCatalogos(cfg.catalogos)
+        + " Uma vez por categoria — NÃO reenvie a mesma. Para um MODELO específico, use enviar_foto.",
+      parameters: { type: "object", properties: { categoria: { type: "string", enum: enums, description: "qual catálogo enviar (padrão: o completo de churrasqueiras)" } } },
+    },
+  };
+}
 
 // Pede a localização nativa do WhatsApp — usada SÓ nas cidades com várias zonas, p/ fixar
 // a zona pela coordenada (bairro→zona) sem o cliente ter que saber/digitar a zona.
@@ -223,7 +231,10 @@ const OPTIONS_TOOL: ToolDef = {
   },
 };
 
-export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null; optionsImageUrl?: string | null; catalogPdfUrl?: string | null } | null): ToolDef[] {
+export function toolsForConfig(
+  cfg: { quotesEnabled?: boolean; intakeSpec?: unknown; presentationVideoUrl?: string | null; optionsImageUrl?: string | null; catalogPdfUrl?: string | null } | null,
+  pricingRules?: unknown,
+): ToolDef[] {
   const defs = [...TOOL_DEFS];
   if (cfg?.quotesEnabled) {
     if (Array.isArray(cfg.intakeSpec) && cfg.intakeSpec.length) defs.push(INTAKE_TOOL);
@@ -231,7 +242,10 @@ export function toolsForConfig(cfg: { quotesEnabled?: boolean; intakeSpec?: unkn
   }
   if (cfg?.presentationVideoUrl) defs.push(VIDEO_TOOL);
   if (cfg?.optionsImageUrl) defs.push(OPTIONS_TOOL);
-  if (cfg?.catalogPdfUrl) defs.push(CATALOG_TOOL);
+  if (cfg?.catalogPdfUrl) {
+    const rules = (pricingRules ?? {}) as { lareirasPdfUrl?: string };
+    defs.push(catalogTool({ catalogos: lerCatalogos(pricingRules), catalogPdfUrl: cfg.catalogPdfUrl, lareirasPdfUrl: rules.lareirasPdfUrl }));
+  }
   return defs;
 }
 
@@ -527,17 +541,17 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       return { result: "Anúncio + vídeo de apresentação já enviados ao lead. NÃO diga que mandou um vídeo nem repita o anúncio — siga DIRETO pra próxima etapa da conversa (ex.: perguntar o nome, conforme o fluxo)." };
     }
     case "enviar_catalogo": {
-      const categoria = String(args.categoria ?? "").toLowerCase() === "lareira" ? "lareira" : "churrasqueira";
-      // Churrasqueiras: PDF em AiAgentConfig.catalogPdfUrl. Lareiras: PricingConfig.rules.lareirasPdfUrl.
-      let url: string | undefined;
-      if (categoria === "lareira") {
-        const pc = await ctx.getPricing(); // #2c: pricingConfig memoizado
-        url = ((pc?.rules as { lareirasPdfUrl?: string } | null)?.lareirasPdfUrl ?? "").trim() || undefined;
-      } else {
-        const ccfg = ctx.agentConfig; // #2b: reusa o cfg já carregado
-        url = ccfg?.catalogPdfUrl?.trim() || undefined;
-      }
-      const nome = categoria === "lareira" ? "lareiras" : "churrasqueiras";
+      // Recortes por categoria em PricingConfig.rules.catalogos; o completo em
+      // AiAgentConfig.catalogPdfUrl e as lareiras em rules.lareirasPdfUrl (histórico).
+      const pcCat = await ctx.getPricing(); // #2c: pricingConfig memoizado
+      const rulesCat = (pcCat?.rules ?? {}) as { lareirasPdfUrl?: string };
+      const alvo = resolverCatalogo(String(args.categoria ?? ""), {
+        catalogos: lerCatalogos(pcCat?.rules),
+        catalogPdfUrl: ctx.agentConfig?.catalogPdfUrl, // #2b: reusa o cfg já carregado
+        lareirasPdfUrl: rulesCat.lareirasPdfUrl,
+      });
+      const url = alvo?.url;
+      const nome = alvo?.nome ?? "churrasqueiras";
       if (!url) return { result: `Sem catálogo de ${nome} em PDF configurado — apresente os modelos por texto e ofereça a foto de cada um (enviar_foto).` };
       const marker = `[catálogo de ${nome} em PDF]`;
       // Cada catálogo vai UMA vez por conversa (por categoria).

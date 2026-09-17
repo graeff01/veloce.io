@@ -703,7 +703,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // seed: reprodutibilidade só na SIMULAÇÃO (mode test) — derruba o ruído do modelo p/
       // a validação de equivalência. Produção NUNCA passa seed (comportamento intocado).
       const seed = mode === "test" ? Number(process.env.AI_CHAT_SEED ?? 7) : undefined;
-      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg), temperature: chatTemp, seed, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
+      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg, (await getPricing().catch(() => null))?.rules), temperature: chatTemp, seed, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
