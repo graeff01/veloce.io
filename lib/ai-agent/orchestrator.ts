@@ -5,8 +5,8 @@ import { buildQuoteGuidance } from "./quote-guidance";
 import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
-import { retrieveKnowledge } from "./retrieval";
-import { checkGrounding, extrairPrecosOficiais } from "./grounding";
+import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
+import { checkGrounding, extrairPrecosOficiais, medidasEmCm } from "./grounding";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -26,6 +26,7 @@ import { detectInjection, stripInstructionLines } from "./security/detect";
 import { decidePolicy, securityMode, severityForProfile, actionForProfile } from "./security/policy";
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
+import { removerPromessaDeAlterar } from "./security/autoridade";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -702,7 +703,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // seed: reprodutibilidade só na SIMULAÇÃO (mode test) — derruba o ruído do modelo p/
       // a validação de equivalência. Produção NUNCA passa seed (comportamento intocado).
       const seed = mode === "test" ? Number(process.env.AI_CHAT_SEED ?? 7) : undefined;
-      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg), temperature: chatTemp, seed, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
+      const { message, usage } = await chatWithRetry({ model, messages, tools: toolsForConfig(cfg, (await getPricing().catch(() => null))?.rules), temperature: chatTemp, seed, meta: { clientId: input.clientId, pipeline: "chat", tenantKey: input.clientId } });
       tokensIn += usage.prompt_tokens; tokensOut += usage.completion_tokens;
       if (message.tool_calls?.length) {
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
@@ -767,13 +768,21 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const verifyOn = !!cfg?.verifyReplies || policy.forceVerify;
 
   if (status === "ok") {
-    // A tabela de preços do cliente é fonte por definição (ver grounding.ts).
+    // A tabela de preços e o CONHECIMENTO INTEIRO do cliente são fonte por
+    // definição. O acervo completo (e não só os 3 blocos que a busca trouxe)
+    // porque conferir contra os 3 confunde "a busca não achou" com "a IA
+    // inventou" — e as duas coisas pedem reações opostas.
     const _pc = await getPricing().catch(() => null);
-    const gr = checkGrounding(final, sources, _pc ? extrairPrecosOficiais(_pc.rules) : undefined);
+    const _acervo = await conhecimentoCompleto(input.clientId).catch(() => "");
+    const _precos = _pc ? extrairPrecosOficiais(_pc.rules) : new Set<string>();
+    const _medidas = medidasEmCm(`${_acervo}\n${cfg?.customPrompt ?? ""}`);
+    const gr = checkGrounding(final, `${sources}\n${_acervo}`, _precos, _medidas);
     if (!gr.grounded) {
       guardrails.push(groundingOn ? "grounding:preco_sem_fonte:enforced" : "grounding:preco_sem_fonte:monitor");
       if (groundingOn) { final = fallback; decision = "abster"; }
     }
+    // Medida sem lastro: AVISO por ora (auditoria), não abstenção — ver grounding.ts.
+    if (gr.medidaWarnings.length) guardrails.push(`grounding:medida_sem_fonte:${gr.medidaWarnings.slice(0, 5).join(",")}`);
   }
 
   // Chain-of-verification por LLM (opt-in): confere afirmações factuais contra as fontes.
@@ -786,6 +795,31 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
+
+  // ── Invariante: a IA NUNCA altera cadastro, então nunca pode dizer que altera ──
+  // Fora do AI_SECURITY_MODE de propósito. As regras da camada são heurísticas e
+  // esperam medição; esta é um invariante do sistema: nenhuma das 11 ferramentas
+  // escreve em config, conhecimento, preço ou catálogo — só na ficha do próprio
+  // contato. Toda promessa de alterar cadastro é falsa por construção, então não
+  // existe alarme falso a medir. Caso real: Henrique, 05/09, "Vou ajustar aqui
+  // para as informações ficarem corretas" — nada foi escrito (auditado no banco).
+  //
+  // Remove a FRASE, não a resposta: no caso real o resto da mensagem estava certo.
+  if (final) {
+    const pr = removerPromessaDeAlterar(final);
+    if (pr.removidas.length) {
+      guardrails.push(`autoridade:promessa_de_alterar:${pr.removidas.length}`);
+      emitSecurityEventAsync({
+        clientId: input.clientId, contactId: input.contact.id, turnId,
+        ring: "egress", control: "C-13", severity: "high", action: "sanitized",
+        labels: ["promessa_de_alterar"], evidence: pr.removidas.join(" | ").slice(0, 400),
+        shadow: false,
+      });
+      // Se a promessa era a mensagem inteira, não há o que entregar: cai no
+      // fallback do cliente, o mesmo caminho já usado pelo guardrail.
+      final = pr.texto || fallback;
+    }
+  }
 
   // ── Segurança · Anel 4: DLP de saída (C-12) ─────────────────────────────────
   // Última barreira antes do lead. Complementa o stripToolCallLeak cobrindo segredo,
