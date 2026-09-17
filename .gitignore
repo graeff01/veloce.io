@@ -47,6 +47,13 @@ next-env.d.ts
 public/catalogo/*.pdf
 !public/catalogo/catalogo-jr.pdf
 !public/catalogo/lareiras-jr.pdf
+# Recortes do catálogo (scripts/jr-catalogo-recortes.ts). São servidos como
+# arquivo estático, então precisam estar no repo — a regra acima os ignorava
+# em silêncio e o deploy subiu sem eles (404 em produção, 17/09).
+!public/catalogo/jr-conjuntos-com-fogao.pdf
+!public/catalogo/jr-churrasqueiras.pdf
+!public/catalogo/jr-fogoes-e-fornos.pdf
+!public/catalogo/jr-complementos.pdf
 # saída das simulações de replay (offline; nunca versionar)
 sim-jr/
 sim-*/
