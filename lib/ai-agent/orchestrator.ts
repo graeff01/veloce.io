@@ -27,6 +27,7 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
+import { lerRegras, decidir as decidirRota, suprimir as suprimirRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -435,6 +436,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let returning = "";
   let agentState: AgentState | null = null; // Fase 3: eixo de estado (shadow — só observa/loga)
   let quoteImminent = false; // ficha completa → orçamento iminente (lazy catalog "smart")
+  let nomeLead: string | null = null; // usado pelo roteador determinístico
   let priorMessages: ChatMessage[];
   if (mode === "live") {
     const [profile, convo, variant, lead] = await Promise.all([
@@ -451,6 +453,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       const ficha = (profile?.data as IntakeData) ?? {};
       quoteImminent = spec.length > 0 && missingRequired(spec, ficha).length === 0;
     }
+    nomeLead = ((profile?.data as { nome?: string } | null)?.nome) ?? input.contact.name ?? null;
 
     // Conversation State (shadow): projeta o estágio a partir de sinais já carregados.
     // off = nem calcula (byte-idêntico). shadow = calcula e registra no log (contextUsed).
@@ -683,6 +686,39 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
+  // ── Roteador determinístico ────────────────────────────────────────────────
+  // Antes de perguntar ao modelo: este turno admite UMA ação certa e calculável?
+  // Se sim, ela é imposta — não é sugerida no prompt e torcida para ser seguida.
+  //
+  // Medido na JR (19/09): trava de CÓDIGO = 0 violações em produção; a regra de
+  // PROMPT equivalente ("NUNCA re-anuncie o vídeo") furou ~60% das vezes, escrita
+  // em caixa alta. A diferença não é redação, é construção.
+  //
+  // Só atua sem julgamento envolvido. Tom, redação e pergunta nova continuam do
+  // modelo. E nunca repete: `sóSeInédito` confere o que já foi dito na conversa,
+  // senão trocaríamos um erro por outro — perguntar duas vezes a mesma coisa.
+  //
+  // Sai ANTES da chamada de modelo: o turno não custa tokens.
+  {
+    const regrasRota = lerRegras((await getPricing().catch(() => null))?.rules);
+    if (regrasRota.length) {
+      const jaDitas = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+        .filter((m) => m.role === "assistant" && typeof m.content === "string")
+        .map((m) => String(m.content));
+      const rota = decidirRota(regrasRota, input.inboundText, jaDitas, nomeLead);
+      if (rota) {
+        stages.push({ name: "roteador", ms: Date.now() - stageStart });
+        const texto = withDisclosure(rota.texto);
+        if (mode === "live") {
+          await log({ outbound: texto, decision: "roteador", status: "ok", tokensIn: 0, tokensOut: 0,
+                      toolCalls: [], contextUsed, stages, guardrails: [`roteador:${rota.id}`], error: null });
+        }
+        return { reply: texto, status: "ok", decision: "roteador", toolCalls: [], artifacts: [],
+                 promptVersion: PROMPT_VERSION, promptVariant, model };
+      }
+    }
+  }
+
   // Segurança · Anel 3: firewall de ferramentas. Envolve o executeTool sem reescrevê-lo
   // (valida parâmetros, aplica allowlist do turno, quota, dedupe de efeito externo e
   // timeout por ferramenta). Uma instância por TURNO.
@@ -795,6 +831,19 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
+
+  // ── Roteador, lado da SUPRESSÃO ────────────────────────────────────────────
+  // A mesma regra que impõe uma pergunta também impede que ela saia fora de
+  // hora. Medido: com "gourmet com fogão 4 bocas" a regra corretamente não
+  // disparava — e o modelo perguntava assim mesmo. Impor cobria metade.
+  if (final) {
+    const regrasSup = lerRegras((await getPricing().catch(() => null))?.rules);
+    const sup = regrasSup.length ? suprimirRota(regrasSup, input.inboundText, final) : null;
+    if (sup) {
+      guardrails.push(`roteador:suprimiu:${sup.id}`);
+      final = sup.texto || fallback;
+    }
+  }
 
   // ── Invariante: a IA NUNCA altera cadastro, então nunca pode dizer que altera ──
   // Fora do AI_SECURITY_MODE de propósito. As regras da camada são heurísticas e
