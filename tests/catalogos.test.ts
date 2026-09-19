@@ -73,3 +73,24 @@ test("rules ausente ou de outro formato não explode", () => {
 test("URL relativa é rejeitada na leitura, não no envio", () => {
   assert.deepEqual(lerCatalogos({ catalogos: [{ chave: "a", rotulo: "r", url: "/catalogo/x.pdf" }] }), []);
 });
+
+// ── Nomes quase iguais confundem o modelo ─────────────────────────────────────
+// Aconteceu: a chave do recorte era "churrasqueiras" e o completo é
+// "churrasqueira" — uma letra de diferença. O cliente pediu "catálogo completo"
+// e recebeu o recorte de 13 páginas, sem conjuntos, fogões nem pias.
+test("chave de recorte não pode ser quase-igual à do catálogo completo", () => {
+  const COMPLETO = "churrasqueira";
+  const perto = (a: string, b: string) => {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    const [c, d] = a.length >= b.length ? [a, b] : [b, a];
+    if (c === d) return true;
+    for (let i = 0; i < c.length; i++) if (c.slice(0, i) + c.slice(i + 1) === d) return true;
+    return false;
+  };
+  // A config real da JR, como está em scripts/jr-catalogos-config.ts.
+  for (const chave of ["conjunto_fogao", "so_churrasqueiras", "fogoes", "complementos"]) {
+    assert.equal(perto(chave, COMPLETO), false, `"${chave}" é fácil de confundir com "${COMPLETO}"`);
+  }
+  // A que causou o problema tem que ser reprovada por este teste.
+  assert.equal(perto("churrasqueiras", COMPLETO), true);
+});
