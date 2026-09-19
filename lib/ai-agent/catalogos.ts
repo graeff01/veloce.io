@@ -80,6 +80,7 @@ export function categoriasDisponiveis(cfg: {
 /** Trecho que entra na descrição da tool, para o modelo escolher o recorte certo. */
 export function descreverCatalogos(catalogos: CatalogoPdf[]): string {
   if (!catalogos.length) return "";
-  return " RECORTES disponíveis — prefira o recorte ao catálogo inteiro quando souber o que o cliente quer: "
-    + catalogos.map((c) => `'${c.chave}' (${c.rotulo})`).join("; ") + ".";
+  return " A categoria 'churrasqueira' é o catálogo COMPLETO — use quando o cliente pedir \"o catálogo\", \"tudo\" ou \"o completo\"."
+    + " RECORTES, para quando você JÁ sabe o que ele quer (mandam só aquela parte): "
+    + catalogos.map((c) => `'${c.chave}' = ${c.rotulo}`).join("; ") + ".";
 }
