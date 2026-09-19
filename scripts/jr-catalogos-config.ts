@@ -16,10 +16,13 @@ const CLIENTE = "cmrjao9n700dg5vudg1zlymk9";
 const BASE = process.env.CATALOGO_BASE_URL ?? "https://veloceio-production.up.railway.app/catalogo";
 
 const RECORTES = [
-  { chave: "conjunto_fogao", rotulo: "conjuntos: churrasqueira + fogão ou forno, já montados", arquivo: "jr-conjuntos-com-fogao.pdf" },
-  { chave: "churrasqueiras",  rotulo: "só as churrasqueiras, sem conjunto",                     arquivo: "jr-churrasqueiras.pdf" },
-  { chave: "fogoes",          rotulo: "só os fogões campeiros e fornos, avulsos",               arquivo: "jr-fogoes-e-fornos.pdf" },
-  { chave: "complementos",    rotulo: "pias, balcão e bancada gourmet",                         arquivo: "jr-complementos.pdf" },
+  { chave: "conjunto_fogao", rotulo: "SÓ os conjuntos: churrasqueira + fogão ou forno", arquivo: "jr-conjuntos-com-fogao.pdf" },
+  // NÃO chamar de "churrasqueiras": difere do "churrasqueira" (catálogo COMPLETO)
+  // por uma letra, e o modelo trocou os dois — o cliente pediu "catálogo completo"
+  // e recebeu o recorte de 13 páginas, sem conjuntos, fogões nem pias.
+  { chave: "so_churrasqueiras", rotulo: "SÓ as churrasqueiras avulsas, sem conjuntos (não é o catálogo completo)", arquivo: "jr-churrasqueiras.pdf" },
+  { chave: "fogoes",          rotulo: "SÓ os fogões campeiros e fornos, avulsos",               arquivo: "jr-fogoes-e-fornos.pdf" },
+  { chave: "complementos",    rotulo: "SÓ pias, balcão e bancada gourmet",                         arquivo: "jr-complementos.pdf" },
 ];
 
 async function main() {
@@ -51,8 +54,10 @@ async function main() {
   const antes = JSON.stringify(rules.catalogos ?? null);
 
   // Preserva o resto das rules (frete, base, opções, lareirasPdfUrl…).
+  // O filtro por Json precisa de `equals`: passar o objeto cru faz o Prisma ler as
+  // chaves como operadores ("Unknown argument `base`").
   const r = await prismaUnscoped.pricingConfig.updateMany({
-    where: { clientId: CLIENTE, rules: rules as object },
+    where: { clientId: CLIENTE, rules: { equals: rules as object } },
     data: { rules: { ...rules, catalogos } as object },
   });
   if (r.count !== 1) { console.log("NÃO gravado — as rules mudaram desde a leitura"); process.exit(1); }
