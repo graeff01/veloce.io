@@ -27,7 +27,7 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
-import { lerRegras, decidir as decidirRota, suprimir as suprimirRota } from "./roteador";
+import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -831,6 +831,30 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const blockRules = resolveBlockRules(cfg?.vertical ?? "automotivo", (cfg?.blockedTopics as { pattern: string; reason: string }[] | null) ?? null);
   const g = checkReply(final, blockRules);
   if (!g.allowed) { final = fallback; status = "blocked"; decision = "bloqueado"; if (g.reason) guardrails.push(g.reason); }
+
+  // ── Roteador, lado da GARANTIA ─────────────────────────────────────────────
+  // Impor e suprimir cobrem o que a IA DIZ. Isto cobre o que ela FAZ — e é o
+  // que mais custa venda: medido, o cliente nomeia o modelo, o prompt usa
+  // LITERALMENTE esse exemplo na regra da foto, e a foto não sai.
+  //
+  // Roda DEPOIS do turno de propósito: forçar antes atropelaria o julgamento do
+  // modelo sobre a hora certa. Aqui só se confere que aconteceu — e se não
+  // aconteceu, acontece agora. A própria enviar_foto já tem anti-reenvio, então
+  // chamar aqui não duplica nada.
+  if (final && status === "ok") {
+    const regrasGar = lerRegras((await getPricing().catch(() => null))?.rules);
+    const gar = regrasGar.length ? garantirRota(regrasGar, input.inboundText, toolLog.map((t) => t.name)) : null;
+    if (gar) {
+      try {
+        const r = await firewall.run(gar.ferramenta, { termo: gar.termo });
+        if (r?.artifacts?.length) artifacts.push(...r.artifacts);
+        toolLog.push({ name: gar.ferramenta, args: { termo: gar.termo }, result: r?.result ?? "" });
+        guardrails.push(`roteador:garantiu:${gar.id}`);
+      } catch {
+        guardrails.push(`roteador:garantiu_falhou:${gar.id}`);
+      }
+    }
+  }
 
   // ── Roteador, lado da SUPRESSÃO ────────────────────────────────────────────
   // A mesma regra que impõe uma pergunta também impede que ela saia fora de

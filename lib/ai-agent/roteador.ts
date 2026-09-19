@@ -46,6 +46,19 @@ export interface RegraRoteador {
    * frase sai. É o mesmo formato do invariante da promessa de alterar cadastro.
    */
   assinatura?: string;
+  /**
+   * Garante que uma FERRAMENTA aconteceu neste turno.
+   *
+   * Impor texto e suprimir texto cobrem o que a IA DIZ. Isto cobre o que ela
+   * FAZ — e é o que mais custa venda: medido em 19/09, o cliente nomeia o
+   * modelo ("quero a gourmet com fogão 4 bocas"), o prompt usa LITERALMENTE
+   * esse exemplo na regra que manda enviar a foto, e a foto não sai.
+   *
+   * Não força ANTES (o que atropelaria o julgamento do modelo sobre a hora
+   * certa): confere DEPOIS se a ferramenta foi chamada e, se não foi, chama.
+   * O argumento sai do grupo de captura 1 de `quando`.
+   */
+  garantirFerramenta?: string;
 }
 
 export interface Decisao {
@@ -76,7 +89,11 @@ export function lerRegras(rules: unknown): RegraRoteador[] {
     const id = String(r?.id ?? "").trim();
     const quando = String(r?.quando ?? "").trim();
     const responder = String(r?.responder ?? "").trim();
-    if (!id || !quando || !responder || vistos.has(id)) continue;
+    // `responder` é opcional quando a regra só garante ferramenta ou só suprime:
+    // exigir texto nessas descartaria a regra em silêncio, que foi como a
+    // supressão ficou morta na primeira versão.
+    const soAcao = !!r?.garantirFerramenta || !!r?.assinatura;
+    if (!id || !quando || (!responder && !soAcao) || vistos.has(id)) continue;
     if (!compila(quando)) continue;
     if (r?.excetoSe && !compila(String(r.excetoSe))) continue;
     if (r?.assinatura && !compila(String(r.assinatura))) continue;
@@ -86,6 +103,7 @@ export function lerRegras(rules: unknown): RegraRoteador[] {
       excetoSe: r?.excetoSe ? String(r.excetoSe) : undefined,
       sóSeInédito: r?.sóSeInédito ? String(r.sóSeInédito) : undefined,
       assinatura: r?.assinatura ? String(r.assinatura) : undefined,
+      garantirFerramenta: r?.garantirFerramenta ? String(r.garantirFerramenta) : undefined,
     });
   }
   return out;
@@ -108,6 +126,7 @@ export function decidir(
   const jaDito = anteriores.map(semAcento);
 
   for (const r of regras) {
+    if (!r.responder) continue; // regra só de ação, não impõe texto
     const re = compila(r.quando);
     if (!re || !re.test(t)) continue;
     if (r.excetoSe) { const ex = compila(r.excetoSe); if (ex && ex.test(t)) continue; }
@@ -174,6 +193,35 @@ export function suprimir(
     if (!removidas.length) continue;
     const texto = partes.join(" ").replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     return { id: r.id, texto, removidas };
+  }
+  return null;
+}
+
+/**
+ * O turno exigia uma ferramenta que não foi chamada?
+ *
+ * Devolve o que precisa acontecer, para quem chama executar. Não executa aqui:
+ * o módulo é puro de propósito — é o que o torna testável sem banco nem rede.
+ */
+export function garantir(
+  regras: RegraRoteador[],
+  inbound: string | null | undefined,
+  chamadasDoTurno: string[],
+): { id: string; ferramenta: string; termo: string } | null {
+  const t = semAcento(inbound ?? "");
+  if (!t.trim()) return null;
+  for (const r of regras) {
+    if (!r.garantirFerramenta) continue;
+    if (chamadasDoTurno.includes(r.garantirFerramenta)) continue; // já aconteceu
+    const re = compila(r.quando);
+    if (!re) continue;
+    const m = t.match(re);
+    if (!m) continue;
+    if (r.excetoSe) { const ex = compila(r.excetoSe); if (ex && ex.test(t)) continue; }
+    // Sem termo não dá para escolher o item — melhor não chamar do que chutar.
+    const termo = (m[1] ?? "").trim();
+    if (!termo) continue;
+    return { id: r.id, ferramenta: r.garantirFerramenta, termo };
   }
   return null;
 }

@@ -17,4 +17,14 @@ export const REGRAS_JR = [
     // ela não pode sair — nem se ele resolver fazê-la sozinho.
     assinatura: "embutid[^.?!]{0,90}(separad|do lado|ao lado|campeir)|campeir[^.?!]{0,90}embutid",
   },
+  {
+    id: "modelo_nomeado_sem_foto",
+    // Grupo 1 = o termo que vai para o enviar_foto. Modelos reais da JR.
+    quando: "\\b((?:churrasqueira\\s+)?(?:prime\\s*\\d{1,2}(?:\\s*espetos?)?|gourmet\\s+supreme|tradicao\\s+gourmet|gourmet|tradicao|parrilla\\s*\\d{2,3}|parrilla|popular|campeirinho|fogao\\s+campeiro\\s+de\\s+\\d\\s*bocas|forno\\s+napoli|bancada\\s+gourmet))\\b",
+    // Não garante a foto quando ele está PERGUNTANDO um dado — aí ele quer a
+    // resposta, não uma imagem. Nem quando pede o catálogo (é outro caminho).
+    excetoSe: "\\b(largura|altura|profundidade|medida|peso|quanto custa|qual o valor|preco|preço|cabe|catalogo|cat[áa]logo|or[çc]amento|frete|entrega|montagem)",
+    responder: "",
+    garantirFerramenta: "enviar_foto",
+  },
 ];

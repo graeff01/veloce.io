@@ -143,11 +143,50 @@ test("não encosta em resposta de outro assunto", () => {
 // O parser esquecia de copiar `assinatura`: o campo existia na interface e no
 // dado gravado, e sumia na leitura — a supressão nunca rodava, em silêncio.
 test("lerRegras não perde nenhum campo da regra", () => {
-  const completa = { id: "x", quando: "a", excetoSe: "b", sóSeInédito: "c", responder: "d", assinatura: "e" };
+  const completa = { id: "x", quando: "a", excetoSe: "b", sóSeInédito: "c", responder: "d", assinatura: "e", garantirFerramenta: "enviar_foto" };
   const [lida] = lerRegras({ roteador: [completa] });
   assert.deepEqual(lida, completa, "algum campo se perdeu na leitura");
 });
 
 test("assinatura com regex inválida descarta a regra, não quebra o turno", () => {
   assert.deepEqual(lerRegras({ roteador: [{ id: "x", quando: "a", responder: "b", assinatura: "([" }] }), []);
+});
+
+// ── Garantir a FERRAMENTA: o que mais custa venda ────────────────────────────
+// Medido em 19/09: o cliente nomeia o modelo, o prompt usa LITERALMENTE esse
+// exemplo na regra que manda mandar a foto, e a foto não sai.
+import { garantir } from "../lib/ai-agent/roteador";
+import { REGRAS_JR } from "../scripts/jr-roteador-regras";
+
+const JR = lerRegras({ roteador: REGRAS_JR });
+
+test("as regras da JR carregam todas", () => {
+  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto"]);
+});
+
+test("modelo nomeado sem foto → garante enviar_foto com o termo certo", () => {
+  const g = garantir(JR, "quero a gourmet com fogão 4 bocas", []);
+  assert.ok(g, "não garantiu");
+  assert.equal(g!.ferramenta, "enviar_foto");
+  assert.match(g!.termo, /gourmet/);
+});
+
+test("não garante de novo se a foto já foi nesse turno", () => {
+  assert.equal(garantir(JR, "quero a gourmet com fogão 4 bocas", ["enviar_foto"]), null);
+});
+
+test("pergunta sobre DADO não vira foto — ele quer resposta", () => {
+  for (const f of [
+    "qual a largura da prime 9?",
+    "quanto custa a gourmet?",
+    "qual o valor da tradição?",
+    "a parrilla 105 cabe em 2,40 de pé direito?",
+    "me manda o catálogo da gourmet",
+    "qual o frete da prime 16 pra Canoas?",
+  ]) assert.equal(garantir(JR, f, []), null, `garantiu foto indevidamente: ${f}`);
+});
+
+test("sem modelo nomeado não garante nada", () => {
+  for (const f of ["quero uma churrasqueira", "bom dia", "vocês entregam?"])
+    assert.equal(garantir(JR, f, []), null, `garantiu à toa: ${f}`);
 });
