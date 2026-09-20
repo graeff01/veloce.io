@@ -157,7 +157,11 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
         })()}
 
         {/* Métricas + split (velocidade de atendimento · health score) */}
+        {/* Cabeçalho: era o ÚNICO painel da página sem um, e é o maior — quatro
+            métricas, o gráfico e o health score. Sem rótulo, o bloco começava do
+            nada no meio da leitura. */}
         <div className="p-panel">
+          <div className="p-phead"><h2>Volume e qualidade do atendimento</h2><span className="hint">{data.periodLabel}</span></div>
           <div className="p-metrics">
             <div className="p-metric">
               <div className="k">Investimento</div>
@@ -188,7 +192,15 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <div>
               <div className="p-eyebrow">Desempenho · leads por dia</div>
               <div style={{ marginTop: 14 }}>
-                <AreaChart points={data.series.map((s) => s.leads)} height={172} animado />
+                <AreaChart
+                  points={data.series.map((s) => s.leads)}
+                  height={172}
+                  animado
+                  /* A aba Anúncios já rotula o pico; aqui o gráfico era uma forma
+                     sem magnitude — não dava para saber se o topo era 5 ou 500. */
+                  rotuloTopo={`pico ${int(Math.max(...data.series.map((x) => x.leads)))} lead${Math.max(...data.series.map((x) => x.leads)) !== 1 ? "s" : ""}/dia`}
+                  descricao={`Leads por dia no período. Pico de ${int(Math.max(...data.series.map((x) => x.leads)))} em um dia.`}
+                />
               </div>
             </div>
             {/* Health score */}

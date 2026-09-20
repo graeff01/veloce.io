@@ -68,6 +68,12 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     try { localStorage.setItem(`pt-${token}`, next); } catch { /* ignore */ }
   }
 
+  // Rótulo de seção: mesmo tratamento do antigo "Menu", com respiro em cima
+  // quando não é o primeiro — é o que separa os grupos sem desenhar linha.
+  const secao = (txt: string) => (
+    <div key={`s-${txt}`} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: txt === "Acompanhar" ? "0 10px 6px" : "14px 10px 6px", opacity: 0.7 }}>{txt}</div>
+  );
+
   const item = (key: "painel" | "revisao" | "fechamento" | "conversas" | "aprendizado" | "consumo" | "frete" | "funil" | "ia" | "anuncios" | "equipe" | "teste" | "objecoes" | "orcamentos", href: string, label: string, icon: React.ReactNode, badge?: number, opts?: { accent?: string; shine?: boolean; abreNumeros?: { base: string } }) => {
     const on = active === key;
     const textColor = opts?.accent ?? (on ? "var(--p-accent)" : "var(--p-muted)");
@@ -142,15 +148,22 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
 
         {/* navegação */}
         <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 12, flex: 1 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--p-muted)", textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", opacity: 0.7 }}>Menu</div>
+          {/* Eram 13 itens de peso idêntico numa lista plana — o clássico "menu
+              que cresceu". Agrupar dá hierarquia sem ocupar mais espaço: o
+              rótulo de seção substitui o "Menu" genérico que já estava ali.
+              ACOMPANHAR = ler o resultado · ATENDER = trabalhar o lead ·
+              AJUSTAR = mexer na configuração. */}
+          {secao("Acompanhar")}
           {on("painel") && item("painel", `/r/${token}`, "Painel", <LayoutDashboard size={15} />)}
           {on("conversas") && item("conversas", `/r/${token}/conversas`, "WhatsApp", <WhatsAppGlyph size={16} />, undefined, { accent: "#25D366", shine: true, ...(varios ? { abreNumeros: { base: "/conversas" } } : {}) })}
+          {(on("revisao") || on("fechamento") || quotesEnabled) && secao("Atender")}
           {on("revisao") && item("revisao", `/r/${token}/revisao`, "Revisão", <ShieldCheck size={15} />, reviewCount)}
           {on("fechamento") && item("fechamento", `/r/${token}/fechamento`, "Fechamento", <Flame size={15} />, hotCount)}
           {on("anuncios") && item("anuncios", `/r/${token}/anuncios`, "Anúncios", <Megaphone size={15} />)}
           {on("ia") && item("ia", `/r/${token}/ia`, "IA", <Sparkles size={15} />)}
           {on("funil") && item("funil", `/r/${token}/funil`, "Funil", <Filter size={15} />, undefined, varios ? { abreNumeros: { base: "/funil" } } : undefined)}
           {quotesEnabled && item("orcamentos", `/r/${token}/orcamentos`, "Orçamentos", <FileText size={15} />)}
+          {(on("aprendizado") || on("consumo") || on("frete") || on("equipe") || aiTest) && secao("Ajustar")}
           {on("aprendizado") && item("aprendizado", `/r/${token}/aprendizado`, "Aprendizado", <GraduationCap size={15} />, learnCount)}
           {on("consumo") && item("consumo", `/r/${token}/consumo`, "Consumo", <Gauge size={15} />)}
           {on("frete") && item("frete", `/r/${token}/frete`, "Frete", <Truck size={15} />)}
