@@ -124,7 +124,9 @@ export const PORTAL_ACABAMENTO_CSS = `
 
 /* Entrada dos painéis, escalonada. O atraso PARA no 6º: além disso a pessoa
    está esperando a página, não apreciando a animação. */
-.p-panel{animation:pfSobe .42s cubic-bezier(.22,1,.36,1) both}
+/* Sem fill-mode pelo mesmo motivo da barra: nada pode ficar invisível
+   esperando uma animação que talvez não rode. */
+.p-panel{animation:pfSobe .42s cubic-bezier(.22,1,.36,1)}
 .p-panel:nth-of-type(2){animation-delay:.05s}
 .p-panel:nth-of-type(3){animation-delay:.10s}
 .p-panel:nth-of-type(4){animation-delay:.15s}
@@ -161,6 +163,39 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
   .p-metric:hover{background:var(--p-raise)}
 }
 
+/* ── Barras (.p-track) ─────────────────────────────────────────────────────
+   Eram largura fixa, paradas. Ganham duas coisas:
+
+   1. ENTRADA: revela da esquerda pra direita com clip-path. Usei clip-path em
+      vez de animar a largura ou scaleX — largura de 0 precisaria saber o alvo
+      (que vem inline, por peça) e scaleX esmagaria o raio de 5px numa barra de
+      7px de altura. clip-path revela sem deformar nada.
+
+   2. BRILHO CONTÍNUO: um reflexo atravessa a parte preenchida, em laço. É o que
+      chama o olho para o número que importa. Só transform — o navegador resolve
+      na GPU e não recalcula layout a cada quadro.
+
+   A barra vazia não brilha (:not([style*="width: 0"])): reflexo em barra zerada
+   sugere movimento onde não há dado. */
+.p-track{position:relative}
+.p-track>span{
+  /* SEM fill-mode de propósito: com "both", o estado ANTES de rodar é
+     clip-path:inset(0 100% 0 0) — barra invisível. Vi acontecer. Assim o
+     natural é visível e a animação só revela enquanto roda. */
+  animation:pfBarra .75s cubic-bezier(.22,1,.36,1);
+  position:relative;overflow:hidden}
+.p-track>span::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 28%,rgba(255,255,255,.72) 50%,transparent 72%);
+  transform:translateX(-100%);
+  animation:pfBrilho 2.6s ease-in-out .75s infinite}
+html[data-pt="dark"] .p-track>span::after{
+  background:linear-gradient(100deg,transparent 28%,rgba(255,255,255,.38) 50%,transparent 72%)}
+@keyframes pfBarra{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+/* -100% → 100% percorre a barra INTEIRA e para. Antes ia a 220%: o brilho
+   saía da peça em ~1/4 do caminho e o resto do ciclo era tempo morto. */
+@keyframes pfBrilho{0%{transform:translateX(-100%)}55%,100%{transform:translateX(100%)}}
+
 /* Números grandes com risco de "pular" enquanto carregam. */
 .p-metric .v{font-variant-numeric:tabular-nums}
 
@@ -177,10 +212,9 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 `;
 
 export const PORTAL_UI_CSS = `
-/* Limite de largura: em 1440px sem isto a tabela espalha o nome numa ponta e o
-   número na outra, e o olho perde a linha. No celular o problema não existe
-   porque a tela já é estreita — era por isso que o desktop parecia pior. */
-.p-wrap{padding:20px 26px 64px;display:flex;flex-direction:column;gap:16px;max-width:1240px;margin-inline:auto;width:100%}
+/* Sem limite de largura, por decisão do cliente: ele quer o painel ocupando a
+   tela inteira. (Foi testado com max-width 1240 centrado e ele preferiu assim.) */
+.p-wrap{padding:20px 26px 64px;display:flex;flex-direction:column;gap:16px}
 .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 .p-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--p-muted)}
 /* Superfícies abertas: sem borda-caixa em volta; definidas por tom + sombra suave. */

@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PORTAL_UI_CSS, PORTAL_ACABAMENTO_CSS, PORTAL_TOQUE_CSS } from "../lib/portal-theme";
 
 // ── O acabamento tem que chegar em todas as telas ────────────────────────────
@@ -10,11 +12,13 @@ test("o acabamento entra no CSS que as páginas carregam", () => {
   assert.ok(PORTAL_UI_CSS.includes(PORTAL_TOQUE_CSS));
 });
 
-// ── Largura: o que estava errado no desktop ──────────────────────────────────
-// Em 1440px sem limite a tabela joga o nome numa ponta e o número na outra.
-test("o conteúdo tem limite de largura e fica centrado", () => {
-  assert.match(PORTAL_UI_CSS, /\.p-wrap\{[^}]*max-width:\s*\d{3,4}px/);
-  assert.match(PORTAL_UI_CSS, /\.p-wrap\{[^}]*margin-inline:\s*auto/);
+// ── Largura: o cliente QUER a tela inteira ───────────────────────────────────
+// Foi testado com max-width 1240 centrado e ele preferiu sem. Este teste existe
+// para que ninguém "conserte" isso de novo achando que é esquecimento.
+test("o painel ocupa a largura toda — sem max-width", () => {
+  const wrap = /\.p-wrap\{([^}]*)\}/.exec(PORTAL_UI_CSS)?.[1] ?? "";
+  assert.ok(wrap, ".p-wrap sumiu");
+  assert.doesNotMatch(wrap, /max-width/, "voltou o limite de largura que o cliente recusou");
 });
 
 // ── Hover não pode vazar para o toque ────────────────────────────────────────
@@ -36,8 +40,12 @@ test("todo hover está atrás de (hover:hover)", () => {
 // ── Movimento só na entrada ──────────────────────────────────────────────────
 // Nada pode ficar parado em opacity:0 esperando scroll: a página precisa nascer
 // legível, inclusive em print e em leitor de tela.
-test("a animação de entrada termina visível (both), não fica esperando", () => {
-  assert.match(PORTAL_ACABAMENTO_CSS, /animation:pfSobe[^;]*both/);
+test("nada fica invisível esperando a animação rodar", () => {
+  // `both` parecia o certo ("termina visível"), mas ele também faz o elemento
+  // COMEÇAR no estado inicial — opacity 0 no painel, clip-path total na barra.
+  // Se a animação não rodar, a peça some. Vi a barra sumir num quadro congelado.
+  assert.doesNotMatch(PORTAL_ACABAMENTO_CSS, /animation:pf[A-Za-z]+[^;}]*\b(both|backwards)\b/,
+    "alguma animação usa fill-mode que esconde a peça antes de rodar");
   // opacity:0 DENTRO de @keyframes é o começo da animação — legítimo. O que não
   // pode é um elemento parado em opacity:0 esperando scroll para aparecer.
   const semKeyframes = PORTAL_ACABAMENTO_CSS.replace(/@keyframes[^{]*\{(?:[^{}]|\{[^{}]*\})*\}/g, "");
@@ -57,4 +65,32 @@ test("prefers-reduced-motion zera tudo, com !important", () => {
 // ── Os dois temas ────────────────────────────────────────────────────────────
 test("a sombra do painel é definida também no escuro", () => {
   assert.match(PORTAL_ACABAMENTO_CSS, /html\[data-pt="dark"\] \.p-panel\{box-shadow/);
+});
+
+// ── Crase em comentário de CSS quebra o template literal ────────────────────
+// Aconteceu TRÊS vezes nesta base. O TS vê a crase e fecha a string ali; o erro
+// que aparece é longe do ponto ("Expected ; but found both"), e custa um ciclo
+// inteiro para achar. Varre a fonte em vez de esperar o build reclamar.
+test("nenhum comentário de CSS usa crase", () => {
+  const fonte = readFileSync(join(import.meta.dirname, "..", "lib", "portal-theme.ts"), "utf8");
+  const ofensas: string[] = [];
+  for (const c of fonte.match(/\/\*[\s\S]*?\*\//g) ?? []) {
+    if (c.includes("`")) ofensas.push(c.replace(/\s+/g, " ").slice(0, 88));
+  }
+  assert.deepEqual(ofensas, [], `crase em comentário fecha a string:\n  ${ofensas.join("\n  ")}`);
+});
+
+// ── As barras ────────────────────────────────────────────────────────────────
+test("a barra tem entrada e brilho contínuo", () => {
+  assert.match(PORTAL_ACABAMENTO_CSS, /@keyframes pfBarra/);
+  assert.match(PORTAL_ACABAMENTO_CSS, /@keyframes pfBrilho/);
+  assert.match(PORTAL_ACABAMENTO_CSS, /animation:pfBrilho[^;}]*infinite/);
+});
+
+test("o brilho atravessa a barra toda e não some no meio do caminho", () => {
+  // Ia até 220%: o reflexo saía da peça em ~1/4 do ciclo e o resto era tempo
+  // morto — nos quadros congelados não aparecia nada.
+  const kf = /@keyframes pfBrilho\{([^}]*\}[^}]*)\}/.exec(PORTAL_ACABAMENTO_CSS)?.[1] ?? "";
+  assert.ok(kf, "keyframe do brilho sumiu");
+  assert.doesNotMatch(kf, /translateX\((1[1-9]\d|[2-9]\d\d)%\)/, "o brilho passa longe da barra");
 });
