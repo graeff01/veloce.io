@@ -120,3 +120,24 @@ test("silêncio em conversa normal", () => {
     assert.ok(!d.labels.includes("false_authority"), `false_authority indevido: ${texto}`);
   }
 });
+
+// ── Presente do indicativo: a brecha que o replay do Henrique encontrou ─────
+// "Vou confirmar com o vendedor e já atualizo aqui" — promessa igual, e os
+// padrões de futuro/passado passavam direto.
+test("pega a promessa no PRESENTE", () => {
+  for (const f of [
+    "Vou confirmar com o vendedor e já atualizo aqui.",
+    "Já corrijo aqui pra você.",
+    "Ajusto no sistema agora mesmo.",
+    "Altero no cadastro e te aviso.",
+    "Já registro no sistema essa medida.",
+  ]) assert.ok(removerPromessaDeAlterar(f).removidas.length > 0, `passou batido: ${f}`);
+});
+
+test("mas não confunde com a escalação, que REGISTRA de verdade", () => {
+  for (const f of [
+    "Já registro aqui pro vendedor te chamar.",
+    "Registro aqui e ele te retorna.",
+    "Vou confirmar com o vendedor e já te falo.",
+  ]) assert.equal(removerPromessaDeAlterar(f).removidas.length, 0, `alarme falso: ${f}`);
+});

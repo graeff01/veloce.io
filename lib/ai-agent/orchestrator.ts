@@ -6,7 +6,7 @@ import { parseSpec, missingRequired, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
-import { checkGrounding, extrairPrecosOficiais, medidasEmCm } from "./grounding";
+import { checkGrounding, extrairPrecosOficiais, medidasEmCm, medidasInventadas } from "./grounding";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -819,6 +819,23 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     }
     // Medida sem lastro: AVISO por ora (auditoria), não abstenção — ver grounding.ts.
     if (gr.medidaWarnings.length) guardrails.push(`grounding:medida_sem_fonte:${gr.medidaWarnings.slice(0, 5).join(",")}`);
+
+    // Medida ATRIBUÍDA ao produto e ausente do acervo: isso não é aviso, é
+    // invenção — e custa a venda, porque o cliente compra achando que cabe.
+    //
+    // Medido em 538 respostas reais: barra 3, e as 3 são os erros verdadeiros
+    // ("a Prime 9 tem 90 cm" — são 74). Zero legítimo barrado: o eco da medida
+    // do CLIENTE ("com 3 metros de pé-direito, a Prime 9 encaixa") e as contas
+    // de bloco passam, porque não atribuem a medida ao produto.
+    //
+    // Pega também a adoção do número do cliente: se ele disser "é 74" e ela
+    // repetir como característica sem estar no acervo, cai aqui igual.
+    const inventadas = medidasInventadas(final, _medidas);
+    if (inventadas.length) {
+      guardrails.push(`grounding:medida_inventada:${inventadas.slice(0, 5).join(",")}`);
+      final = fallback;
+      decision = "abster";
+    }
   }
 
   // Chain-of-verification por LLM (opt-in): confere afirmações factuais contra as fontes.
