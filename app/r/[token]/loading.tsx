@@ -15,7 +15,9 @@ export default function PortalLoading() {
         {block(30, "150px", 9)}
       </div>
       {/* conteúdo */}
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Mesma largura da página carregada: com limite aqui, o conteúdo
+          "saltava" para os lados quando terminava de carregar. */}
+      <div style={{ padding: "20px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
         {block(56, "70%", 8)}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           {block(96)}{block(96)}{block(96)}

@@ -30,8 +30,8 @@ export function PortalConsumo({ token }: { token: string }) {
   useEffect(() => { load(); }, [load]);
   usarPulso(() => load(), 60000);
 
-  if (!loaded) return <div style={{ maxWidth: 900, margin: "0 auto", padding: 60, textAlign: "center" }}><Loader2 size={22} className="animate-spin" /></div>;
-  if (!u) return <div style={{ maxWidth: 900, margin: "0 auto", padding: 40, color: "var(--p-muted)" }}>Não foi possível carregar o consumo.</div>;
+  if (!loaded) return <div style={{ padding: 60, textAlign: "center" }}><Loader2 size={22} className="animate-spin" /></div>;
+  if (!u) return <div style={{ padding: "22px 26px", color: "var(--p-muted)" }}>Não foi possível carregar o consumo.</div>;
 
   const limit = u.limit;
   const pct = limit ? Math.min(100, Math.round((u.count / limit) * 100)) : 0;
@@ -45,7 +45,9 @@ export function PortalConsumo({ token }: { token: string }) {
   return (
     <div className="cwrap">
       <style>{`
-        .cwrap{max-width:900px;margin:0 auto;padding:26px 22px 70px}
+        /* Largura cheia, como as demais telas do portal. Estava travada em
+           900px centrado e destoava de todo o resto. */
+        .cwrap{padding:22px 26px 70px}
         .chead{display:flex;align-items:center;gap:12px;margin-bottom:4px}
         .chead h1{font-size:20px;margin:0;letter-spacing:-.01em;text-transform:capitalize}
         .csub{color:var(--p-muted);font-size:13px;margin:0 0 20px}
