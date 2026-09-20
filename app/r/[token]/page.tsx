@@ -168,7 +168,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
               <div className="k">Leads</div>
               <div className="v">{int(a.leads)}</div>
               <DeltaChip pct={d.leads} goodWhenUp />
-              {data.series.length > 1 && <div style={{ marginTop: 10 }}><Sparkline points={data.series.map((s) => s.leads)} colorVar="--p-good" /></div>}
+              {data.series.length > 1 && <div style={{ marginTop: 10 }}><Sparkline points={data.series.map((s) => s.leads)} colorVar="--p-good" animado /></div>}
             </div>
             <div className="p-metric">
               <div className="k">Custo por lead</div>
@@ -188,7 +188,7 @@ export default async function PortalPage({ params, searchParams }: { params: Pro
             <div>
               <div className="p-eyebrow">Desempenho · leads por dia</div>
               <div style={{ marginTop: 14 }}>
-                <AreaChart points={data.series.map((s) => s.leads)} height={172} />
+                <AreaChart points={data.series.map((s) => s.leads)} height={172} animado />
               </div>
             </div>
             {/* Health score */}
