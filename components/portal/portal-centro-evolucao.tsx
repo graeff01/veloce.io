@@ -50,7 +50,7 @@ export function PortalCentroEvolucao({ token }: { token: string }) {
   const scoreColor = (s: number) => (s >= 0.8 ? "#16a34a" : s >= 0.5 ? "#d97706" : "#dc2626");
 
   return (
-    <section style={{ maxWidth: 860, margin: "0 auto", padding: "20px 16px 8px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <section style={{ padding: "20px 26px 8px", display: "flex", flexDirection: "column", gap: 16 }}>
       <header style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Brain size={20} style={{ color: "var(--p-accent, #6d28d9)" }} />
         <div>

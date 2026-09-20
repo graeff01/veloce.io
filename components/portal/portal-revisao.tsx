@@ -120,7 +120,9 @@ export function PortalRevisao({ token }: { token: string }) {
   return (
     <div className="rwrap">
       <style>{`
-        .rwrap{max-width:1440px;padding:26px 26px 70px}
+        /* Largura cheia: padrão do portal. Telas travadas em 900/1440 destoavam
+           do resto e deixavam faixa morta em tela grande. */
+        .rwrap{padding:22px 26px 70px}
         @media(max-width:760px){ .rwrap{padding-bottom:calc(104px + env(safe-area-inset-bottom))} }
         .rhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
         .rhead h1{font-size:20px;margin:0;letter-spacing:-.01em}

@@ -214,7 +214,8 @@ export function PortalFrete({ token }: { token: string }) {
   };
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
+    /* Largura cheia, como as demais telas — estava travada em 900px centrado. */
+    <div style={{ padding: "22px 26px 60px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Truck size={18} color="var(--p-accent)" />
         <h1 style={{ fontSize: 19, fontWeight: 700, margin: 0, color: "var(--p-text)" }}>Frete por região</h1>

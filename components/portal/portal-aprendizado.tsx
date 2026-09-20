@@ -53,7 +53,9 @@ export function PortalAprendizado({ token }: { token: string }) {
   return (
     <div className="lwrap">
       <style>{`
-        .lwrap{max-width:900px;margin:0 auto;padding:26px 22px 70px}
+        /* Largura cheia: padrão do portal. Telas travadas em 900/1440 destoavam
+           do resto e deixavam faixa morta em tela grande. */
+        .lwrap{padding:22px 26px 70px}
         .lhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
         .lhead h1{font-size:20px;margin:0;letter-spacing:-.01em}
         .lcount{background:var(--p-accent);color:var(--p-on-accent);font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;min-width:22px;text-align:center}
