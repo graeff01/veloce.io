@@ -10,6 +10,7 @@ import { runAgent } from "@/lib/ai-agent/orchestrator";
 import { conhecimentoCompleto } from "@/lib/ai-agent/retrieval";
 import { medidasEmCm, medidasInventadas } from "@/lib/ai-agent/grounding";
 import { removerPromessaDeAlterar } from "@/lib/ai-agent/security/autoridade";
+import { lerTabelaMedidas, medidasErradasDoProduto } from "@/lib/ai-agent/medidas-produto";
 import type { ChatMessage } from "@/lib/openai";
 
 const C = "cmrjao9n700dg5vudg1zlymk9";
@@ -34,6 +35,7 @@ async function main() {
   const acervo = await conhecimentoCompleto(C);
   const cfg = await db.aiAgentConfig.findUnique({ where: { clientId: C }, select: { customPrompt: true } });
   const oficiais = medidasEmCm(`${acervo}\n${cfg?.customPrompt ?? ""}`);
+  const tabela = lerTabelaMedidas(acervo);
 
   let falhas = 0;
   for (const alvo of ALVOS) {
@@ -66,6 +68,8 @@ async function main() {
       if (inv.length) problemas.push(`MEDIDA INVENTADA (${inv.join(",")}) — "${reply.replace(/\n/g, " ").slice(0, 88)}"`);
       const pr = removerPromessaDeAlterar(reply);
       if (pr.removidas.length) problemas.push(`PROMESSA DE ALTERAR — "${pr.removidas[0]}"`);
+      // Guarda novo: medida certa atribuída ao produto ERRADO.
+      for (const e of medidasErradasDoProduto(reply, tabela)) problemas.push(`MEDIDA DO PRODUTO — ${e}`);
     }
 
     if (confirmouPrimeiro && !mandouVideo) problemas.push("1º CONTATO CONFIRMADO E O VÍDEO NÃO SAIU");
