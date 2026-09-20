@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { usarPulso } from "./usar-pulso";
 import { Gauge, TrendingUp, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
 interface Usage {
@@ -25,7 +26,9 @@ export function PortalConsumo({ token }: { token: string }) {
     } catch { /* ignora */ } finally { setLoaded(true); }
   }, [token]);
 
-  useEffect(() => { load(); const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
+  // Porteiro de visibilidade: nada de pedir dados para uma aba escondida.
+  useEffect(() => { load(); }, [load]);
+  usarPulso(() => load(), 60000);
 
   if (!loaded) return <div style={{ maxWidth: 900, margin: "0 auto", padding: 60, textAlign: "center" }}><Loader2 size={22} className="animate-spin" /></div>;
   if (!u) return <div style={{ maxWidth: 900, margin: "0 auto", padding: 40, color: "var(--p-muted)" }}>Não foi possível carregar o consumo.</div>;

@@ -241,8 +241,12 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     let alive = true;
     const tick = () => fetch(`/api/portal/${token}/badges`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive && d) { setWaitingCount(d.waiting ?? 0); setReviewCount(d.reviews ?? 0); } }).catch(() => {});
     tick();
-    const id = setInterval(tick, 20000);
-    return () => { alive = false; clearInterval(id); };
+    // Porteiro de visibilidade: contador não muda para quem não está olhando.
+    const olhando = () => document.visibilityState === "visible";
+    const id = setInterval(() => { if (olhando()) tick(); }, 20000);
+    const aoVoltar = () => { if (olhando()) tick(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { alive = false; clearInterval(id); document.removeEventListener("visibilitychange", aoVoltar); };
   }, [token]);
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -369,7 +373,11 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
       }).catch(() => {});
     };
     etagLista.current = null;  // mudou o recorte: a impressão anterior não vale
-    const iv = setInterval(reload, 6000);
+    // 6s é o intervalo mais curto do portal. Sem porteiro, uma aba esquecida
+    // aberta pedia a lista 600x por hora — de madrugada, para ninguém. O ETag
+    // já barateava a resposta, mas a requisição saía do mesmo jeito.
+    // O listener de visibilitychange continua: ao VOLTAR, recarrega na hora.
+    const iv = setInterval(() => { if (document.visibilityState === "visible") reload(); }, 6000);
     window.addEventListener("focus", reload);
     document.addEventListener("visibilitychange", reload);
     return () => { clearInterval(iv); window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", reload); };

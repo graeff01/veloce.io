@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { usarPulso } from "./usar-pulso";
 import { ShieldCheck, FileText, MapPin, Bell, Check, Loader2, X, Send } from "lucide-react";
 import { PdfModal } from "./pdf-modal";
 
@@ -72,13 +73,11 @@ export function PortalRevisao({ token }: { token: string }) {
     } catch { /* ignora */ }
   }, [token]);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(id); window.removeEventListener("focus", onFocus); };
-  }, [load]);
+  // Só bate enquanto a pessoa está OLHANDO. Uma aba esquecida aberta pedia esta
+  // lista a cada 15s a noite inteira — e ao voltar o usarPulso já recarrega, que
+  // era o que o listener de focus fazia aqui.
+  useEffect(() => { load(); }, [load]);
+  usarPulso(() => load(), 15000);
 
   async function aprovar(q: Review) {
     const d = Math.max(0, Number((desc[q.quoteId] || "").replace(",", ".")) || 0);
