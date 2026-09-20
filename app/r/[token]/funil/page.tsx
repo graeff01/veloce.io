@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal, effectiveSections, getPortalShellData } from "@/lib/notifications/client-portal";
 import { redirect } from "next/navigation";
 import { getClientFunnel } from "@/lib/notifications/client-funnel";
+import { normalizePeriod, recentMonths, periodRanges } from "@/lib/notifications/client-report";
 import { themeStyle, themeSwitchCss, themeInitScript, PORTAL_UI_CSS } from "@/lib/portal-theme";
 import { isProtected, getPortalSessionEmail } from "@/lib/portal-auth";
 import { PortalGate } from "@/components/portal/portal-gate";
@@ -15,10 +16,10 @@ export const dynamic = "force-dynamic";
 
 export default async function FunilPage({ params, searchParams }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ conexao?: string }>;
+  searchParams: Promise<{ conexao?: string; p?: string }>;
 }) {
   const { token } = await params;
-  const { conexao } = await searchParams;
+  const { conexao, p } = await searchParams;
   const portal = await resolvePortal(token);
 
   if (!portal) {
@@ -49,7 +50,12 @@ export default async function FunilPage({ params, searchParams }: {
   }
 
   // Funil de um número só, quando o atalho escolheu uma pessoa.
-  const funnel = await getClientFunnel(portal.clientId, conexao ?? null);
+  // "tudo" é o padrão: o funil sempre mostrou o histórico inteiro e mudar
+  // isso em silêncio trocaria o número que o cliente já conhece.
+  const periodo = p && p !== "tudo" ? normalizePeriod(p) : "tudo";
+  const meses = recentMonths(12);
+  const funnel = await getClientFunnel(portal.clientId, conexao ?? null, periodo);
+  const rotuloPeriodo = periodo === "tudo" ? "Todo o período" : periodRanges(periodo).label;
   const numero = conexao
     ? await prisma.waConnection.findFirst({
         where: { id: conexao, clientId: portal.clientId },
@@ -69,7 +75,8 @@ export default async function FunilPage({ params, searchParams }: {
         @keyframes heatShimmer{from{background-position:0 0,0 0}to{background-position:80px 0,0 0}}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(prefers-reduced-motion:reduce){.heatbar{animation:none!important}}`}</style>
-      <PortalFunnel token={token} data={funnel} titulo={tituloFunil} />
+      <PortalFunnel token={token} data={funnel} titulo={tituloFunil}
+        periodo={periodo} meses={meses} rotuloPeriodo={rotuloPeriodo} />
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { periodRanges } from "./client-report";
 import { idsDasConexoes, filtroConexoes } from "@/lib/wa-connections";
 import { excludedTokens, nameExcluded } from "@/lib/notifications/client-bot";
 
@@ -40,15 +41,30 @@ export type FunnelData = {
  * Um id que não seja deste cliente é ignorado, não obedecido: o parâmetro vem
  * da URL, e cair num id alheio não pode esvaziar a tela nem mostrar outra loja.
  */
-export async function getClientFunnel(clientId: string, conexaoId?: string | null): Promise<FunnelData | null> {
+/**
+ * @param period "tudo"/vazio = histórico inteiro (o comportamento de sempre);
+ *   "week" ou "YYYY-MM" filtra pela ENTRADA do lead (firstInboundAt).
+ *
+ * Filtrar pela entrada, e não pela última mensagem, é o que dá sentido a um
+ * funil: "dos leads que chegaram em setembro, onde eles pararam". Por
+ * lastMessageAt, um lead de julho que respondeu em setembro entraria em
+ * setembro e a leitura de coorte se perderia.
+ *
+ * Medido na JR antes de escolher o campo: 1.846 conversas, ZERO sem
+ * firstInboundAt — o filtro não descarta nada.
+ */
+export async function getClientFunnel(clientId: string, conexaoId?: string | null, period?: string | null): Promise<FunnelData | null> {
   const connIds = await idsDasConexoes(clientId);
   if (connIds.length === 0) return null;
   const alvo = conexaoId && connIds.includes(conexaoId) ? [conexaoId] : connIds;
   const wa = { id: filtroConexoes(alvo) };
 
+  const janela = period && period !== "tudo" ? periodRanges(period) : null;
+  const entrada = janela ? { firstInboundAt: { gte: janela.start, lt: janela.end } } : {};
+
   const [convsRaw, excl] = await Promise.all([
     prisma.waConversation.findMany({
-      where: { connectionId: wa.id },
+      where: { connectionId: wa.id, ...entrada },
       select: { contactId: true, funnelStage: true, funnelEvidence: true, firstInboundAt: true, firstResponseSec: true, lastMessageAt: true, contact: { select: { name: true, waId: true } } },
     }),
     excludedTokens(clientId),

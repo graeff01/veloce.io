@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { PortalPeriod } from "./portal-period";
 import { TrendingUp, TrendingDown, ChevronDown, MessageCircle, Loader2 } from "lucide-react";
 import type { FunnelData } from "@/lib/notifications/client-funnel";
 
@@ -11,11 +12,14 @@ const STAGE_OPTS: [string, string][] = [["recebido", "Recebido"], ["respondido",
 const card: React.CSSProperties = { background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 16, padding: 18 };
 const cap: React.CSSProperties = { fontSize: 12, color: "var(--p-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 };
 
-export function PortalFunnel({ token, data, titulo }: {
+export function PortalFunnel({ token, data, titulo, periodo, meses, rotuloPeriodo }: {
   token: string;
   data: FunnelData | null;
   /** "Funil · Ana Prado" quando o atalho escolheu uma pessoa. */
   titulo?: string;
+  periodo?: string;
+  meses?: { value: string; label: string }[];
+  rotuloPeriodo?: string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -46,9 +50,17 @@ export function PortalFunnel({ token, data, titulo }: {
 
   return (
     <div style={{ padding: "22px 26px 60px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h1 className="pm-titulo-conteudo" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{titulo && titulo !== "Funil" ? titulo.replace("Funil · ", "Funil · ") : "Funil de vendas"}</h1>
-        <p style={{ fontSize: 13.5, color: "var(--p-muted)", marginTop: 2 }}>A jornada dos leads na barra de temperatura: frio → quente. Abra cada etapa abaixo para ver os leads.</p>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+          <h1 className="pm-titulo-conteudo" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{titulo && titulo !== "Funil" ? titulo.replace("Funil · ", "Funil · ") : "Funil de vendas"}</h1>
+          {/* O período fica no subtítulo, não só no dropdown: quem imprime ou
+              manda print precisa saber a que recorte o número se refere. */}
+          <p style={{ fontSize: 13.5, color: "var(--p-muted)", marginTop: 2 }}>
+            {rotuloPeriodo ? <><b style={{ color: "var(--p-text)", fontWeight: 600 }}>{rotuloPeriodo}</b> · </> : null}
+            A jornada dos leads na barra de temperatura: frio → quente. Abra cada etapa abaixo para ver os leads.
+          </p>
+        </div>
+        {meses && <PortalPeriod selected={periodo ?? "tudo"} months={meses} incluirTudo />}
       </div>
 
       {/* Resumo */}
