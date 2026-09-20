@@ -51,7 +51,8 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
       .then((d) => { if (alive && d) { setWaiting(d.waiting ?? 0); setReviews(d.reviews ?? 0); } })
       .catch(() => { /* contador é enfeite: falhar aqui não pode aparecer na tela */ });
     tick();
-    const id = setInterval(tick, 20000);
+    // Porteiro: o menu não precisa de contador novo com a aba escondida.
+    const id = setInterval(() => { if (document.visibilityState === "visible") tick(); }, 20000);
     return () => { alive = false; clearInterval(id); };
   }, [token]);
 

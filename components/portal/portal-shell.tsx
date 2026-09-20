@@ -74,7 +74,7 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
     const activeBg = opts?.accent ? "linear-gradient(90deg, rgba(37,211,102,0.14), transparent)" : "linear-gradient(90deg, var(--p-accent-soft), transparent)";
     const conteudo = (
         <div
-          className={opts?.shine ? "wa-shine" : undefined}
+          className={`pnav-item${on ? " on" : ""}${opts?.accent ? " wa" : ""}${opts?.shine ? " wa-shine" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, marginBottom: 2, fontSize: 13, fontWeight: on || opts?.accent ? 600 : 400, cursor: "pointer", transition: "background .18s, transform .18s, color .18s", background: on ? activeBg : "transparent", color: textColor }}
           onMouseEnter={(e) => { if (!on) { e.currentTarget.style.background = "var(--p-bg)"; e.currentTarget.style.transform = "translateX(2px)"; } }}
           onMouseLeave={(e) => { if (!on) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.transform = "translateX(0)"; } }}
@@ -116,6 +116,16 @@ export function PortalShell({ token, brandName, logoUrl, active, sections: initi
         @keyframes waShine{0%{transform:translateX(-130%)}55%,100%{transform:translateX(240%)}}
         @media(prefers-reduced-motion:reduce){ .wa-shine::after{animation:none} }
         @media(min-width:760px){ .padvisor{display:contents} }
+        /* Indicador de ATIVO. O fundo em degradê sozinho é fraco no escuro e
+           some em tela clara; a barra diz onde você está de relance. */
+        .pnav-item{position:relative}
+        .pnav-item.on::before{content:"";position:absolute;left:-12px;top:6px;bottom:6px;width:3px;border-radius:0 3px 3px 0;background:var(--p-accent)}
+        .pnav-item.wa.on::before{background:#25D366}
+        /* Entrada da sidebar, na mesma curva do menu do celular. */
+        @keyframes psideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+        .pside{animation:psideIn .34s cubic-bezier(.22,1,.36,1) both}
+        /* Navegar por teclado tem que ser visível — é a única pista que sobra. */
+        .pnav-item:focus-visible{outline:2px solid var(--p-accent);outline-offset:-2px;border-radius:8px}
         @media(min-width:1024px){ .pside{display:flex} .pmain,.cmain,.fmain,.imain,.amain,.qmain{margin-left:236px} }
         @media(max-width:1023px){ .pmain,.fmain,.imain,.amain,.tmain,.qmain{padding-top:env(safe-area-inset-top)} }`}</style>
       <aside className="pside" style={{ position: "fixed", left: 0, top: 0, bottom: 0, width: 236, zIndex: 30, flexDirection: "column", background: "var(--p-surface)", borderRight: "1px solid var(--p-border)", padding: 12 }}>

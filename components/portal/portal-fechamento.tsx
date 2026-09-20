@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { usarPulso } from "./usar-pulso";
 import { Flame, FileText, MapPin, Bell, BellOff, Check, Loader2 } from "lucide-react";
 
 interface Lead {
@@ -83,13 +84,11 @@ export function PortalFechamento({ token }: { token: string }) {
     } catch { /* ignora */ }
   }, [token]);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(id); window.removeEventListener("focus", onFocus); };
-  }, [load]);
+  // Só bate enquanto a pessoa está OLHANDO. Uma aba esquecida aberta pedia esta
+  // lista a cada 15s a noite inteira — e ao voltar o usarPulso já recarrega, que
+  // era o que o listener de focus fazia aqui.
+  useEffect(() => { load(); }, [load]);
+  usarPulso(() => load(), 15000);
 
   async function pegar(l: Lead) {
     setClaiming(l.contactId);

@@ -109,8 +109,78 @@ body{overscroll-behavior-y:contain}
 }
 `;
 
+export const PORTAL_ACABAMENTO_CSS = `
+/* ── Acabamento ────────────────────────────────────────────────────────────
+   O celular ganhou entrada com mola, sombra e barra de vidro; o desktop ficou
+   estático. Aqui o desktop alcança — sem virar outra coisa.
+
+   Três princípios:
+   · movimento só na ENTRADA (nada reage a scroll: a página já nasce lida);
+   · hover atrás de (hover:hover) — no toque, hover "cola" e fica preso aceso;
+   · mesma curva do mobile, cubic-bezier(.22,1,.36,1), pra parecer um produto só.
+   O bloco de prefers-reduced-motion do TOQUE_CSS zera tudo isto com !important. */
+
+@keyframes pfSobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* Entrada dos painéis, escalonada. O atraso PARA no 6º: além disso a pessoa
+   está esperando a página, não apreciando a animação. */
+.p-panel{animation:pfSobe .42s cubic-bezier(.22,1,.36,1) both}
+.p-panel:nth-of-type(2){animation-delay:.05s}
+.p-panel:nth-of-type(3){animation-delay:.10s}
+.p-panel:nth-of-type(4){animation-delay:.15s}
+.p-panel:nth-of-type(5){animation-delay:.20s}
+.p-panel:nth-of-type(n+6){animation-delay:.24s}
+
+/* Trocar o tema sem piscar. Só cor — animar layout custa quadro. */
+body,.p-panel,.p-metric,.p-table tbody td,.p-phead{
+  transition:background-color .22s ease,border-color .22s ease,color .22s ease}
+
+/* Sombra com o tom do accent em vez de cinza puro: a peça parece pousada na
+   página, não colada por cima dela. */
+.p-panel{box-shadow:
+  0 1px 2px color-mix(in srgb,var(--p-accent) 7%,rgba(16,19,28,.05)),
+  0 14px 32px color-mix(in srgb,var(--p-accent) 5%,rgba(16,19,28,.07))}
+html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.055)}
+
+/* ── Só onde existe ponteiro de verdade ─────────────────────────────────── */
+@media(hover:hover) and (pointer:fine){
+  .p-panel{transition:background-color .22s ease,border-color .22s ease,color .22s ease,box-shadow .24s ease,transform .24s cubic-bezier(.22,1,.36,1)}
+  .p-panel:hover{transform:translateY(-2px);
+    box-shadow:
+      0 2px 4px color-mix(in srgb,var(--p-accent) 9%,rgba(16,19,28,.06)),
+      0 22px 46px color-mix(in srgb,var(--p-accent) 8%,rgba(16,19,28,.10))}
+  html[data-pt="dark"] .p-panel:hover{box-shadow:0 22px 48px rgba(0,0,0,.55)}
+
+  /* Linha da tabela: no desktop a pessoa percorre com o olho seguindo o mouse.
+     Sem realce, ela perde a linha em tabela larga. */
+  .p-table tbody tr{transition:background-color .14s ease}
+  .p-table tbody tr:hover{background:var(--p-raise)}
+
+  /* Cada métrica é uma leitura; realçar a que está sob o cursor ajuda a comparar. */
+  .p-metric{transition:background-color .16s ease}
+  .p-metric:hover{background:var(--p-raise)}
+}
+
+/* Números grandes com risco de "pular" enquanto carregam. */
+.p-metric .v{font-variant-numeric:tabular-nums}
+
+/* Tabela larga: a sombra avisa que há mais coisa para o lado — uma barra de
+   rolagem fina no desktop passa despercebida. */
+.p-scroll{
+  background:
+    linear-gradient(to right,var(--p-surface) 30%,transparent),
+    linear-gradient(to right,transparent,var(--p-surface) 70%) 100% 0,
+    radial-gradient(farthest-side at 0 50%,rgba(16,19,28,.12),transparent),
+    radial-gradient(farthest-side at 100% 50%,rgba(16,19,28,.12),transparent) 100% 0;
+  background-repeat:no-repeat;background-size:36px 100%,36px 100%,14px 100%,14px 100%;
+  background-attachment:local,local,scroll,scroll}
+`;
+
 export const PORTAL_UI_CSS = `
-.p-wrap{padding:20px 26px 64px;display:flex;flex-direction:column;gap:16px}
+/* Limite de largura: em 1440px sem isto a tabela espalha o nome numa ponta e o
+   número na outra, e o olho perde a linha. No celular o problema não existe
+   porque a tela já é estreita — era por isso que o desktop parecia pior. */
+.p-wrap{padding:20px 26px 64px;display:flex;flex-direction:column;gap:16px;max-width:1240px;margin-inline:auto;width:100%}
 .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 .p-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--p-muted)}
 /* Superfícies abertas: sem borda-caixa em volta; definidas por tom + sombra suave. */
@@ -145,6 +215,7 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 .p-table tbody tr:last-child td{border-bottom:none}
 .p-scroll{overflow-x:auto}
 
+${PORTAL_ACABAMENTO_CSS}
 ${PORTAL_TOQUE_CSS}
 @media(max-width:820px){.p-metrics{grid-template-columns:repeat(2,1fr)}.p-metric:nth-child(3){border-left:none}
 .p-metrics.tres{grid-template-columns:repeat(2,1fr)}

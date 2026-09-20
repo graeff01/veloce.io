@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { usarPulso } from "./usar-pulso";
 import { GraduationCap, AlertTriangle, Check, Loader2, RotateCcw, ArrowRight } from "lucide-react";
 
 interface Correction {
@@ -32,7 +33,9 @@ export function PortalAprendizado({ token }: { token: string }) {
     } catch { /* ignora */ }
   }, [token]);
 
-  useEffect(() => { load(); const id = setInterval(load, 20000); return () => clearInterval(id); }, [load]);
+  // Porteiro de visibilidade: nada de pedir dados para uma aba escondida.
+  useEffect(() => { load(); }, [load]);
+  usarPulso(() => load(), 20000);
 
   async function toggle(c: Correction) {
     setBusy(c.id);
