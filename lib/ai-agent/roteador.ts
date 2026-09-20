@@ -59,6 +59,22 @@ export interface RegraRoteador {
    * O argumento sai do grupo de captura 1 de `quando`.
    */
   garantirFerramenta?: string;
+  /**
+   * Argumentos fixos da ferramenta garantida. Sem isto o argumento só podia vir
+   * do grupo de captura — serve para enviar_foto (o termo está na mensagem),
+   * não para enviar_catalogo (a categoria vem da REGRA, não do texto do lead).
+   */
+  garantirArgs?: Record<string, string>;
+  /**
+   * Só vale se a IA JÁ tiver dito isto antes na conversa. É o espelho de
+   * `sóSeInédito`: aquele impede repetir, este exige o contexto.
+   *
+   * Nasceu de um caso real: ela oferece "modelo específico ou catálogo
+   * completo?", o cliente responde "pode mandar" — e ela REPETE a pergunta.
+   * "pode mandar" só significa "mande o catálogo" se o catálogo tiver sido
+   * oferecido; solto, não quer dizer nada.
+   */
+  sóSeJáDito?: string;
 }
 
 export interface Decisao {
@@ -102,8 +118,10 @@ export function lerRegras(rules: unknown): RegraRoteador[] {
       id, quando, responder,
       excetoSe: r?.excetoSe ? String(r.excetoSe) : undefined,
       sóSeInédito: r?.sóSeInédito ? String(r.sóSeInédito) : undefined,
+      sóSeJáDito: r?.sóSeJáDito ? String(r.sóSeJáDito) : undefined,
       assinatura: r?.assinatura ? String(r.assinatura) : undefined,
       garantirFerramenta: r?.garantirFerramenta ? String(r.garantirFerramenta) : undefined,
+      garantirArgs: r?.garantirArgs && typeof r.garantirArgs === "object" ? { ...r.garantirArgs } : undefined,
     });
   }
   return out;
@@ -207,9 +225,11 @@ export function garantir(
   regras: RegraRoteador[],
   inbound: string | null | undefined,
   chamadasDoTurno: string[],
-): { id: string; ferramenta: string; termo: string } | null {
+  anteriores: string[] = [],
+): { id: string; ferramenta: string; args: Record<string, string> } | null {
   const t = semAcento(inbound ?? "");
   if (!t.trim()) return null;
+  const jaDito = anteriores.map(semAcento);
   for (const r of regras) {
     if (!r.garantirFerramenta) continue;
     if (chamadasDoTurno.includes(r.garantirFerramenta)) continue; // já aconteceu
@@ -218,10 +238,15 @@ export function garantir(
     const m = t.match(re);
     if (!m) continue;
     if (r.excetoSe) { const ex = compila(r.excetoSe); if (ex && ex.test(t)) continue; }
-    // Sem termo não dá para escolher o item — melhor não chamar do que chutar.
+    if (r.sóSeJáDito) {
+      const marca = semAcento(r.sóSeJáDito);
+      if (!jaDito.some((a) => a.includes(marca))) continue; // falta o contexto
+    }
+    if (r.garantirArgs) return { id: r.id, ferramenta: r.garantirFerramenta, args: { ...r.garantirArgs } };
+    // Sem argumento fixo, o termo vem da captura. Sem captura, não chuta.
     const termo = (m[1] ?? "").trim();
     if (!termo) continue;
-    return { id: r.id, ferramenta: r.garantirFerramenta, termo };
+    return { id: r.id, ferramenta: r.garantirFerramenta, args: { termo } };
   }
   return null;
 }

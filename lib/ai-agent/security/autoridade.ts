@@ -34,6 +34,10 @@ const PROMESSA: RegExp[] = [
   // nada em lugar nenhum. Foi a forma exata que apareceu em produção.
   new RegExp(String.raw`\b(vou|irei|vamos|posso|consigo|deixa\s+que\s+eu|j[áa]\s+vou)\b[^.!?\n]{0,30}?\b(ajust|corrig|atualiz|alter|mud|arrum|consert|retific)[a-zç]*\b[^.!?\n]{0,25}?\b(aqui|internamente|${CADASTRO})`, "i"),
   new RegExp(String.raw`\b(j[áa]\s+)?(ajustei|corrigi|atualizei|alterei|arrumei|consertei|retifiquei)\b[^.!?\n]{0,25}?\b(aqui|internamente|${CADASTRO})`, "i"),
+  // PRESENTE do indicativo. Apareceu no replay do Henrique: "Vou confirmar com
+  // o vendedor e já atualizo aqui" — promessa igual, e os padrões de futuro e
+  // passado passavam direto por ela.
+  new RegExp(String.raw`\b(j[áa]\s+)?(ajusto|corrijo|atualizo|altero|mudo|arrumo|conserto|retifico)\b[^.!?\n]{0,25}?\b(aqui|internamente|${CADASTRO})`, "i"),
 
   // Verbos de REGISTRO (cadastrar/registrar/gravar/salvar) só contam com alvo de
   // cadastro EXPLÍCITO. Medido em 5.491 respostas reais: o "aqui" solto gerou 16
@@ -41,6 +45,9 @@ const PROMESSA: RegExp[] = [
   // detalhes", que é a escalação, e ela de fato registra uma tarefa pro vendedor.
   new RegExp(String.raw`\b(vou|irei|vamos|posso|consigo|j[áa]\s+vou)\b[^.!?\n]{0,30}?\b(cadastr|registr|grav|salv)[a-zç]*\b[^.!?\n]{0,25}?\b${CADASTRO}`, "i"),
   new RegExp(String.raw`\b(j[áa]\s+)?(cadastrei|registrei|gravei|salvei)\b[^.!?\n]{0,25}?\b${CADASTRO}`, "i"),
+  // Verbos de REGISTRO no presente seguem exigindo alvo de cadastro explícito:
+  // "já registro aqui pro vendedor" é a escalação, e ela de fato registra.
+  new RegExp(String.raw`\b(j[áa]\s+)?(cadastro|registro|gravo|salvo)\b[^.!?\n]{0,25}?\b${CADASTRO}`, "i"),
 
   // "vou deixar registrado no sistema"
   new RegExp(String.raw`\b(vou|irei|j[áa])\b[^.!?\n]{0,20}?\bdeixar?\b[^.!?\n]{0,20}?\b(registrad|atualizad|corrigid|anotad)[ao]s?\b[^.!?\n]{0,25}?\b${CADASTRO}`, "i"),

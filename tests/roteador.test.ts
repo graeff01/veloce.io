@@ -143,7 +143,8 @@ test("não encosta em resposta de outro assunto", () => {
 // O parser esquecia de copiar `assinatura`: o campo existia na interface e no
 // dado gravado, e sumia na leitura — a supressão nunca rodava, em silêncio.
 test("lerRegras não perde nenhum campo da regra", () => {
-  const completa = { id: "x", quando: "a", excetoSe: "b", sóSeInédito: "c", responder: "d", assinatura: "e", garantirFerramenta: "enviar_foto" };
+  const completa = { id: "x", quando: "a", excetoSe: "b", sóSeInédito: "c", sóSeJáDito: "f", responder: "d", assinatura: "e",
+    garantirFerramenta: "enviar_foto", garantirArgs: { categoria: "x" } };
   const [lida] = lerRegras({ roteador: [completa] });
   assert.deepEqual(lida, completa, "algum campo se perdeu na leitura");
 });
@@ -161,14 +162,14 @@ import { REGRAS_JR } from "../scripts/jr-roteador-regras";
 const JR = lerRegras({ roteador: REGRAS_JR });
 
 test("as regras da JR carregam todas", () => {
-  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto"]);
+  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto", "confirmou_catalogo"]);
 });
 
 test("modelo nomeado sem foto → garante enviar_foto com o termo certo", () => {
   const g = garantir(JR, "quero a gourmet com fogão 4 bocas", []);
   assert.ok(g, "não garantiu");
   assert.equal(g!.ferramenta, "enviar_foto");
-  assert.match(g!.termo, /gourmet/);
+  assert.match(g!.args.termo, /gourmet/);
 });
 
 test("não garante de novo se a foto já foi nesse turno", () => {
@@ -189,4 +190,30 @@ test("pergunta sobre DADO não vira foto — ele quer resposta", () => {
 test("sem modelo nomeado não garante nada", () => {
   for (const f of ["quero uma churrasqueira", "bom dia", "vocês entregam?"])
     assert.equal(garantir(JR, f, []), null, `garantiu à toa: ${f}`);
+});
+
+// ── "pode mandar" só vale se o catálogo TIVER sido oferecido ────────────────
+// Caso real: ela oferece "modelo específico ou catálogo completo?", o cliente
+// diz "pode mandar", e ela REPETE a pergunta. A conversa trava ali.
+const OFERECEU = ["Você procura algum modelo específico ou prefere que eu envie o catálogo completo? 😊"];
+
+test("com o catálogo oferecido, 'pode mandar' ENVIA", () => {
+  for (const f of ["pode mandar", "manda", "sim, pode mandar", "me manda", "pode enviar", "quero ver"]) {
+    const g = garantir(JR, f, [], OFERECEU);
+    assert.ok(g, `não garantiu: ${f}`);
+    assert.equal(g!.ferramenta, "enviar_catalogo");
+    assert.equal(g!.args.categoria, "churrasqueira");
+  }
+});
+
+test("sem ter oferecido, 'pode mandar' não dispara nada", () => {
+  // Solto, "pode mandar" não quer dizer catálogo — pode ser foto, orçamento,
+  // localização. Mandar o catálogo aí seria despejar 43 páginas sem pedido.
+  for (const f of ["pode mandar", "manda", "sim"]) {
+    assert.equal(garantir(JR, f, [], []), null, `disparou sem contexto: ${f}`);
+  }
+});
+
+test("não reenvia se o catálogo já saiu neste turno", () => {
+  assert.equal(garantir(JR, "pode mandar", ["enviar_catalogo"], OFERECEU), null);
 });

@@ -45,6 +45,10 @@ async function main() {
   const contemArg = arg("contains");
   const termos = contemArg ? contemArg.split("|").map((t) => t.trim()).filter(Boolean) : [];
   let contacts = await prismaUnscoped.waContact.findMany({ where: { connectionId: { in: conns } }, select: { id: true, name: true, waId: true } });
+  // `--ids a,b,c` roda SÓ estas conversas. É o que permite reproduzir exatamente
+  // aquelas em que a IA falhou (ver jr-achar-falhas.ts) em vez de uma amostra.
+  const idsAlvo = arg("ids")?.split(",").map((x) => x.trim()).filter(Boolean);
+  if (idsAlvo?.length) contacts = contacts.filter((c) => idsAlvo.includes(c.id));
   if (termos.length) {
     const comTermo = await prismaUnscoped.waMessage.findMany({
       where: { contactId: { in: contacts.map((c) => c.id) }, direction: "in",
@@ -70,9 +74,13 @@ async function main() {
       text: m.text ?? (m.type === "location" ? "[O cliente compartilhou a localização — se precisar, peça o bairro/cidade por texto.]" : null),
     }));
     const turnsText = groupLeadTurns(msgs);
+    // O que a IA respondeu DE VERDADE, na época — é contra isto que o replay
+    // se compara. Sem isso o resultado é só "o que ela diria", sem o antes.
+    const reaisDaIA = rawMsgs.filter((m) => m.direction === "out").map((m) => String(m.text ?? "").replace(/\n/g, " "));
     if (turnsText.length < minMsgs) continue;
     processed++;
 
+    if (idsAlvo?.length) console.log(`\n${"═".repeat(78)}\n### ${ct.name ?? ct.id}`);
     const transcript: ChatMessage[] = [];
     const testFicha: Record<string, unknown> = {}; // persiste a ficha entre turnos
     let testMemory = "";        // resumo rolante efêmero (reproduz agentMemory de produção)
@@ -92,6 +100,7 @@ async function main() {
       // simulação inteira mentir (a IA "reinicia" a conversa, responde fora de
       // hora). O mesmo conserto já existia em jr-scenarios.ts e jr-corpus.ts e
       // nunca havia chegado aqui.
+      const iTurno = turnsText.indexOf(turnText);
       transcript.push({ role: "user", content: turnText });
       try {
         const out = await runAgent(
@@ -106,7 +115,15 @@ async function main() {
       if (status === "blocked" || decision === "bloqueado") blocks++;
       transcript.push({ role: "assistant", content: reply });
       evalTurns.push({ inbound: turnText, outbound: reply, decision, status, guardrails: [], tools: tools.map((name) => ({ name })), intent: null });
-      log.push({ lead: turnText, ia: reply, decision, status, tools, artifacts });
+      log.push({ lead: turnText, ia: reply, decision, status, tools, artifacts, iaNaEpoca: reaisDaIA[iTurno] ?? null });
+      // Lado a lado no terminal quando se pediu conversas específicas (--ids):
+      // o valor está na COMPARAÇÃO com o que ela respondeu na época, não na
+      // resposta isolada.
+      if (idsAlvo?.length) {
+        console.log(`\n  LEAD  ${turnText.replace(/\n/g, " ").slice(0, 150)}`);
+        console.log(`  ANTES ${(reaisDaIA[iTurno] ?? "—").slice(0, 150)}`);
+        console.log(`  AGORA ${reply.replace(/\n/g, " ").slice(0, 150)}   ⟨${decision}${tools.length ? " · " + tools.join(",") : ""}⟩`);
+      }
 
       // Memória rolante: PÓS-turno e a cada REFRESH_EVERY turnos (idêntico a produção). Sem isso,
       // conversas longas perdem contexto e a IA "reinicia" a abertura.
