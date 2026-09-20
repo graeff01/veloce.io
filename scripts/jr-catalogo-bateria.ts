@@ -22,14 +22,14 @@ type Caso = {
 };
 
 const CASOS: Caso[] = [
-  { nome: "catálogo completo, pedido explícito", turnos: ["oi", "Ana", "me manda o catálogo completo"], espera: "churrasqueira" },
-  { nome: "'manda o catálogo' genérico → o completo", turnos: ["oi", "Bruno", "manda o catálogo pra mim"], espera: "churrasqueira" },
+  { nome: "catálogo completo, pedido explícito", turnos: ["oi", "Ana", "me manda o catálogo completo", "primeiro contato", "pode mandar"], espera: "churrasqueira" },
+  { nome: "'manda o catálogo' genérico → o completo", turnos: ["oi", "Bruno", "manda o catálogo pra mim", "primeiro contato", "pode mandar"], espera: "churrasqueira" },
   { nome: "conjunto churrasqueira+fogão separado", turnos: ["oi", "Carla", "quero churrasqueira com fogão", "primeiro contato", "quero o fogão campeiro separado, do lado"], espera: "conjunto_fogao" },
-  { nome: "só os fogões campeiros", turnos: ["oi", "Diego", "quero ver só os fogões campeiros que vocês têm"], proibe: ["churrasqueira"] },
+  { nome: "só os fogões campeiros", turnos: ["oi", "Diego", "quero ver só os fogões campeiros que vocês têm", "pode mandar"], proibe: ["churrasqueira"] },
   { nome: "só os fornos", turnos: ["oi", "Elza", "vocês têm forno? queria ver os fornos"], proibe: ["churrasqueira"] },
   { nome: "pias e bancada", turnos: ["oi", "Fabio", "vocês têm pia e bancada pra área gourmet? manda o que tem"], proibe: ["churrasqueira"] },
   { nome: "lareiras", turnos: ["oi", "Gina", "tem lareira? manda o catálogo"], espera: "lareira" },
-  { nome: "só churrasqueiras, sem conjunto", turnos: ["oi", "Hugo", "quero ver só as churrasqueiras sozinhas, sem fogão junto"], proibe: ["conjunto_fogao"] },
+  { nome: "só churrasqueiras, sem conjunto", turnos: ["oi", "Hugo", "quero ver só as churrasqueiras sozinhas, sem fogão junto", "primeiro contato", "pode mandar"], proibe: ["conjunto_fogao"] },
   { nome: "modelo nomeado → foto, NÃO catálogo", turnos: ["oi", "Iris", "quero ver a churrasqueira gourmet"], nenhum: true },
   { nome: "pergunta de preço → não é pedido de catálogo", turnos: ["oi", "João", "quanto custa a prime 9?"], nenhum: true },
 ];

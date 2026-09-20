@@ -27,4 +27,15 @@ export const REGRAS_JR = [
     responder: "",
     garantirFerramenta: "enviar_foto",
   },
+  {
+    id: "confirmou_catalogo",
+    // Caso real: ela oferece "modelo específico ou catálogo completo?", o
+    // cliente responde "pode mandar" — e ela REPETE a pergunta. A conversa trava.
+    quando: "^\\s*(pode (mandar|enviar|sim)|manda|me manda|envia|quero (ver|sim|o cat)|sim,? ?(pode|quero|manda)?|isso|por favor|beleza|blz|ok)\\b",
+    // Sem o catálogo ter sido oferecido, "pode mandar" não quer dizer nada.
+    sóSeJáDito: "catalogo completo",
+    responder: "",
+    garantirFerramenta: "enviar_catalogo",
+    garantirArgs: { categoria: "churrasqueira" },
+  },
 ];

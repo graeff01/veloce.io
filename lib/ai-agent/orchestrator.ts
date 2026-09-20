@@ -7,6 +7,7 @@ import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
 import { checkGrounding, extrairPrecosOficiais, medidasEmCm, medidasInventadas } from "./grounding";
+import { lerTabelaMedidas, medidasErradasDoProduto } from "./medidas-produto";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -830,6 +831,18 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     //
     // Pega também a adoção do número do cliente: se ele disser "é 74" e ela
     // repetir como característica sem estar no acervo, cai aqui igual.
+    // Medida CERTA no produto ERRADO. O teste acima confere se o número existe
+    // no acervo; este confere se é o número DAQUELE modelo. "Prime 9 tem 84 cm"
+    // passava no primeiro (84 é medida legítima de outra peça) e o cliente
+    // compraria achando que cabe.
+    const _tabela = lerTabelaMedidas(_acervo);
+    const erradas = medidasErradasDoProduto(final, _tabela);
+    if (erradas.length) {
+      guardrails.push(`grounding:medida_do_produto:${erradas.slice(0, 3).join(" | ").slice(0, 160)}`);
+      final = fallback;
+      decision = "abster";
+    }
+
     const inventadas = medidasInventadas(final, _medidas);
     if (inventadas.length) {
       guardrails.push(`grounding:medida_inventada:${inventadas.slice(0, 5).join(",")}`);
@@ -860,12 +873,14 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   // chamar aqui não duplica nada.
   if (final && status === "ok") {
     const regrasGar = lerRegras((await getPricing().catch(() => null))?.rules);
-    const gar = regrasGar.length ? garantirRota(regrasGar, input.inboundText, toolLog.map((t) => t.name)) : null;
+    const ditasGar = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+        .filter((m) => m.role === "assistant" && typeof m.content === "string").map((m) => String(m.content));
+      const gar = regrasGar.length ? garantirRota(regrasGar, input.inboundText, toolLog.map((t) => t.name), ditasGar) : null;
     if (gar) {
       try {
-        const r = await firewall.run(gar.ferramenta, { termo: gar.termo });
+        const r = await firewall.run(gar.ferramenta, gar.args);
         if (r?.artifacts?.length) artifacts.push(...r.artifacts);
-        toolLog.push({ name: gar.ferramenta, args: { termo: gar.termo }, result: r?.result ?? "" });
+        toolLog.push({ name: gar.ferramenta, args: gar.args, result: r?.result ?? "" });
         guardrails.push(`roteador:garantiu:${gar.id}`);
       } catch {
         guardrails.push(`roteador:garantiu_falhou:${gar.id}`);
