@@ -28,7 +28,8 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
-import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota } from "./roteador";
+import { polir } from "./naturalidade";
+import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota, acrescentar as acrescentarRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -51,6 +52,9 @@ const TURN_BUDGET_MS = Number(process.env.AI_TURN_BUDGET_MS || 90_000);
 // (chaves JSON, com ou sem espaço). Paren: não-guloso até o 1º ")". Chaves: guloso até a
 // última "}" (captura JSON aninhado). Nomes internos nunca aparecem em prosa → strip seguro.
 const TOOL_CALL_LEAK_RE = /(?:aprovar_orcamento|atualizar_ficha|atualizar_perfil|buscar_estoque|enviar_catalogo|enviar_foto|enviar_localizacao_loja|enviar_opcionais|enviar_orcamento|enviar_video|escalar_humano|gerar_orcamento|pedir_localizacao|reagir)\s*(?:\([^\n]*?\)|\{[^\n]*\})/g;
+// Mesma expressão SEM a flag `g`: com ela, `test()` guarda lastIndex e alterna
+// entre true e false em chamadas seguidas.
+const TOOL_CALL_LEAK_TEST = new RegExp(TOOL_CALL_LEAK_RE.source);
 export function stripToolCallLeak(s: string): string {
   return s.replace(TOOL_CALL_LEAK_RE, "").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -684,6 +688,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const toolLog: { name: string; args: unknown; result: string; ms?: number }[] = [];
   const artifacts: ToolArtifact[] = [];
   let final: string | null = null;
+  let reTentouLeak = false; // tool-call vazado no texto ganha UMA segunda chance de executar
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
@@ -757,6 +762,25 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
         continue;
       }
       final = message.content ?? null;
+      // ── Vazou tool-call no texto: UMA segunda chance de EXECUTAR ────────────
+      // O strip mais abaixo evita que a sintaxe chegue ao cliente, mas a AÇÃO
+      // continuava não acontecendo — e o que sobrava no texto era justamente o
+      // tique de oferecer em vez de fazer.
+      //
+      // Medido na JR (7–21/09/2026): 6 turnos com sanitize:tool_call_leak, e nos
+      // SEIS a frase que restou era "quer que eu te envie...?" / "quer que eu
+      // inclua...?" — ferramenta pedida em prosa, nunca executada.
+      //
+      // Uma tentativa só, e apenas quando o turno NÃO executou ferramenta
+      // nenhuma: com tool já executada, o texto pendurado é resíduo, não a ação
+      // que faltou. O teto de turnos e o TURN_BUDGET_MS seguem valendo.
+      if (final && !reTentouLeak && !toolLog.length && TOOL_CALL_LEAK_TEST.test(final)) {
+        reTentouLeak = true;
+        messages.push({ role: "assistant", content: final });
+        messages.push({ role: "system", content: "Você ESCREVEU o nome de uma ferramenta como texto na mensagem, em vez de executá-la. Escrito assim nada acontece: o cliente não recebe a foto/o PDF/o catálogo e o dado não é registrado. CHAME a ferramenta agora, de verdade (tool call), e NÃO escreva o nome dela na mensagem. Não pergunte ao cliente se pode — apenas execute." });
+        final = null;
+        continue;
+      }
       break;
     }
   } catch (e) {
@@ -789,7 +813,8 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   if (readyToClose && status === "ok" && decision !== "escalou") decision = "escalou";
 
   const guardrails: string[] = [];
-  if (toolCallLeak) guardrails.push("sanitize:tool_call_leak"); // telemetria: modelo vazou tool-call no texto
+  if (toolCallLeak) guardrails.push("sanitize:tool_call_leak");
+  if (reTentouLeak) guardrails.push("sanitize:tool_call_leak:retry"); // houve 2ª chance de executar // telemetria: modelo vazou tool-call no texto
 
   // ── F1: anti-alucinação — grounding + verificação ────────────────────────────
   // Fontes legítimas: resultados de ferramentas + conhecimento (RAG) + a conversa
@@ -923,6 +948,68 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // Se a promessa era a mensagem inteira, não há o que entregar: cai no
       // fallback do cliente, o mesmo caminho já usado pelo guardrail.
       final = pr.texto || fallback;
+    }
+  }
+
+  // ── Naturalidade: os tiques de robô ────────────────────────────────────────
+  // Tira pedido de licença, clichê de disponibilidade, pergunta excedente e
+  // frase repetida. Medido nas 123 respostas reais da JR (7–21/09): toca 21%
+  // delas, sem alarme falso conhecido — os que apareceram na medição viraram
+  // teste em tests/naturalidade.test.ts.
+  //
+  // Fica DEPOIS do invariante de autoridade e ANTES do DLP: opera sobre o texto
+  // já saneado, e o DLP continua sendo a última palavra antes do lead.
+  //
+  // O pedido de permissão pra ENVIAR não só sai do texto: a ferramenta que ele
+  // pedia acontece. É o que separa esta peça de um filtro de estilo — na base
+  // medida houve 12 gerar_orcamento contra 4 enviar_orcamento, e o PDF que o
+  // lead disse "sim" três vezes para receber nunca chegou.
+  if (final && status === "ok") {
+    const ditasNat = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+      .filter((m) => m.role === "assistant" && typeof m.content === "string")
+      .map((m) => String(m.content))
+      .slice(-6);
+    const nat = polir(final, ditasNat);
+    if (nat.marcas.length) {
+      guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));
+      final = nat.texto;
+      // A ação só dispara se a ferramenta NÃO rodou neste turno — senão o envio
+      // sairia duas vezes. As próprias ferramentas de envio já têm anti-reenvio,
+      // mas a conferência aqui é barata e explícita.
+      if (nat.acao && !toolLog.some((t) => t.name === nat.acao)) {
+        try {
+          const r = await firewall.run(nat.acao, {});
+          if (r?.artifacts?.length) artifacts.push(...r.artifacts);
+          toolLog.push({ name: nat.acao, args: {}, result: r?.result ?? "" });
+          if (r?.decision) decision = r.decision;
+          guardrails.push(`naturalidade:executou:${nat.acao}`);
+        } catch {
+          guardrails.push(`naturalidade:executou_falhou:${nat.acao}`);
+        }
+      }
+    }
+  }
+
+  // ── Roteador, lado do ACRÉSCIMO ────────────────────────────────────────────
+  // O aviso que o acervo marca como obrigatório não pode depender do sorteio do
+  // RAG (3 dos 29 blocos chegam por resposta). Caso real: dois leads escolheram
+  // a Linha Popular e nenhum ouviu que ela não aceita lenha — e um deles disse,
+  // dois turnos depois, "Quero poder colocar lenha".
+  //
+  // Fica DEPOIS do polidor para o aviso não ser cortado, e ANTES do DLP, que
+  // segue com a última palavra. Só acrescenta: não reescreve nada do que a IA
+  // disse, e sai uma vez por conversa (`sóSeInédito`).
+  if (final && status === "ok") {
+    const regrasAvi = lerRegras((await getPricing().catch(() => null))?.rules);
+    if (regrasAvi.length) {
+      const ditasAvi = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+        .filter((m) => m.role === "assistant" && typeof m.content === "string")
+        .map((m) => String(m.content));
+      const acr = acrescentarRota(regrasAvi, final, ditasAvi);
+      if (acr) {
+        guardrails.push(`roteador:acrescentou:${acr.id}`);
+        final = acr.texto;
+      }
     }
   }
 

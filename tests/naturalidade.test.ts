@@ -1,0 +1,217 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { polir } from "../lib/ai-agent/naturalidade";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// Todas as frases deste arquivo são RESPOSTAS REAIS da IA na JR, extraídas de
+// produção (19 conversas, 273 respostas, 7–21/09/2026). O contato de cada caso
+// está no comentário para dar para reabrir a conversa e conferir.
+
+// ── 1. Pedido de permissão pra enviar o que ela mesma envia ────────────────────
+
+test("o PDF do orçamento: pede licença 1x, envia 0x → corta a frase e dispara o envio", () => {
+  // Cristofer Lenz, 05/09 11:49 — o lead respondeu "Sim" e recebeu uma FOTO.
+  const r = polir("Cristofer, incluí os 5 blocos de concreto para subir a chaminé no orçamento, totalizando R$ 4.872,00, com montagem e frete para Nova Santa Rita, parcelado em até 10x sem juros no cartão.\n\nPosso te enviar o PDF com todos os detalhes?");
+  assert.equal(r.acao, "enviar_orcamento", "o envio tem de acontecer, não ser oferecido");
+  assert.match(r.texto, /R\$ 4\.872,00/, "o valor não pode ser perdido no corte");
+  assert.doesNotMatch(r.texto, /Posso te enviar/i);
+  assert.ok(r.marcas.includes("permissao:orcamento"));
+});
+
+test("a segunda tentativa do mesmo caso também dispara", () => {
+  // Cristofer Lenz, 05/09 11:50:16 — terceira vez pedindo licença.
+  const r = polir("Posso enviar o PDF com o orçamento completo para você analisar?");
+  assert.equal(r.acao, "enviar_orcamento");
+  // Era a mensagem inteira: sem texto sobrando, preserva o original (ver
+  // cabeçalho do módulo) — mas a AÇÃO sai, que é o que faltava.
+  assert.ok(r.marcas.includes("resto_insuficiente"));
+});
+
+test("'Posso seguir?' depois de já ter o preço na mão sai fora", () => {
+  // Rochelly, 08/09 09:54 — buscar_estoque já havia devolvido R$ 6.394.
+  const r = polir("Que bom que gostou, Rochelly! Agora que você já viu o vídeo, posso te mostrar o preço e os detalhes do conjunto Gourmet com Fogão Campeiro 4 bocas.\n\nPosso seguir?");
+  assert.doesNotMatch(r.texto, /Posso seguir/i);
+  assert.match(r.texto, /Que bom que gostou/);
+  assert.ok(r.marcas.includes("permissao:licenca"));
+});
+
+test("'Você prefere que eu faça isso?' sai fora", () => {
+  // Rosi Borba, 08/09 09:24 — e o orçamento nunca foi apresentado.
+  const r = polir("Perfeito, Rose! Se quiser, posso montar um orçamento com a churrasqueira Popular para você agora. Você prefere que eu faça isso?");
+  assert.doesNotMatch(r.texto, /prefere que eu fa/i);
+  assert.match(r.texto, /Perfeito, Rose/);
+});
+
+test("oferta de FOTO sai da frase, mas não chuta qual foto enviar", () => {
+  // Henrique, 05/09 14:47 — este turno também acionou sanitize:tool_call_leak.
+  const r = polir("Henrique, temos várias opções de churrasqueiras que podem combinar com fogões, como a Linha Prime 9, 11 e 16 espetos, além da Parrilla nos tamanhos 81x60 e 105x60.\n\nQuer que eu te envie as fotos de algum desses modelos para você dar uma olhada?");
+  assert.equal(r.acao, null, "sem o termo do modelo, disparar enviar_foto seria chute");
+  assert.doesNotMatch(r.texto, /Quer que eu te envie/i);
+  assert.match(r.texto, /Prime 9, 11 e 16/);
+});
+
+test("pergunta que é DECISÃO do cliente continua de pé", () => {
+  // Cristofer, 05/09 — 5 blocos custam R$ 175. A escolha é dele, não tique.
+  const r = polir("Cristofer, cada bloco de concreto tem 20 cm de altura e custa R$ 35.\n\nQuer que eu inclua esses 5 blocos no orçamento para subir a chaminé?");
+  assert.match(r.texto, /Quer que eu inclua esses 5 blocos/, "não é pedido de licença pra enviar — é decisão de compra");
+  assert.equal(r.acao, null);
+});
+
+// ── 2. Clichê de disponibilidade ──────────────────────────────────────────────
+
+test("os clichês de fecho saem e o conteúdo fica", () => {
+  const casos: [string, string][] = [
+    // Cristofer, 05/09 11:45
+    ["Exatamente, Cristofer! A churrasqueira Gourmet já vem com a chaminé inclusa no conjunto. Qualquer dúvida, estou aqui para ajudar!", "chaminé inclusa"],
+    // Rosi, 08/09 09:24
+    ["Rose, a churrasqueira Popular não vem pintada de fábrica, ela sai no tom natural do concreto. Posso ajudar com mais alguma coisa sobre isso?", "tom natural do concreto"],
+    // Valdinei, 21/09 09:21
+    ["Ele já já vai te chamar por aqui. Se precisar de algo mais, estou por aqui!", "vai te chamar por aqui"],
+    // Rosi, 08/09 09:30
+    ["Então, Rose, se precisar de qualquer coisa, é só chamar, tá? Foi um prazer ajudar você hoje! 😊", "Foi um prazer"],
+  ];
+  for (const [entrada, deveSobrar] of casos) {
+    const r = polir(entrada);
+    assert.ok(r.marcas.includes("cliche"), `não pegou o clichê em: ${entrada}`);
+    assert.match(r.texto, new RegExp(deveSobrar), `perdeu conteúdo em: ${entrada}`);
+  }
+});
+
+test("'Como posso te ajudar hoje?' sai — é o reset de contexto", () => {
+  // Rosi, 08/09 09:27: a IA estava COLETANDO CPF/CEP e reabriu o atendimento
+  // do zero, largando a coleta pela metade.
+  const r = polir("Oi Rose! Sou o Juninho, da JR Churrasqueiras, fábrica em Canoas/RS. Estou aqui para ajudar você com tudo sobre churrasqueiras, fogões campeiros e lareiras. Como posso te ajudar hoje?");
+  assert.doesNotMatch(r.texto, /Como posso te ajudar hoje/i);
+  assert.match(r.texto, /Canoas\/RS/);
+  assert.match(r.texto, /churrasqueiras, fogões campeiros e lareiras/, "a frase de ESCOPO não é clichê e deve ficar");
+});
+
+test("o 'fique à vontade' do handoff NÃO é cortado — ali tem função", () => {
+  // Hamilton, 08/09 08:34 — diz ao lead que o vendedor responde o resto.
+  const r = polir("Hamilton, um vendedor especializado vai entrar em contato com você em breve para ajudar com as opções de entrega para Curitiba. Fique à vontade para tirar todas as suas dúvidas com ele!");
+  assert.match(r.texto, /Fique à vontade/);
+  assert.equal(r.marcas.length, 0);
+});
+
+// ── 3. Uma pergunta por turno ─────────────────────────────────────────────────
+
+test("confirmar o que o lead JÁ disse e pedir o que ele JÁ deu: corta a segunda", () => {
+  // Valdinei, 21/09 09:17 — ele abriu a conversa dizendo "churrasqueira
+  // Tradição" e "Joinville - SC". A IA pediu os dois de volta.
+  const r = polir("Pode me confirmar se o modelo Tradição é o que você deseja?\n\nE se sim, poderia me informar a cidade e o bairro onde será feita a entrega para eu calcular o frete certinho?");
+  assert.match(r.texto, /Pode me confirmar se o modelo Tradição/);
+  assert.doesNotMatch(r.texto, /cidade e o bairro/);
+  assert.ok(r.marcas.includes("duas_perguntas"));
+});
+
+test("duas perguntas seguidas: fica a primeira", () => {
+  // Carlos Tostes, 08/09 09:02.
+  const r = polir("Prazer, Carlos! Você se refere a uma churrasqueira específica? Poderia me confirmar se é uma churrasqueira Gourmet com esses acessórios?");
+  assert.match(r.texto, /churrasqueira específica\?/);
+  assert.doesNotMatch(r.texto, /Poderia me confirmar/);
+});
+
+test("a pergunta de ACESSO do motor tem 3 '?' e é UMA pergunta — fica inteira", () => {
+  // Texto do próprio tools.ts (trava de montagem). Se este teste quebrar, a
+  // pergunta que o motor exige chega mutilada ao lead.
+  const p = "o local onde ela vai ficar é térreo, tem escada (quantos lances? é tradicional ou caracol) ou é por elevador?";
+  const r = polir(`Cristofer, ${p}`);
+  assert.match(r.texto, /quantos lances\? é tradicional ou caracol/);
+  assert.ok(!r.marcas.includes("duas_perguntas"));
+});
+
+// ── 4. Frase idêntica repetida na conversa ────────────────────────────────────
+
+test("a mesma frase não sai duas vezes na mesma conversa", () => {
+  // Wilson, 08/09 09:20 e 09:21 — o par saiu duas vezes, palavra por palavra,
+  // porque o lead mandou uma foto depois de já ter recebido o pedido de medidas.
+  const antes = ["Que massa, Wilson! 😍 Pra eu te indicar o modelo certo pra esse espaço, me passa as medidas?"];
+  const r = polir("🔥 Que massa! 😍 Pra eu te indicar o modelo certo pra esse espaço, me passa as medidas?\n\nLargura e, principalmente, a altura (pé-direito), se for área coberta.", antes);
+  // A frase de medidas repetida sai; a instrução nova (largura/altura) fica.
+  assert.doesNotMatch(r.texto, /me passa as medidas/);
+  assert.match(r.texto, /Largura e, principalmente/);
+  assert.ok(r.marcas.includes("repetida"));
+});
+
+test("vocativo curto pode repetir — não é tique", () => {
+  const antes = ["Prazer, Rose!", "Ótima escolha, Rose!"];
+  const r = polir("Ótima escolha, Rose! A Popular é ótima para quem busca custo-benefício.", antes);
+  assert.match(r.texto, /Ótima escolha, Rose/);
+  assert.ok(!r.marcas.includes("repetida"));
+});
+
+// ── Invariantes do módulo ─────────────────────────────────────────────────────
+
+test("resposta limpa passa intacta", () => {
+  // Bill Barbosa, 08/09 08:28 — atendimento bom, nada a cortar.
+  const bom = "Luis Ademir, a linha Popular é ótima para quem busca custo-benefício.\n\nA Popular 65 Lisa tem as medidas aproximadas de 65 cm de largura, 55 cm de profundidade e 2,20 m de altura, incluindo a chaminé.";
+  const r = polir(bom);
+  assert.equal(r.texto, bom);
+  assert.equal(r.marcas.length, 0);
+  assert.equal(r.acao, null);
+});
+
+test("nunca devolve vazio — estilo não cala atendimento", () => {
+  for (const s of ["Posso ajudar com mais alguma coisa?", "Posso seguir?", "Qualquer dúvida, estou aqui!"]) {
+    const r = polir(s);
+    assert.ok(r.texto.trim().length > 0, `esvaziou em: ${s}`);
+    assert.ok(r.marcas.includes("resto_insuficiente"));
+  }
+});
+
+test("entrada vazia/nula não explode", () => {
+  for (const s of [null, undefined, "", "   "]) {
+    const r = polir(s as string | null | undefined);
+    assert.equal(r.marcas.length, 0);
+    assert.equal(r.acao, null);
+  }
+});
+
+test("a quebra de linha entre blocos sobrevive — cada linha é uma mensagem", () => {
+  const r = polir("Primeira ideia aqui.\n\nSegunda ideia aqui. Qualquer dúvida, estou aqui para ajudar!");
+  assert.match(r.texto, /Primeira ideia aqui\.\n\nSegunda ideia aqui\./);
+});
+
+// ── Regressões achadas MEDINDO contra as 123 respostas reais ──────────────────
+// Nenhuma destas veio de raciocínio: as duas apareceram rodando o polidor sobre
+// o tráfego de produção e olhando o que ele cortava.
+
+test("'..., ok?' é entonação e não consome a vez da pergunta de verdade", () => {
+  // Cristofer, 05/09 11:46. Sem esta regra, o "ok?" contava como a pergunta do
+  // turno e a decisão de incluir R$ 175 em blocos era cortada como excedente.
+  const r = polir("Cristofer, cada bloco de concreto tem 20 cm de altura e custa R$ 35. Para 5 metros seriam 25 blocos, mas o máximo que podemos incluir no orçamento são 5 blocos (1 metro), ok?\n\nQuer que eu inclua esses 5 blocos no orçamento para subir a chaminé?");
+  assert.match(r.texto, /Quer que eu inclua esses 5 blocos/);
+  assert.match(r.texto, /1 metro\), ok\?/);
+  assert.ok(!r.marcas.includes("duas_perguntas"));
+});
+
+test("alternativa partida em duas frases sobrevive inteira", () => {
+  // Douglas Graeff, 05/09 — "A? Ou B?" é UMA escolha. Cortar a segunda metade
+  // deixava a pergunta manca, e na versão anterior disparava enviar_catalogo
+  // sem o lead ter escolhido nada.
+  const r = polir("Douglas, temos várias churrasqueiras com fogão que você pode gostar.\n\nQuer que eu envie a foto de algum modelo específico para você ver melhor?\n\nOu prefere que eu envie o catálogo completo de novo?");
+  assert.match(r.texto, /foto de algum modelo específico/);
+  assert.match(r.texto, /Ou prefere que eu envie o catálogo/);
+  assert.equal(r.acao, null, "o lead ainda não escolheu — nada pode ser disparado");
+});
+
+// ── O vazamento de tool-call ganha uma segunda chance ─────────────────────────
+
+test("tool-call vazado no texto é detectado sem o estado do regex g", () => {
+  // O regex do strip tem flag `g`; usado com test() ele alterna true/false entre
+  // chamadas por causa do lastIndex. O orquestrador precisa de uma cópia sem g,
+  // senão a segunda chance de executar a ferramenta dispararia em dias
+  // alternados. Este teste trava isso.
+  const orq = readFileSync(join(process.cwd(), "lib", "ai-agent", "orchestrator.ts"), "utf8");
+  assert.match(orq, /const TOOL_CALL_LEAK_TEST = new RegExp\(TOOL_CALL_LEAK_RE\.source\);/,
+    "a checagem precisa de um regex sem a flag g");
+  assert.match(orq, /!reTentouLeak && !toolLog\.length && TOOL_CALL_LEAK_TEST\.test\(final\)/,
+    "a segunda chance só vale uma vez e só quando nenhuma ferramenta rodou");
+
+  // E a cópia sem `g` de fato é estável entre chamadas.
+  const semG = new RegExp(/(?:enviar_foto|enviar_orcamento)\s*(?:\([^\n]*?\)|\{[^\n]*\})/.source);
+  const texto = "Vou te mandar: enviar_foto({\"termo\":\"gourmet\"})";
+  assert.equal(semG.test(texto), true);
+  assert.equal(semG.test(texto), true, "sem a flag g o resultado não pode alternar");
+});

@@ -38,4 +38,25 @@ export const REGRAS_JR = [
     garantirFerramenta: "enviar_catalogo",
     garantirArgs: { categoria: "churrasqueira" },
   },
+  {
+    id: "popular_nao_aceita_lenha",
+    // O acervo é explícito: "AVISE SEMPRE que o cliente escolher ou considerar a
+    // Linha Popular: ela NÃO é 100% refratária, por isso NÃO permite uso de
+    // lenha e NÃO pode ficar exposta ao tempo". Em produção (08/09/2026) dois
+    // leads escolheram a Popular e NENHUM foi avisado — e o Bill Barbosa
+    // escreveu, dois turnos depois, "Quero poder colocar lenha". Ia comprar o
+    // produto errado, e lenha em peça não refratária é risco físico.
+    //
+    // O conhecimento chega em 3 dos 29 blocos por resposta: contar com ele para
+    // um aviso obrigatório é sorteio. Aqui o gatilho é a PRÓPRIA RESPOSTA falar
+    // da Popular, por qualquer caminho (catálogo, acervo ou texto livre).
+    quando: "\\b(linha\\s+popular|churrasqueira\\s+popular|popular\\s+(lisa|tijolinho)|popular\\s*\\d{2})\\b",
+    // Casa a RESPOSTA. Restrito de propósito: "popular" solto pegaria
+    // "o modelo mais popular", que não é a linha.
+    avisoSe: "\\b(linha\\s+popular|churrasqueira\\s+popular|popular\\s+(lisa|tijolinho)|popular\\s*\\d{2}\\s*(cm)?)\\b",
+    // Uma vez por conversa. O trecho tem de aparecer no avisoTexto.
+    sóSeInédito: "nao permite o uso de lenha",
+    responder: "",
+    avisoTexto: "Só um detalhe importante da Linha Popular: ela não é 100% refratária, então não permite o uso de lenha (funciona com carvão) e não pode ficar exposta ao tempo. Se você quiser usar lenha ou deixar em área aberta, a Linha Prime é a indicada 😊",
+  },
 ];

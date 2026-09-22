@@ -168,7 +168,13 @@ const QUOTE_TOOLS: ToolDef[] = [
     type: "function",
     function: {
       name: "enviar_orcamento",
-      description: "Gera o PDF do orçamento e envia ao lead. Use após gerar_orcamento e confirmar com o lead que pode enviar.",
+      // NÃO volte a escrever "confirmar com o lead que pode enviar" aqui. Essa
+      // frase mandava a IA pedir licença, contra a regra do prompt do cliente
+      // ("é PROIBIDO perguntar 'posso te mandar o PDF?'"). Medido na JR
+      // (7–21/09/2026): 12 chamadas de gerar_orcamento contra 4 de
+      // enviar_orcamento; o Cristofer disse "Sim" três vezes e nunca recebeu o
+      // PDF. O lead está na conversa para receber o orçamento.
+      description: "Gera o PDF do orçamento e envia ao lead. Chame SEMPRE na sequência de gerar_orcamento, junto de apresentar o total. NÃO peça permissão nem pergunte se pode enviar — envie e comente curtinho depois.",
       parameters: { type: "object", properties: { quoteId: { type: "string", description: "opcional; padrão = último em rascunho" } } },
     },
   },
@@ -647,14 +653,20 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
     case "atualizar_ficha": {
       const spec = parseSpec(ctx.intakeSpec);
       if (!spec.length) return { result: "Nenhuma ficha configurada para este cliente." };
-      const { data, invalidOptions } = sanitizeIntake(spec, (args.campos as Record<string, unknown>) ?? {});
+      const { data, invalidOptions, nomeRecusado } = sanitizeIntake(spec, (args.campos as Record<string, unknown>) ?? {});
       const invalT = invalidOptions.length ? ` Valores inválidos (ignorados): ${invalidOptions.join(", ")}.` : "";
+      // O lead respondeu a saudação com uma saudação ("Dia", "Boa tarde", "Oi").
+      // NÃO foi gravado como nome; a IA precisa saber para não usar isso como
+      // vocativo no resto da conversa (caso real: Willian, 21/09, "Prazer, Dia!").
+      const nomeT = nomeRecusado
+        ? ` ⚠️ "${nomeRecusado}" NÃO é um nome (é saudação/confirmação) e NÃO foi gravado — o lead estava só cumprimentando. NUNCA o chame de "${nomeRecusado}". Siga a conversa normalmente e, se a oportunidade aparecer de forma natural, pergunte o nome dele UMA vez; não insista nem repita a pergunta.`
+        : "";
       if (ctx.mode === "test") {
         // Acumula na ficha efêmera (não grava) p/ o gerar_orcamento enxergar o coletado.
         if (!ctx.testFicha) ctx.testFicha = {};
         Object.assign(ctx.testFicha, data);
         const missT = missingRequired(spec, ctx.testFicha);
-        return { result: `(teste) Ficha: ${summarizeIntake(spec, ctx.testFicha) || "nada ainda"}.${invalT}${missT.length ? ` Ainda falta: ${missT.map((f) => f.label).join(", ")}.` : " Ficha COMPLETA — chame gerar_orcamento agora, não reconfirme."}` };
+        return { result: `(teste) Ficha: ${summarizeIntake(spec, ctx.testFicha) || "nada ainda"}.${invalT}${nomeT}${missT.length ? ` Ainda falta: ${missT.map((f) => f.label).join(", ")}.` : " Ficha COMPLETA — chame gerar_orcamento agora, não reconfirme."}` };
       }
       const existing = await prisma.leadProfile.findUnique({ where: { contactId: ctx.contactId } });
       const merged: IntakeData = { ...((existing?.data as IntakeData) ?? {}), ...data };
@@ -665,7 +677,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       });
       const missing = missingRequired(spec, merged);
       const inval = invalidOptions.length ? ` Valores inválidos (ignorados): ${invalidOptions.join(", ")}.` : "";
-      return { result: missing.length ? `Ficha atualizada. Ainda falta: ${missing.map((f) => f.label).join(", ")}.${inval}` : `Ficha completa.${inval}` };
+      return { result: missing.length ? `Ficha atualizada. Ainda falta: ${missing.map((f) => f.label).join(", ")}.${inval}${nomeT}` : `Ficha completa.${inval}${nomeT}` };
     }
 
     // ── Orçamento: preço determinístico (nunca inventado) ──────────────────────
@@ -815,7 +827,33 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         }
         if (fr && "unmatched" in fr) {
           const temEndereco = addressBlob.trim().length > 0;
-          if (temEndereco) return { result: "A cidade do lead NÃO está na nossa área de entrega/montagem própria. Envie ESTA mensagem (mantendo o conteúdo): \"Para a sua localidade enviamos via transportadora ou podes retirar direto conosco com frete particular, reboque/camionete. Para realizar a cotação com a transportadora irei precisar de alguns dados: Nome completo, CPF, CEP com endereço da entrega\". Colete Nome/CPF/CEP (atualizar_ficha) e use aprovar_orcamento p/ o vendedor cotar a transportadora. NÃO invente valor de transportadora. ⚠️ TRAVA ANTI-ERRO: para essa cidade NÃO EXISTE entrega com MONTAGEM — a transportadora só ENVIA (não monta), e a montagem é serviço da JR só na nossa área de entrega própria. Se o cliente pedir/insistir em MONTAGEM, NÃO prometa nem afirme que tem: explique com clareza que ali é só envio por transportadora OU retirada (sem montagem) e que, se quiser, o vendedor vê alternativas. NUNCA diga que há 'entrega com montagem via transportadora'." };
+          if (temEndereco) {
+            // ── O PREÇO DO PRODUTO SAI, o do frete não ────────────────────────
+            // Antes este retorno não trazia NENHUM valor: o lead de fora da área
+            // pedia preço e recebia um pedido de CPF. Medido na JR (7–21/09/2026):
+            // 14 dos 19 leads pediram valor e 12 não viram número nenhum — e boa
+            // parte deles é exatamente daqui (Capão da Canoa, Joinville, Curitiba,
+            // Balneário Gaivota, Carambeí). Caso real (Rosi, 08/09): escolheu a
+            // Popular Lisa 55 (R$ 817, preço de tabela), ouviu "me passa nome
+            // completo, CPF e CEP" e saiu da conversa.
+            //
+            // O preço do PRODUTO é dado oficial do catálogo e não depende de
+            // região. O que não se sabe é o frete da transportadora — e só esse
+            // fica com o vendedor.
+            //
+            // Recomputa SEM montagem e SEM acesso de propósito: fora da área
+            // esses serviços não existem, e `q` (calculado acima) pode ter
+            // montagem embutida se o modelo passou montagem=true. Informar o
+            // total com montagem aqui seria dar preço de um serviço que a JR não
+            // presta naquela cidade.
+            const soProdutos = computeQuote(rules, { ...sel, montagem: false, access: undefined });
+            let precos = "";
+            if (soProdutos.ok && soProdutos.quote.items.length && soProdutos.quote.total > 0) {
+              const linhasFora = soProdutos.quote.items.map((i) => `- ${i.label}: ${brl(i.amount, pc.currency)}`).join("\n");
+              precos = `\n\n💰 PREÇO DOS PRODUTOS (fonte oficial — INFORME ao lead ANTES de pedir qualquer dado):\n${linhasFora}\nValor sem o frete: ${brl(soProdutos.quote.total, pc.currency)}.\nDiga esse valor ao lead com naturalidade e deixe claro que falta só o frete, que o vendedor cota com a transportadora.`;
+            }
+            return { result: "A cidade do lead NÃO está na nossa área de entrega/montagem própria. PRIMEIRO informe o valor dos produtos (abaixo), DEPOIS explique o envio: \"Para a sua localidade enviamos via transportadora ou podes retirar direto conosco com frete particular, reboque/camionete. Para realizar a cotação com a transportadora irei precisar de alguns dados: Nome completo, CPF, CEP com endereço da entrega\". Colete Nome/CPF/CEP (atualizar_ficha) e use aprovar_orcamento p/ o vendedor cotar a transportadora. NÃO invente valor de transportadora. ⚠️ TRAVA ANTI-ERRO: para essa cidade NÃO EXISTE entrega com MONTAGEM — a transportadora só ENVIA (não monta), e a montagem é serviço da JR só na nossa área de entrega própria. Se o cliente pedir/insistir em MONTAGEM, NÃO prometa nem afirme que tem: explique com clareza que ali é só envio por transportadora OU retirada (sem montagem) e que, se quiser, o vendedor vê alternativas. NUNCA diga que há 'entrega com montagem via transportadora'." + precos };
+          }
           return { result: "Ainda não sei a cidade de entrega. Pergunte a cidade do lead (atualizar_ficha) e gere de novo." };
         }
         if (fr && "askZone" in fr) {
@@ -921,7 +959,11 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         items: q.items as unknown as Prisma.InputJsonValue, subtotal: q.subtotal, fees: q.fees, total: q.total,
         currency: pc.currency, status: "draft", summary, intake: (ficha as unknown as Prisma.InputJsonValue) ?? undefined,
       } });
-      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nApresente ao lead e pergunte se pode enviar o PDF.${notaExtra}`, decision: "orcou" };
+      // "Apresente ao lead e pergunte se pode enviar o PDF" era a origem do
+      // tique: o motor pedia o pedido de licença que o prompt proíbe, e o PDF
+      // ficava para depois de um "sim" que muitas vezes não vinha (ou vinha e
+      // era ignorado). Agora manda apresentar E enviar no mesmo turno.
+      return { result: `Orçamento Nº ${number} gerado (fonte oficial de preço):\n${linhas}\nTotal: ${brl(q.total, pc.currency)}.${parcelaLinha}\nApresente o total ao lead e CHAME enviar_orcamento AGORA, no mesmo turno — NÃO pergunte se pode enviar o PDF, só envie e comente curtinho depois.${notaExtra}`, decision: "orcou" };
     }
 
     // ── Orçamento: envia o PDF pelo WhatsApp ───────────────────────────────────

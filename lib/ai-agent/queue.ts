@@ -59,6 +59,20 @@ export async function enqueueAgentJob(job: {
 
   const delay = debounceFor((job.payload as unknown as JobPayload)?.text ?? "");
   const runAfter = new Date(Date.now() + delay);
+  // ⚠️ NÃO mexer em `status`/`lockedAt` aqui. Este update também acontece quando
+  // JÁ EXISTE um turno em voo para este contato, e zerar a trava soltava um
+  // SEGUNDO turno em paralelo sobre a mesma conversa.
+  //
+  // Caso real (Willian Ribeiro, 21/09/2026 09:52, produção): o lead mandou
+  // "Fogão campeiro" e, 6s depois, "Queria saber os valores?". O bloco de 3
+  // mensagens saiu DUAS VEZES, intercalado (49s, 52s, 54s, 55s, 56s, 58s) — e
+  // só existe UMA linha em AiInteraction, porque o segundo turno colidiu na
+  // chave de idempotência e foi descartado DEPOIS de já ter enviado. Mesmo
+  // defeito na conversa do Henrique (3 blocos duplicados em 2,5s).
+  //
+  // Sem reset, um turno preso continua coberto: `claim` já reaproveita job
+  // `processing` com `lockedAt` velho (STALE_LOCK_MS) e o catch do runner
+  // devolve o job para `pending` com backoff.
   await prisma.aiJob.upsert({
     where: { contactId: job.contactId },
     create: {
@@ -68,17 +82,39 @@ export async function enqueueAgentJob(job: {
     },
     update: {
       idempotencyKey: job.idempotencyKey ?? null, payload: job.payload as object,
-      status: "pending", attempts: 0, lockedAt: null, lastError: null, runAfter,
+      attempts: 0, lastError: null, runAfter,
     },
   });
 
   // Nudge em memória: processa logo após o debounce (latência baixa no caminho feliz).
-  const existing = nudges.get(job.contactId);
+  agendarNudge(job.contactId, delay);
+}
+
+/** Agenda (ou reagenda) o processamento em memória. Um timer por contato. */
+function agendarNudge(contactId: string, delay: number): void {
+  const existing = nudges.get(contactId);
   if (existing) clearTimeout(existing);
-  nudges.set(job.contactId, setTimeout(() => {
-    nudges.delete(job.contactId);
-    void runOneContact(job.contactId).catch(() => {});
-  }, delay + 250));
+  nudges.set(contactId, setTimeout(() => {
+    nudges.delete(contactId);
+    void runOneContact(contactId).catch(() => {});
+  }, Math.max(0, delay) + 250));
+}
+
+/**
+ * Solta a trava de um job que ganhou mensagem NOVA durante o turno e agenda o
+ * reprocessamento para quando vencer o debounce dessa mensagem.
+ *
+ * Só mexe em linha `processing`: se outro worker já assumiu, não interfere.
+ */
+async function liberarEReagendar(contactId: string): Promise<void> {
+  const job = await prisma.aiJob.findUnique({ where: { contactId }, select: { runAfter: true, status: true } }).catch(() => null);
+  if (!job) return;
+  const soltou = await prisma.aiJob.updateMany({
+    where: { contactId, status: "processing" },
+    data: { status: "pending", lockedAt: null },
+  }).catch(() => ({ count: 0 }));
+  if (soltou.count === 0) return;
+  agendarNudge(contactId, job.runAfter.getTime() - Date.now());
 }
 
 // ── Segurança · admissão ──────────────────────────────────────────────────────
@@ -159,7 +195,20 @@ async function runOneContact(contactId: string): Promise<void> {
       idempotencyKey: job.idempotencyKey ?? undefined, payload: (job.payload as unknown as JobPayload) ?? { type: "text" },
     });
     if (outcome === "error") throw new Error("runner retornou erro");
-    await prisma.aiJob.delete({ where: { contactId } }).catch(() => {});
+    // Apaga só o job QUE FOI PROCESSADO. Se o lead escreveu durante o turno, o
+    // enqueue reescreveu a linha com a chave da mensagem nova — e o delete cego
+    // apagava essa mensagem junto, sem nunca respondê-la.
+    //
+    // Caso real (Willian, 21/09 09:52:48): "Queria saber os valores?" chegou com
+    // o turno anterior em voo, não gerou nenhum AiInteraction e nunca foi
+    // respondida. O lead pediu preço e recebeu a mensagem anterior duplicada.
+    const apagados = await prisma.aiJob.deleteMany({ where: { contactId, idempotencyKey: job.idempotencyKey } });
+    if (apagados.count === 0) {
+      // Chegou mensagem nova durante o turno: solta a trava e reprocessa quando
+      // vencer o debounce dela. Sem isto, o job ficaria `processing` até o
+      // STALE_LOCK_MS (2 min) e o lead esperaria por nada.
+      await liberarEReagendar(contactId);
+    }
   } catch (e) {
     const attempts = job.attempts + 1;
     if (attempts >= MAX_ATTEMPTS) {
