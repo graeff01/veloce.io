@@ -101,9 +101,15 @@ const CLICHE: RegExp[] = [
   // âncora o padrão comia "Estou aqui para ajudar você com tudo sobre
   // churrasqueiras, fogões campeiros e lareiras", que apresenta o ESCOPO do
   // atendimento e é informação legítima (Rosi, 08/09 09:27).
-  new RegExp(`^${PREF}(?:se\\s+(?:precisar|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para)\\s+(?:precisar|quiser|qualquer)[^.!?\\n]{0,25})?\\s*[.!?…]*$`, "i"),
+  // A cauda é opcional e cobre as três formas vistas em replay: "...para
+  // ajudar", "...caso precise de qualquer coisa", "...se precisar". A
+  // conjugação varia (precisar/precise/precisa), então o radical basta.
+  new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/)\\s+(?:precis[ae]r?|quiser|qualquer|ajudar|o\\s+que)[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
   // "Se precisar de qualquer coisa, é só chamar, tá?"
-  new RegExp(`^${PREF}se\\s+precisar\\s+de\\s+(qualquer\\s+coisa|algo|alguma\\s+coisa)[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham)`, "i"),
+  new RegExp(`^${PREF}se\\s+precis[ae]r?\\s+de\\s+(qualquer\\s+coisa|algo|alguma\\s+coisa)[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham)`, "i"),
+  // "É só chamar, tá?" / "É só me chamar!" — sobra sozinha quando a frase
+  // anterior do fecho já saiu. Vista no replay da Rosi.
+  new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+)?(chamar|cham[ae]|falar|avisar|mandar\\s+mensagem)[^.!?\\n]{0,15}[.!?…]*$`, "i"),
 ];
 
 // ── 2. Pedido de permissão pra fazer o que ela já pode fazer ───────────────────
@@ -159,6 +165,32 @@ const ehTagQuestion = (frase: string) =>
 // nova. Cortá-la deixava a escolha manca.
 const ehContinuacaoOu = (frase: string) => /^ou\b/i.test(frase.trim());
 
+// ── Vocativo que não é nome ───────────────────────────────────────────────────
+// O intake já recusa "Dia" como nome (ver intake.ts) e avisa a IA. Só que o
+// aviso é uma INSTRUÇÃO, e instrução fura: medido em replay com a conversa real
+// do Willian (21/09), a IA recebeu o aviso e mesmo assim escreveu "Dia, temos
+// três modelos..." e "Dia! Vi que você é de Carambeí". O valor está no
+// transcript, e ela o usa de lá.
+//
+// Remove só em POSIÇÃO DE VOCATIVO (com pontuação adjacente). É o que permite
+// tirar "Dia," sem tocar em "bom dia" no meio da frase — e é justamente por a
+// palavra recusada ser comum que a remoção cega seria perigosa.
+export function removerVocativo(texto: string, nome: string): string {
+  const n = nome.trim();
+  if (!n || !texto) return texto;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let t = texto;
+  // "Prazer, Dia!" / "Prazer Dia!" → "Prazer!"
+  t = t.replace(new RegExp(`\\b(prazer|ol[áa]|oi)\\s*,?\\s+${esc}\\b`, "gi"), "$1");
+  // "Dia, temos três modelos" (início de frase/linha) → "Temos três modelos"
+  t = t.replace(new RegExp(`(^|\\n|(?<=[.!?…]\\s))${esc}\\s*[,!]\\s*`, "gi"), "$1");
+  // "..., Dia?" / "..., Dia!" no fim da oração → tira só o vocativo
+  t = t.replace(new RegExp(`\\s*,\\s*${esc}\\s*(?=[.!?…]|$)`, "gi"), "");
+  // Sobrou uma linha começando em minúscula por causa do corte: recapitaliza.
+  t = t.replace(/(^|\n)\s*([a-zà-ú])/g, (_m, p, c) => `${p}${c.toUpperCase()}`);
+  return t.replace(/[ \t]{2,}/g, " ").replace(/ +([.,!?])/g, "$1").trim();
+}
+
 export interface PolimentoResult {
   /** Texto polido. Nunca vazio: se tudo casaria, devolve o original. */
   texto: string;
@@ -184,6 +216,7 @@ export interface PolimentoResult {
 export function polir(
   reply: string | null | undefined,
   anteriores: string[] = [],
+  vocativosProibidos: string[] = [],
 ): PolimentoResult {
   const original = reply ?? "";
   if (!original.trim()) return { texto: original, removidas: [], marcas: [], acao: null };
@@ -235,7 +268,20 @@ export function polir(
     if (ehEscolha(i, limpa)) return true;
 
     if (PEDE_ENVIO_RE.test(limpa)) {
-      const alvo = ENVIO.find((e) => e.re.test(limpa));
+      // O objeto pode estar na frase ANTERIOR: "posso te enviar a foto dessa
+      // churrasqueira. Quer que eu envie?" — vista no replay da Rosi, onde a
+      // pergunta sozinha ("Quer que eu envie?") não dizia o quê e escapava.
+      let alvo = ENVIO.find((e) => e.re.test(limpa));
+      if (!alvo) {
+        for (let k = i - 1; k >= 0; k--) {
+          if (/^\n+$/.test(partes[k])) continue;
+          const ant = partes[k].trim();
+          // Só vale se a frase anterior também é oferta de envio, senão
+          // qualquer menção a "foto" duas frases antes viraria gatilho.
+          if (PEDE_ENVIO_RE.test(ant)) alvo = ENVIO.find((e) => e.re.test(ant));
+          break;
+        }
+      }
       if (!alvo) return true; // pede pra enviar algo que não sabemos enviar → fica
       if (alvo.ferramenta && !acao) acao = alvo.ferramenta;
       guardaRemovida(limpa);
@@ -289,7 +335,16 @@ export function polir(
     });
   }
 
-  const texto = recolar(partes);
+  let texto = recolar(partes);
+
+  // Vocativo recusado pelo intake ("Prazer, Dia!"): sai por último, sobre o
+  // texto já polido.
+  for (const v of vocativosProibidos) {
+    const antes = texto;
+    texto = removerVocativo(texto, v);
+    if (texto !== antes && !marcas.includes("vocativo_invalido")) marcas.push("vocativo_invalido");
+  }
+
   // Sobrou nada — ou sobrou só interjeição. Devolve o original: estilo não
   // justifica calar a resposta (ver cabeçalho). Medido contra tráfego real, o
   // caso que exigiu a segunda metade da guarda foi o Wilson (08/09): as duas

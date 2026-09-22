@@ -51,9 +51,12 @@ export const REGRAS_JR = [
     // um aviso obrigatório é sorteio. Aqui o gatilho é a PRÓPRIA RESPOSTA falar
     // da Popular, por qualquer caminho (catálogo, acervo ou texto livre).
     quando: "\\b(linha\\s+popular|churrasqueira\\s+popular|popular\\s+(lisa|tijolinho)|popular\\s*\\d{2})\\b",
-    // Casa a RESPOSTA. Restrito de propósito: "popular" solto pegaria
-    // "o modelo mais popular", que não é a linha.
-    avisoSe: "\\b(linha\\s+popular|churrasqueira\\s+popular|popular\\s+(lisa|tijolinho)|popular\\s*\\d{2}\\s*(cm)?)\\b",
+    // Casa a RESPOSTA. A primeira versão exigia "linha popular"/"churrasqueira
+    // popular" e não pegou o caso central: no replay a IA escreveu "a Popular é
+    // uma ótima escolha para quem quer custo-benefício" — "Popular" sozinho.
+    // Agora casa "popular" como SUBSTANTIVO e exclui o uso adjetivo
+    // ("o modelo mais popular", "popular entre os clientes").
+    avisoSe: "(?<!mais\\s)(?<!muito\\s)\\bpopular\\b(?!\\s+(entre|com\\s+os))",
     // Uma vez por conversa. O trecho tem de aparecer no avisoTexto.
     sóSeInédito: "nao permite o uso de lenha",
     responder: "",

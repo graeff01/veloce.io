@@ -215,3 +215,68 @@ test("tool-call vazado no texto é detectado sem o estado do regex g", () => {
   assert.equal(semG.test(texto), true);
   assert.equal(semG.test(texto), true, "sem a flag g o resultado não pode alternar");
 });
+
+// ── Regressões achadas na VALIDAÇÃO POR REPLAY ───────────────────────────────
+// Estas três não vieram da leitura das conversas nem da medição: apareceram
+// rodando o pipeline real (runAgent) sobre as conversas que falharam, DEPOIS de
+// a correção já estar escrita. Cada uma era um furo da própria correção.
+
+test("vocativo recusado pelo intake não sobrevive no texto", () => {
+  // Willian, 21/09: o intake recusa "Dia" e AVISA a IA — e no replay ela
+  // escreveu "Dia, temos três modelos..." assim mesmo. Instrução fura; isto não.
+  for (const [entrada, proibido] of [
+    ["Dia, temos três modelos de fogão campeiro: o Campeirinho por R$ 1.107.", "R\\$ 1\\.107"],
+    ["Prazer, Dia! Você está procurando churrasqueira, fogão campeiro ou lareira?", "Prazer!"],
+    ["Ótima escolha, Dia! Trabalhamos com três modelos.", "Ótima escolha!"],
+  ] as [string, string][]) {
+    const r = polir(entrada, [], ["Dia"]);
+    assert.doesNotMatch(r.texto, /\bDia\b/, `vocativo sobreviveu em: ${entrada}`);
+    assert.match(r.texto, new RegExp(proibido), "o resto da frase tem de ficar");
+    assert.ok(r.marcas.includes("vocativo_invalido"));
+  }
+});
+
+test("a remoção do vocativo não toca na palavra em uso normal", () => {
+  // É justamente por a palavra recusada ser comum que a remoção cega seria
+  // perigosa: "bom dia" e "o seu dia" precisam sobreviver.
+  const r = polir("Bom dia! Como vai o seu dia hoje?", [], ["Dia"]);
+  assert.equal(r.texto, "Bom dia! Como vai o seu dia hoje?");
+  assert.ok(!r.marcas.includes("vocativo_invalido"));
+});
+
+test("os clichês de fecho que escaparam no replay saem", () => {
+  // Rosi, replay: os três passaram pela primeira versão dos padrões.
+  const casos: [string, string][] = [
+    ["Perfeito, Rose! Quando quiser, é só me falar qual modelo você gostou mais, tá? Estou aqui para ajudar!", "é só me falar qual modelo"],
+    ["Tudo bem, Rose! Fico à disposição caso precise de qualquer coisa. É só chamar, tá? Um ótimo dia para você!", "Um ótimo dia para você"],
+    ["Ele já já vai te chamar por aqui. Se precisar de algo mais, estou por aqui!", "vai te chamar por aqui"],
+  ];
+  for (const [entrada, sobra] of casos) {
+    const r = polir(entrada);
+    assert.ok(r.marcas.includes("cliche"), `não pegou: ${entrada}`);
+    assert.match(r.texto, new RegExp(sobra));
+    assert.doesNotMatch(r.texto, /estou (aqui|por aqui)|fico à disposição|é só chamar/i);
+  }
+});
+
+test("a frase que apresenta o ESCOPO continua fora do corte", () => {
+  const r = polir("Sou o Juninho, da JR. Estou aqui para ajudar você com tudo sobre churrasqueiras, fogões campeiros e lareiras.");
+  assert.match(r.texto, /tudo sobre churrasqueiras/);
+});
+
+test("'Quer que eu envie?' acha o objeto na frase anterior", () => {
+  // Rosi, replay v2: a oferta e a pergunta vieram partidas — "posso te enviar a
+  // foto dessa churrasqueira. Quer que eu envie?" — e a pergunta sozinha não
+  // dizia o quê, então escapava.
+  const r = polir("Rose, a churrasqueira Popular comporta 4 espetos. Se quiser, posso te enviar a foto dessa churrasqueira para você conhecer melhor. Quer que eu envie?");
+  assert.doesNotMatch(r.texto, /Quer que eu envie/i);
+  assert.match(r.texto, /comporta 4 espetos/);
+  assert.ok(r.marcas.includes("permissao:foto"));
+});
+
+test("sem objeto em nenhuma das duas frases, a pergunta fica", () => {
+  // A busca na frase anterior não pode virar gatilho solto: só vale quando a
+  // anterior também é oferta de envio.
+  const r = polir("A entrega leva alguns dias. Quer que eu envie?");
+  assert.match(r.texto, /Quer que eu envie/);
+});

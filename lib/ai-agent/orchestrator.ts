@@ -969,7 +969,15 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       .filter((m) => m.role === "assistant" && typeof m.content === "string")
       .map((m) => String(m.content))
       .slice(-6);
-    const nat = polir(final, ditasNat);
+    // Nome que o intake RECUSOU neste turno (saudação respondida à pergunta do
+    // nome). O aviso na resposta da ferramenta é instrução, e instrução fura:
+    // no replay da conversa do Willian a IA recebeu o aviso e mesmo assim
+    // escreveu "Dia, temos três modelos...". Aqui o vocativo sai por construção.
+    const vocativosProibidos = toolLog
+      .filter((t) => t.name === "atualizar_ficha")
+      .map((t) => /⚠️ "([^"]{1,40})" NÃO é um nome/.exec(String(t.result ?? ""))?.[1])
+      .filter((v): v is string => !!v);
+    const nat = polir(final, ditasNat, vocativosProibidos);
     if (nat.marcas.length) {
       guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));
       final = nat.texto;
