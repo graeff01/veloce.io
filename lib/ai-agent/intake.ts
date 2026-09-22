@@ -58,6 +58,26 @@ export function nomeInvalido(valor: unknown): boolean {
   return t.replace(/\s/g, "").length < 2;
 }
 
+// Saudações que a IA PODE usar para abrir uma mensagem. Ficam de fora da
+// proibição de vocativo: se o lead escreveu "Oi" e passássemos "oi" para
+// removerVocativo, um "Oi, tudo bem?" legítimo da IA perderia a abertura.
+const SAUDACAO_DE_ABERTURA = new Set(["oi", "ola", "opa", "eae", "e ai", "alo", "hey"]);
+
+/**
+ * A mensagem ISOLADA do lead é algo que nunca pode virar vocativo?
+ *
+ * Usada para varrer a conversa, não só o turno: no replay do Willian o intake
+ * recusou "Dia" no turno 2 e a IA escreveu "Dia, temos os três modelos..." no
+ * turno 3 — onde não havia mais chamada de atualizar_ficha e, portanto, nenhum
+ * aviso. A proibição tem de valer pela conversa inteira.
+ */
+export function proibidoComoVocativo(mensagemDoLead: string): boolean {
+  const t = chaveNome(mensagemDoLead);
+  if (!t || t.split(" ").length > 3) return false; // frase não é tentativa de nome
+  if (SAUDACAO_DE_ABERTURA.has(t)) return false;
+  return NAO_E_NOME.has(t);
+}
+
 // Filtra/normaliza o que a IA mandou para as chaves conhecidas do spec (ignora ruído).
 export function sanitizeIntake(spec: IntakeField[], incoming: Record<string, unknown>): { data: IntakeData; invalidOptions: string[]; nomeRecusado: string | null } {
   const keys = new Map(spec.map((f) => [f.key, f]));

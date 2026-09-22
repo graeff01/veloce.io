@@ -66,3 +66,30 @@ test("nome válido passa e não gera aviso", () => {
   assert.equal(r.data.nome, "Willian Ribeiro");
   assert.equal(r.nomeRecusado, null);
 });
+
+// ── A proibição de vocativo vale pela CONVERSA, não pelo turno ────────────────
+// Achado no replay: o intake recusou "Dia" no turno 2 e a IA escreveu "Dia,
+// temos os três modelos..." no turno 3, onde não houve atualizar_ficha e
+// portanto nenhum aviso. Olhar só o turno atual não bastava.
+import { proibidoComoVocativo } from "../lib/ai-agent/intake";
+
+test("mensagem isolada que nunca pode virar vocativo", () => {
+  for (const s of ["Dia", "dia", "Bom dia", "boa tarde", "Sim", "ok", "Obrigado", "beleza"]) {
+    assert.ok(proibidoComoVocativo(s), `deveria proibir: ${s}`);
+  }
+});
+
+test("saudação de abertura fica LIBERADA — a IA usa para abrir mensagem", () => {
+  // Se "oi" entrasse na proibição, um "Oi, tudo bem?" legítimo da IA perderia a
+  // abertura, porque removerVocativo corta "Oi," no início da frase.
+  for (const s of ["Oi", "olá", "Opa", "alô"]) {
+    assert.ok(!proibidoComoVocativo(s), `não deveria proibir: ${s}`);
+  }
+});
+
+test("nome de gente e frase inteira não entram na proibição", () => {
+  for (const s of ["Willian", "Rose", "Luis Ademir", "Dias", "Carambeí",
+                   "bom dia, gostaria de saber o valor da churrasqueira"]) {
+    assert.ok(!proibidoComoVocativo(s), `não deveria proibir: ${s}`);
+  }
+});

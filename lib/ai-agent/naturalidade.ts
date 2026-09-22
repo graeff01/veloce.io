@@ -85,7 +85,10 @@ const recolar = (partes: string[]) =>
 //     apresenta o escopo, não é fecho vazio.
 // Prefixo de cortesia que o modelo põe antes do clichê: "Então, Rose, se
 // precisar...". Sem tolerar isso, metade das ocorrências reais escapava.
-const PREF = String.raw`(?:(?:ent[ãa]o|bom|ok|perfeito|certo|beleza)[,!]?\s*)?(?:[a-zà-ú]{2,20}[,!]\s*)?(?:se\s+quiser,?\s*)?`;
+// Prefixo de cortesia antes do clichê. Aceita até duas orações curtas: além do
+// vocativo ("Então, Rose,"), cobre "Quando quiser," e "Se precisar disso,",
+// que escaparam na validação por replay.
+const PREF = String.raw`(?:(?:ent[ãa]o|bom|ok|perfeito|certo|beleza|tudo\s+bem)[,!]?\s*)?(?:[a-zà-ú]{2,20}[,!]\s*)?(?:(?:se|quando|caso)\s+[a-zà-ú]{2,20}(?:\s+[a-zà-ú]{2,12}){0,2},\s*)?(?:se\s+quiser,?\s*)?`;
 
 const CLICHE: RegExp[] = [
   // "Qualquer dúvida, estou aqui para ajudar!" / "...é só chamar"
@@ -351,7 +354,7 @@ export function polir(
   // frases de conteúdo eram repetição, e o corte deixava "🔥 Que massa!" — uma
   // mensagem que não diz nada é pior que uma que se repete.
   const insignificante = removidas.length > 0
-    && texto.replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean).length < 4;
+    && texto.replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean).length < 3;
   if (!texto || insignificante) {
     return { texto: original, removidas, marcas: [...marcas, "resto_insuficiente"], acao };
   }

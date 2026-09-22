@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { toolsForConfig, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
-import { parseSpec, missingRequired, type IntakeData } from "./intake";
+import { parseSpec, missingRequired, proibidoComoVocativo, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
@@ -973,10 +973,20 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     // nome). O aviso na resposta da ferramenta é instrução, e instrução fura:
     // no replay da conversa do Willian a IA recebeu o aviso e mesmo assim
     // escreveu "Dia, temos três modelos...". Aqui o vocativo sai por construção.
-    const vocativosProibidos = toolLog
+    // Do turno: o que o intake acabou de recusar.
+    const recusadosNoTurno = toolLog
       .filter((t) => t.name === "atualizar_ficha")
       .map((t) => /⚠️ "([^"]{1,40})" NÃO é um nome/.exec(String(t.result ?? ""))?.[1])
       .filter((v): v is string => !!v);
+    // Da CONVERSA: qualquer mensagem isolada do lead que nunca pode ser vocativo.
+    // Sem isto a proibição valia só no turno da recusa — e no replay do Willian a
+    // IA voltou a escrever "Dia, temos os três modelos..." no turno seguinte,
+    // onde não houve atualizar_ficha e portanto nenhum aviso.
+    const recusadosNaConversa = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+      .filter((m) => m.role === "user" && typeof m.content === "string")
+      .map((m) => String(m.content).trim())
+      .filter((t) => proibidoComoVocativo(t));
+    const vocativosProibidos = [...new Set([...recusadosNoTurno, ...recusadosNaConversa, ...(proibidoComoVocativo(input.inboundText ?? "") ? [(input.inboundText ?? "").trim()] : [])])];
     const nat = polir(final, ditasNat, vocativosProibidos);
     if (nat.marcas.length) {
       guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));

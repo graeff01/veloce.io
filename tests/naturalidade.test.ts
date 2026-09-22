@@ -280,3 +280,22 @@ test("sem objeto em nenhuma das duas frases, a pergunta fica", () => {
   const r = polir("A entrega leva alguns dias. Quer que eu envie?");
   assert.match(r.texto, /Quer que eu envie/);
 });
+
+test("clichê com prefixo de duas orações também sai", () => {
+  // Replay: "Quando quiser, é só chamar." escapou porque o prefixo de cortesia
+  // só aceitava um vocativo curto.
+  const r = polir("Perfeito! Quando quiser, é só chamar. Tenha um ótimo dia!");
+  assert.equal(r.texto, "Perfeito! Tenha um ótimo dia!");
+  assert.ok(r.marcas.includes("cliche"));
+});
+
+test("'quando/se' iniciando frase COM conteúdo não é clichê", () => {
+  // A ampliação do prefixo não pode transformar condicional legítima em clichê.
+  for (const t of [
+    "Quando quiser, me diz qual modelo você prefere que eu já monto o orçamento.",
+    "Se precisar de mais espetos, a linha Prime aceita mais.",
+  ]) {
+    const r = polir(t);
+    assert.equal(r.texto, t, `cortou indevidamente: ${t}`);
+  }
+});
