@@ -414,3 +414,28 @@ test("a cauda do clichê é genérica, não uma lista de palavras", () => {
   const escopo = "Estou aqui para ajudar você com tudo sobre churrasqueiras, fogões campeiros e lareiras.";
   assert.equal(polir(escopo).texto, escopo);
 });
+
+test("emoji fecha frase quando o que vem depois abre com maiúscula", () => {
+  // Achado na rodada de REGRESSÃO (Juliano): "Que bom te ver por aqui 😊 Como
+  // posso te ajudar hoje?" era UMA frase, então o padrão ancorado em "^como" não
+  // casava e o reset de contexto passava colado em texto legítimo.
+  const r = polir("Juliano! Que bom te ver por aqui 😊 Como posso te ajudar hoje?");
+  assert.equal(r.texto, "Juliano! Que bom te ver por aqui 😊");
+  assert.ok(r.marcas.includes("cliche"));
+});
+
+test("emoji de ABERTURA não vira frase sozinho", () => {
+  // Senão sobra um fragmento solto no lugar do texto cortado.
+  const r = polir("👍 Se precisar de algo mais, estou por aqui, Rose! Um ótimo dia para você!", [], [], "Rose");
+  assert.equal(r.texto, "Um ótimo dia para você!");
+});
+
+test("emoji no meio NÃO parte a frase quando segue em minúscula", () => {
+  for (const t of [
+    "Te mandei a foto 😊 agora me diz a cidade.",
+    "O total ficou R$ 4.872,00 com montagem em Canoas.",
+    "Prontinho! 🔥 Te mandei o orçamento.",
+  ]) {
+    assert.equal(polir(t).texto, t, `alterou: ${t}`);
+  }
+});

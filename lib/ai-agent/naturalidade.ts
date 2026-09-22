@@ -39,31 +39,54 @@ const semAcento = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-�
 // exige — "é térreo, tem escada (quantos lances? é tradicional ou caracol) ou é
 // por elevador?" — tem "?" no meio do parêntese; um split ingênuo a partia em
 // duas, e a regra de "uma pergunta por turno" entregava metade dela ao lead.
+const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}]/u;
+
 function emFrases(texto: string): string[] {
   const partes: string[] = [];
   for (const linha of texto.split(/(\n+)/)) {
     if (/^\n+$/.test(linha)) { partes.push(linha); continue; }
+    // Itera por CODE POINTS. Emoji é surrogate pair em UTF-16, e indexar a
+    // string devolvia metade do par — o teste de emoji nunca casava.
+    const chars = Array.from(linha);
     let atual = "";
     let profundidade = 0;
-    for (let i = 0; i < linha.length; i++) {
-      const c = linha[i];
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
       atual += c;
-      if (c === "(") profundidade++;
-      else if (c === ")") profundidade = Math.max(0, profundidade - 1);
-      else if (profundidade === 0 && /[.!?…]/.test(c)) {
-        // Fecha a frase no fim da pontuação (que pode ser "?!" ou "...").
-        while (i + 1 < linha.length && /[.!?…]/.test(linha[i + 1])) { atual += linha[++i]; }
-        // Só fecha se vier ESPAÇO ou FIM. Sem esta guarda, o ponto do separador
-        // de milhar partia a frase e o recolar inseria um espaço no meio do
-        // valor: "R$ 4.872,00" virava "R$ 4. 872,00". Pegado pelo teste do
-        // orçamento do Cristofer — corromper dinheiro é pior que o tique.
-        const resto = linha.slice(i + 1);
-        if (resto && !/^\s/.test(resto)) continue;
-        const espacos = /^\s+/.exec(resto);
-        if (espacos) i += espacos[0].length; // consome o espaço separador
-        partes.push(atual);
-        atual = "";
+      if (c === "(") { profundidade++; continue; }
+      if (c === ")") { profundidade = Math.max(0, profundidade - 1); continue; }
+      if (profundidade > 0) continue;
+
+      const fechaPontuacao = /[.!?…]/.test(c);
+      // EMOJI fecha frase quando o que vem depois abre com MAIÚSCULA. No
+      // WhatsApp o emoji fecha bloco, e sem isto o clichê ficava colado em texto
+      // legítimo: "Que bom te ver por aqui 😊 Como posso te ajudar hoje?" era UMA
+      // frase, e o padrão ancorado em "^como" não casava (visto na regressão,
+      // conversa do Juliano).
+      // ...e só quando já há conteúdo antes dele: um emoji de ABERTURA ("👍 Se
+      // precisar de algo mais...") não pode virar frase sozinho, senão sobra um
+      // fragmento solto no lugar do texto cortado.
+      const temConteudo = /\p{L}|\p{N}/u.test(atual.slice(0, -c.length));
+      const fechaEmoji = !fechaPontuacao && temConteudo && EMOJI_RE.test(c);
+      if (!fechaPontuacao && !fechaEmoji) continue;
+
+      if (fechaPontuacao) {
+        while (i + 1 < chars.length && /[.!?…]/.test(chars[i + 1])) { atual += chars[++i]; }
       }
+      // Só fecha se vier ESPAÇO ou FIM. Sem esta guarda, o ponto do separador de
+      // milhar partia a frase e o recolar inseria um espaço no meio do valor:
+      // "R$ 4.872,00" virava "R$ 4. 872,00".
+      const resto = chars.slice(i + 1);
+      const posEspacos = resto.findIndex((x) => !/\s/.test(x));
+      const brancos = posEspacos === -1 ? resto.length : posEspacos;
+      if (resto.length && brancos === 0) continue;                 // não há espaço → não fecha
+      if (fechaEmoji) {
+        const proximo = posEspacos === -1 ? "" : resto[posEspacos];
+        if (!proximo || !/\p{Lu}/u.test(proximo)) continue;        // emoji só fecha antes de maiúscula
+      }
+      i += brancos;
+      partes.push(atual);
+      atual = "";
     }
     if (atual.trim()) partes.push(atual);
   }
