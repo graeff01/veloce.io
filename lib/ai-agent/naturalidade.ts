@@ -216,6 +216,41 @@ export function removerVocativo(texto: string, nome: string): string {
   return t.replace(/[ \t]{2,}/g, " ").replace(/ +([.,!?])/g, "$1").trim();
 }
 
+// ── Repetição da resposta INTEIRA ─────────────────────────────────────────────
+// O polidor corta a frase repetida, mas quando a resposta TODA é repetição não
+// há o que cortar: a guarda de resto devolve o original, e o lead recebe a mesma
+// mensagem duas vezes. Visto no replay da Rochelly — "você procura algum modelo
+// específico ou prefere o catálogo completo?" saiu igual em dois turnos
+// seguidos, e a conversa travou ali.
+//
+// Cortar não conserta isso: a causa é a IA não ter sabido avançar. O tratamento
+// é dar a ela outra chance de dizer algo NOVO, e é o que o orquestrador faz com
+// este sinal (mesmo caminho do tool-call vazado no texto).
+//
+// Compara por igualdade normalizada e por sobreposição alta de palavras (0.9):
+// idêntico pega o caso real, e a sobreposição pega a variação cosmética
+// ("Olá! Qual seu nome?" / "Olá! Qual seu nome, por favor?").
+const chaveRepeticao = (s: string) =>
+  semAcento(s).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+export function ehRepeticaoDe(texto: string | null | undefined, anteriores: string[]): boolean {
+  const alvo = chaveRepeticao(texto ?? "");
+  if (!alvo || alvo.split(" ").length < 5) return false; // curto demais para julgar
+  const pal = new Set(alvo.split(" "));
+  for (const a of anteriores) {
+    const outra = chaveRepeticao(a);
+    if (!outra) continue;
+    if (outra === alvo) return true;
+    const pb = new Set(outra.split(" "));
+    if (Math.abs(pal.size - pb.size) > 3) continue;
+    let comuns = 0;
+    for (const w of pal) if (pb.has(w)) comuns++;
+    const jaccard = comuns / (pal.size + pb.size - comuns);
+    if (jaccard >= 0.85) return true;
+  }
+  return false;
+}
+
 export interface PolimentoResult {
   /** Texto polido. Nunca vazio: se tudo casaria, devolve o original. */
   texto: string;

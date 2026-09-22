@@ -330,3 +330,31 @@ test("o nome do lead não vira gatilho de corte", () => {
   assert.equal(r.texto, "Rose, a Popular comporta 4 espetos tradicionais.");
   assert.equal(r.marcas.length, 0);
 });
+
+// ── Repetição da resposta INTEIRA ────────────────────────────────────────────
+// Quando a resposta toda é repetição, cortar não resolve: a guarda de resto
+// devolve o original e o lead lê a mesma mensagem duas vezes. O orquestrador usa
+// este sinal para pedir ao modelo que AVANCE, em vez de mascarar o sintoma.
+import { ehRepeticaoDe } from "../lib/ai-agent/naturalidade";
+
+test("resposta idêntica à anterior é repetição", () => {
+  // Rochelly, replay: a mesma pergunta saiu em dois turnos seguidos e a conversa
+  // travou ali.
+  const q = "Rochelly, você procura algum modelo específico ou prefere que eu envie o catálogo completo para você dar uma olhada? 😊";
+  assert.ok(ehRepeticaoDe(q, [q]));
+});
+
+test("variação cosmética também conta", () => {
+  assert.ok(ehRepeticaoDe("Olá! Qual seu nome, por favor?", ["Olá! Qual o seu nome, por favor?"]));
+});
+
+test("resposta que AVANÇA não é repetição", () => {
+  const ant = ["Rose, a churrasqueira Popular comporta 4 espetos tradicionais."];
+  assert.ok(!ehRepeticaoDe("Rose, a Popular não permite o uso de lenha, só carvão.", ant));
+  assert.ok(!ehRepeticaoDe("Te mandei a foto do modelo 😊", ant));
+});
+
+test("frase curta não é julgada — vocativo repete por natureza", () => {
+  assert.ok(!ehRepeticaoDe("Prazer, Rose!", ["Prazer, Rose!"]));
+  assert.ok(!ehRepeticaoDe("", ["qualquer coisa"]));
+});

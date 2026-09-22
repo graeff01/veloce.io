@@ -8,6 +8,7 @@ import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
 import { checkGrounding, extrairPrecosOficiais, medidasEmCm, medidasInventadas } from "./grounding";
 import { lerTabelaMedidas, medidasErradasDoProduto } from "./medidas-produto";
+import { lerTabelaCapacidade, capacidadesErradas } from "./capacidade-produto";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -28,7 +29,7 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
-import { polir } from "./naturalidade";
+import { polir, ehRepeticaoDe } from "./naturalidade";
 import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota, acrescentar as acrescentarRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
@@ -689,6 +690,12 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const artifacts: ToolArtifact[] = [];
   let final: string | null = null;
   let reTentouLeak = false; // tool-call vazado no texto ganha UMA segunda chance de executar
+  let reTentouRepetir = false; // resposta repetida ganha UMA segunda chance de avançar
+  // Respostas já enviadas nesta conversa — base da detecção de repetição.
+  const ditasNoTurno = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+    .filter((m) => m.role === "assistant" && typeof m.content === "string")
+    .map((m) => String(m.content))
+    .slice(-6);
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
@@ -774,6 +781,19 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // Uma tentativa só, e apenas quando o turno NÃO executou ferramenta
       // nenhuma: com tool já executada, o texto pendurado é resíduo, não a ação
       // que faltou. O teto de turnos e o TURN_BUDGET_MS seguem valendo.
+      // ── Repetiu a resposta inteira: UMA segunda chance de AVANÇAR ──────────
+      // Cortar a frase repetida não resolve quando a resposta toda é repetição —
+      // a guarda devolve o original e o lead lê a mesma mensagem duas vezes
+      // (Rochelly, replay: a pergunta "modelo específico ou catálogo?" saiu igual
+      // em dois turnos e a conversa travou). A causa é não ter sabido avançar,
+      // então é isso que se pede.
+      if (final && !reTentouRepetir && ehRepeticaoDe(final, ditasNoTurno)) {
+        reTentouRepetir = true;
+        messages.push({ role: "assistant", content: final });
+        messages.push({ role: "system", content: "Você acabou de repetir uma mensagem que JÁ enviou nesta conversa — o cliente já leu isso e repetir trava o atendimento. NÃO repita: avance. Responda o que ele perguntou, ou dê o próximo passo do fluxo (ex.: se ele já escolheu, siga para a etapa seguinte em vez de perguntar de novo). Se de fato não há nada a avançar, encerre em uma frase curta, sem repetir a pergunta." });
+        final = null;
+        continue;
+      }
       if (final && !reTentouLeak && !toolLog.length && TOOL_CALL_LEAK_TEST.test(final)) {
         reTentouLeak = true;
         messages.push({ role: "assistant", content: final });
@@ -864,6 +884,20 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     const erradas = medidasErradasDoProduto(final, _tabela);
     if (erradas.length) {
       guardrails.push(`grounding:medida_do_produto:${erradas.slice(0, 3).join(" | ").slice(0, 160)}`);
+      final = fallback;
+      decision = "abster";
+    }
+
+    // CAPACIDADE (espetos/bocas) — o dado que nenhum guarda de medida cobre,
+    // porque não é centímetro. Caso real (Rosi, replay): a IA disse "a Popular
+    // comporta 4 espetos" (certo), o lead respondeu "está bom com 7 espetos" e
+    // ela emendou "foto da Popular com 7 espetos". O grounding aprovava porque
+    // a CONVERSA conta como fonte — e o 7 tinha vindo do próprio cliente.
+    // Para característica DO PRODUTO a fonte não pode ser a conversa.
+    // Medido: 1 acusação em 123 respostas reais, e é o erro verdadeiro.
+    const capErradas = capacidadesErradas(final, lerTabelaCapacidade(_acervo));
+    if (capErradas.length) {
+      guardrails.push(`grounding:capacidade_do_produto:${capErradas.slice(0, 3).join(" | ").slice(0, 160)}`);
       final = fallback;
       decision = "abster";
     }
@@ -965,10 +999,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   // medida houve 12 gerar_orcamento contra 4 enviar_orcamento, e o PDF que o
   // lead disse "sim" três vezes para receber nunca chegou.
   if (final && status === "ok") {
-    const ditasNat = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
-      .filter((m) => m.role === "assistant" && typeof m.content === "string")
-      .map((m) => String(m.content))
-      .slice(-6);
+    const ditasNat = ditasNoTurno;
     // Nome que o intake RECUSOU neste turno (saudação respondida à pergunta do
     // nome). O aviso na resposta da ferramenta é instrução, e instrução fura:
     // no replay da conversa do Willian a IA recebeu o aviso e mesmo assim
