@@ -397,3 +397,20 @@ test("pergunta que só CITA o enviado não é oferta — fica", () => {
   const r = polir(p, [], [], null, ["enviar_catalogo"]);
   assert.equal(r.texto, p);
 });
+
+test("a cauda do clichê é genérica, não uma lista de palavras", () => {
+  // Cada rodada de replay trazia uma cauda nova ("para quando quiser
+  // continuar", "até você decidir"). Enumerar caudas é corrida perdida — a
+  // cauda passou a ser qualquer trecho CURTO depois da preposição, e o limite
+  // de 30 caracteres é o que protege a frase de escopo, que é longa.
+  for (const [t, nome] of [
+    ["👍 Rose, fico à disposição para quando quiser continuar.", "Rose"],
+    ["Tudo bem! Estou à disposição se precisar.", null],
+    ["Fico por aqui até você decidir.", null],
+  ] as [string, string | null][]) {
+    assert.ok(polir(t, [], [], nome).marcas.includes("cliche"), `não pegou: ${t}`);
+  }
+  // A frase de ESCOPO tem cauda longa e continua fora do corte.
+  const escopo = "Estou aqui para ajudar você com tudo sobre churrasqueiras, fogões campeiros e lareiras.";
+  assert.equal(polir(escopo).texto, escopo);
+});

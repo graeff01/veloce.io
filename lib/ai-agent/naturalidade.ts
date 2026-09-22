@@ -129,7 +129,7 @@ const CLICHE: RegExp[] = [
   // A cauda é opcional e cobre as três formas vistas em replay: "...para
   // ajudar", "...caso precise de qualquer coisa", "...se precisar". A
   // conjugação varia (precisar/precise/precisa), então o radical basta.
-  new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/|no\\s+que)\\s+(?:precis[ae]r?|quiser|qualquer|ajudar|o\\s+que|que)[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
+  new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/|no\\s+que|quando|at[eé])\\s+[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
   // "Se precisar de qualquer coisa, é só chamar, tá?"
   new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham|estou|fico)`, "i"),
   // "É só chamar, tá?" / "É só me chamar!" — sobra sozinha quando a frase
