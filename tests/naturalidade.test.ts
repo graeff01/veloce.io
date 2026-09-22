@@ -299,3 +299,34 @@ test("'quando/se' iniciando frase COM conteúdo não é clichê", () => {
     assert.equal(r.texto, t, `cortou indevidamente: ${t}`);
   }
 });
+
+// ── Clichês achados no LOTE FINAL do replay ──────────────────────────────────
+// Três causas estruturais quebravam a âncora `^` dos padrões, todas invisíveis
+// em teste de unidade escrito à mão: emoji de abertura, vocativo no MEIO da
+// frase e cauda depois do clichê.
+
+test("emoji de abertura não escuda o clichê", () => {
+  const r = polir("👍 Se precisar de algo mais, estou por aqui, Rose! Um ótimo dia para você!", [], [], "Rose");
+  assert.ok(r.marcas.includes("cliche"));
+  assert.equal(r.texto, "Um ótimo dia para você!");
+});
+
+test("vocativo no meio da frase não escuda o clichê", () => {
+  // "estou por aqui, Rose!" e "mais alguma coisa, Cristofer, é só chamar!"
+  const r = polir("Tudo bem, Rose! Quando quiser, é só chamar que eu te ajudo com o que precisar 😊 Aproveite seu dia!", [], [], "Rose");
+  assert.ok(r.marcas.includes("cliche"));
+  assert.match(r.texto, /Tudo bem, Rose!/);
+  assert.doesNotMatch(r.texto, /é só chamar/);
+});
+
+test("a cauda depois do clichê não o salva", () => {
+  const r = polir("Perfeito. É só chamar que eu te ajudo com o que precisar.", [], [], null);
+  assert.ok(r.marcas.includes("cliche"));
+});
+
+test("o nome do lead não vira gatilho de corte", () => {
+  // paraCasar remove o vocativo só para CASAR; a frase de conteúdo fica.
+  const r = polir("Rose, a Popular comporta 4 espetos tradicionais.", [], [], "Rose");
+  assert.equal(r.texto, "Rose, a Popular comporta 4 espetos tradicionais.");
+  assert.equal(r.marcas.length, 0);
+});

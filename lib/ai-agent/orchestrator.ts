@@ -987,7 +987,7 @@ Em qualquer caso vocÃª PODE terminar com UMA pergunta leve ("Ficou com alguma dÃ
       .map((m) => String(m.content).trim())
       .filter((t) => proibidoComoVocativo(t));
     const vocativosProibidos = [...new Set([...recusadosNoTurno, ...recusadosNaConversa, ...(proibidoComoVocativo(input.inboundText ?? "") ? [(input.inboundText ?? "").trim()] : [])])];
-    const nat = polir(final, ditasNat, vocativosProibidos);
+    const nat = polir(final, ditasNat, vocativosProibidos, nomeLead);
     if (nat.marcas.length) {
       guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));
       final = nat.texto;

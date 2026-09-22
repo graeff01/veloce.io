@@ -90,6 +90,28 @@ const recolar = (partes: string[]) =>
 // que escaparam na validação por replay.
 const PREF = String.raw`(?:(?:ent[ãa]o|bom|ok|perfeito|certo|beleza|tudo\s+bem)[,!]?\s*)?(?:[a-zà-ú]{2,20}[,!]\s*)?(?:(?:se|quando|caso)\s+[a-zà-ú]{2,20}(?:\s+[a-zà-ú]{2,12}){0,2},\s*)?(?:se\s+quiser,?\s*)?`;
 
+// Normaliza a frase só para CASAR o clichê — a saída nunca usa este texto.
+//
+// Três coisas quebravam a âncora `^` e deixavam o clichê passar, todas vistas na
+// validação por replay:
+//   · emoji de abertura: "👍 Se precisar de algo mais, estou por aqui"
+//   · vocativo no MEIO: "estou por aqui, Rose!" / "mais alguma coisa, Cristofer,"
+//   · cauda depois do clichê: "é só chamar que eu te ajudo com o que precisar"
+// Os dois primeiros saem aqui; a cauda é tratada nos próprios padrões.
+function paraCasar(frase: string, nome?: string | null): string {
+  let t = frase
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F900}-\u{1F9FF}]/gu, " ")
+    // \W NÃO é unicode-aware: comia o "É" de "É só chamar" e o padrão deixava de
+    // casar. Remove só o que não é letra nem número.
+    .replace(/^[^\p{L}\p{N}]+/u, "");
+  if (nome && nome.trim().length >= 2) {
+    const esc = nome.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    t = t.replace(new RegExp(`\\s*,\\s*${esc}\\b`, "gi"), "")
+         .replace(new RegExp(`\\b${esc}\\s*,\\s*`, "gi"), "");
+  }
+  return t.replace(/\s{2,}/g, " ").trim();
+}
+
 const CLICHE: RegExp[] = [
   // "Qualquer dúvida, estou aqui para ajudar!" / "...é só chamar"
   new RegExp(`^${PREF}(?:e\\s+)?qualquer\\s+d[uú]vida[,.!\\s]*(estou|fico|to|t[oô]|[eé]\\s+s[oó]|pode|me\\s+chama|chama|fale|pergunte)`, "i"),
@@ -107,12 +129,12 @@ const CLICHE: RegExp[] = [
   // A cauda é opcional e cobre as três formas vistas em replay: "...para
   // ajudar", "...caso precise de qualquer coisa", "...se precisar". A
   // conjugação varia (precisar/precise/precisa), então o radical basta.
-  new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/)\\s+(?:precis[ae]r?|quiser|qualquer|ajudar|o\\s+que)[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
+  new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/|no\\s+que)\\s+(?:precis[ae]r?|quiser|qualquer|ajudar|o\\s+que|que)[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
   // "Se precisar de qualquer coisa, é só chamar, tá?"
-  new RegExp(`^${PREF}se\\s+precis[ae]r?\\s+de\\s+(qualquer\\s+coisa|algo|alguma\\s+coisa)[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham)`, "i"),
+  new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham|estou|fico)`, "i"),
   // "É só chamar, tá?" / "É só me chamar!" — sobra sozinha quando a frase
   // anterior do fecho já saiu. Vista no replay da Rosi.
-  new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+)?(chamar|cham[ae]|falar|avisar|mandar\\s+mensagem)[^.!?\\n]{0,15}[.!?…]*$`, "i"),
+  new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+)?(chamar|cham[ae]|falar|avisar|mandar\\s+mensagem)(?:\\s+(?:que|e)\\s+[^.!?\\n]{0,45})?[^.!?\\n]{0,15}[.!?…]*$`, "i"),
 ];
 
 // ── 2. Pedido de permissão pra fazer o que ela já pode fazer ───────────────────
@@ -220,6 +242,7 @@ export function polir(
   reply: string | null | undefined,
   anteriores: string[] = [],
   vocativosProibidos: string[] = [],
+  nomeDoLead?: string | null,
 ): PolimentoResult {
   const original = reply ?? "";
   if (!original.trim()) return { texto: original, removidas: [], marcas: [], acao: null };
@@ -234,7 +257,7 @@ export function polir(
   let partes = emFrases(original).filter((p) => {
     if (/^\n+$/.test(p)) return true;
     const limpa = p.trim();
-    if (CLICHE.some((re) => re.test(limpa))) {
+    if (CLICHE.some((re) => re.test(paraCasar(limpa, nomeDoLead)))) {
       guardaRemovida(limpa);
       if (!marcas.includes("cliche")) marcas.push("cliche");
       return false;
