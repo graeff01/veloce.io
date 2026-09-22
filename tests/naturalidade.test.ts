@@ -358,3 +358,42 @@ test("frase curta não é julgada — vocativo repete por natureza", () => {
   assert.ok(!ehRepeticaoDe("Prazer, Rose!", ["Prazer, Rose!"]));
   assert.ok(!ehRepeticaoDe("", ["qualquer coisa"]));
 });
+
+// ── Oferta obsoleta: já enviou, mas o texto ainda oferece ─────────────────────
+// O roteador garante a ferramenta DEPOIS do turno, então o modelo escreveu o
+// texto sem saber que o envio ia acontecer. Replay da Rochelly: o catálogo FOI
+// enviado e a mensagem perguntava "prefere que eu envie o catálogo completo?" —
+// a segunda vez seguida, e a conversa travou ali.
+
+test("oferta do que já foi enviado neste turno é cortada", () => {
+  // Caso real da Rochelly: pergunta de ESCOLHA ("A ou B?"), que o passo da
+  // permissão preserva de propósito — só este passo a corta, e só porque o
+  // envio já aconteceu.
+  const r = polir("Rochelly, temos vários modelos na linha Prime. Você procura um modelo específico ou prefere que eu envie o catálogo completo?",
+    [], [], "Rochelly", ["enviar_catalogo"]);
+  assert.equal(r.texto, "Rochelly, temos vários modelos na linha Prime.");
+  assert.ok(r.marcas.includes("oferta_obsoleta:catalogo"));
+});
+
+test("se a oferta era a mensagem INTEIRA, confirma o envio em vez de repeti-la", () => {
+  // Aqui devolver o original significaria perguntar "prefere que eu envie o
+  // catálogo?" depois de tê-lo enviado — pior que o tique.
+  const r = polir("Rochelly, você procura algum modelo específico ou prefere que eu envie o catálogo completo para você dar uma olhada? 😊",
+    [], [], "Rochelly", ["enviar_video", "enviar_catalogo"]);
+  assert.equal(r.texto, "Rochelly, te mandei nosso catálogo 😊");
+  assert.ok(r.marcas.includes("confirmou_envio"));
+});
+
+test("sem o envio no turno, a pergunta de ESCOLHA continua legítima", () => {
+  // Esta pergunta é exigida pelo customPrompt enquanto o lead não escolheu.
+  const p = "Rochelly, você procura algum modelo específico ou prefere que eu envie o catálogo completo? 😊";
+  const r = polir(p, [], [], "Rochelly", ["enviar_video"]);
+  assert.equal(r.texto, p);
+  assert.equal(r.marcas.length, 0);
+});
+
+test("pergunta que só CITA o enviado não é oferta — fica", () => {
+  const p = "Te mandei nosso catálogo 😊 Algum modelo chamou a sua atenção?";
+  const r = polir(p, [], [], null, ["enviar_catalogo"]);
+  assert.equal(r.texto, p);
+});

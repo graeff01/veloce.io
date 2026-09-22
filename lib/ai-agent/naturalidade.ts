@@ -251,6 +251,20 @@ export function ehRepeticaoDe(texto: string | null | undefined, anteriores: stri
   return false;
 }
 
+// Confirmação CURTA do que já foi enviado.
+//
+// Única parte do módulo que escreve texto em vez de só remover frase, e a
+// exceção é deliberada: quando a oferta obsoleta É a mensagem inteira, devolver
+// o original significa perguntar "prefere que eu envie o catálogo?" DEPOIS de
+// tê-lo enviado — pior que o tique que estamos tirando. A frase é factual (a
+// ferramenta confirmou o envio) e é a mesma que o tool result já manda dizer.
+const CONFIRMA_ENVIO: Record<string, string> = {
+  catalogo: "Te mandei nosso catálogo 😊",
+  orcamento: "Te mandei o orçamento em PDF 😊",
+  foto: "Te mandei a foto 😊",
+  opcionais: "Te mandei a imagem dos acessórios 😊",
+};
+
 export interface PolimentoResult {
   /** Texto polido. Nunca vazio: se tudo casaria, devolve o original. */
   texto: string;
@@ -278,6 +292,7 @@ export function polir(
   anteriores: string[] = [],
   vocativosProibidos: string[] = [],
   nomeDoLead?: string | null,
+  enviadoNoTurno: string[] = [],
 ): PolimentoResult {
   const original = reply ?? "";
   if (!original.trim()) return { texto: original, removidas: [], marcas: [], acao: null };
@@ -358,6 +373,42 @@ export function polir(
     return true;
   });
 
+  // Passo 2.5 — OFERTA OBSOLETA: já enviou, mas o texto ainda oferece.
+  //
+  // O roteador garante a ferramenta DEPOIS do turno, então o modelo escreveu o
+  // texto sem saber que o envio ia acontecer. Resultado visto no replay da
+  // Rochelly: o catálogo FOI enviado e a mensagem perguntava "prefere que eu
+  // envie o catálogo completo?" — a segunda vez seguida, e a conversa travou.
+  //
+  // Isto pega o que o passo 2 deixa passar de propósito: a pergunta de ESCOLHA
+  // ("modelo específico OU catálogo?") é legítima enquanto o lead não escolheu.
+  // Depois do envio ela não é mais — virou pergunta sobre algo que já chegou.
+  let confirmacao: string | null = null;
+  if (enviadoNoTurno.length) {
+    const jaFoi = [
+      { ferramenta: "enviar_catalogo", re: /cat[aá]logo/i, rotulo: "catalogo" },
+      { ferramenta: "enviar_orcamento", re: /\b(pdf|or[cç]amento)\b/i, rotulo: "orcamento" },
+      { ferramenta: "enviar_foto", re: /\b(fotos?|imagens?)\b/i, rotulo: "foto" },
+      { ferramenta: "enviar_opcionais", re: /\b(opcionais|acess[oó]rios)\b/i, rotulo: "opcionais" },
+    ].filter((x) => enviadoNoTurno.includes(x.ferramenta));
+
+    if (jaFoi.length) {
+      const mantidas: string[] = [];
+      for (const p of partes) {
+        const limpa = p.trim();
+        const alvo = /^\n+$/.test(p) || !ehPergunta(limpa) || !PEDE_ENVIO_RE.test(limpa)
+          ? undefined
+          : jaFoi.find((x) => x.re.test(limpa));
+        if (!alvo) { mantidas.push(p); continue; }
+        guardaRemovida(limpa);
+        const marca = `oferta_obsoleta:${alvo.rotulo}`;
+        if (!marcas.includes(marca)) marcas.push(marca);
+        if (confirmacao === null) confirmacao = CONFIRMA_ENVIO[alvo.rotulo] ?? null;
+      }
+      partes = mantidas;
+    }
+  }
+
   // Passo 3 — frase idêntica já dita na conversa. Exige 6+ palavras: sem isso
   // cortaria vocativo legítimo ("Prazer, Rose!", "Ótima escolha!"), que repete
   // por natureza. Caso real (Wilson, 08/09): o mesmo par de frases saiu duas
@@ -414,6 +465,13 @@ export function polir(
   const insignificante = removidas.length > 0
     && texto.replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean).length < 3;
   if (!texto || insignificante) {
+    // Exceção: a oferta obsoleta não pode voltar — o envio JÁ aconteceu.
+    if (confirmacao) {
+      const comNome = nomeDoLead && nomeDoLead.trim().length >= 2
+        ? confirmacao.replace(/^Te mandei/, `${nomeDoLead.trim()}, te mandei`)
+        : confirmacao;
+      return { texto: comNome, removidas, marcas: [...marcas, "confirmou_envio"], acao };
+    }
     return { texto: original, removidas, marcas: [...marcas, "resto_insuficiente"], acao };
   }
   return { texto, removidas, marcas, acao };

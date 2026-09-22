@@ -1018,7 +1018,10 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       .map((m) => String(m.content).trim())
       .filter((t) => proibidoComoVocativo(t));
     const vocativosProibidos = [...new Set([...recusadosNoTurno, ...recusadosNaConversa, ...(proibidoComoVocativo(input.inboundText ?? "") ? [(input.inboundText ?? "").trim()] : [])])];
-    const nat = polir(final, ditasNat, vocativosProibidos, nomeLead);
+    // Ferramentas de ENVIO que aconteceram neste turno — inclusive as que o
+    // roteador garantiu depois de o modelo já ter escrito o texto.
+    const enviadoNoTurno = toolLog.map((t) => t.name).filter((n) => n.startsWith("enviar_"));
+    const nat = polir(final, ditasNat, vocativosProibidos, nomeLead, enviadoNoTurno);
     if (nat.marcas.length) {
       guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));
       final = nat.texto;
