@@ -86,6 +86,22 @@ export async function enqueueAgentJob(job: {
     },
   });
 
+  // Turno MORTO (não em voo): reabre.
+  //
+  // Não resetar o status é o que impede o turno duplicado — mas um turno pode
+  // morrer no meio, e o caso comum é DEPLOY: o processo cai com o job em
+  // `processing` e o lock nunca é liberado por ele. Antes, qualquer mensagem
+  // nova resetava para `pending` e o nudge respondia na hora; sem isto a
+  // recuperação passaria a depender do lock envelhecer (STALE_LOCK_MS) ou do
+  // cron, que neste projeto é agendado por fora.
+  //
+  // A condição é a MESMA do claim: lock mais velho que STALE_LOCK_MS. Lock
+  // recente = turno vivo, não se toca (é a trava anti-duplicação).
+  await prisma.aiJob.updateMany({
+    where: { contactId: job.contactId, status: "processing", lockedAt: { lt: new Date(Date.now() - STALE_LOCK_MS) } },
+    data: { status: "pending", lockedAt: null },
+  }).catch(() => {});
+
   // Nudge em memória: processa logo após o debounce (latência baixa no caminho feliz).
   agendarNudge(job.contactId, delay);
 }

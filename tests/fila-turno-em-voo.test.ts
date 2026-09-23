@@ -95,3 +95,15 @@ test("o pin de localização não depende do payload para chegar ao motor", () =
   assert.ok(gravaFicha > 0 && reenqueue > gravaFicha,
     "a ficha precisa ser gravada ANTES do re-enqueue, senão o endereço depende do payload");
 });
+
+test("turno MORTO é reaberto pelo enqueue; turno VIVO não", () => {
+  // Não resetar o status é o que mata a duplicação, mas um turno pode morrer no
+  // meio — e o caso comum é DEPLOY, com o processo caindo e o job preso em
+  // `processing`. Antes, a mensagem nova resetava e o nudge respondia na hora.
+  // Sem esta reabertura, a recuperação dependeria do lock envelhecer ou do cron,
+  // que neste projeto é agendado por fora.
+  const reabre = /aiJob\.updateMany\(\{\s*\n\s*where: \{ contactId: job\.contactId, status: "processing", lockedAt: \{ lt: new Date\(Date\.now\(\) - STALE_LOCK_MS\) \} \}/.exec(fila);
+  assert.ok(reabre, "o enqueue precisa reabrir job processing com lock VELHO");
+  // E a condição tem de ser a mesma do claim — lock recente é turno vivo.
+  assert.match(fila, /data: \{ status: "pending", lockedAt: null \},\s*\n\s*\}\)\.catch/);
+});
