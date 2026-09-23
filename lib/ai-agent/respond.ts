@@ -96,6 +96,11 @@ async function sendWithRetry(conn: { phoneNumberId: string; accessToken: string 
 // Persiste a saída (upsert dedup por wamid: a marcação vence eventuais echoes).
 // aiGenerated=true para respostas da IA; a resposta MANUAL de um humano pelo painel
 // passa false — é o que aciona o takeover (respond.ts) e silencia o bot.
+// Teto de fotos por turno. Cada foto custa ~1.100 tokens de entrada
+// (tests/vision-imagem.test.ts faz a conta), então o teto é o que impede uma
+// rajada de 8 fotos virar um turno caro.
+const MAX_INBOUND_IMAGES = Number(process.env.AI_MAX_INBOUND_IMAGES || 3);
+
 export async function storeOutbound(connectionId: string, contactId: string, waMessageId: string, text: string | null, ts: Date, aiGenerated = true, type = "text", sentByEmail: string | null = null) {
   await prisma.waMessage.upsert({
     where: { connectionId_waMessageId: { connectionId, waMessageId } },
@@ -287,22 +292,46 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   // eram duas chamadas de rede a mais por foto, dependentes de o token ainda
   // estar válido, no meio do caminho de responder ao lead. Lemos do que já
   // temos e só caímos na Meta se, por algum motivo, ela não tiver sido salva.
+  // As imagens vêm do BANCO, não do payload do job.
+  //
+  // Um job é UM por contato: a rajada colapsa nele e o payload guarda só a
+  // ÚLTIMA mensagem. Quando o lead manda duas fotos e depois um texto — caso
+  // real (Lukas, 07/09: duas fotos + "quanto sai essas duas?" + "vcs
+  // instalam?") — o payload final é de tipo "text" e as DUAS fotos eram
+  // simplesmente descartadas: a IA respondeu sem nunca olhar o que ele mandou.
+  //
+  // Lendo do banco, pega toda imagem que chegou DESDE a última saída nossa, que
+  // é exatamente o que ainda não foi respondido.
   let inboundImages: string[] | undefined;
-  if (cfg?.visionEnabled && input.payload.type === "image") {
-    let uri: string | null = null;
-    if (input.payload.messageId) {
-      const guardada = await prisma.waMedia.findUnique({
-        where: { messageId: input.payload.messageId },
-        select: { mime: true, data: true },
-      }).catch(() => null);
-      if (guardada && ALLOWED_IMAGE_MIME.has(guardada.mime)) {
-        uri = `data:${guardada.mime};base64,${Buffer.from(guardada.data).toString("base64")}`;
+  if (cfg?.visionEnabled) {
+    const ultimaSaida = await prisma.waMessage.findFirst({
+      where: { contactId: contact.id, direction: "out" },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true },
+    }).catch(() => null);
+    const pendentes = await prisma.waMessage.findMany({
+      where: {
+        contactId: contact.id, direction: "in", type: "image",
+        ...(ultimaSaida ? { timestamp: { gt: ultimaSaida.timestamp } } : {}),
+      },
+      orderBy: { timestamp: "asc" },
+      take: MAX_INBOUND_IMAGES,
+      select: { id: true, media: { select: { mime: true, data: true } } },
+    }).catch(() => []);
+
+    const uris: string[] = [];
+    for (const m of pendentes) {
+      if (m.media && ALLOWED_IMAGE_MIME.has(m.media.mime)) {
+        uris.push(`data:${m.media.mime};base64,${Buffer.from(m.media.data).toString("base64")}`);
       }
     }
-    if (!uri && input.payload.mediaId) {
-      uri = await fetchWhatsAppImageDataUri({ accessToken: conn.accessToken }, input.payload.mediaId).catch(() => null);
+    // Rede de segurança: a imagem DESTE turno pode não ter sido salva (a Meta
+    // retém o arquivo por pouco tempo). Só aí se cai na Meta, como antes.
+    if (!uris.length && input.payload.type === "image" && input.payload.mediaId) {
+      const uri = await fetchWhatsAppImageDataUri({ accessToken: conn.accessToken }, input.payload.mediaId).catch(() => null);
+      if (uri) uris.push(uri);
     }
-    if (uri) inboundImages = [uri];
+    if (uris.length) inboundImages = uris;
   }
 
   // 7) Gera a resposta (orquestrador: prompt + tools + guardrail + RAG + log).

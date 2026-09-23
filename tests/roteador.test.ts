@@ -144,6 +144,7 @@ test("não encosta em resposta de outro assunto", () => {
 // dado gravado, e sumia na leitura — a supressão nunca rodava, em silêncio.
 test("lerRegras não perde nenhum campo da regra", () => {
   const completa = { id: "x", quando: "a", excetoSe: "b", sóSeInédito: "c", sóSeJáDito: "f", responder: "d", assinatura: "e",
+    avisoSe: "g", avisoTexto: "h",
     garantirFerramenta: "enviar_foto", garantirArgs: { categoria: "x" } };
   const [lida] = lerRegras({ roteador: [completa] });
   assert.deepEqual(lida, completa, "algum campo se perdeu na leitura");
@@ -162,7 +163,7 @@ import { REGRAS_JR } from "../scripts/jr-roteador-regras";
 const JR = lerRegras({ roteador: REGRAS_JR });
 
 test("as regras da JR carregam todas", () => {
-  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto", "confirmou_catalogo"]);
+  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto", "confirmou_catalogo", "popular_nao_aceita_lenha"]);
 });
 
 test("modelo nomeado sem foto → garante enviar_foto com o termo certo", () => {
@@ -216,4 +217,48 @@ test("sem ter oferecido, 'pode mandar' não dispara nada", () => {
 
 test("não reenvia se o catálogo já saiu neste turno", () => {
   assert.equal(garantir(JR, "pode mandar", ["enviar_catalogo"], OFERECEU), null);
+});
+
+// ── O quarto sentido: ACRESCENTAR o aviso obrigatório ─────────────────────────
+// Caso real (JR, 08/09/2026): o acervo manda "AVISE SEMPRE" que a Linha Popular
+// não aceita lenha; dois leads a escolheram e nenhum foi avisado. O Bill Barbosa
+// escreveu "Quero poder colocar lenha" dois turnos depois de escolher a Popular.
+import { acrescentar } from "../lib/ai-agent/roteador";
+
+test("resposta que fala da Linha Popular recebe o aviso da lenha", () => {
+  // Rosi, 08/09 09:24 — escolheu a Popular e nunca ouviu isso.
+  const a = acrescentar(JR, "Rose, a churrasqueira Popular não vem pintada de fábrica, ela sai no tom natural do concreto.");
+  assert.ok(a, "não acrescentou o aviso obrigatório");
+  assert.equal(a!.id, "popular_nao_aceita_lenha");
+  assert.match(a!.texto, /não vem pintada de fábrica/, "o que a IA disse não pode ser alterado");
+  assert.match(a!.texto, /não permite o uso de lenha/);
+  assert.match(a!.texto, /\n\n/, "o aviso vai em bloco próprio (cada bloco é uma mensagem no WhatsApp)");
+});
+
+test("o modelo 'mais popular' não é a Linha Popular", () => {
+  // O gatilho tem de ser restrito: "popular" solto apareceria em elogio.
+  assert.equal(acrescentar(JR, "Esse é o nosso modelo mais popular entre os clientes!"), null);
+  assert.equal(acrescentar(JR, "A Linha Prime é 100% refratária e aceita lenha."), null);
+});
+
+test("o aviso sai uma vez por conversa", () => {
+  const ja = ["... ela não permite o uso de lenha (funciona com carvão) ..."];
+  assert.equal(acrescentar(JR, "A Popular 65 Lisa tem 2,20 m de altura.", ja), null);
+});
+
+test("se a própria resposta já avisou, não duplica", () => {
+  const r = "A Popular 65 Lisa tem 2,20 m. Vale dizer que ela não permite o uso de lenha, só carvão.";
+  assert.equal(acrescentar(JR, r), null);
+});
+
+test("regra só de aviso é carregada (não exige `responder`)", () => {
+  const [lida] = lerRegras({ roteador: [{ id: "a", quando: "x", avisoSe: "y", avisoTexto: "z" }] });
+  assert.ok(lida, "regra só de aviso foi descartada");
+  assert.equal(lida.avisoTexto, "z");
+  // Sem avisoTexto ela não tem o que fazer → descartada, como as outras vazias.
+  assert.deepEqual(lerRegras({ roteador: [{ id: "a", quando: "x", avisoSe: "y" }] }), []);
+});
+
+test("avisoSe com regex inválida descarta a regra, não quebra o turno", () => {
+  assert.deepEqual(lerRegras({ roteador: [{ id: "x", quando: "a", avisoSe: "([", avisoTexto: "b" }] }), []);
 });

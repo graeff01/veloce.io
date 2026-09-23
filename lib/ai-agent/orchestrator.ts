@@ -2,12 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { openaiChat, type ChatMessage, type ChatResult, type ToolDef } from "@/lib/openai";
 import { toolsForConfig, type ToolCtx, type ToolArtifact } from "./tools";
 import { buildQuoteGuidance } from "./quote-guidance";
-import { parseSpec, missingRequired, type IntakeData } from "./intake";
+import { parseSpec, missingRequired, proibidoComoVocativo, type IntakeData } from "./intake";
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
 import { checkGrounding, extrairPrecosOficiais, medidasEmCm, medidasInventadas } from "./grounding";
 import { lerTabelaMedidas, medidasErradasDoProduto } from "./medidas-produto";
+import { lerTabelaCapacidade, capacidadesErradas } from "./capacidade-produto";
 import { verifyReply } from "./verify";
 import { parsePlaybook, renderPlaybookConduct, renderPlaybookLimits, type Playbook } from "./playbook";
 import { budgetedWindow } from "./memory";
@@ -15,6 +16,7 @@ import { deriveAgentState, agentStateMode, type AgentState } from "./conversatio
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant, hashString } from "./variants";
 import { searchCatalog } from "./catalog-search";
+import { produtoDoAnuncio } from "./anuncio-produto";
 import { isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import { redactPII } from "@/lib/redact";
@@ -28,7 +30,8 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
-import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota } from "./roteador";
+import { polir, ehRepeticaoDe } from "./naturalidade";
+import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota, acrescentar as acrescentarRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
 
@@ -51,6 +54,9 @@ const TURN_BUDGET_MS = Number(process.env.AI_TURN_BUDGET_MS || 90_000);
 // (chaves JSON, com ou sem espaço). Paren: não-guloso até o 1º ")". Chaves: guloso até a
 // última "}" (captura JSON aninhado). Nomes internos nunca aparecem em prosa → strip seguro.
 const TOOL_CALL_LEAK_RE = /(?:aprovar_orcamento|atualizar_ficha|atualizar_perfil|buscar_estoque|enviar_catalogo|enviar_foto|enviar_localizacao_loja|enviar_opcionais|enviar_orcamento|enviar_video|escalar_humano|gerar_orcamento|pedir_localizacao|reagir)\s*(?:\([^\n]*?\)|\{[^\n]*\})/g;
+// Mesma expressão SEM a flag `g`: com ela, `test()` guarda lastIndex e alterna
+// entre true e false em chamadas seguidas.
+const TOOL_CALL_LEAK_TEST = new RegExp(TOOL_CALL_LEAK_RE.source);
 export function stripToolCallLeak(s: string): string {
   return s.replace(TOOL_CALL_LEAK_RE, "").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -478,7 +484,11 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     if (vterm) {
       // Busca robusta (tokens + fuzzy) — casa o modelo do anúncio mesmo com typo/palavras
       // não contíguas no título (ex: "Taos Highline" vs "Taos 1.4 HIGHLINE").
-      const item = (await searchCatalog(input.clientId, vterm))[0];
+      // NÃO pega o primeiro resultado da busca fuzzy: confere que o título do
+      // item realmente corresponde ao anúncio. Sem isso, "Taos Highline" injetava
+      // um T-Cross Highline como certeza (Boqueirão) e o anúncio institucional da
+      // JR injetava uma Parrilla 81x60 em 191 leads. Ver anuncio-produto.ts.
+      const item = produtoDoAnuncio(vterm, await searchCatalog(input.clientId, vterm));
       if (item) {
         vehicle = `${item.title}${item.price ? ` — R$ ${item.price.toLocaleString("pt-BR")}` : ""}`
           + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`
@@ -684,6 +694,13 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const toolLog: { name: string; args: unknown; result: string; ms?: number }[] = [];
   const artifacts: ToolArtifact[] = [];
   let final: string | null = null;
+  let reTentouLeak = false; // tool-call vazado no texto ganha UMA segunda chance de executar
+  let reTentouRepetir = false; // resposta repetida ganha UMA segunda chance de avançar
+  // Respostas já enviadas nesta conversa — base da detecção de repetição.
+  const ditasNoTurno = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+    .filter((m) => m.role === "assistant" && typeof m.content === "string")
+    .map((m) => String(m.content))
+    .slice(-6);
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
@@ -757,6 +774,38 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
         continue;
       }
       final = message.content ?? null;
+      // ── Vazou tool-call no texto: UMA segunda chance de EXECUTAR ────────────
+      // O strip mais abaixo evita que a sintaxe chegue ao cliente, mas a AÇÃO
+      // continuava não acontecendo — e o que sobrava no texto era justamente o
+      // tique de oferecer em vez de fazer.
+      //
+      // Medido na JR (7–21/09/2026): 6 turnos com sanitize:tool_call_leak, e nos
+      // SEIS a frase que restou era "quer que eu te envie...?" / "quer que eu
+      // inclua...?" — ferramenta pedida em prosa, nunca executada.
+      //
+      // Uma tentativa só, e apenas quando o turno NÃO executou ferramenta
+      // nenhuma: com tool já executada, o texto pendurado é resíduo, não a ação
+      // que faltou. O teto de turnos e o TURN_BUDGET_MS seguem valendo.
+      // ── Repetiu a resposta inteira: UMA segunda chance de AVANÇAR ──────────
+      // Cortar a frase repetida não resolve quando a resposta toda é repetição —
+      // a guarda devolve o original e o lead lê a mesma mensagem duas vezes
+      // (Rochelly, replay: a pergunta "modelo específico ou catálogo?" saiu igual
+      // em dois turnos e a conversa travou). A causa é não ter sabido avançar,
+      // então é isso que se pede.
+      if (final && !reTentouRepetir && ehRepeticaoDe(final, ditasNoTurno)) {
+        reTentouRepetir = true;
+        messages.push({ role: "assistant", content: final });
+        messages.push({ role: "system", content: "Você acabou de repetir uma mensagem que JÁ enviou nesta conversa — o cliente já leu isso e repetir trava o atendimento. NÃO repita: avance. Responda o que ele perguntou, ou dê o próximo passo do fluxo (ex.: se ele já escolheu, siga para a etapa seguinte em vez de perguntar de novo). Se de fato não há nada a avançar, encerre em uma frase curta, sem repetir a pergunta." });
+        final = null;
+        continue;
+      }
+      if (final && !reTentouLeak && !toolLog.length && TOOL_CALL_LEAK_TEST.test(final)) {
+        reTentouLeak = true;
+        messages.push({ role: "assistant", content: final });
+        messages.push({ role: "system", content: "Você ESCREVEU o nome de uma ferramenta como texto na mensagem, em vez de executá-la. Escrito assim nada acontece: o cliente não recebe a foto/o PDF/o catálogo e o dado não é registrado. CHAME a ferramenta agora, de verdade (tool call), e NÃO escreva o nome dela na mensagem. Não pergunte ao cliente se pode — apenas execute." });
+        final = null;
+        continue;
+      }
       break;
     }
   } catch (e) {
@@ -789,7 +838,8 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   if (readyToClose && status === "ok" && decision !== "escalou") decision = "escalou";
 
   const guardrails: string[] = [];
-  if (toolCallLeak) guardrails.push("sanitize:tool_call_leak"); // telemetria: modelo vazou tool-call no texto
+  if (toolCallLeak) guardrails.push("sanitize:tool_call_leak");
+  if (reTentouLeak) guardrails.push("sanitize:tool_call_leak:retry"); // houve 2ª chance de executar // telemetria: modelo vazou tool-call no texto
 
   // ── F1: anti-alucinação — grounding + verificação ────────────────────────────
   // Fontes legítimas: resultados de ferramentas + conhecimento (RAG) + a conversa
@@ -839,6 +889,20 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     const erradas = medidasErradasDoProduto(final, _tabela);
     if (erradas.length) {
       guardrails.push(`grounding:medida_do_produto:${erradas.slice(0, 3).join(" | ").slice(0, 160)}`);
+      final = fallback;
+      decision = "abster";
+    }
+
+    // CAPACIDADE (espetos/bocas) — o dado que nenhum guarda de medida cobre,
+    // porque não é centímetro. Caso real (Rosi, replay): a IA disse "a Popular
+    // comporta 4 espetos" (certo), o lead respondeu "está bom com 7 espetos" e
+    // ela emendou "foto da Popular com 7 espetos". O grounding aprovava porque
+    // a CONVERSA conta como fonte — e o 7 tinha vindo do próprio cliente.
+    // Para característica DO PRODUTO a fonte não pode ser a conversa.
+    // Medido: 1 acusação em 123 respostas reais, e é o erro verdadeiro.
+    const capErradas = capacidadesErradas(final, lerTabelaCapacidade(_acervo));
+    if (capErradas.length) {
+      guardrails.push(`grounding:capacidade_do_produto:${capErradas.slice(0, 3).join(" | ").slice(0, 160)}`);
       final = fallback;
       decision = "abster";
     }
@@ -923,6 +987,100 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // Se a promessa era a mensagem inteira, não há o que entregar: cai no
       // fallback do cliente, o mesmo caminho já usado pelo guardrail.
       final = pr.texto || fallback;
+    }
+  }
+
+  // ── Naturalidade: os tiques de robô ────────────────────────────────────────
+  // Tira pedido de licença, clichê de disponibilidade, pergunta excedente e
+  // frase repetida. Medido nas 123 respostas reais da JR (7–21/09): toca 21%
+  // delas, sem alarme falso conhecido — os que apareceram na medição viraram
+  // teste em tests/naturalidade.test.ts.
+  //
+  // Fica DEPOIS do invariante de autoridade e ANTES do DLP: opera sobre o texto
+  // já saneado, e o DLP continua sendo a última palavra antes do lead.
+  //
+  // O pedido de permissão pra ENVIAR não só sai do texto: a ferramenta que ele
+  // pedia acontece. É o que separa esta peça de um filtro de estilo — na base
+  // medida houve 12 gerar_orcamento contra 4 enviar_orcamento, e o PDF que o
+  // lead disse "sim" três vezes para receber nunca chegou.
+  if (final && status === "ok") {
+    const ditasNat = ditasNoTurno;
+    // Nome que o intake RECUSOU neste turno (saudação respondida à pergunta do
+    // nome). O aviso na resposta da ferramenta é instrução, e instrução fura:
+    // no replay da conversa do Willian a IA recebeu o aviso e mesmo assim
+    // escreveu "Dia, temos três modelos...". Aqui o vocativo sai por construção.
+    // Do turno: o que o intake acabou de recusar.
+    const recusadosNoTurno = toolLog
+      .filter((t) => t.name === "atualizar_ficha")
+      .map((t) => /⚠️ "([^"]{1,40})" NÃO é um nome/.exec(String(t.result ?? ""))?.[1])
+      .filter((v): v is string => !!v);
+    // Da CONVERSA: qualquer mensagem isolada do lead que nunca pode ser vocativo.
+    // Sem isto a proibição valia só no turno da recusa — e no replay do Willian a
+    // IA voltou a escrever "Dia, temos os três modelos..." no turno seguinte,
+    // onde não houve atualizar_ficha e portanto nenhum aviso.
+    const recusadosNaConversa = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+      .filter((m) => m.role === "user" && typeof m.content === "string")
+      .map((m) => String(m.content).trim())
+      .filter((t) => proibidoComoVocativo(t));
+    const vocativosProibidos = [...new Set([...recusadosNoTurno, ...recusadosNaConversa, ...(proibidoComoVocativo(input.inboundText ?? "") ? [(input.inboundText ?? "").trim()] : [])])];
+    // Ferramentas de ENVIO que aconteceram neste turno — inclusive as que o
+    // roteador garantiu depois de o modelo já ter escrito o texto.
+    const enviadoNoTurno = toolLog.map((t) => t.name).filter((n) => n.startsWith("enviar_"));
+    const nat = polir(final, ditasNat, vocativosProibidos, nomeLead, enviadoNoTurno);
+    if (nat.marcas.length) {
+      guardrails.push(...nat.marcas.map((m) => `naturalidade:${m}`));
+      final = nat.texto;
+      // A ação só dispara se a ferramenta NÃO rodou neste turno — senão o envio
+      // sairia duas vezes. As próprias ferramentas de envio já têm anti-reenvio,
+      // mas a conferência aqui é barata e explícita.
+      // ── Silêncio quando não há o que dizer ──────────────────────────────
+      // A resposta era SÓ cortesia ("fico à disposição, é só chamar"). O prompt
+      // do cliente pede exatamente isto: "se não houver pergunta nova, encerre de
+      // leve (ou FIQUE QUIETA)". E o contrato já suporta — respond.ts faz
+      // `if (!out.reply) return "skipped"`.
+      //
+      // Só silencia quando o lead NÃO perguntou nada neste turno. Se ele
+      // perguntou, calar seria pior que o clichê: ficaria sem resposta.
+      const leadPerguntou = /\?/.test(input.inboundText ?? "")
+        || /\b(qual|quais|quanto|quantos|quantas|como|onde|quando|por que|porque|tem|teria|da pra|d[áa] para|pode|poderia|vocês?|voce)\b/i.test(input.inboundText ?? "");
+      if (nat.soCortesia && !leadPerguntou && !toolLog.some((t) => t.name.startsWith("enviar_"))) {
+        guardrails.push("naturalidade:silenciou");
+        final = "";
+      }
+      if (nat.acao && !toolLog.some((t) => t.name === nat.acao)) {
+        try {
+          const r = await firewall.run(nat.acao, {});
+          if (r?.artifacts?.length) artifacts.push(...r.artifacts);
+          toolLog.push({ name: nat.acao, args: {}, result: r?.result ?? "" });
+          if (r?.decision) decision = r.decision;
+          guardrails.push(`naturalidade:executou:${nat.acao}`);
+        } catch {
+          guardrails.push(`naturalidade:executou_falhou:${nat.acao}`);
+        }
+      }
+    }
+  }
+
+  // ── Roteador, lado do ACRÉSCIMO ────────────────────────────────────────────
+  // O aviso que o acervo marca como obrigatório não pode depender do sorteio do
+  // RAG (3 dos 29 blocos chegam por resposta). Caso real: dois leads escolheram
+  // a Linha Popular e nenhum ouviu que ela não aceita lenha — e um deles disse,
+  // dois turnos depois, "Quero poder colocar lenha".
+  //
+  // Fica DEPOIS do polidor para o aviso não ser cortado, e ANTES do DLP, que
+  // segue com a última palavra. Só acrescenta: não reescreve nada do que a IA
+  // disse, e sai uma vez por conversa (`sóSeInédito`).
+  if (final && status === "ok") {
+    const regrasAvi = lerRegras((await getPricing().catch(() => null))?.rules);
+    if (regrasAvi.length) {
+      const ditasAvi = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+        .filter((m) => m.role === "assistant" && typeof m.content === "string")
+        .map((m) => String(m.content));
+      const acr = acrescentarRota(regrasAvi, final, ditasAvi);
+      if (acr) {
+        guardrails.push(`roteador:acrescentou:${acr.id}`);
+        final = acr.texto;
+      }
     }
   }
 

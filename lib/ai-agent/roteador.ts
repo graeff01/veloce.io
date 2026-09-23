@@ -66,6 +66,32 @@ export interface RegraRoteador {
    */
   garantirArgs?: Record<string, string>;
   /**
+   * O QUARTO sentido: ACRESCENTA um aviso obrigatório quando a própria resposta
+   * fala do produto que o exige.
+   *
+   * Impor, suprimir e garantir cobrem "tem que dizer", "não pode dizer" e "tem
+   * que fazer". Falta "não pode dizer SEM dizer também" — o aviso que o acervo
+   * marca como obrigatório e que se perde porque o conhecimento chega em 3 dos
+   * 29 blocos por resposta.
+   *
+   * Caso real (JR, 08/09/2026): o acervo diz "AVISE SEMPRE que o cliente
+   * escolher ou considerar a Linha Popular: ela NÃO é 100% refratária, por isso
+   * NÃO permite uso de lenha e NÃO pode ficar exposta ao tempo". Dois leads
+   * escolheram a Popular e nenhum foi avisado — e um deles (Bill Barbosa,
+   * 08/09 08:32) escreveu em seguida "Quero poder colocar lenha". Ia comprar o
+   * produto errado, e lenha em peça não refratária é risco físico, não só
+   * insatisfação.
+   *
+   * `avisoSe` casa a RESPOSTA da IA (não a mensagem do lead): o gatilho é ela
+   * ter mencionado o produto, por qualquer caminho — tool de catálogo,
+   * conhecimento ou texto livre. É o único ponto que pega os três.
+   *
+   * Use com `sóSeInédito` para o aviso sair UMA vez por conversa.
+   */
+  avisoSe?: string;
+  /** Texto do aviso, anexado como bloco próprio no fim da resposta. */
+  avisoTexto?: string;
+  /**
    * Só vale se a IA JÁ tiver dito isto antes na conversa. É o espelho de
    * `sóSeInédito`: aquele impede repetir, este exige o contexto.
    *
@@ -108,11 +134,12 @@ export function lerRegras(rules: unknown): RegraRoteador[] {
     // `responder` é opcional quando a regra só garante ferramenta ou só suprime:
     // exigir texto nessas descartaria a regra em silêncio, que foi como a
     // supressão ficou morta na primeira versão.
-    const soAcao = !!r?.garantirFerramenta || !!r?.assinatura;
+    const soAcao = !!r?.garantirFerramenta || !!r?.assinatura || (!!r?.avisoSe && !!r?.avisoTexto);
     if (!id || !quando || (!responder && !soAcao) || vistos.has(id)) continue;
     if (!compila(quando)) continue;
     if (r?.excetoSe && !compila(String(r.excetoSe))) continue;
     if (r?.assinatura && !compila(String(r.assinatura))) continue;
+    if (r?.avisoSe && !compila(String(r.avisoSe))) continue;
     vistos.add(id);
     out.push({
       id, quando, responder,
@@ -120,6 +147,8 @@ export function lerRegras(rules: unknown): RegraRoteador[] {
       sóSeInédito: r?.sóSeInédito ? String(r.sóSeInédito) : undefined,
       sóSeJáDito: r?.sóSeJáDito ? String(r.sóSeJáDito) : undefined,
       assinatura: r?.assinatura ? String(r.assinatura) : undefined,
+      avisoSe: r?.avisoSe ? String(r.avisoSe) : undefined,
+      avisoTexto: r?.avisoTexto ? String(r.avisoTexto) : undefined,
       garantirFerramenta: r?.garantirFerramenta ? String(r.garantirFerramenta) : undefined,
       garantirArgs: r?.garantirArgs && typeof r.garantirArgs === "object" ? { ...r.garantirArgs } : undefined,
     });
@@ -247,6 +276,48 @@ export function garantir(
     const termo = (m[1] ?? "").trim();
     if (!termo) continue;
     return { id: r.id, ferramenta: r.garantirFerramenta, args: { termo } };
+  }
+  return null;
+}
+
+export interface Acrescimo {
+  id: string;
+  texto: string;
+  aviso: string;
+}
+
+/**
+ * A resposta menciona um produto cujo aviso é obrigatório e não o traz?
+ *
+ * Devolve a resposta COM o aviso anexado como bloco próprio (no WhatsApp cada
+ * bloco vira uma mensagem, então o aviso chega destacado em vez de diluído).
+ *
+ * Não reescreve nada do que a IA disse: só acrescenta. `sóSeInédito` evita que
+ * o aviso vire ladainha em conversa longa.
+ */
+export function acrescentar(
+  regras: RegraRoteador[],
+  reply: string | null | undefined,
+  anteriores: string[] = [],
+): Acrescimo | null {
+  const r0 = reply ?? "";
+  if (!r0.trim()) return null;
+  const alvo = semAcento(r0);
+  const jaDito = anteriores.map(semAcento);
+
+  for (const r of regras) {
+    if (!r.avisoSe || !r.avisoTexto) continue;
+    const re = compila(r.avisoSe);
+    if (!re || !re.test(alvo)) continue;
+    // Já está nesta própria resposta? Então o modelo avisou sozinho.
+    const marcaAviso = semAcento(r.sóSeInédito ?? r.avisoTexto).slice(0, 60);
+    if (marcaAviso && alvo.includes(marcaAviso)) continue;
+    // Já saiu antes na conversa?
+    if (r.sóSeInédito) {
+      const marca = semAcento(r.sóSeInédito);
+      if (jaDito.some((a) => a.includes(marca))) continue;
+    }
+    return { id: r.id, texto: `${r0.trim()}\n\n${r.avisoTexto.trim()}`, aviso: r.avisoTexto.trim() };
   }
   return null;
 }

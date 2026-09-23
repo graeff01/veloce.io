@@ -49,17 +49,22 @@ test("a vision lê a imagem que já guardamos, não rebaixa da Meta", () => {
   // O webhook guarda a foto no instante em que chega. Rebaixá-la na hora de
   // responder eram duas chamadas de rede a mais, dependentes de o token ainda
   // estar válido, no meio do caminho de atender o lead.
+  //
+  // A FORMA mudou (23/09/2026) e a intenção não: a leitura passou de
+  // `waMedia.findUnique(payload.messageId)` para uma busca das imagens RECEBIDAS
+  // no banco. O motivo está em tests/vision-rajada.test.ts — o payload do job
+  // guarda só a última mensagem, então a foto da rajada era descartada.
   const r = ler("lib", "ai-agent", "respond.ts");
-  const bloco = r.slice(r.indexOf("Vision (opt-in)"), r.indexOf("// 7) Gera a resposta"));
-  assert.match(bloco, /prisma\.waMedia\.findUnique/);
-  assert.ok(bloco.indexOf("prisma.waMedia.findUnique") < bloco.indexOf("fetchWhatsAppImageDataUri"),
+  const bloco = r.slice(r.indexOf("As imagens vêm do BANCO"), r.indexOf("// 7) Gera a resposta"));
+  assert.match(bloco, /prisma\.waMessage\.findMany/, "lê do nosso banco");
+  assert.ok(bloco.indexOf("prisma.waMessage.findMany") < bloco.indexOf("fetchWhatsAppImageDataUri"),
     "o armazenamento próprio vem primeiro; a Meta é o plano B");
-  assert.match(bloco, /if \(!uri && input\.payload\.mediaId\)/, "a Meta continua como plano B");
+  assert.match(bloco, /if \(!uris\.length && input\.payload\.type === "image"/, "a Meta continua como plano B");
 });
 
 test("só mime de imagem vira data URI", () => {
   const r = ler("lib", "ai-agent", "respond.ts");
-  assert.match(r, /ALLOWED_IMAGE_MIME\.has\(guardada\.mime\)/);
+  assert.match(r, /ALLOWED_IMAGE_MIME\.has\(m\.media\.mime\)/);
 });
 
 test("o webhook manda o id da mensagem no job", () => {
