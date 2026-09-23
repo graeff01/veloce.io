@@ -476,3 +476,21 @@ test("o silêncio só vale quando o lead NÃO perguntou nada", () => {
   assert.match(orq, /if \(nat\.soCortesia && !leadPerguntou/);
   assert.match(orq, /naturalidade:silenciou/);
 });
+
+test("'qualquer coisa/problema' é a mesma família de 'qualquer dúvida'", () => {
+  // Escapou na rodada dos leads de anúncio (Cristofer): o padrão só cobria
+  // "dúvida". Generalizado em vez de virar um caso novo na lista.
+  const r = polir("Cristofer, já estou encaminhando seu pedido para um vendedor que vai te atender. Ele já vai te chamar para finalizar tudo, tá bom? Qualquer coisa, estou por aqui!", [], [], "Cristofer");
+  assert.ok(r.marcas.includes("cliche"));
+  assert.match(r.texto, /encaminhando seu pedido/, "o conteúdo tem de ficar");
+  assert.doesNotMatch(r.texto, /estou por aqui/);
+});
+
+test("'qualquer coisa' com CONTEÚDO depois não é clichê", () => {
+  for (const t of [
+    "Qualquer coisa que você precisar saber sobre a montagem, a garantia cobre 1 ano.",
+    "Qualquer medida acima de 2,40 m pede atenção com o pé-direito.",
+  ]) {
+    assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
+  }
+});

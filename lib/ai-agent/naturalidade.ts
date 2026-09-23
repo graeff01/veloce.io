@@ -137,7 +137,10 @@ function paraCasar(frase: string, nome?: string | null): string {
 
 const CLICHE: RegExp[] = [
   // "Qualquer dúvida, estou aqui para ajudar!" / "...é só chamar"
-  new RegExp(`^${PREF}(?:e\\s+)?qualquer\\s+d[uú]vida[,.!\\s]*(estou|fico|to|t[oô]|[eé]\\s+s[oó]|pode|me\\s+chama|chama|fale|pergunte)`, "i"),
+  // "Qualquer dúvida/coisa/problema" + disponibilidade. Era só "dúvida", e
+  // "Qualquer coisa, estou por aqui!" escapou na rodada dos leads de anúncio —
+  // é a mesma família, não um caso novo.
+  new RegExp(`^${PREF}(?:e\\s+)?qualquer\\s+(d[uú]vida|coisa|problema|dificuldade)[,.!\\s]*(estou|fico|to|t[oô]|[eé]\\s+s[oó]|pode|me\\s+chama|chama|fale|pergunte|avise)`, "i"),
   // "Posso ajudar com mais alguma coisa?" / "Se quiser, posso ajudar em mais alguma coisa, Rose?"
   new RegExp(`^${PREF}(posso|quer\\s+que\\s+eu)\\s+(te\\s+|lhe\\s+)?ajud[ae]r?\\s+(com|em)\\s+(mais\\s+)?(alguma|algo)`, "i"),
   // "Como posso te ajudar hoje?" — além de clichê, é o RESET de contexto:
