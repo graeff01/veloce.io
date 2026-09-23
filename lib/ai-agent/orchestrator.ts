@@ -16,6 +16,7 @@ import { deriveAgentState, agentStateMode, type AgentState } from "./conversatio
 import { slotState, scoreLead, SLOT_LABEL } from "./scoring";
 import { resolveVariant, hashString } from "./variants";
 import { searchCatalog } from "./catalog-search";
+import { produtoDoAnuncio } from "./anuncio-produto";
 import { isWithinBusinessHours } from "./gatekeeper";
 import { nowParts } from "@/lib/tz";
 import { redactPII } from "@/lib/redact";
@@ -483,7 +484,11 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     if (vterm) {
       // Busca robusta (tokens + fuzzy) — casa o modelo do anúncio mesmo com typo/palavras
       // não contíguas no título (ex: "Taos Highline" vs "Taos 1.4 HIGHLINE").
-      const item = (await searchCatalog(input.clientId, vterm))[0];
+      // NÃO pega o primeiro resultado da busca fuzzy: confere que o título do
+      // item realmente corresponde ao anúncio. Sem isso, "Taos Highline" injetava
+      // um T-Cross Highline como certeza (Boqueirão) e o anúncio institucional da
+      // JR injetava uma Parrilla 81x60 em 191 leads. Ver anuncio-produto.ts.
+      const item = produtoDoAnuncio(vterm, await searchCatalog(input.clientId, vterm));
       if (item) {
         vehicle = `${item.title}${item.price ? ` — R$ ${item.price.toLocaleString("pt-BR")}` : ""}`
           + `${item.attributes ? ` (${Object.entries(item.attributes as object).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""}`
@@ -1028,6 +1033,20 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
       // A ação só dispara se a ferramenta NÃO rodou neste turno — senão o envio
       // sairia duas vezes. As próprias ferramentas de envio já têm anti-reenvio,
       // mas a conferência aqui é barata e explícita.
+      // ── Silêncio quando não há o que dizer ──────────────────────────────
+      // A resposta era SÓ cortesia ("fico à disposição, é só chamar"). O prompt
+      // do cliente pede exatamente isto: "se não houver pergunta nova, encerre de
+      // leve (ou FIQUE QUIETA)". E o contrato já suporta — respond.ts faz
+      // `if (!out.reply) return "skipped"`.
+      //
+      // Só silencia quando o lead NÃO perguntou nada neste turno. Se ele
+      // perguntou, calar seria pior que o clichê: ficaria sem resposta.
+      const leadPerguntou = /\?/.test(input.inboundText ?? "")
+        || /\b(qual|quais|quanto|quantos|quantas|como|onde|quando|por que|porque|tem|teria|da pra|d[áa] para|pode|poderia|vocês?|voce)\b/i.test(input.inboundText ?? "");
+      if (nat.soCortesia && !leadPerguntou && !toolLog.some((t) => t.name.startsWith("enviar_"))) {
+        guardrails.push("naturalidade:silenciou");
+        final = "";
+      }
       if (nat.acao && !toolLog.some((t) => t.name === nat.acao)) {
         try {
           const r = await firewall.run(nat.acao, {});

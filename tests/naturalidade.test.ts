@@ -439,3 +439,40 @@ test("emoji no meio NÃO parte a frase quando segue em minúscula", () => {
     assert.equal(polir(t).texto, t, `alterou: ${t}`);
   }
 });
+
+// ── Silêncio quando não há o que dizer ────────────────────────────────────────
+// O prompt do cliente pede isto: "se não houver pergunta nova, encerre de leve
+// (ou FIQUE QUIETA)". Eu havia afirmado que calar exigiria mudar o contrato de
+// envio — estava errado, presumi sem verificar: respond.ts já faz
+// `if (!out.reply) return "skipped"`.
+
+test("resposta que era SÓ cortesia sinaliza silêncio", () => {
+  const r = polir("Perfeito, Cristofer! Se precisar de mais alguma coisa, é só chamar!", [], [], "Cristofer");
+  assert.equal(r.soCortesia, true, "não havia conteúdo nenhum a entregar");
+});
+
+test("sobrando um fecho curto, ele é enviado — não se cala", () => {
+  // "Tudo bem, Rose!" é fecho legítimo e melhor que silêncio.
+  const r = polir("Tudo bem, Rose! Fico à disposição para quando quiser continuar.", [], [], "Rose");
+  assert.equal(r.soCortesia, false);
+  assert.match(r.texto, /Tudo bem, Rose!/);
+});
+
+test("resposta com conteúdo nunca sinaliza silêncio", () => {
+  for (const t of [
+    "Rose, a Popular comporta 4 espetos.",
+    "Te mandei nosso catálogo 😊 Algum modelo chamou sua atenção?",
+    "O total ficou R$ 4.872,00 com montagem em Canoas.",
+  ]) {
+    assert.equal(polir(t).soCortesia, false, `sinalizou silêncio em: ${t}`);
+  }
+});
+
+test("o silêncio só vale quando o lead NÃO perguntou nada", () => {
+  // A decisão é do orquestrador, que tem o inbound. Se o lead perguntou, calar
+  // seria pior que o clichê — ficaria sem resposta.
+  const orq = readFileSync(join(process.cwd(), "lib", "ai-agent", "orchestrator.ts"), "utf8");
+  assert.match(orq, /const leadPerguntou = /);
+  assert.match(orq, /if \(nat\.soCortesia && !leadPerguntou/);
+  assert.match(orq, /naturalidade:silenciou/);
+});

@@ -297,6 +297,15 @@ export interface PolimentoResult {
   marcas: string[];
   /** Ferramenta que o pedido de permissão pedia — quem chama executa. */
   acao: string | null;
+  /**
+   * A resposta era SÓ cortesia: não havia nada a entregar depois do corte.
+   *
+   * Quem chama decide o que fazer. O certo é não enviar nada — é o que o próprio
+   * prompt do cliente pede ("se não houver pergunta nova, encerre de leve ou
+   * FIQUE QUIETA") — mas silenciar é ação forte, então a decisão fica com o
+   * orquestrador, que sabe se o lead perguntou algo.
+   */
+  soCortesia: boolean;
 }
 
 /**
@@ -318,7 +327,7 @@ export function polir(
   enviadoNoTurno: string[] = [],
 ): PolimentoResult {
   const original = reply ?? "";
-  if (!original.trim()) return { texto: original, removidas: [], marcas: [], acao: null };
+  if (!original.trim()) return { texto: original, removidas: [], marcas: [], acao: null, soCortesia: false };
 
   const removidas: string[] = [];
   const marcas: string[] = [];
@@ -493,9 +502,13 @@ export function polir(
       const comNome = nomeDoLead && nomeDoLead.trim().length >= 2
         ? confirmacao.replace(/^Te mandei/, `${nomeDoLead.trim()}, te mandei`)
         : confirmacao;
-      return { texto: comNome, removidas, marcas: [...marcas, "confirmou_envio"], acao };
+      return { texto: comNome, removidas, marcas: [...marcas, "confirmou_envio"], acao, soCortesia: false };
     }
-    return { texto: original, removidas, marcas: [...marcas, "resto_insuficiente"], acao };
+    // Tudo que saiu era cortesia/clichê? Então não havia conteúdo nenhum na
+    // mensagem — sinaliza para quem chama poder ficar quieto.
+    const tudoCortesia = marcas.some((m) => m === "cliche" || m.startsWith("permissao:"))
+      && !marcas.some((m) => m === "repetida" || m.startsWith("oferta_obsoleta"));
+    return { texto: original, removidas, marcas: [...marcas, "resto_insuficiente"], acao, soCortesia: tudoCortesia };
   }
-  return { texto, removidas, marcas, acao };
+  return { texto, removidas, marcas, acao, soCortesia: false };
 }
