@@ -494,3 +494,46 @@ test("'qualquer coisa' com CONTEÚDO depois não é clichê", () => {
     assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
   }
 });
+
+test("clichê com cauda longa antes do núcleo também sai", () => {
+  // Achado na BATERIA E2E contra produção: "Se precisar de qualquer coisa sobre
+  // churrasqueiras, fogões campeiros ou lareiras, é só chamar." O meio tinha 48
+  // caracteres e o padrão só tolerava 20.
+  const r = polir("Que bom te atender, Carlos! Se precisar de qualquer coisa sobre churrasqueiras, fogões campeiros ou lareiras, é só chamar. Fique à vontade e aproveite!", [], [], "Carlos");
+  assert.ok(r.marcas.includes("cliche"));
+  assert.equal(r.texto, "Que bom te atender, Carlos! Fique à vontade e aproveite!");
+});
+
+test("ampliar o meio não pode engolir frase com conteúdo", () => {
+  // O núcleo de disponibilidade tem de estar no FIM; é isso que separa o fecho
+  // vazio de uma condicional informativa.
+  for (const t of [
+    "Se precisar de qualquer coisa sobre a garantia, ela cobre 1 ano contra defeito de fabricação.",
+    "Se precisar de mais espetos, a linha Prime aceita mais.",
+  ]) {
+    assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
+  }
+});
+
+test("pronome oblíquo não fura o clichê — 'é só ME chamar', 'me avisa'", () => {
+  // FALSO VERDE na bateria E2E: o cenário passou com "Se precisar de qualquer
+  // coisa..., é só ME chamar, tá?" porque tanto o padrão quanto o critério do
+  // teste só previam "é só chamar". O pronome no meio furava os dois.
+  for (const t of [
+    "Prazer, Carlos! Se precisar de qualquer coisa sobre churrasqueiras, é só me chamar, tá? Um ótimo dia!",
+    "Vou te mostrar as opções depois do vídeo. Qualquer dúvida, me fala!",
+    "Perfeito! Qualquer coisa, me avisa.",
+  ]) {
+    assert.ok(polir(t).marcas.includes("cliche"), `escapou: ${t}`);
+  }
+});
+
+test("o MESMO verbo com conteúdo depois não é clichê", () => {
+  // É a fronteira que importa: "me avisa" pedindo um DADO é a conversa andando.
+  for (const t of [
+    "Me avisa qual modelo você prefere que eu monto o orçamento.",
+    "Me fala em qual cidade será a entrega que eu já calculo o frete.",
+  ]) {
+    assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
+  }
+});
