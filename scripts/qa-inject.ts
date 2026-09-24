@@ -38,6 +38,7 @@
  *   scripts/qa-inject.ts fila       → só os cenários de fila (rajada)
  */
 import crypto from "node:crypto";
+import { execSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -119,17 +120,33 @@ async function criarContato(clientId: string, connectionId: string, semeado: boo
   return contato;
 }
 
-async function limpar(contactId: string) {
+async function limpar(contactId: string, waId: string) {
   await prisma.aiInteraction.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.waMessage.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.leadProfile.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.aiJob.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.quote.deleteMany({ where: { contactId } }).catch(() => {});
+  // WaEvent referencia o contato por `refId`, não por contactId.
+  await prisma.waEvent.deleteMany({ where: { refId: contactId } }).catch(() => {});
+  await prisma.waConversation.deleteMany({ where: { contactId } }).catch(() => {});
+  // A escalação cria TASK de verdade na operação (createEscalationTask). Sem
+  // apagar, o teste deixa lixo na fila de trabalho da equipe. A descrição da
+  // task carrega o waId, que é como se acha a do contato falso.
+  await prisma.task.deleteMany({ where: { description: { contains: waId } } }).catch(() => {});
   await prisma.waContact.delete({ where: { id: contactId } }).catch(() => {});
 }
 
 interface Cenario {
   id: string;
+  /**
+   * Aciona handoff ou orçamento — ou seja, NOTIFICA gente de verdade.
+   *
+   * A escalação cria Task e avisa os operadores; o orçamento entra na fila de
+   * revisão do portal (pushPortalReview). A limpeza apaga o registro, mas a
+   * NOTIFICAÇÃO já saiu e não dá para desfazer. Por isso estes ficam fora do
+   * modo `battery` e só rodam em `full`, deliberadamente.
+   */
+  tocaOperacao?: boolean;
   /** mensagens do lead; mais de uma = RAJADA (o intervalo é `gapMs`) */
   mensagens: string[];
   gapMs?: number;
@@ -149,7 +166,19 @@ const CENARIOS: Cenario[] = [
     gapMs: 6_000,
     semeado: true,
     espera: (r) => {
-      if (r.turnos > 1) return `duplicou: ${r.turnos} turnos para uma rajada (esperado 1)`;
+      // Duplicação é o MESMO TEXTO saindo duas vezes — que foi o que aconteceu com
+      // o Willian (3 blocos idênticos, intercalados). Contar TURNOS não serve: duas
+      // mensagens com 6s de intervalo podem legitimamente virar dois turnos, cada
+      // um respondendo uma coisa diferente, e isso está certo.
+      //
+      // A primeira versão deste critério reprovou um comportamento CORRETO em
+      // produção por contar turnos (e por contar a interação semeada junto).
+      const vistos = new Set<string>();
+      for (const t of r.respostas) {
+        const k = t.trim().toLowerCase();
+        if (vistos.has(k)) return `duplicou: a mesma resposta saiu 2x — ${JSON.stringify(t.slice(0, 60))}`;
+        vistos.add(k);
+      }
       if (r.turnos === 0) return "engoliu: nenhum turno gerado";
       return null;
     },
@@ -184,7 +213,9 @@ const CENARIOS: Cenario[] = [
     semeado: true,
     espera: (r) => {
       const t = r.respostas.join(" ").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      if (/estou aqui para ajudar(?! voce)|estou por aqui|fico a disposicao|e so chamar/.test(t)) return "clichê de disponibilidade no fecho";
+      // O pronome oblíquo furava o critério: "é só ME chamar" passava por um
+      // regex que só previa "é só chamar" — e deu FALSO VERDE numa rodada.
+      if (/estou aqui para ajudar(?! voce)|estou por aqui|fico a disposicao|[eé] s[oó] (me |nos )?(chamar|cham[ae]|fal[ae]|avis[ae])|qualquer (duvida|coisa)[,.!]? *(me )?(cham|fal|avis)/.test(t)) return "clichê de disponibilidade no fecho";
       return null;
     },
   },
@@ -221,6 +252,7 @@ const CENARIOS: Cenario[] = [
   // ── Orçamento: o caminho LIVE do PDF ───────────────────────────────────────
   {
     id: "ORC1 · orça e manda o PDF sem pedir licença",
+    tocaOperacao: true,
     mensagens: ["Quero orçamento da churrasqueira Tradição, entrega em Canoas, local térreo"],
     semeado: true,
     espera: (r) => {
@@ -238,12 +270,26 @@ async function rodar(cenarios: Cenario[]) {
   const conn = await prisma.waConnection.findFirst({ where: { clientId: cliente.id }, select: { id: true, phoneNumberId: true } });
   if (!conn) { console.error("conexão não encontrada"); process.exit(1); }
 
+  // O deploy chegou? Sem isto a bateria testa o código ANTIGO e o resultado mente.
+  // Aconteceu três vezes seguidas: ❌ que era só deploy pendente.
+  try {
+    const h = await fetch(URL_WEBHOOK.replace("/api/whatsapp/webhook", "/api/health")).then((r) => r.json());
+    const local = execSync("git rev-parse --short=7 HEAD", { encoding: "utf8" }).trim();
+    if (h?.version && h.version !== "desconhecida" && h.version !== local) {
+      console.log(`\n⚠️  PRODUÇÃO está em ${h.version} e o local em ${local}.`);
+      console.log(`   A bateria testa o que está NO AR — espere o deploy antes de acreditar num ❌.\n`);
+    } else if (h?.version === local) {
+      console.log(`\n✓ produção está no commit local (${local})`);
+    }
+  } catch { /* sem /health, segue */ }
+
   console.log(`\nQA E2E · ${cliente.name} · webhook ${URL_WEBHOOK}`);
   console.log(`${cenarios.length} cenário(s) · espera ${ESPERA_MS / 1000}s por cenário\n`);
 
   let falhas = 0;
   for (const c of cenarios) {
     const contato = await criarContato(cliente.id, conn.id, c.semeado ?? true);
+    const inicio = new Date();
     try {
       for (let i = 0; i < c.mensagens.length; i++) {
         const st = await injetar(contato.waId, c.mensagens[i]);
@@ -252,8 +298,10 @@ async function rodar(cenarios: Cenario[]) {
       }
       await sleep(ESPERA_MS);
 
+      // `gte: inicio` exclui a interação SEMEADA — ela é criada antes de injetar e
+      // entrava na contagem, inflando o número de turnos do cenário.
       const inters = await prisma.aiInteraction.findMany({
-        where: { contactId: contato.id, createdAt: { gte: new Date(Date.now() - 5 * 60_000) } },
+        where: { contactId: contato.id, createdAt: { gte: inicio } },
         orderBy: { createdAt: "asc" },
         select: { outbound: true, toolCalls: true, decision: true, status: true },
       });
@@ -266,7 +314,7 @@ async function rodar(cenarios: Cenario[]) {
       for (const r of respostas) console.log(`    IA: ${r.replace(/\n/g, " ⏎ ").slice(0, 150)}`);
       if (tools.length) console.log(`    tools: ${tools.join(", ")}`);
     } finally {
-      await limpar(contato.id);
+      await limpar(contato.id, contato.waId);
     }
     console.log();
   }
@@ -275,7 +323,13 @@ async function rodar(cenarios: Cenario[]) {
 }
 
 const modo = process.argv[2] ?? "smoke";
-const alvo = modo === "battery" ? CENARIOS
+// `battery` deixa de fora o que notifica gente de verdade — ver `tocaOperacao`.
+// `full` roda tudo, e é escolha consciente de quem chama.
+const alvo = modo === "battery" ? CENARIOS.filter((c) => !c.tocaOperacao)
+  : modo === "full" ? CENARIOS
   : modo === "fila" ? CENARIOS.filter((c) => c.id.startsWith("FILA"))
   : CENARIOS.slice(0, 1);
+if (modo === "battery" && CENARIOS.some((c) => c.tocaOperacao)) {
+  console.log(`(${CENARIOS.filter((c) => c.tocaOperacao).length} cenário(s) fora: notificam a equipe. Use "full" para incluir.)`);
+}
 rodar(alvo).catch((e) => { console.error(e); process.exit(1); });

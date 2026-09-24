@@ -140,7 +140,7 @@ const CLICHE: RegExp[] = [
   // "Qualquer dúvida/coisa/problema" + disponibilidade. Era só "dúvida", e
   // "Qualquer coisa, estou por aqui!" escapou na rodada dos leads de anúncio —
   // é a mesma família, não um caso novo.
-  new RegExp(`^${PREF}(?:e\\s+)?qualquer\\s+(d[uú]vida|coisa|problema|dificuldade)[,.!\\s]*(estou|fico|to|t[oô]|[eé]\\s+s[oó]|pode|me\\s+chama|chama|fale|pergunte|avise)`, "i"),
+  new RegExp(`^${PREF}(?:e\\s+)?qualquer\\s+(d[uú]vida|coisa|problema|dificuldade)[,.!\\s]*(estou|fico|to|t[oô]|[eé]\\s+s[oó]|pode|me\\s+(cham|fal|avis)[ae]|cham[ae]|fal[ae]|pergunt[ae]|avis[ae])`, "i"),
   // "Posso ajudar com mais alguma coisa?" / "Se quiser, posso ajudar em mais alguma coisa, Rose?"
   new RegExp(`^${PREF}(posso|quer\\s+que\\s+eu)\\s+(te\\s+|lhe\\s+)?ajud[ae]r?\\s+(com|em)\\s+(mais\\s+)?(alguma|algo)`, "i"),
   // "Como posso te ajudar hoje?" — além de clichê, é o RESET de contexto:
@@ -157,10 +157,10 @@ const CLICHE: RegExp[] = [
   // conjugação varia (precisar/precise/precisa), então o radical basta.
   new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/|no\\s+que|quando|at[eé])\\s+[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
   // "Se precisar de qualquer coisa, é só chamar, tá?"
-  new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham|estou|fico)`, "i"),
+  new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,70},?\\s*([eé]\\s+s[oó]\\s+(me\\s+|nos\\s+)?(chamar|cham[ae]|fal[ae]r?|avis[ae]r?|perguntar|pedir)|pode\\s+(me\\s+)?(chamar|cham[ae])|me\\s+(cham|fal|avis)[ae]|estou\\s+(aqui|por\\s+aqui|[àa]\\s+disposi)|fico\\s+(aqui|por\\s+aqui|[àa]\\s+disposi))`, "i"),
   // "É só chamar, tá?" / "É só me chamar!" — sobra sozinha quando a frase
   // anterior do fecho já saiu. Vista no replay da Rosi.
-  new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+)?(chamar|cham[ae]|falar|avisar|mandar\\s+mensagem)(?:\\s+(?:que|e)\\s+[^.!?\\n]{0,45})?[^.!?\\n]{0,15}[.!?…]*$`, "i"),
+  new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+|nos\\s+)?(chamar|cham[ae]|fal[ae]r?|avis[ae]r?|perguntar|mandar\\s+mensagem)(?:\\s+(?:que|e)\\s+[^.!?\\n]{0,45})?[^.!?\\n]{0,15}[.!?…]*$`, "i"),
 ];
 
 // ── 2. Pedido de permissão pra fazer o que ela já pode fazer ───────────────────
