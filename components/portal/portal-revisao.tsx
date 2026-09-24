@@ -130,7 +130,10 @@ export function PortalRevisao({ token }: { token: string }) {
         .rsub{color:var(--p-muted);font-size:13px;margin:0 0 18px;line-height:1.5}
         .rnotif{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid var(--p-border);background:var(--p-surface);color:var(--p-muted);border-radius:9px;padding:7px 12px;cursor:pointer;margin-bottom:20px}
         .rnotif.on{color:var(--p-good);border-color:color-mix(in srgb,var(--p-good) 40%,transparent);cursor:default}
-        .rcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:13px;align-items:start}
+        /* min() é o que impede o estouro: numa tela de 390px o mínimo vira 100%,
+           não 480px. Sem isso o card ficava mais largo que a tela e cortava o
+           valor, os preços das linhas e o botão de aprovar. */
+        .rcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(480px,100%),1fr));gap:13px;align-items:start}
         .rcard{border:1px solid var(--p-border);background:var(--p-surface);border-radius:14px;padding:16px 18px;border-left:3px solid var(--p-accent)}
         .rtop{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
         .ric{width:40px;height:40px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--p-accent-soft);color:var(--p-accent)}
@@ -139,7 +142,7 @@ export function PortalRevisao({ token }: { token: string }) {
         .rwants{font-size:13.5px;font-weight:600;color:var(--p-text);margin-top:2px}
         .rresumo{font-size:12.5px;color:var(--p-muted);margin-top:5px;background:var(--p-bg);border:1px solid var(--p-border);border-radius:7px;padding:5px 9px;display:inline-block}
         .rmeta{font-size:12.5px;color:var(--p-muted);margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-        .rval{font-size:19px;font-weight:800;color:var(--p-accent);white-space:nowrap;text-align:right}
+        .rval{font-size:19px;font-weight:800;color:var(--p-accent);white-space:nowrap;text-align:right;margin-left:auto}
         .rlines{margin:12px 0 0;border-top:1px dashed var(--p-border);padding-top:10px;display:flex;flex-direction:column;gap:3px}
         .rline{display:flex;justify-content:space-between;font-size:12.5px;color:var(--p-muted)}
         .rline b{color:var(--p-text);font-weight:600}
@@ -150,6 +153,23 @@ export function PortalRevisao({ token }: { token: string }) {
         .rappr{display:inline-flex;align-items:center;gap:7px;background:var(--p-accent);color:var(--p-on-accent);border:none;border-radius:9px;padding:10px 16px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:auto}
         .rappr:disabled{opacity:.6;cursor:default}
         .rrej{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--p-crit) 45%,transparent);color:var(--p-crit);background:transparent;border-radius:9px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+        /* CELULAR — a tela onde isto quebrou. As ações deixam de disputar uma
+           linha só: o aprovar ocupa a largura toda (é a ação principal e o alvo
+           de toque fica decente), e o desconto para de espremer os botões. */
+        @media (max-width: 560px) {
+          .rcard{padding:14px;border-radius:12px}
+          .rtop{gap:11px}
+          .rval{font-size:17px;width:100%;text-align:left;margin-left:0;order:3;margin-top:2px}
+          .rbody{min-width:0;flex:1 1 auto}
+          .rline{gap:10px}
+          .rline span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          .rline b{flex-shrink:0}
+          .ract{gap:8px}
+          .rdisc{flex:1 1 auto;justify-content:space-between}
+          .rdisc input{width:100%;min-width:70px}
+          .rpdf,.rrej{flex:0 0 auto}
+          .rappr{width:100%;margin-left:0;justify-content:center;padding:12px 16px}
+        }
         .rempty{text-align:center;color:var(--p-muted);padding:50px 20px}
         .rempty .ei{width:56px;height:56px;border-radius:15px;background:var(--p-accent-soft);color:var(--p-accent);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
       `}</style>
