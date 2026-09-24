@@ -38,6 +38,7 @@
  *   scripts/qa-inject.ts fila       → só os cenários de fila (rajada)
  */
 import crypto from "node:crypto";
+import { execSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -268,6 +269,19 @@ async function rodar(cenarios: Cenario[]) {
   if (!cliente) { console.error("cliente não encontrado"); process.exit(1); }
   const conn = await prisma.waConnection.findFirst({ where: { clientId: cliente.id }, select: { id: true, phoneNumberId: true } });
   if (!conn) { console.error("conexão não encontrada"); process.exit(1); }
+
+  // O deploy chegou? Sem isto a bateria testa o código ANTIGO e o resultado mente.
+  // Aconteceu três vezes seguidas: ❌ que era só deploy pendente.
+  try {
+    const h = await fetch(URL_WEBHOOK.replace("/api/whatsapp/webhook", "/api/health")).then((r) => r.json());
+    const local = execSync("git rev-parse --short=7 HEAD", { encoding: "utf8" }).trim();
+    if (h?.version && h.version !== "desconhecida" && h.version !== local) {
+      console.log(`\n⚠️  PRODUÇÃO está em ${h.version} e o local em ${local}.`);
+      console.log(`   A bateria testa o que está NO AR — espere o deploy antes de acreditar num ❌.\n`);
+    } else if (h?.version === local) {
+      console.log(`\n✓ produção está no commit local (${local})`);
+    }
+  } catch { /* sem /health, segue */ }
 
   console.log(`\nQA E2E · ${cliente.name} · webhook ${URL_WEBHOOK}`);
   console.log(`${cenarios.length} cenário(s) · espera ${ESPERA_MS / 1000}s por cenário\n`);
