@@ -148,6 +148,9 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<"all" | "ads" | "waiting" | "arquivadas">("all");
+  // Quantos leads esperam, por faixa — vem do SERVIDOR (a lista é paginada, e
+  // contar aqui veria só a página carregada). Alimenta o aviso no topo da caixa.
+  const [espera, setEspera] = useState<{ atencao: number; critica: number } | null>(null);
   const [campanhaModal, setCampanhaModal] = useState(false);
   // Relógio único da lista: o rótulo "há 12min" precisa envelhecer sozinho, e um
   // intervalo por linha seria desperdício. Mesma cadência do aplicativo.
@@ -321,6 +324,7 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
         setSomenteLeitura(!!d.somenteLeitura);
         setConexoes(d.conexoes ?? []);
         setHasMore(!!d.hasMore); setList(d.conversations ?? []);
+          setEspera(d?.espera ?? null);
       }).catch(() => {});
     }, q.trim() ? 300 : 0);
     return () => { alive = false; clearTimeout(t); };
@@ -394,7 +398,8 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
     if (conexaoFiltro) sp.set("conexao", conexaoFiltro);
     recorte(sp);
     fetch(`/api/portal/${token}/conversations?${sp}`).then((r) => (r.ok ? r.json() : null)).then((d) => {
-      if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]); }
+      if (d) { setHasMore(!!d.hasMore); setList((prev) => [...(prev ?? []), ...(d.conversations ?? [])]);
+          setEspera(d?.espera ?? null); }
       setLoadingMore(false);
     }).catch(() => setLoadingMore(false));
   };
@@ -1150,6 +1155,42 @@ export function PortalConversations({ token, brandName, logoUrl, chatBgUrl, init
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── LEAD ESPERANDO: o aviso que faltava ──────────────────────────────
+            A lista já mostrava a espera (borda colorida, "há 3h"), mas só depois
+            de rolar até a conversa. Na auditoria de 19 conversas reais, 49
+            mensagens de lead ficaram SEM NENHUMA resposta e a equipe não soube.
+            Aqui o número aparece antes de qualquer rolagem, e leva direto.
+
+            As contagens vêm do SERVIDOR: a lista é paginada e contar no cliente
+            veria só a página carregada. As faixas são as de lib/portal/espera.ts.
+
+            Acima de uma hora é o que DEPENDE DE PESSOA — a IA responde em
+            segundos, então o que fica esperando é o que espera gente. */}
+        {!estadoFiltro && espera && (espera.critica > 0 || espera.atencao > 0) && (
+          <div style={{ padding: isMobile ? "0 14px 10px" : "0 12px 9px" }}>
+            <Link href={`/r/${token}/conversas?estado=aguardando`} prefetch
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, textDecoration: "none",
+                border: `1px solid color-mix(in srgb, ${espera.critica > 0 ? "var(--p-danger, #d6453d)" : "#F59E0B"} 40%, transparent)`,
+                background: `color-mix(in srgb, ${espera.critica > 0 ? "var(--p-danger, #d6453d)" : "#F59E0B"} 10%, transparent)` }}>
+              <span style={{ fontSize: 15, flexShrink: 0 }} aria-hidden>⏳</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: "var(--p-text)", lineHeight: 1.35 }}>
+                {espera.critica > 0 && (
+                  <span style={{ color: "var(--p-danger, #d6453d)" }}>
+                    {espera.critica} {espera.critica === 1 ? "lead espera" : "leads esperam"} há mais de um dia
+                  </span>
+                )}
+                {espera.critica > 0 && espera.atencao > 0 && <span style={{ color: "var(--wa-muted)" }}> · </span>}
+                {espera.atencao > 0 && (
+                  <span style={{ color: espera.critica > 0 ? "var(--wa-muted)" : "#B45309" }}>
+                    {espera.atencao} há mais de uma hora
+                  </span>
+                )}
+              </span>
+              <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, color: "var(--p-accent)", whiteSpace: "nowrap" }}>ver →</span>
+            </Link>
           </div>
         )}
 

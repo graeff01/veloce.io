@@ -141,9 +141,36 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   for (const ct of contactTags) { const arr = tagsBy.get(ct.contactId) ?? []; arr.push(ct.tag); tagsBy.set(ct.contactId, arr); }
   const nameOf = (email: string | null) => (email ? (attendants.find((a) => a.email === email)?.name || email.split("@")[0]) : null);
 
+  // ── Quantos leads esperam, por faixa de tempo ───────────────────────────────
+  // No SERVIDOR de propósito: a lista é paginada e a contagem feita no cliente
+  // veria só a página carregada. Com 1.257 conversas aguardando, um card dizendo
+  // "3 esperando" quando são 40 é pior que card nenhum.
+  //
+  // As faixas são as mesmas de lib/portal/espera.ts (1h e 24h) — se divergirem, a
+  // tela passa a discordar de si mesma sobre o que é urgente.
+  //
+  // Conta o que DEPENDE DE PESSOA: acima de uma hora a IA já teria respondido (ela
+  // responde em segundos), então o que sobra é o que espera gente.
+  const espera = await prisma.$queryRaw<{ atencao: bigint; critica: bigint }[]>`
+    SELECT
+      COUNT(*) FILTER (WHERE c."lastInboundAt" <= NOW() - INTERVAL '1 hour'
+                         AND c."lastInboundAt" >  NOW() - INTERVAL '24 hours') AS atencao,
+      COUNT(*) FILTER (WHERE c."lastInboundAt" <= NOW() - INTERVAL '24 hours')  AS critica
+    FROM "WaConversation" c
+    WHERE c."connectionId" = ANY(${idsVisiveis}::text[])
+      AND c."lastInboundAt" IS NOT NULL
+      AND (c."lastOutboundAt" IS NULL OR c."lastInboundAt" > c."lastOutboundAt")
+      AND c."portalArchivedAt" IS NULL`
+    .catch(() => [] as { atencao: bigint; critica: bigint }[]);
+
   return NextResponse.json({
     me,
     isAdmin,
+    // Contagem de quem espera, por faixa — alimenta o aviso no topo da caixa.
+    espera: {
+      atencao: Number(espera[0]?.atencao ?? 0),
+      critica: Number(espera[0]?.critica ?? 0),
+    },
     // Quem só acompanha não recebe botão que o servidor vai recusar: oferecer o
     // que vai dar erro faz a pessoa levar a culpa por um problema do produto.
     somenteLeitura: portal.somenteLeitura,
