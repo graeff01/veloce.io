@@ -575,9 +575,29 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
           const ago = (ms: number) => { const d = Math.floor(ms / 86400000); if (d >= 1) return `há ${d} dia${d > 1 ? "s" : ""}`; const h = Math.floor(ms / 3600000); return h >= 1 ? `há ${h}h` : "há pouco"; };
           const interesse = profile?.productInterest ? `Interesse anterior: ${profile.productInterest}.` : "";
           const orc = lastQuote?.summary ? `Último orçamento: ${lastQuote.summary}${lastQuote.total ? ` — ${lastQuote.total.toLocaleString("pt-BR", { style: "currency", currency: lastQuote.currency || "BRL" })}` : ""} (${ago(Date.now() - lastQuote.createdAt.getTime())}).` : "";
+          // "Não recomece do zero" não pode pular etapa que NUNCA aconteceu.
+          //
+          // Caso real (Eduardo Carvalho, 24/09/2026, apontado pela Maria): o lead
+          // escreveu em 13/08, recebeu só a saudação e sumiu. Voltou 42 dias
+          // depois perguntando de churrasqueira — e a IA, lendo "lead
+          // recorrente, não repita", pulou a pergunta de loja e o VÍDEO de
+          // apresentação, que ele nunca tinha visto.
+          //
+          // O sistema já sabe se o vídeo saiu (é a mesma trava que impede
+          // reenviá-lo). Então o contexto passa a dizer o FATO, em vez de deixar
+          // o modelo deduzir do "é recorrente".
+          const viuVideo = await prisma.waMessage.findFirst({
+            where: { contactId: input.contact.id, type: "video", aiGenerated: true },
+            select: { id: true },
+          }).catch(() => null);
+          const apresentacao = cfg?.presentationVideoUrl
+            ? (viuVideo
+                ? " Ele JÁ viu o vídeo de apresentação — não mande de novo."
+                : " ⚠️ Ele AINDA NÃO viu o vídeo de apresentação: o fluxo de apresentação continua valendo, não pule por ser recorrente.")
+            : "";
           returning = [
             `LEAD RECORRENTE: este número JÁ conversou com a gente antes (última resposta nossa ${ago(gapMs)}). ${interesse} ${orc}`.trim(),
-            `Cumprimente reconhecendo o retorno de forma NATURAL e calorosa (algo como "Oi de novo! 😊"), retome de onde parou e NÃO recomece do zero nem repita perguntas já respondidas. Se fizer sentido, referencie o que ele já tinha visto/pedido — como um vendedor que LEMBRA do cliente.`,
+            `Cumprimente reconhecendo o retorno de forma NATURAL e calorosa (algo como "Oi de novo! 😊"), retome de onde parou e NÃO recomece do zero nem repita perguntas já respondidas. Se fizer sentido, referencie o que ele já tinha visto/pedido — como um vendedor que LEMBRA do cliente.${apresentacao}`,
           ].join(" ");
         }
       } catch { /* best-effort: nunca quebra o turno da IA */ }
