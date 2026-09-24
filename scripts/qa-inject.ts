@@ -119,17 +119,33 @@ async function criarContato(clientId: string, connectionId: string, semeado: boo
   return contato;
 }
 
-async function limpar(contactId: string) {
+async function limpar(contactId: string, waId: string) {
   await prisma.aiInteraction.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.waMessage.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.leadProfile.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.aiJob.deleteMany({ where: { contactId } }).catch(() => {});
   await prisma.quote.deleteMany({ where: { contactId } }).catch(() => {});
+  // WaEvent referencia o contato por `refId`, não por contactId.
+  await prisma.waEvent.deleteMany({ where: { refId: contactId } }).catch(() => {});
+  await prisma.waConversation.deleteMany({ where: { contactId } }).catch(() => {});
+  // A escalação cria TASK de verdade na operação (createEscalationTask). Sem
+  // apagar, o teste deixa lixo na fila de trabalho da equipe. A descrição da
+  // task carrega o waId, que é como se acha a do contato falso.
+  await prisma.task.deleteMany({ where: { description: { contains: waId } } }).catch(() => {});
   await prisma.waContact.delete({ where: { id: contactId } }).catch(() => {});
 }
 
 interface Cenario {
   id: string;
+  /**
+   * Aciona handoff ou orçamento — ou seja, NOTIFICA gente de verdade.
+   *
+   * A escalação cria Task e avisa os operadores; o orçamento entra na fila de
+   * revisão do portal (pushPortalReview). A limpeza apaga o registro, mas a
+   * NOTIFICAÇÃO já saiu e não dá para desfazer. Por isso estes ficam fora do
+   * modo `battery` e só rodam em `full`, deliberadamente.
+   */
+  tocaOperacao?: boolean;
   /** mensagens do lead; mais de uma = RAJADA (o intervalo é `gapMs`) */
   mensagens: string[];
   gapMs?: number;
@@ -221,6 +237,7 @@ const CENARIOS: Cenario[] = [
   // ── Orçamento: o caminho LIVE do PDF ───────────────────────────────────────
   {
     id: "ORC1 · orça e manda o PDF sem pedir licença",
+    tocaOperacao: true,
     mensagens: ["Quero orçamento da churrasqueira Tradição, entrega em Canoas, local térreo"],
     semeado: true,
     espera: (r) => {
@@ -266,7 +283,7 @@ async function rodar(cenarios: Cenario[]) {
       for (const r of respostas) console.log(`    IA: ${r.replace(/\n/g, " ⏎ ").slice(0, 150)}`);
       if (tools.length) console.log(`    tools: ${tools.join(", ")}`);
     } finally {
-      await limpar(contato.id);
+      await limpar(contato.id, contato.waId);
     }
     console.log();
   }
@@ -275,7 +292,13 @@ async function rodar(cenarios: Cenario[]) {
 }
 
 const modo = process.argv[2] ?? "smoke";
-const alvo = modo === "battery" ? CENARIOS
+// `battery` deixa de fora o que notifica gente de verdade — ver `tocaOperacao`.
+// `full` roda tudo, e é escolha consciente de quem chama.
+const alvo = modo === "battery" ? CENARIOS.filter((c) => !c.tocaOperacao)
+  : modo === "full" ? CENARIOS
   : modo === "fila" ? CENARIOS.filter((c) => c.id.startsWith("FILA"))
   : CENARIOS.slice(0, 1);
+if (modo === "battery" && CENARIOS.some((c) => c.tocaOperacao)) {
+  console.log(`(${CENARIOS.filter((c) => c.tocaOperacao).length} cenário(s) fora: notificam a equipe. Use "full" para incluir.)`);
+}
 rodar(alvo).catch((e) => { console.error(e); process.exit(1); });
