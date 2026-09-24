@@ -29,6 +29,8 @@
     "eval:harvest": "tsx scripts/harvest-goldens.ts",
     "eval:score": "tsx scripts/score-production.ts",
     "learn": "tsx scripts/learning-report.ts",
+    "ia:relatorio": "tsx scripts/ia-relatorio.ts",
+    "ia:qa": "tsx scripts/qa-inject.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
