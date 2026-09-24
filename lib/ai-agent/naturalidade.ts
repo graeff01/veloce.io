@@ -157,7 +157,7 @@ const CLICHE: RegExp[] = [
   // conjugação varia (precisar/precise/precisa), então o radical basta.
   new RegExp(`^${PREF}(?:se\\s+(?:precisar|precise|quiser|tiver)[^,.!?\\n]{0,30},?\\s*)?(estou|fico|t[oô])\\s+(aqui|por\\s+aqui|[àa]\\s+disposi[cç][ãa]o)(?:\\s+(?:se|caso|pra|para|p/|no\\s+que|quando|at[eé])\\s+[^.!?\\n]{0,30})?\\s*[.!?…]*$`, "i"),
   // "Se precisar de qualquer coisa, é só chamar, tá?"
-  new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,20},?\\s*([eé]\\s+s[oó]|pode|me\\s+cham|cham|estou|fico)`, "i"),
+  new RegExp(`^${PREF}se\\s+(precis[ae]r?|mudar|quiser|tiver)\\s+(de\\s+)?(qualquer\\s+coisa|algo|alguma\\s+coisa|mais\\s+alguma\\s+coisa|de\\s+ideia|ideia)?[^.!?\\n]{0,70},?\\s*([eé]\\s+s[oó]\\s+(chamar|cham[ae]|falar|avisar|pedir)|pode\\s+(chamar|me\\s+cham)|me\\s+cham|estou\\s+(aqui|por\\s+aqui|[àa]\\s+disposi)|fico\\s+(aqui|por\\s+aqui|[àa]\\s+disposi))`, "i"),
   // "É só chamar, tá?" / "É só me chamar!" — sobra sozinha quando a frase
   // anterior do fecho já saiu. Vista no replay da Rosi.
   new RegExp(`^${PREF}[eé]\\s+s[oó]\\s+(me\\s+)?(chamar|cham[ae]|falar|avisar|mandar\\s+mensagem)(?:\\s+(?:que|e)\\s+[^.!?\\n]{0,45})?[^.!?\\n]{0,15}[.!?…]*$`, "i"),

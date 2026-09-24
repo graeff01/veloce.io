@@ -494,3 +494,23 @@ test("'qualquer coisa' com CONTEÚDO depois não é clichê", () => {
     assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
   }
 });
+
+test("clichê com cauda longa antes do núcleo também sai", () => {
+  // Achado na BATERIA E2E contra produção: "Se precisar de qualquer coisa sobre
+  // churrasqueiras, fogões campeiros ou lareiras, é só chamar." O meio tinha 48
+  // caracteres e o padrão só tolerava 20.
+  const r = polir("Que bom te atender, Carlos! Se precisar de qualquer coisa sobre churrasqueiras, fogões campeiros ou lareiras, é só chamar. Fique à vontade e aproveite!", [], [], "Carlos");
+  assert.ok(r.marcas.includes("cliche"));
+  assert.equal(r.texto, "Que bom te atender, Carlos! Fique à vontade e aproveite!");
+});
+
+test("ampliar o meio não pode engolir frase com conteúdo", () => {
+  // O núcleo de disponibilidade tem de estar no FIM; é isso que separa o fecho
+  // vazio de uma condicional informativa.
+  for (const t of [
+    "Se precisar de qualquer coisa sobre a garantia, ela cobre 1 ano contra defeito de fabricação.",
+    "Se precisar de mais espetos, a linha Prime aceita mais.",
+  ]) {
+    assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
+  }
+});

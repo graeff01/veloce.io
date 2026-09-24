@@ -165,7 +165,19 @@ const CENARIOS: Cenario[] = [
     gapMs: 6_000,
     semeado: true,
     espera: (r) => {
-      if (r.turnos > 1) return `duplicou: ${r.turnos} turnos para uma rajada (esperado 1)`;
+      // Duplicação é o MESMO TEXTO saindo duas vezes — que foi o que aconteceu com
+      // o Willian (3 blocos idênticos, intercalados). Contar TURNOS não serve: duas
+      // mensagens com 6s de intervalo podem legitimamente virar dois turnos, cada
+      // um respondendo uma coisa diferente, e isso está certo.
+      //
+      // A primeira versão deste critério reprovou um comportamento CORRETO em
+      // produção por contar turnos (e por contar a interação semeada junto).
+      const vistos = new Set<string>();
+      for (const t of r.respostas) {
+        const k = t.trim().toLowerCase();
+        if (vistos.has(k)) return `duplicou: a mesma resposta saiu 2x — ${JSON.stringify(t.slice(0, 60))}`;
+        vistos.add(k);
+      }
       if (r.turnos === 0) return "engoliu: nenhum turno gerado";
       return null;
     },
@@ -261,6 +273,7 @@ async function rodar(cenarios: Cenario[]) {
   let falhas = 0;
   for (const c of cenarios) {
     const contato = await criarContato(cliente.id, conn.id, c.semeado ?? true);
+    const inicio = new Date();
     try {
       for (let i = 0; i < c.mensagens.length; i++) {
         const st = await injetar(contato.waId, c.mensagens[i]);
@@ -269,8 +282,10 @@ async function rodar(cenarios: Cenario[]) {
       }
       await sleep(ESPERA_MS);
 
+      // `gte: inicio` exclui a interação SEMEADA — ela é criada antes de injetar e
+      // entrava na contagem, inflando o número de turnos do cenário.
       const inters = await prisma.aiInteraction.findMany({
-        where: { contactId: contato.id, createdAt: { gte: new Date(Date.now() - 5 * 60_000) } },
+        where: { contactId: contato.id, createdAt: { gte: inicio } },
         orderBy: { createdAt: "asc" },
         select: { outbound: true, toolCalls: true, decision: true, status: true },
       });
