@@ -150,6 +150,15 @@ interface Cenario {
   /** mensagens do lead; mais de uma = RAJADA (o intervalo é `gapMs`) */
   mensagens: string[];
   gapMs?: number;
+  /**
+   * Trata cada mensagem como um TURNO: injeta, espera a IA responder, injeta a
+   * próxima. Sem isto o cenário só testa o primeiro turno — e um fluxo que exige
+   * conversa (orçamento, por exemplo) nunca chega ao ponto que se quer provar.
+   *
+   * Foi assim que o ORC1 passou sem gerar orçamento nenhum: a IA seguia o fluxo
+   * do cliente (pergunta de loja → vídeo) e o critério passava por vacuidade.
+   */
+  emTurnos?: boolean;
   semeado?: boolean;
   /** o que precisa ser verdade no que a IA gerou */
   espera: (r: { respostas: string[]; turnos: number; tools: string[] }) => string | null;
@@ -212,6 +221,10 @@ const CENARIOS: Cenario[] = [
     mensagens: ["Obrigado, era só isso mesmo"],
     semeado: true,
     espera: (r) => {
+      // Ausência de texto passava o regex por vacuidade. O turno tem de ter
+      // acontecido: ou com resposta, ou com o silêncio deliberado (que também é
+      // um turno, com outbound vazio).
+      if (!r.turnos) return "nenhum turno gerado — o critério passaria por vacuidade";
       const t = r.respostas.join(" ").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       // O pronome oblíquo furava o critério: "é só ME chamar" passava por um
       // regex que só previa "é só chamar" — e deu FALSO VERDE numa rodada.
@@ -253,12 +266,24 @@ const CENARIOS: Cenario[] = [
   {
     id: "ORC1 · orça e manda o PDF sem pedir licença",
     tocaOperacao: true,
-    mensagens: ["Quero orçamento da churrasqueira Tradição, entrega em Canoas, local térreo"],
+    // Em TURNOS, seguindo o fluxo que o cliente exige: pergunta de loja, vídeo, e
+    // só então modelo + cidade + acesso. Numa rajada só, a IA para no vídeo e o
+    // orçamento nunca acontece — foi como este cenário passou sem provar nada.
+    emTurnos: true,
+    mensagens: [
+      "Quero a churrasqueira Tradição",
+      "É o primeiro contato",
+      "Quero entrega em Canoas, o local é térreo sem escada",
+      "Pode fazer o orçamento",
+    ],
     semeado: true,
     espera: (r) => {
+      // Sem orçamento gerado, NADA foi testado: o critério antigo passava por
+      // vacuidade. Aqui a ausência é a falha.
+      if (!r.tools.includes("gerar_orcamento")) return "não chegou a gerar orçamento — cenário não provou nada";
+      if (!r.tools.includes("enviar_orcamento")) return "gerou o orçamento e NÃO chamou enviar_orcamento (era a causa-raiz)";
       const t = r.respostas.join(" ").toLowerCase();
-      if (/posso (te )?(enviar|mandar) o (pdf|or[cç]amento)/.test(t)) return "pediu licença para mandar o PDF";
-      if (r.tools.includes("gerar_orcamento") && !r.tools.includes("enviar_orcamento")) return "gerou o orçamento e não chamou enviar_orcamento";
+      if (/posso (te )?(enviar|mandar) o (pdf|or[cç]amento)|quer que eu (envie|mande) o (pdf|or[cç]amento)/.test(t)) return "pediu licença para mandar o PDF";
       return null;
     },
   },
@@ -294,7 +319,7 @@ async function rodar(cenarios: Cenario[]) {
       for (let i = 0; i < c.mensagens.length; i++) {
         const st = await injetar(contato.waId, c.mensagens[i]);
         if (st !== 200) console.log(`    ⚠️ webhook devolveu ${st}`);
-        if (i < c.mensagens.length - 1) await sleep(c.gapMs ?? 1_200);
+        if (i < c.mensagens.length - 1) await sleep(c.emTurnos ? ESPERA_MS : (c.gapMs ?? 1_200));
       }
       await sleep(ESPERA_MS);
 
@@ -311,7 +336,11 @@ async function rodar(cenarios: Cenario[]) {
 
       console.log(`${problema ? "❌" : "✅"} ${c.id}`);
       if (problema) { falhas++; console.log(`    → ${problema}`); }
-      for (const r of respostas) console.log(`    IA: ${r.replace(/\n/g, " ⏎ ").slice(0, 150)}`);
+      // decision/status de cada turno: sem isto, "nenhuma resposta" é ambíguo
+      // entre SILÊNCIO intencional (naturalidade:silenciou), turno que não rodou e
+      // erro — e o critério passa por ausência de texto, dando falso verde.
+      for (const i of inters) console.log(`    [${i.decision}/${i.status}] ${(i.outbound ?? "(vazio)").replace(/\n/g, " ⏎ ").slice(0, 140)}`);
+      if (!inters.length) console.log("    (nenhum turno gerado)");
       if (tools.length) console.log(`    tools: ${tools.join(", ")}`);
     } finally {
       await limpar(contato.id, contato.waId);
@@ -327,8 +356,12 @@ const modo = process.argv[2] ?? "smoke";
 // `full` roda tudo, e é escolha consciente de quem chama.
 const alvo = modo === "battery" ? CENARIOS.filter((c) => !c.tocaOperacao)
   : modo === "full" ? CENARIOS
-  : modo === "fila" ? CENARIOS.filter((c) => c.id.startsWith("FILA"))
-  : CENARIOS.slice(0, 1);
+  : modo === "smoke" ? CENARIOS.slice(0, 1)
+  // Qualquer outro argumento é PREFIXO de id: `qa-inject.ts ORC` roda só o ORC1.
+  // Serve para repetir um cenário sozinho sem pagar a bateria inteira (cada
+  // cenário custa ~20s de espera e tokens de modelo).
+  : CENARIOS.filter((c) => c.id.toUpperCase().startsWith(modo.toUpperCase()));
+if (!alvo.length) { console.error(`nenhum cenário casa "${modo}". Ids: ${CENARIOS.map((c) => c.id.split(" ")[0]).join(", ")}`); process.exit(2); }
 if (modo === "battery" && CENARIOS.some((c) => c.tocaOperacao)) {
   console.log(`(${CENARIOS.filter((c) => c.tocaOperacao).length} cenário(s) fora: notificam a equipe. Use "full" para incluir.)`);
 }
