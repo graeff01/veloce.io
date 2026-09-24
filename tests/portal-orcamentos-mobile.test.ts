@@ -6,6 +6,10 @@ import { join } from "node:path";
 const ler = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8");
 const revisao = ler("components", "portal", "portal-revisao.tsx");
 const quotes = ler("components", "portal", "portal-quotes.tsx");
+// O CSS do card mora no TEMA, não no componente: `.p-wrap` é flex column e uma
+// tag <style> dentro dela vira item do flex e estica o layout — foi assim que a
+// primeira tentativa de conserto quebrou a tela inteira (print do usuário).
+const tema = ler("lib", "portal-theme.ts");
 
 // ── Orçamentos no celular: dois jeitos diferentes de estourar ────────────────
 // Reportado com print de um iPhone (390px de largura), nas duas abas:
@@ -43,14 +47,14 @@ test("o valor do orçamento não pode ser espremido pelo selo de status", () => 
   // A causa do segundo print: o valor tinha `white-space: nowrap` SEM
   // `flex-shrink: 0`. Espremido a zero pelo flex, o texto vazava por baixo do
   // selo — que é longo ("Montado — não enviado").
-  const val = /\.qval\{([^}]*)\}/.exec(quotes)?.[1] ?? "";
+  const val = /\.qval\{([^}]*)\}/.exec(tema)?.[1] ?? "";
   assert.ok(val, ".qval sumiu");
   assert.match(val, /flex-shrink:0/, "sem isto o valor volta a ser esmagado e a transbordar");
   assert.match(val, /white-space:nowrap/, "o valor não pode quebrar no meio");
 });
 
 test("o selo longo trunca em vez de empurrar o resto para fora", () => {
-  const pill = /\.qpill\{([^}]*)\}/.exec(quotes)?.[1] ?? "";
+  const pill = /\.qpill\{([^}]*)\}/.exec(tema)?.[1] ?? "";
   assert.ok(pill, ".qpill sumiu");
   assert.match(pill, /text-overflow:ellipsis/);
   assert.match(pill, /min-width:0/, "sem min-width:0 o flex se recusa a encolher o selo");
@@ -62,14 +66,22 @@ test("número e valor ficam na mesma linha, nas pontas", () => {
   // bloco de texto e brigava por espaço com o selo.
   assert.match(quotes, /<b className="qnum">Nº \{quote\.number\}<\/b>/);
   assert.match(quotes, /<b className="qval">\{brl\(quote\.total, quote\.currency\)\}<\/b>/);
-  const l1 = /\.qlinha1\{([^}]*)\}/.exec(quotes)?.[1] ?? "";
+  const l1 = /\.qlinha1\{([^}]*)\}/.exec(tema)?.[1] ?? "";
   assert.match(l1, /display:flex/);
-  assert.match(/\.qval\{([^}]*)\}/.exec(quotes)?.[1] ?? "", /margin-left:auto/, "o valor vai para a ponta");
+  assert.match(/\.qval\{([^}]*)\}/.exec(tema)?.[1] ?? "", /margin-left:auto/, "o valor vai para a ponta");
 });
 
 test("alvo de toque decente no celular", () => {
   // Botão de 34px é pequeno para o dedo; no celular vai a 38.
-  const mobile = /@media \(max-width: 560px\) \{([\s\S]*?)\n        \}/.exec(quotes)?.[1] ?? "";
+  const mobile = /@media\(max-width:560px\)\{([^\n]*)\}/.exec(tema)?.[1] ?? "";
   assert.ok(mobile, "o bloco de celular dos orçamentos sumiu");
   assert.match(mobile, /\.qbtn\{[^}]*width:38px/);
+});
+
+test("o componente não injeta <style> dentro de .p-wrap", () => {
+  // Foi exatamente isto que quebrou a tela: `.p-wrap` é flex column, e a tag
+  // <style> renderizada ali vira ITEM do flex — o card esticou até o fim da
+  // tela. O CSS do portal mora em PORTAL_UI_CSS, que já chega em todas as telas.
+  assert.doesNotMatch(quotes, /<style/, "o CSS do card pertence a lib/portal-theme.ts");
+  assert.match(tema, /\.qcard\{/, "as regras do card têm de estar no tema");
 });

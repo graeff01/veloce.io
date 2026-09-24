@@ -249,6 +249,31 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
 .p-table tbody tr:last-child td{border-bottom:none}
 .p-scroll{overflow-x:auto}
 
+/* ── Card de orçamento (lista "Enviados") ────────────────────────────────────
+   Estava quebrado no celular: o selo "Montado — não enviado" é longo e passava
+   POR CIMA do valor, que saía cortado ("$ 2.227,00"). O valor tinha
+   white-space:nowrap SEM flex-shrink:0 — espremido a zero pelo flex, o texto
+   transbordava.
+
+   Mora aqui, e nao num <style> dentro do componente, porque .p-wrap e flex
+   column: uma tag <style> renderizada ali dentro vira ITEM do flex e estica o
+   layout - foi como a primeira tentativa de conserto quebrou a tela inteira.
+   (Sem crases neste comentario: o CSS vive dentro de um template literal.) */
+.qcard{display:flex;gap:13px;align-items:flex-start;background:var(--p-surface);border:1px solid var(--p-border);border-radius:13px;padding:13px 14px}
+.qic{width:38px;height:38px;border-radius:10px;flex-shrink:0;background:var(--p-accent-soft);color:var(--p-accent);display:flex;align-items:center;justify-content:center}
+.qmain{min-width:0;flex:1}
+.qlinha1{display:flex;align-items:baseline;gap:10px}
+.qnum{font-size:14px;color:var(--p-text);flex-shrink:0}
+.qval{font-size:15px;color:var(--p-text);white-space:nowrap;flex-shrink:0;margin-left:auto}
+.qlead{font-size:12.5px;color:var(--p-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qlinha3{display:flex;align-items:center;gap:8px;margin-top:9px}
+.qacts{display:flex;gap:6px;flex-shrink:0;margin-left:auto}
+.qbtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--p-border);background:var(--p-bg);color:var(--p-muted);text-decoration:none;cursor:pointer}
+.qbtn:hover{color:var(--p-text);border-color:var(--p-accent)}
+/* o selo trunca por último, depois de o resto ter o seu espaço */
+.qpill{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:560px){.qcard{padding:12px;gap:11px}.qic{width:34px;height:34px;border-radius:9px}.qbtn{width:38px;height:38px}}
+
 ${PORTAL_ACABAMENTO_CSS}
 ${PORTAL_TOQUE_CSS}
 @media(max-width:820px){.p-metrics{grid-template-columns:repeat(2,1fr)}.p-metric:nth-child(3){border-left:none}
