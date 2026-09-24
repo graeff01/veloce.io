@@ -31,7 +31,9 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
 
 function StatusPill({ status }: { status: string }) {
   const s = STATUS[status] ?? { label: status, color: "var(--p-muted)", bg: "var(--p-raise)" };
-  return <span style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>{s.label}</span>;
+  // `qpill` deixa o selo TRUNCAR quando a tela é estreita: "Montado — não
+  // enviado" é longo e, sem isso, empurrava o resto da linha para fora.
+  return <span className="qpill" style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>{s.label}</span>;
 }
 
 export function PortalQuotes({ token }: { token: string }) {
@@ -69,6 +71,30 @@ export function PortalQuotes({ token }: { token: string }) {
         </div>
       </div>
 
+      <style jsx global>{`
+        .qcard{display:flex;gap:13px;align-items:flex-start;background:var(--p-surface);border:1px solid var(--p-border);border-radius:13px;padding:13px 14px}
+        .qic{width:38px;height:38px;border-radius:10px;flex-shrink:0;background:var(--p-accent-soft);color:var(--p-accent);display:flex;align-items:center;justify-content:center}
+        .qmain{min-width:0;flex:1}
+        .qlinha1{display:flex;align-items:baseline;gap:10px}
+        .qnum{font-size:14px;color:var(--p-text);flex-shrink:0}
+        /* flex-shrink:0 é o conserto: espremido a zero, o nowrap fazia o valor
+           transbordar por baixo do selo. margin-left:auto joga para a ponta. */
+        .qval{font-size:15px;color:var(--p-text);white-space:nowrap;flex-shrink:0;margin-left:auto}
+        .qlead{font-size:12.5px;color:var(--p-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .qlinha3{display:flex;align-items:center;gap:8px;margin-top:9px}
+        .qacts{display:flex;gap:6px;flex-shrink:0;margin-left:auto}
+        .qbtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--p-border);background:var(--p-bg);color:var(--p-muted);text-decoration:none;cursor:pointer}
+        .qbtn:hover{color:var(--p-text);border-color:var(--p-accent)}
+        /* O selo pode ser longo ("Montado — não enviado") e não pode empurrar
+           nem cobrir nada: trunca por último, depois de o resto ter seu espaço. */
+        .qpill{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        @media (max-width: 560px) {
+          .qcard{padding:12px;gap:11px}
+          .qic{width:34px;height:34px;border-radius:9px}
+          .qbtn{width:38px;height:38px}
+        }
+      `}</style>
+
       <div className="p-wrap">
         {loading ? (
           <p style={{ fontSize: 13, color: "var(--p-muted)", padding: 8 }}>Carregando…</p>
@@ -81,23 +107,25 @@ export function PortalQuotes({ token }: { token: string }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((quote) => (
-              <div key={quote.id} style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--p-surface)", border: "1px solid var(--p-border)", borderRadius: 12, padding: "14px 16px" }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: "var(--p-accent-soft)", color: "var(--p-accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <FileText size={18} />
-                </div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 14, color: "var(--p-text)" }}>Nº {quote.number}</b>
+              <div key={quote.id} className="qcard">
+                <div className="qic"><FileText size={18} /></div>
+                <div className="qmain">
+                  {/* Nº e VALOR na mesma linha, nas pontas: são os dois dados que
+                      se procura na lista. O valor tem flex-shrink:0 — sem isso ele
+                      era espremido a zero e, com white-space:nowrap, o texto
+                      transbordava POR BAIXO do selo de status. */}
+                  <div className="qlinha1">
+                    <b className="qnum">Nº {quote.number}</b>
+                    <b className="qval">{brl(quote.total, quote.currency)}</b>
+                  </div>
+                  <div className="qlead">{quote.contactName || "Lead"} · {fmtDate(quote.sentAt)}</div>
+                  <div className="qlinha3">
                     <StatusPill status={quote.status} />
+                    <div className="qacts">
+                      <button type="button" onClick={() => setPdfUrl(pdfHref(quote.id))} title="Ver PDF" className="qbtn"><Eye size={16} /></button>
+                      <a href={pdfHref(quote.id, true)} title="Baixar PDF" className="qbtn"><Download size={16} /></a>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--p-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {quote.contactName || "Lead"} · {fmtDate(quote.sentAt)}
-                  </div>
-                </div>
-                <b style={{ fontSize: 14, color: "var(--p-text)", whiteSpace: "nowrap" }}>{brl(quote.total, quote.currency)}</b>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button type="button" onClick={() => setPdfUrl(pdfHref(quote.id))} title="Ver PDF" style={{ ...iconBtn, cursor: "pointer" }}><Eye size={16} /></button>
-                  <a href={pdfHref(quote.id, true)} title="Baixar PDF" style={iconBtn}><Download size={16} /></a>
                 </div>
               </div>
             ))}
