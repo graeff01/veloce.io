@@ -514,3 +514,26 @@ test("ampliar o meio não pode engolir frase com conteúdo", () => {
     assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
   }
 });
+
+test("pronome oblíquo não fura o clichê — 'é só ME chamar', 'me avisa'", () => {
+  // FALSO VERDE na bateria E2E: o cenário passou com "Se precisar de qualquer
+  // coisa..., é só ME chamar, tá?" porque tanto o padrão quanto o critério do
+  // teste só previam "é só chamar". O pronome no meio furava os dois.
+  for (const t of [
+    "Prazer, Carlos! Se precisar de qualquer coisa sobre churrasqueiras, é só me chamar, tá? Um ótimo dia!",
+    "Vou te mostrar as opções depois do vídeo. Qualquer dúvida, me fala!",
+    "Perfeito! Qualquer coisa, me avisa.",
+  ]) {
+    assert.ok(polir(t).marcas.includes("cliche"), `escapou: ${t}`);
+  }
+});
+
+test("o MESMO verbo com conteúdo depois não é clichê", () => {
+  // É a fronteira que importa: "me avisa" pedindo um DADO é a conversa andando.
+  for (const t of [
+    "Me avisa qual modelo você prefere que eu monto o orçamento.",
+    "Me fala em qual cidade será a entrega que eu já calculo o frete.",
+  ]) {
+    assert.equal(polir(t).texto, t, `cortou indevidamente: ${t}`);
+  }
+});

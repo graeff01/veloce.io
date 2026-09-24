@@ -212,7 +212,9 @@ const CENARIOS: Cenario[] = [
     semeado: true,
     espera: (r) => {
       const t = r.respostas.join(" ").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      if (/estou aqui para ajudar(?! voce)|estou por aqui|fico a disposicao|e so chamar/.test(t)) return "clichê de disponibilidade no fecho";
+      // O pronome oblíquo furava o critério: "é só ME chamar" passava por um
+      // regex que só previa "é só chamar" — e deu FALSO VERDE numa rodada.
+      if (/estou aqui para ajudar(?! voce)|estou por aqui|fico a disposicao|[eé] s[oó] (me |nos )?(chamar|cham[ae]|fal[ae]|avis[ae])|qualquer (duvida|coisa)[,.!]? *(me )?(cham|fal|avis)/.test(t)) return "clichê de disponibilidade no fecho";
       return null;
     },
   },
