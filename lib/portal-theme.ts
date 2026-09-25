@@ -259,7 +259,11 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
    column: uma tag <style> renderizada ali dentro vira ITEM do flex e estica o
    layout - foi como a primeira tentativa de conserto quebrou a tela inteira.
    (Sem crases neste comentario: o CSS vive dentro de um template literal.) */
-.qcard{display:flex;gap:13px;align-items:flex-start;background:var(--p-surface);border:1px solid var(--p-border);border-radius:13px;padding:13px 14px}
+/* flex:0 0 auto — a altura do card é a do CONTEUDO, e nenhum pai consegue
+   estica-lo. Defensivo de proposito: o card apareceu esticado ate o fim da
+   tela num print e nao foi possivel reproduzir aqui (este Mac nao roda
+   browser headless), entao a protecao vale por construcao. */
+.qcard{display:flex;gap:13px;align-items:flex-start;flex:0 0 auto;background:var(--p-surface);border:1px solid var(--p-border);border-radius:13px;padding:13px 14px}
 .qic{width:38px;height:38px;border-radius:10px;flex-shrink:0;background:var(--p-accent-soft);color:var(--p-accent);display:flex;align-items:center;justify-content:center}
 .qmain{min-width:0;flex:1}
 .qlinha1{display:flex;align-items:baseline;gap:10px}
