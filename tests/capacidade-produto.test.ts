@@ -80,3 +80,43 @@ test("produtoNaFrase acha o produto e ignora o resto", () => {
   assert.ok(produtoNaFrase("a churrasqueira Popular é ótima", TABELA));
   assert.equal(produtoNaFrase("a Gourmet tem fogão a gás embutido", TABELA), null);
 });
+
+// ── Nome que contém outro: "Tradição" × "Tradição Gourmet" ───────────────────
+// Dados informados pela Maria (25/09/2026): a Tradição comporta 10 espetos; a
+// Tradição Gourmet e a Gourmet levam até 15 (três níveis × cinco) ou 10 mais a
+// grelha; as Parrillas NÃO comportam espetos.
+//
+// Ao cadastrar isso, o guarda passou a barrar uma resposta CERTA — "a Tradição
+// Gourmet comporta 15 espetos" — porque casava "Tradição" dentro do nome maior e
+// comparava com os 10 da Tradição. São produtos diferentes.
+const ACERVO_TG = [
+  "Churrasqueira Tradição — Linha Exclusiva. CAPACIDADE: comporta 10 espetos.",
+  "Churrasqueira Tradição Gourmet — Linha Exclusiva. ESPETOS: leva até 15 espetos no total, ou 10 espetos mais a grelha que já acompanha.",
+  "Linha Popular — de entrada. CAPACIDADE: 4 espetos.",
+].join("\n\n");
+const TAB_TG = lerTabelaCapacidade(ACERVO_TG);
+
+test("o nome mais longo vence, mesmo sem capacidade própria", () => {
+  // A Tradição Gourmet não entra na tabela de propósito (duas leituras corretas),
+  // e ainda assim a frase dela não pode ser julgada pelos números da Tradição.
+  assert.deepEqual(capacidadesErradas("A Tradição Gourmet comporta 15 espetos.", TAB_TG), []);
+  assert.deepEqual(capacidadesErradas("Na Tradição Gourmet dá 10 espetos mais a grelha.", TAB_TG), []);
+});
+
+test("a Tradição sozinha continua protegida", () => {
+  assert.deepEqual(capacidadesErradas("A churrasqueira Tradição comporta 10 espetos.", TAB_TG), []);
+  assert.equal(capacidadesErradas("A churrasqueira Tradição comporta 7 espetos.", TAB_TG).length, 1);
+  assert.equal(capacidadesErradas("A Tradição comporta 15 espetos.", TAB_TG).length, 1);
+});
+
+test("duas leituras corretas não viram número oficial", () => {
+  // Se "15" fosse cravado como oficial para a Gourmet, a IA seria barrada ao
+  // dizer "10 espetos mais a grelha" — que é verdade. Por isso o acervo usa
+  // "leva até", que não casa os gatilhos do guarda.
+  // Ela ENTRA na tabela (com quantidade 0) para desempatar o nome — o que não
+  // pode é ter número OFICIAL, que a tornaria julgável.
+  assert.ok(!TAB_TG.some((c) => /gourmet/i.test(c.produto) && c.quantidade > 0),
+    "Gourmet/Tradição Gourmet não podem ter número oficial de espetos");
+  assert.ok(TAB_TG.some((c) => /gourmet/i.test(c.produto) && c.quantidade === 0),
+    "mas precisam estar na tabela como nome, senão o desempate não acontece");
+});

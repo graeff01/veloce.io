@@ -64,11 +64,18 @@ const NOME_TEM_NUMERO_RE = new RegExp(String.raw`\d{1,2}\s*${UNIDADE}\b`, "i");
 export function lerTabelaCapacidade(texto: string): CapacidadeProduto[] {
   const out: CapacidadeProduto[] = [];
   const visto = new Set<string>();
+  const donos = new Set<string>();
+  // Todo bloco entra, mesmo sem capacidade declarada — os sem ficam com
+  // quantidade 0 e servem só para DESAMBIGUAR: "Tradição Gourmet" é outro
+  // produto que "Tradição", e sem eles o guarda casava o nome curto dentro do
+  // longo e barrava resposta CERTA ("a Tradição Gourmet comporta 15" era
+  // acusada contra os 10 da Tradição).
 
   for (const bloco of (texto ?? "").split(/\n\s*\n/)) {
     const primeiraLinha = bloco.trim().split(/\r?\n/)[0] ?? "";
     const dono = (primeiraLinha.split(/\s[—–:-]\s|[—–:]/)[0] ?? "").trim();
     if (dono.length < 3 || dono.length > 60) continue;
+    donos.add(dono);
     // Nome com número de capacidade é auto-consistente: fora da tabela.
     if (NOME_TEM_NUMERO_RE.test(dono)) continue;
 
@@ -82,6 +89,11 @@ export function lerTabelaCapacidade(texto: string): CapacidadeProduto[] {
       out.push({ produto: dono, unidade, quantidade });
     }
   }
+  // Os donos sem capacidade entram como quantidade 0: `capacidadesErradas` os
+  // ignora ao julgar, e `produtoNaFrase` os usa para desempatar o nome.
+  for (const d of donos) {
+    if (!out.some((c) => c.produto === d)) out.push({ produto: d, unidade: "", quantidade: 0 });
+  }
   return out;
 }
 
@@ -93,7 +105,17 @@ export function produtoNaFrase(frase: string, tabela: CapacidadeProduto[]): Capa
     const chave = semAcento(c.produto).replace(/^(linha|churrasqueira|fogao|forno)\s+/, "").trim();
     if (!chave || chave.length < 3) continue;
     const re = new RegExp(`\\b${chave.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`);
+    if (!c.quantidade) continue; // só nome, para desempate — não se julga por ele
     if (re.test(f) && (!achado || chave.length > semAcento(achado.produto).length)) achado = c;
+  }
+  if (!achado) return null;
+  // A frase menciona um produto de nome MAIS LONGO que contém o que casou? Então
+  // é do outro que ela fala. Vale mesmo quando o mais longo não tem capacidade
+  // própria — é exatamente o caso de "Tradição Gourmet" contra "Tradição".
+  const chaveAchada = semAcento(achado.produto).replace(/^(linha|churrasqueira|fogao|forno)\s+/, "").trim();
+  for (const outro of tabela) {
+    const outra = semAcento(outro.produto).replace(/^(linha|churrasqueira|fogao|forno)\s+/, "").trim();
+    if (outra.length > chaveAchada.length && outra.includes(chaveAchada) && f.includes(outra)) return null;
   }
   return achado;
 }
