@@ -85,3 +85,39 @@ test("o componente não injeta <style> dentro de .p-wrap", () => {
   assert.doesNotMatch(quotes, /<style/, "o CSS do card pertence a lib/portal-theme.ts");
   assert.match(tema, /\.qcard\{/, "as regras do card têm de estar no tema");
 });
+
+// ── Card com uma TELA de altura: colisão de nome de classe ───────────────────
+// O print que fechou o caso: um cartão vazio ocupando a tela inteira, e rolar
+// levava ao PRÓXIMO cartão — todos esticados, não só o primeiro.
+//
+// A causa não estava no `.qcard`, e por isso duas correções nele não resolveram:
+// o bloco de texto DENTRO do card se chamava `.qmain` — o mesmo nome que a
+// `<main>` da tela de orçamentos. As folhas da página e da casca dão a `.qmain`
+// `min-height:100dvh`, `padding-bottom:96px` e `margin-left:236px`. CSS não
+// distingue a página do filho do card: cada cartão herdou uma tela de altura.
+//
+// O teste vale para a classe de erro, não para o caso: nome de casca é
+// `<letra>main`, e nenhum desses pode virar classe de conteúdo.
+test("nenhuma classe de conteúdo pode usar nome de CASCA (<x>main)", () => {
+  const casca = new Set<string>();
+  for (const arquivo of ["portal-shell.tsx", "portal-mobile-nav.tsx"]) {
+    for (const m of ler("components", "portal", arquivo).matchAll(/\.([a-z]main)\b/g)) casca.add(m[1]);
+  }
+  assert.ok(casca.size >= 5, `esperava achar os nomes de casca, achei ${[...casca]}`);
+
+  // 1) O tema não pode declarar regra para nome de casca...
+  for (const nome of casca) {
+    assert.doesNotMatch(tema, new RegExp(`\\.${nome}\\s*[{,]`),
+      `PORTAL_UI_CSS declara .${nome}, que é nome de casca — a regra vaza para a página`);
+  }
+  // 2) ...e nenhum componente do portal pode marcar conteúdo com esse nome.
+  for (const nome of casca) {
+    assert.doesNotMatch(quotes, new RegExp(`className="${nome}"`),
+      `o card usa .${nome} (nome de casca): herda min-height:100dvh e vira uma tela de altura`);
+  }
+});
+
+test("o bloco de texto do card mantém o nome próprio", () => {
+  assert.match(quotes, /className="qc-texto"/, "o card perdeu a classe do bloco de texto");
+  assert.match(tema, /\.qc-texto\{[^}]*flex:1/, "sem flex:1 o texto não ocupa a largura restante");
+});
