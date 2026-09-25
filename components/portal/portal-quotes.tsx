@@ -113,4 +113,3 @@ export function PortalQuotes({ token }: { token: string }) {
   );
 }
 
-const iconBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, border: "1px solid var(--p-border)", background: "var(--p-bg)", color: "var(--p-muted)", textDecoration: "none" };
