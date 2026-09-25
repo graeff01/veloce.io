@@ -265,7 +265,12 @@ html[data-pt="dark"] .p-panel{box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px 
    browser headless), entao a protecao vale por construcao. */
 .qcard{display:flex;gap:13px;align-items:flex-start;flex:0 0 auto;background:var(--p-surface);border:1px solid var(--p-border);border-radius:13px;padding:13px 14px}
 .qic{width:38px;height:38px;border-radius:10px;flex-shrink:0;background:var(--p-accent-soft);color:var(--p-accent);display:flex;align-items:center;justify-content:center}
-.qmain{min-width:0;flex:1}
+/* Chamava-se '.qmain' — o MESMO nome que a <main> da tela de orçamentos usa.
+   As folhas da página e da casca dão a '.qmain' min-height:100dvh,
+   padding-bottom:96px e margin-left:236px; o seletor não distingue a página do
+   filho do card, então CADA CARTÃO ficou com uma tela de altura. Prefixo
+   'qc-' (de qcard) para nunca mais casar com nome de casca. */
+.qc-texto{min-width:0;flex:1}
 .qlinha1{display:flex;align-items:baseline;gap:10px}
 .qnum{font-size:14px;color:var(--p-text);flex-shrink:0}
 .qval{font-size:15px;color:var(--p-text);white-space:nowrap;flex-shrink:0;margin-left:auto}

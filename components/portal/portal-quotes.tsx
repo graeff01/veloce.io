@@ -85,7 +85,7 @@ export function PortalQuotes({ token }: { token: string }) {
             {filtered.map((quote) => (
               <div key={quote.id} className="qcard">
                 <div className="qic"><FileText size={18} /></div>
-                <div className="qmain">
+                <div className="qc-texto">
                   {/* Nº e VALOR na mesma linha, nas pontas: são os dois dados que
                       se procura na lista. O valor tem flex-shrink:0 — sem isso ele
                       era espremido a zero e, com white-space:nowrap, o texto
