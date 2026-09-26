@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MoreHorizontal, UserRound, X, LogOut } from "lucide-react";
+import Link from "next/link";
+import { MoreHorizontal, UserRound, X, LogOut, ChevronRight } from "lucide-react";
 import { ferramentasDoPortal, modulosPortal } from "@/lib/portal/modulos";
 
 // ── Cabeçalho padrão do PWA no celular ────────────────────────────────────────
@@ -131,7 +132,7 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
             </div>
 
             {mais ? (
-              <FolhaMais tema={tema} trocarTema={trocarTema} ferramentas={ferramentas} />
+              <FolhaMais token={token} tema={tema} trocarTema={trocarTema} ferramentas={ferramentas} />
             ) : (
               <FolhaConta account={account ?? null} sair={sair} />
             )}
@@ -147,9 +148,14 @@ const rotuloSecao: React.CSSProperties = {
   textTransform: "uppercase", letterSpacing: 0.5, padding: "10px 12px 6px",
 };
 
-function FolhaMais({ tema, trocarTema, ferramentas }: {
-  tema: "light" | "dark"; trocarTema: () => void; ferramentas: { chave: string; rotulo: string }[];
+function FolhaMais({ token, tema, trocarTema, ferramentas }: {
+  token: string; tema: "light" | "dark"; trocarTema: () => void;
+  ferramentas: { chave: string; rotulo: string; caminho?: string }[];
 }) {
+  // Uma ferramenta com `caminho` TEM tela no celular: a folha leva até ela. Sem
+  // `caminho`, continua sendo aviso de onde encontrar. Os dois casos convivem na
+  // mesma lista, então o texto de apoio só aparece quando há algo sem tela.
+  const semTela = ferramentas.filter((f) => !f.caminho);
   return (
     <div style={{ padding: "0 10px" }}>
       <div style={rotuloSecao}>Aparência</div>
@@ -164,11 +170,19 @@ function FolhaMais({ tema, trocarTema, ferramentas }: {
       {ferramentas.length > 0 && (
         <>
           <div style={rotuloSecao}>Ferramentas</div>
-          <div style={{ fontSize: 11.5, color: "var(--wa-muted)", padding: "0 12px 8px", lineHeight: 1.45 }}>
-            Relatório, configuração e auditoria são trabalho de mesa: ficam no
-            portal web, onde a tela é grande o bastante para eles.
-          </div>
-          {ferramentas.map((f) => (
+          {semTela.length > 0 && (
+            <div style={{ fontSize: 11.5, color: "var(--wa-muted)", padding: "0 12px 8px", lineHeight: 1.45 }}>
+              Relatório, configuração e auditoria são trabalho de mesa: ficam no
+              portal web, onde a tela é grande o bastante para eles.
+            </div>
+          )}
+          {ferramentas.map((f) => f.caminho ? (
+            <Link key={f.chave} href={`/r/${token}${f.caminho}`}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", textDecoration: "none" }}>
+              <span style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: "var(--p-text)" }}>{f.rotulo}</span>
+              <ChevronRight size={16} style={{ color: "var(--p-accent)", flexShrink: 0 }} />
+            </Link>
+          ) : (
             <div key={f.chave} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px" }}>
               <span style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: "var(--p-text)" }}>{f.rotulo}</span>
               <span style={{ fontSize: 11.5, color: "var(--wa-muted)", whiteSpace: "nowrap" }}>no portal web</span>

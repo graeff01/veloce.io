@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { modulosPortal, ferramentasDoPortal } from "@/lib/portal/modulos";
 
 // ── Barra inferior do PWA no celular ──────────────────────────────────────────
@@ -73,4 +75,48 @@ test('"Mais" não anuncia como trabalho de mesa o que a barra já leva', () => {
   assert.ok(!ferramentasDoPortal(secoes, naBarra).some((f) => f.chave === "equipe"));
   // Sem a barra levá-la, ela continua sendo listada — sumir em silêncio é pior.
   assert.ok(ferramentasDoPortal(secoes).some((f) => f.chave === "equipe"));
+});
+
+// ── Consumo no celular ───────────────────────────────────────────────────────
+// Pedido do usuário: no telefone faltava a tela de acompanhamento de leads que
+// existe na web. A causa não era layout — era classificação: Consumo estava na
+// lista de "trabalho de mesa" e a folha "Mais" a mostrava como texto morto
+// ("no portal web"). Acompanhar quantos atendimentos o plano já consumiu é um
+// número que se olha de relance, não trabalho de mesa.
+//
+// Ela segue FORA da barra de baixo (não se usa o dia inteiro, e a barra tem teto
+// de 4). O que mudou é ter `caminho`, que faz a folha levar até lá.
+test("Consumo tem tela no celular e a folha leva até ela", () => {
+  const f = ferramentasDoPortal(null).find((x) => x.chave === "consumo");
+  assert.ok(f, "Consumo saiu da folha Mais");
+  assert.equal(f!.caminho, "/consumo", "sem caminho, a folha volta a dizer 'no portal web'");
+});
+
+test("Consumo NÃO entra na barra de baixo", () => {
+  // A barra lista módulos do dia a dia; com teto de 4, Consumo empurraria para
+  // fora algo que a vendedora usa toda hora.
+  //
+  // O TIPO já garante o mais forte: "consumo" não pertence a `ModuloPortal`, e o
+  // typecheck recusa até comparar as duas coisas. Aqui fica o que o tipo não
+  // pega — o caminho não pode aparecer na barra por outra porta.
+  assert.ok(!modulosPortal(null, true).some((m) => m.caminho === "/consumo"));
+});
+
+test("as ferramentas sem tela continuam sem caminho", () => {
+  // Se um dia alguém der `caminho` a uma delas sem construir a tela, a folha
+  // passa a levar para uma página que não existe no celular.
+  const semTela = ["painel", "ia", "aprendizado", "objecoes", "frete"];
+  for (const chave of semTela) {
+    const f = ferramentasDoPortal(null).find((x) => x.chave === chave);
+    assert.ok(f, `${chave} saiu da folha`);
+    assert.equal(f!.caminho, undefined, `${chave} ganhou caminho sem ter tela de celular`);
+  }
+});
+
+test("a página de Consumo monta cabeçalho e barra do celular", () => {
+  // Ela nasceu só para o computador. Sem esses dois, quem abrisse no telefone
+  // ficava numa tela sem título e sem como voltar.
+  const pagina = readFileSync(join(process.cwd(), "app", "r", "[token]", "consumo", "page.tsx"), "utf8");
+  assert.match(pagina, /<PortalMobileHeader[^>]*titulo="Consumo"/, "sem cabeçalho não há botão de voltar/Mais");
+  assert.match(pagina, /<PortalMobileNav[^>]*active=\{null\}/, "a barra precisa aparecer, sem módulo aceso");
 });
