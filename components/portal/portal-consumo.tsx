@@ -48,6 +48,12 @@ export function PortalConsumo({ token }: { token: string }) {
         /* Largura cheia, como as demais telas do portal. Estava travada em
            900px centrado e destoava de todo o resto. */
         .cwrap{padding:22px 26px 70px}
+        /* No celular, 26px de cada lado num aparelho de 390px come 13% da
+           largura. O fundo da tela ja recebe folga da barra de baixo
+           (.fmain ganha padding-bottom da propria barra), entao aqui so o
+           respiro lateral muda. O titulo CONTINUA visivel de proposito: ele
+           carrega o MES, que o cabecalho movel nao mostra. */
+        @media(max-width:560px){.cwrap{padding:16px 14px 24px}.cnum{font-size:34px}.ccard{padding:16px 15px}}
         .chead{display:flex;align-items:center;gap:12px;margin-bottom:4px}
         .chead h1{font-size:20px;margin:0;letter-spacing:-.01em;text-transform:capitalize}
         .csub{color:var(--p-muted);font-size:13px;margin:0 0 20px}
