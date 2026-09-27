@@ -81,6 +81,21 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
         .pmhead{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;
           padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
           background:var(--p-surface);border-bottom:1px solid var(--p-border)}
+        /* A BARRA ESTICA O PROPRIO FUNDO PARA CIMA.
+           Medido no print do usuario (iPhone Pro Max, 1290x2796, 3x): a barra
+           comeca em CSS y=59 e tem 55px de altura — ou seja, 10+34+10, SEM o
+           padding do notch. Quer dizer que 'env(safe-area-inset-top)' esta
+           resolvendo para ZERO no aparelho dele.
+           Por que: o layout combina 'viewport-fit=cover' (o conteudo vai para
+           baixo da barra de status) com 'statusBarStyle: default' (o iOS reporta
+           os insets como 0). Nessa combinacao TODA reserva de notch do app vira
+           zero, e nada protege a faixa — o conteudo rola por baixo do relogio.
+           Este ::before nao depende de env(): estende o fundo solido da barra
+           para cima, acompanhando-a porque ela e sticky. Se um dia os insets
+           voltarem a funcionar, a barra ja cobre o topo sozinha e esta faixa
+           fica fora da tela, sem efeito. Conserta nos dois mundos. */
+        .pmhead::before{content:"";position:absolute;left:0;right:0;bottom:100%;
+          height:140px;background:var(--p-surface);pointer-events:none}
         .pmtitle{flex:1;min-width:0;text-align:center;font-size:16.5px;font-weight:800;
           letter-spacing:-0.01em;color:var(--p-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .pmsheet{animation:pmsheetUp .28s cubic-bezier(.22,1,.36,1)}
