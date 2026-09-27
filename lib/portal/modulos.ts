@@ -68,16 +68,27 @@ export function modulosPortal(
   return out.slice(0, MAX_BARRA);
 }
 
-// ── Ferramentas: o que NÃO tem tela no celular ───────────────────────────────
+// ── Ferramentas: o que fica FORA da barra de baixo ───────────────────────────
 // Decisão de produto, a mesma do aplicativo: a barra leva só o que se usa o dia
-// inteiro. Painel, Equipe, Frete, Consumo, IA, Aprendizado e Objeções são
-// trabalho de MESA — relatório, configuração, auditoria — e continuam no portal
-// web, numa tela grande onde cabem.
+// inteiro. Painel, Equipe, Frete, IA, Aprendizado e Objeções são trabalho de
+// MESA — relatório, configuração, auditoria — e continuam no portal web, numa
+// tela grande onde cabem.
 //
 // Elas aparecem na folha "Mais" mesmo assim, e é de propósito: sumir em silêncio
 // faz o produto parecer incompleto; dizer ONDE estão faz parecer deliberado.
+//
+// EXCEÇÃO com `caminho`: a ferramenta TEM tela no celular e a folha leva até ela.
+// CONSUMO é a primeira. Ela não é trabalho de mesa — é o número que se olha de
+// relance ("quantos atendimentos já usei do meu plano?"), e mandar quem está no
+// telefone abrir o computador para ver um número era o defeito, não a regra.
+// Continua fora da barra porque não se usa o dia inteiro.
 
-export interface Ferramenta { chave: string; rotulo: string }
+export interface Ferramenta {
+  chave: string;
+  rotulo: string;
+  /** Caminho a partir de /r/<token>. Ausente = sem tela no celular. */
+  caminho?: string;
+}
 
 /** Mesma ordem e mesmos rótulos do aplicativo, para as duas telas concordarem. */
 const FERRAMENTAS: Ferramenta[] = [
@@ -86,7 +97,7 @@ const FERRAMENTAS: Ferramenta[] = [
   { chave: "ia", rotulo: "IA" },
   { chave: "aprendizado", rotulo: "Aprendizado" },
   { chave: "objecoes", rotulo: "Objeções" },
-  { chave: "consumo", rotulo: "Consumo" },
+  { chave: "consumo", rotulo: "Consumo", caminho: "/consumo" },
   { chave: "frete", rotulo: "Frete" },
 ];
 
