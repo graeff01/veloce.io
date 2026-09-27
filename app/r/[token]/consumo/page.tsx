@@ -37,7 +37,7 @@ export default async function ConsumoPage({ params }: { params: Promise<{ token:
     <main className="fmain">
       <script dangerouslySetInnerHTML={{ __html: themeInitScript(token, portal.mode) }} />
       <PortalShell token={token} brandName={client?.name || "Painel"} logoUrl={client?.logoUrl ?? null} active="consumo" sections={shell.sections} account={shell.account} aiTest={shell.aiTest} quotesEnabled={shell.quotesEnabled} />
-      <PortalMobileNav token={token} active={null} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
+      <PortalMobileNav token={token} active="consumo" sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <PortalMobileHeader token={token} titulo="Consumo" account={shell.account} sections={shell.sections} quotesEnabled={shell.quotesEnabled} />
       <style>{`${themeSwitchCss(portal.accentColor, portal.mode)} ${PORTAL_TOQUE_CSS} *{box-sizing:border-box}
         .fmain{min-height:100dvh;color:var(--p-text);font-family:system-ui,-apple-system,sans-serif;background-color:var(--p-bg);

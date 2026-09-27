@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Megaphone, Filter, FileText, Users } from "lucide-react";
+import { MessageCircle, Megaphone, Filter, FileText, Users, Gauge } from "lucide-react";
 import { modulosPortal, type ModuloPortal } from "@/lib/portal/modulos";
 import { NumerosPopover, useNumerosDoPortal } from "@/components/portal/portal-numeros-sheet";
 
@@ -27,6 +27,7 @@ const ICONE: Record<ModuloPortal, React.ReactNode> = {
   anuncios: <Megaphone size={20} />,
   funil: <Filter size={20} />,
   revisao: <FileText size={20} />,
+  consumo: <Gauge size={20} />,
   equipe: <Users size={20} />,
 };
 
@@ -69,6 +70,11 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
   const modulos = modulosPortal(sections, !!quotesEnabled);
   if (modulos.length === 0) return null;
 
+  // Cinco abas num aparelho de 390px dão ~70px cada. Nesse espaço o rótulo tem
+  // de encolher: "Orçamentos" a 10,5px passa de 70px e quebraria a linha. Com
+  // quatro ou menos, nada muda — é o caso da maioria dos clientes.
+  const apertado = modulos.length >= 5;
+
   const contagem = (chave: ModuloPortal) =>
     chave === "conversas" ? waiting : chave === "revisao" ? reviews : 0;
 
@@ -88,7 +94,7 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
           const on = active === m.chave;
           const n = contagem(m.chave);
           const abre = varios ? ABRE_FOLHA[m.chave] : undefined;
-          const estilo = { flex: 1, textDecoration: "none", display: "flex", flexDirection: "column" as const, alignItems: "center" as const, gap: 3, padding: "7px 4px", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease", border: "none", font: "inherit", cursor: "pointer" };
+          const estilo = { flex: 1, textDecoration: "none", display: "flex", flexDirection: "column" as const, alignItems: "center" as const, gap: 3, padding: apertado ? "6px 2px" : "7px 4px", borderRadius: 16, background: on ? "color-mix(in srgb, var(--p-accent) 11%, transparent)" : "transparent", color: on ? "var(--p-accent)" : "var(--wa-muted)", transition: "color .2s ease, background .2s ease", border: "none", font: "inherit", cursor: "pointer" };
           const Alvo = abre
             ? ({ children }: { children: React.ReactNode }) => (
                 <button type="button" aria-current={on ? "page" : undefined} style={estilo}
@@ -110,7 +116,7 @@ export function PortalMobileNav({ token, active, sections, quotesEnabled }: {
                   </span>
                 )}
               </span>
-              <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: "-0.01em" }}>{m.rotulo}</span>
+              <span style={{ fontSize: apertado ? 9.5 : 10.5, fontWeight: on ? 700 : 500, letterSpacing: "-0.01em", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.rotulo}</span>
             </Alvo>
           );
         })}
