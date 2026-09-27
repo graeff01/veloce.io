@@ -140,3 +140,45 @@ test("a cor da barra de status segue o APARELHO, não o cadastro", () => {
   assert.match(tema, /MutationObserver/, "sem observar data-pt, a cor não acompanha a troca de tema");
   assert.match(tema, /attributeFilter:\['data-pt'\]/);
 });
+
+// ── A tampa do topo ─────────────────────────────────────────────────────────
+// Três tentativas de achar a CAUSA falharam (reserva dobrada, ::before,
+// viewport-fit). Medido no print do usuário em dois temas, no app instalado E no
+// Safari: a barra fica sempre em CSS y=59 com 54px de altura. Há um vão de 59px
+// acima dela por onde o conteúdo passa, e a origem dele não está no nosso CSS.
+//
+// Decisão do dono do produto: parar de caçar e TAMPAR. O conteúdo continua
+// rolando por trás; ninguém vê.
+test("existe uma tampa sólida entre o topo da tela e a barra", () => {
+  const regra = /\.pmtopo\{([^}]*)\}/.exec(barra)?.[1] ?? "";
+  assert.ok(regra, "a tampa do topo sumiu — o conteúdo volta a aparecer no relógio");
+  assert.match(regra, /position:fixed/, "presa na TELA: não pode depender de onde a barra ficou");
+  assert.match(regra, /top:0/);
+  assert.match(regra, /background:var\(--p-surface\)/, "mesma cor da barra, senão vira uma tarja");
+  assert.match(regra, /pointer-events:none/, "não pode roubar o toque de nada");
+  assert.doesNotMatch(regra, /env\(/, "env() é justamente o que falha no iPhone");
+});
+
+test("a tampa fica acima da barra e abaixo das folhas", () => {
+  // z-index 20 é a barra, 70/71 são as folhas "Mais"/"Conta". A tampa precisa
+  // cobrir o conteúdo sem cobrir um menu aberto.
+  const z = Number(/\.pmtopo\{[^}]*z-index:(\d+)/.exec(barra)?.[1]);
+  assert.ok(z > 20, `z-index ${z} não cobre a barra`);
+  assert.ok(z < 70, `z-index ${z} taparia as folhas abertas`);
+});
+
+test("a altura da tampa é MEDIDA, não cravada", () => {
+  // Cravar 59px cobriria a própria barra num aparelho sem recorte, escondendo o
+  // botão de menu. A tampa mede o vão real e cobre exatamente ele; sem vão, zero.
+  assert.match(barra, /getBoundingClientRect\(\)\.top/, "a tampa precisa medir o vão");
+  assert.match(barra, /Math\.max\(0,/, "vão negativo não existe: altura mínima é zero");
+  assert.match(barra, /addEventListener\("scroll", medir/, "o vão muda ao rolar (a barra gruda)");
+  assert.doesNotMatch(barra, /\.pmtopo\{[^}]*height:\d/, "altura cravada no CSS quebraria aparelho sem recorte");
+});
+
+test("a tampa some onde a barra some", () => {
+  // No computador e dentro da conversa a barra não existe; uma faixa solta no
+  // topo seria um retângulo sem explicação.
+  assert.match(barra, /@media\(min-width:1024px\)\{ \.pmtopo\{display:none\} \}/);
+  assert.match(barra, /html\[data-conversa-aberta="1"\] \.pmtopo\{display:none\}/);
+});

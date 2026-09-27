@@ -39,6 +39,39 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
     setTema(document.documentElement.getAttribute("data-pt") === "dark" ? "dark" : "light");
   }, []);
 
+  // ── A TAMPA DO TOPO ────────────────────────────────────────────────────────
+  // Três tentativas de achar a causa do conteudo aparecendo acima da barra
+  // falharam (reserva dobrada, ::before, viewport-fit). Medido no print do
+  // usuario, em DOIS temas e tanto no app instalado quanto no Safari, a barra
+  // fica sempre em CSS y=59 com 54px de altura — ou seja, ha um vao de 59px
+  // acima dela por onde o conteudo passa.
+  //
+  // Decisao do dono do produto: parar de caçar a causa e TAMPAR. O conteudo
+  // continua rolando por tras, mas ninguem ve.
+  //
+  // A altura NAO e cravada. Cravar 59px cobriria a propria barra num aparelho
+  // sem recorte, escondendo o botao de menu. Aqui a tampa mede o vao real — o
+  // quanto a barra esta afastada do topo da tela — e cobre exatamente isso. Sem
+  // vao, a altura da zero e nada muda.
+  const [tampa, setTampa] = useState(0);
+  useEffect(() => {
+    const barra = document.querySelector<HTMLElement>(".pmhead");
+    if (!barra) return;
+    const medir = () => setTampa(Math.max(0, Math.round(barra.getBoundingClientRect().top)));
+    medir();
+    window.addEventListener("scroll", medir, { passive: true });
+    window.addEventListener("resize", medir);
+    // A troca de tema muda a cor, nao a altura — mas a barra pode mudar de
+    // tamanho se a fonte do sistema mudar, e o observador pega isso de graça.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(medir) : null;
+    ro?.observe(barra);
+    return () => {
+      window.removeEventListener("scroll", medir);
+      window.removeEventListener("resize", medir);
+      ro?.disconnect();
+    };
+  }, []);
+
   // Esc fecha qualquer folha aberta, como em qualquer modal.
   useEffect(() => {
     if (!mais && !conta) return;
@@ -104,6 +137,13 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
         /* O título passou para a barra: no celular, o do conteúdo viraria eco. */
         @media(max-width:1023px){ .pm-titulo-conteudo{display:none} }
         @media(min-width:1024px){ .pmhead{display:none} }
+        /* A tampa: faixa solida entre o topo da tela e a barra. Fixa na tela
+           (nao no documento), entao nao depende de onde a barra ficou nem de
+           env(), que e justamente o que falha no iPhone. z-index 21 poe ela
+           acima da barra (20) e bem abaixo das folhas (70). */
+        .pmtopo{position:fixed;top:0;left:0;right:0;z-index:21;background:var(--p-surface);pointer-events:none}
+        @media(min-width:1024px){ .pmtopo{display:none} }
+        html[data-conversa-aberta="1"] .pmtopo{display:none}
         /* O TOPO NO PWA: a reserva do notch estava sendo feita DUAS vezes.
            'portal-shell' dá 'padding-top:env(safe-area-inset-top)' a todos os
            mains (.pmain/.fmain/.imain/.amain/.tmain/.qmain) e esta barra já
@@ -125,6 +165,8 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
            deixavam a conversa começando no rodapé. */
         html[data-conversa-aberta="1"] .pmhead{display:none}
       `}</style>
+
+      <div className="pmtopo" aria-hidden style={{ height: tampa }} />
 
       <header className="pmhead">
         <button onClick={() => setMais(true)} aria-label="Mais opções" aria-expanded={mais}
