@@ -34,7 +34,15 @@ test("as cores batem com as do tema", () => {
   assert.ok(tema.includes(`surface: "${escuro}"`), `o tema escuro não usa ${escuro}`);
 });
 
-test("o viewport-fit não se perdeu na mudança", () => {
-  // Ele é o que faz env(safe-area-inset-*) valer no iPhone.
-  assert.match(layout, /viewportFit: "cover"/);
+test("o viewport-fit NÃO pode voltar sozinho", () => {
+  // Este teste já afirmou o contrário — "ele é o que faz env(safe-area-inset-*)
+  // valer no iPhone" — e estava errado. Medido no print do usuário (iPhone Pro
+  // Max, 1290x2796): com `cover` + statusBarStyle "default", o iOS deixa o
+  // conteúdo passar POR BAIXO do relógio e ainda reporta os insets como ZERO. A
+  // barra do portal saía com 55px (10+34+10), sem o padding do notch.
+  //
+  // Sem `cover`, o sistema reserva a faixa sozinho. Os env() seguem zero — agora
+  // corretamente, porque não há o que reservar.
+  assert.doesNotMatch(layout, /viewportFit: "cover"/,
+    "cover sem black-translucent é justamente o defeito");
 });

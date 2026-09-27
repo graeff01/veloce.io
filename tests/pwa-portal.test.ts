@@ -80,11 +80,18 @@ test("o service worker é registrado para todo mundo", () => {
   assert.match(layout, /<PortalPWA \/>/);
 });
 
-test("o notch só é respeitado com viewport-fit", () => {
-  // Todo o env(safe-area-inset-*) espalhado pelas telas resolve para ZERO no
-  // iPhone sem isto.
+test("o notch é respeitado pelo SISTEMA, não por viewport-fit", () => {
+  // A crença anterior era que sem `cover` todo env(safe-area-inset-*) resolvia
+  // para zero. Resolve mesmo — mas COM `cover` também resolvia, porque o que
+  // devolve os insets é statusBarStyle "black-translucent", não o viewport-fit.
+  // Com "default" + cover, o iOS junta o pior dos dois: conteúdo por baixo do
+  // relógio E insets zerados.
+  //
+  // Sem `cover` o sistema reserva a faixa, e o conteúdo nunca entra nela.
   const layout = ler("app", "r", "[token]", "layout.tsx");
-  assert.match(layout, /viewportFit: "cover"/);
+  assert.doesNotMatch(layout, /viewportFit: "cover"/);
+  assert.doesNotMatch(layout.replace(/\/\/[^\n]*/g, ""), /black-translucent/,
+    "black-translucent forçaria texto claro no relógio, e o tema é escolha de aparelho");
 });
 
 test("o convite de instalar respeita quem disse não", () => {

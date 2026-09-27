@@ -108,3 +108,35 @@ test("a faixa cobre com folga o maior notch", () => {
   assert.ok(h, "a faixa precisa de altura explícita");
   assert.ok(Number(h) >= 120, `${h}px é pouco: não cobre notch + repuxo`);
 });
+
+// ── A raiz: viewport-fit=cover com statusBarStyle "default" ─────────────────
+// Os dois consertos anteriores tentaram PINTAR por cima da faixa. Não bastava:
+// com `cover` + `"default"`, o iOS deixa o conteúdo entrar embaixo do relógio E
+// reporta os insets como zero — então não havia como reservar nem cobrir.
+//
+// Sem `cover`, o sistema reserva a faixa sozinho e o conteúdo nunca chega lá.
+test("o portal NÃO usa viewport-fit=cover", () => {
+  const layout = ler("app", "r", "[token]", "layout.tsx");
+  assert.doesNotMatch(layout, /viewportFit:\s*["']cover["']/,
+    "cover só é seguro com statusBarStyle black-translucent — com 'default' ele deixa o conteúdo passar por baixo do relógio");
+});
+
+test("cover e black-translucent só podem voltar JUNTOS", () => {
+  // Um sem o outro é o defeito. Se alguém religar cover, tem de religar o estilo
+  // também — e aí resolver o contraste do relógio no tema claro.
+  const layout = ler("app", "r", "[token]", "layout.tsx");
+  const temCover = /viewportFit:\s*["']cover["']/.test(layout);
+  const temTranslucent = /black-translucent/.test(layout.replace(/\/\/[^\n]*/g, ""));
+  assert.equal(temCover, temTranslucent,
+    "cover exige black-translucent; black-translucent sem cover não serve para nada");
+});
+
+test("a cor da barra de status segue o APARELHO, não o cadastro", () => {
+  // O tema é preferência local (localStorage), e o modo do banco é só o padrão:
+  // a JR está 'light' no cadastro e é usada no escuro. Sem sincronizar, sobra uma
+  // tarja branca em cima de uma tela preta.
+  const tema = ler("lib", "portal-theme.ts");
+  assert.match(tema, /meta\[name=theme-color\]/, "o script parou de acertar a cor da barra");
+  assert.match(tema, /MutationObserver/, "sem observar data-pt, a cor não acompanha a troca de tema");
+  assert.match(tema, /attributeFilter:\['data-pt'\]/);
+});

@@ -293,6 +293,33 @@ ${PORTAL_TOQUE_CSS}
 
 // Script inline (anti-flash): define data-pt no <html> a partir do localStorage,
 // caindo no modo da agência (auto = segue o aparelho).
+// Cores da barra de status do PWA. São as mesmas '--p-surface' dos dois temas.
+// Ficam aqui, e não no layout, porque quem sabe o tema REAL é o aparelho: o
+// modo do banco é só o padrão, e a pessoa troca por cima dele no botão (a JR
+// está 'light' no cadastro e o dono usa no escuro).
+export const BARRA_CLARA = "#ffffff";
+export const BARRA_ESCURA = "#14171d";
+
 export function themeInitScript(token: string, defaultMode: string): string {
-  return `(function(){try{var k='pt-${token}';var m=localStorage.getItem(k)||'${defaultMode}';if(m==='auto'){m=(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-pt',m);}catch(e){}})();`;
+  // Além de aplicar o tema, MANTÉM a cor da barra de status igual ao que está na
+  // tela. Sem isto, a barra segue o modo do BANCO e não o do aparelho: quem usa
+  // no escuro um portal cadastrado como claro fica com uma tarja branca em cima
+  // de uma tela preta.
+  //
+  // O observador cobre as TRÊS telas que trocam o tema (barra do celular, menu
+  // lateral e conversas) sem precisar tocar em nenhuma delas — e cobre qualquer
+  // outra que apareça depois.
+  return `(function(){try{
+var k='pt-${token}';var m=localStorage.getItem(k)||'${defaultMode}';
+if(m==='auto'){m=(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';}
+document.documentElement.setAttribute('data-pt',m);
+function pintar(){try{
+ var d=document.documentElement.getAttribute('data-pt')==='dark';
+ var t=document.querySelector('meta[name=theme-color]');
+ if(!t){t=document.createElement('meta');t.setAttribute('name','theme-color');document.head.appendChild(t);}
+ t.setAttribute('content',d?'${BARRA_ESCURA}':'${BARRA_CLARA}');
+}catch(e){}}
+pintar();
+if(window.MutationObserver){new MutationObserver(pintar).observe(document.documentElement,{attributes:true,attributeFilter:['data-pt']});}
+}catch(e){}})();`;
 }
