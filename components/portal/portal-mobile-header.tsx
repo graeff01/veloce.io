@@ -89,6 +89,22 @@ export function PortalMobileHeader({ token, titulo, account, sections, quotesEna
         /* O título passou para a barra: no celular, o do conteúdo viraria eco. */
         @media(max-width:1023px){ .pm-titulo-conteudo{display:none} }
         @media(min-width:1024px){ .pmhead{display:none} }
+        /* O TOPO NO PWA: a reserva do notch estava sendo feita DUAS vezes.
+           'portal-shell' dá 'padding-top:env(safe-area-inset-top)' a todos os
+           mains (.pmain/.fmain/.imain/.amain/.tmain/.qmain) e esta barra já
+           reserva o mesmo espaço no proprio padding. O resultado no telefone era
+           uma faixa da altura do notch que a barra NAO cobria: o conteudo rolava
+           por tras dela e aparecia colado no relogio, em todas as abas.
+           Quem tem esta barra nao precisa da reserva do main — ela pinta o
+           proprio fundo solido ate o topo. As telas SEM barra (Frete,
+           Aprendizado, IA, Objecoes) continuam com a reserva do shell, que e o
+           que as protege.
+           Classe DOBRADA de proposito: media query nao soma especificidade e
+           esta folha nao pode depender de vir depois da do shell. Mesmo recurso
+           do '.ptop.ptop' em PORTAL_TOQUE_CSS, pelo mesmo motivo. */
+        @media(max-width:1023px){
+          .pmain.pmain,.fmain.fmain,.imain.imain,.amain.amain,.tmain.tmain,.qmain.qmain{padding-top:0}
+        }
         /* Dentro da conversa, no celular: a thread traz o próprio cabeçalho
            (voltar, nome do lead, ações). Dois empilhados comiam meia tela e
            deixavam a conversa começando no rodapé. */
