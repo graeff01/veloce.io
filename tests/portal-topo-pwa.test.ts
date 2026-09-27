@@ -74,3 +74,37 @@ test("as telas SEM barra mantêm a reserva do shell", () => {
       `${nome} passou a montar a barra — reveja se ela ainda precisa da reserva do shell`);
   }
 });
+
+// ── A faixa acima da barra (o que o primeiro conserto NÃO resolveu) ──────────
+// Tirar a reserva dobrada era correto, mas NÃO era a causa: reproduzi os dois
+// estados em Chrome headless e a geometria ficou idêntica.
+//
+// A medição do print (iPhone Pro Max, 1290x2796, 3x) deu a resposta: a barra
+// começa em CSS y=59 e tem 55px de altura — 10+34+10, SEM o padding do notch.
+// Ou seja, env(safe-area-inset-top) resolve para ZERO no aparelho.
+//
+// Causa: o layout combina viewport-fit=cover (o conteúdo vai para baixo da barra
+// de status) com statusBarStyle "default" (o iOS reporta os insets como 0).
+// Nessa combinação toda reserva de notch do app vira zero.
+//
+// O conserto não depende de env(): a barra estende o próprio fundo para cima.
+// Reproduzido e verificado em Chrome headless, antes e depois.
+test("a barra estende o fundo para cima, sem depender de env()", () => {
+  const regra = /\.pmhead::before\{([^}]*)\}/.exec(barra)?.[1] ?? "";
+  assert.ok(regra, "a extensão de fundo da barra sumiu — a faixa do notch volta a vazar");
+  assert.match(regra, /position:absolute/);
+  assert.match(regra, /bottom:100%/, "sem bottom:100% a faixa não fica ACIMA da barra");
+  assert.match(regra, /background:var\(--p-surface\)/, "a faixa tem de ser a MESMA cor da barra");
+  assert.doesNotMatch(regra, /env\(/, "o conserto não pode depender de env(): é justamente o que falha");
+  // A barra é sticky, então a faixa viaja com ela. Sem isso ficaria presa no
+  // topo do documento e não cobriria nada depois da primeira rolagem.
+  assert.match(barra, /\.pmhead\{[^}]*position:sticky/);
+});
+
+test("a faixa cobre com folga o maior notch", () => {
+  // 59px é o inset do iPhone Pro Max. Precisa de margem para aparelhos maiores
+  // e para o repuxo (rubber band) ao arrastar no topo.
+  const h = /\.pmhead::before\{[^}]*height:(\d+)px/.exec(barra)?.[1];
+  assert.ok(h, "a faixa precisa de altura explícita");
+  assert.ok(Number(h) >= 120, `${h}px é pouco: não cobre notch + repuxo`);
+});
