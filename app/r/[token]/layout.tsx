@@ -5,9 +5,28 @@ import { prisma } from "@/lib/prisma";
 import { resolvePortal } from "@/lib/notifications/client-portal";
 import { PortalPWA } from "@/components/portal/portal-pwa";
 
-// `viewport-fit=cover` é o que faz `env(safe-area-inset-*)` valer alguma coisa
-// no iPhone. Sem ele todo o cuidado com notch e barra inferior espalhado pelas
-// telas resolve para zero.
+// SEM `viewport-fit=cover`, de propósito — isto é correção, não esquecimento.
+//
+// A teoria era que `cover` fazia `env(safe-area-inset-*)` valer. Na prática ele
+// só vale junto com `statusBarStyle: "black-translucent"`. Com `"default"`, que é
+// o que usamos, o iOS faz as DUAS coisas ruins ao mesmo tempo: deixa o conteúdo
+// passar por baixo da barra de status E reporta os insets como ZERO. Aí toda
+// reserva de notch do app calcula zero, nada protege a faixa, e o conteúdo rola
+// por baixo do relógio — em todas as abas.
+//
+// Medido no print do usuário (iPhone Pro Max, 1290x2796): a barra do portal saía
+// com 55px de altura (10+34+10), ou seja SEM o padding do notch. É a prova de
+// que `env(safe-area-inset-top)` valia zero.
+//
+// Sem `cover`, o sistema reserva a faixa sozinho e o conteúdo nunca entra nela.
+// Os `env(...)` continuam zero — agora CORRETAMENTE, porque não há o que
+// reservar: quem reservou foi o iOS.
+//
+// A alternativa era `black-translucent`, que devolve os insets de verdade. Foi
+// descartada: ela força texto CLARO na barra de status, e o tema é escolha de
+// APARELHO (localStorage), não do cadastro — a JR está 'light' no banco e é usada
+// no escuro. Não dá para saber no servidor com que tema a barra teria de
+// combinar, então o relógio ficaria invisível para parte dos usuários.
 //
 // `themeColor` resolve um problema que PARECIA ser nosso: sem ele, o Safari usa
 // a barra translúcida dele, que AMOSTRA o conteúdo da página por trás. No
@@ -27,7 +46,6 @@ export async function generateViewport({ params }: { params: Promise<{ token: st
   return {
     width: "device-width",
     initialScale: 1,
-    viewportFit: "cover",
     themeColor: escuro ? ESCURO : CLARO,
   };
 }
