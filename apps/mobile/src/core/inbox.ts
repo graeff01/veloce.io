@@ -36,6 +36,12 @@ export function modulosPara(me: Me | null): ModuloRota[] {
   // trabalho inteiro das gerentes). Aqui a tela existe, mas fora das abas: para
   // acompanhar o portal, `app/equipe.tsx` precisa virar uma rota de `(app)`.
   // Ver `lib/portal/modulos.ts` no portal.
+  //
+  // PENDENTE 2: o PWA subiu o teto da barra para CINCO e pôs CONSUMO como quinto
+  // destino (pedido do dono do produto: o número de atendimentos do plano tem de
+  // estar a um toque, não dentro de "Mais"). Aqui a barra continua em quatro e
+  // não tem Consumo. Quando este app for ao ar, alinhar as duas — senão a
+  // vendedora encontra um aplicativo e um site diferentes.
   return out;
 }
 

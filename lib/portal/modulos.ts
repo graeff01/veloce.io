@@ -13,7 +13,7 @@
 // fora das abas. O aplicativo não foi lançado e a tela existe e é alcançável
 // por lá — mover a rota no Expo é trabalho para quando ele for ao ar.
 
-export type ModuloPortal = "conversas" | "anuncios" | "funil" | "revisao" | "equipe";
+export type ModuloPortal = "conversas" | "anuncios" | "funil" | "revisao" | "consumo" | "equipe";
 
 export interface ModuloInfo {
   chave: ModuloPortal;
@@ -29,6 +29,11 @@ const CATALOGO: { chave: ModuloPortal; rotulo: string; caminho: string; secao: s
   { chave: "anuncios", rotulo: "Anúncios", caminho: "/anuncios", secao: "anuncios" },
   { chave: "funil", rotulo: "Funil", caminho: "/funil", secao: "funil" },
   { chave: "revisao", rotulo: "Orçamentos", caminho: "/revisao", secao: "revisao" },
+  // Consumo vem ANTES de Equipe de propósito. Com teto de 5, um cliente que tem
+  // TODAS as seções (a JR) recebe os cinco primeiros — e é aqui que se decide se
+  // Consumo fica na barra ou cai para a folha. Pedido do dono do produto: ele
+  // quer o número de atendimentos do plano a um toque, não dentro de "Mais".
+  { chave: "consumo", rotulo: "Consumo", caminho: "/consumo", secao: "consumo" },
   // Equipe entra no FIM: para um cliente com o produto inteiro ligado, os quatro
   // de cima já ocupam a barra e ela segue sendo trabalho de mesa. Mas para quem
   // tem poucas seções — a Jardim do Lago são três, e acompanhar é o trabalho
@@ -37,8 +42,18 @@ const CATALOGO: { chave: ModuloPortal; rotulo: string; caminho: string; secao: s
   { chave: "equipe", rotulo: "Equipe", caminho: "/equipe", secao: "equipe" },
 ];
 
-/** Quantos destinos cabem na barra antes de os alvos ficarem pequenos demais. */
-const MAX_BARRA = 4;
+/**
+ * Quantos destinos cabem na barra antes de os alvos ficarem pequenos demais.
+ *
+ * CINCO é o teto das plataformas (iOS e Android usam 5 abas e mandam o resto para
+ * "Mais"), e é onde este desenho ainda funciona: num aparelho de 390px a barra
+ * tem ~358px úteis, o que dá ~70px por aba. Nesse espaço o rótulo precisa cair
+ * de 10,5px para 9,5px — "Orçamentos" não entra nos 70px no tamanho cheio. A
+ * barra faz isso sozinha quando chega a cinco (ver portal-mobile-nav).
+ *
+ * SEIS não cabe: ~58px por aba deixa o alvo menor que o dedo.
+ */
+const MAX_BARRA = 5;
 
 /**
  * Quais módulos ESTE usuário enxerga.
