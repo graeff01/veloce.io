@@ -1189,6 +1189,16 @@ model AiAgentConfig {
   assistantName   String?  // nome da assistente (ex: "Helena") — humaniza o atendimento
   greetingMessage String?  // saudação fixa enviada na 1ª mensagem (a loja controla o texto)
   followUpMessage String?  // cutucada de re-engajamento (follow-up) por cliente; vazio = texto neutro
+  // Só atende leads que chegaram A PARTIR desta data. Nulo = atende todos.
+  //
+  // Pedido da JR ao ligar o automático: a IA devia pegar os leads novos e não
+  // tocar nos 2.6 mil que já estavam na base. Sem isto, trocar o modo para
+  // "always" faria a IA responder qualquer lead antigo que voltasse a escrever.
+  //
+  // A comparação é com WaContact.createdAt — quando o contato apareceu pela
+  // primeira vez — e não com a mensagem de agora. Lead de setembro que escreve
+  // hoje continua sendo lead de setembro.
+  atendeDesde     DateTime?
   reengageEnabled Boolean  @default(true) // dispara o follow-up/re-engajamento (cutucada 1x na janela 24h). Off = cliente pediu SEM follow-up
   trustHighlights String?  // diferencial de confiança citado na abertura (ex: "revisados, com garantia de motor e câmbio")
   operatorNumbers String[] @default([]) // números da triagem (operador) que recebem as fichas dos leads

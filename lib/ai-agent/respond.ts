@@ -149,7 +149,7 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   if (!conn) return "skipped";
   const contact = await prisma.waContact.findUnique({
     where: { id: input.contactId },
-    select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, aiEngaged: true },
+    select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, aiEngaged: true, createdAt: true },
   });
   if (!contact) return "skipped";
 
@@ -200,6 +200,22 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
     // IA desligada, pausada, em modo manual ou DENTRO do horário comercial (que
     // é justamente quando o atendimento é humano): o lead falou e ninguém vai
     // responder por ela. É o aviso mais importante do app.
+    avisarHumanoDeVez(conn.clientId, contact, input.payload.text ?? null);
+    return "skipped";
+  }
+
+  // 1b) Corte por DATA: só atende quem chegou a partir de `atendeDesde`.
+  //
+  //     Pedido da JR ao ligar o automático num fim de semana: a IA devia pegar os
+  //     leads novos e não tocar nos 2.6 mil da base. Sem isto, "always" responderia
+  //     qualquer lead antigo que voltasse a escrever.
+  //
+  //     Compara com a data em que o CONTATO apareceu, não com a mensagem de agora:
+  //     lead de setembro que escreve hoje continua sendo lead de setembro.
+  //
+  //     O lead antigo NÃO é descartado em silêncio — vira aviso para humano, igual
+  //     ao que já acontece quando a IA está fora do ar. Some da IA, não do negócio.
+  if (cfg?.atendeDesde && contact.createdAt < cfg.atendeDesde) {
     avisarHumanoDeVez(conn.clientId, contact, input.payload.text ?? null);
     return "skipped";
   }

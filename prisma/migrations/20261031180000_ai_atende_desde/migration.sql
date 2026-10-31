@@ -1,0 +1,14 @@
+-- CORTE POR DATA: a IA só atende leads que chegaram a partir de uma data.
+--
+-- Pedido da JR ao ligar o automático num sábado, com a equipe voltando só na
+-- terça: a IA devia pegar os leads NOVOS e não encostar nos 2.623 contatos que
+-- já estavam na base. Sem isto, trocar answerMode para "always" faria a IA
+-- responder qualquer lead antigo que voltasse a escrever.
+--
+-- NULO de propósito: cliente sem a regra atende todos, exatamente como antes.
+-- Um default não-nulo mudaria o comportamento de quem já está rodando.
+--
+-- A comparação no código é com WaContact.createdAt — quando o contato apareceu
+-- pela primeira vez —, não com a mensagem do momento. Lead de setembro que
+-- escreve hoje continua sendo lead de setembro.
+ALTER TABLE "AiAgentConfig" ADD COLUMN "atendeDesde" TIMESTAMP(3);
