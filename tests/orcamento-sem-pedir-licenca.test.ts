@@ -51,7 +51,11 @@ test("a descrição da ferramenta não ensina a pedir confirmação", () => {
 // da conversa. 14 dos 19 leads pediram preço; 12 não viram número.
 
 test("fora da área, o preço dos produtos é informado antes de pedir dados", () => {
-  const bloco = /const soProdutos = computeQuote\([\s\S]{0,1800}?\n          \}/.exec(tools);
+  // Janela de 3000, não 1800: o bloco cresceu quando entrou a proibição de
+  // perguntar térreo/escada fora da área (04/11). Conferido um a um que TUDO
+  // que este teste protege continua dentro — alargar janela sem checar seria
+  // calar o teste em vez de acompanhar o código.
+  const bloco = /const soProdutos = computeQuote\([\s\S]{0,3000}?\n          \}/.exec(tools);
   assert.ok(bloco, "não achei o bloco de fora-de-área");
 
   // Recomputa SEM montagem e SEM acesso: fora da área esses serviços não
