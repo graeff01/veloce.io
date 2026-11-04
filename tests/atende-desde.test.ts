@@ -56,3 +56,34 @@ test("sem a regra configurada, nada muda", () => {
   assert.match(respond, /if \(cfg\?\.atendeDesde &&/,
     "a guarda precisa curto-circuitar em nulo, senão quebra quem não usa a regra");
 });
+
+// ── O furo: o cron de auto-resposta não passava pelo corte ───────────────────
+// `autoReplyStalled` chama runAgent DIRETO — não passa por handleInbound, onde
+// o corte mora. Ele confere canário, opt-out, silenciado e bloqueio global, mas
+// a data ficou de fora.
+//
+// Medido em 03/11, pelo plantão, no primeiro uso do sinal novo: dois leads
+// antigos (criados em 25/07 e 10/09) foram atendidos em 02/11 e 03/11 — depois
+// de a JR pedir "só os que chegarem de hoje". Nada mais olhava para isso.
+test("o cron de auto-resposta também respeita o corte", () => {
+  const cron = /export async function autoReplyStalled[\s\S]*?\n\}/.exec(respond)?.[0] ?? "";
+  assert.ok(cron, "a função autoReplyStalled sumiu");
+  assert.match(cron, /cfg\.atendeDesde && contact\.createdAt < cfg\.atendeDesde/,
+    "sem esta guarda o cron atende lead antigo pelas costas do corte");
+});
+
+test("o cron carrega os campos que a guarda precisa", () => {
+  // Guarda sem o dado no select vira `undefined < undefined` — passa batido e
+  // dá falsa sensação de estar protegido.
+  const cron = /export async function autoReplyStalled[\s\S]*?\n\}/.exec(respond)?.[0] ?? "";
+  assert.match(cron, /atendeDesde: true/, "cfg precisa trazer atendeDesde");
+  assert.match(cron, /createdAt: true/, "o contato precisa trazer createdAt");
+});
+
+test("as duas portas de entrada têm a mesma guarda", () => {
+  // handleInbound e autoReplyStalled são os dois caminhos que chegam ao motor.
+  // Se um tiver o corte e o outro não, a regra vale pela metade — que é
+  // exatamente o defeito que isto conserta.
+  const ocorrencias = (respond.match(/atendeDesde && contact\.createdAt < cfg\??\.atendeDesde/g) ?? []).length;
+  assert.equal(ocorrencias, 2, `o corte tem de existir nas DUAS entradas, achei ${ocorrencias}`);
+});
