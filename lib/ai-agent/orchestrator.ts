@@ -247,7 +247,7 @@ function applyQualFinVariant(base: string): string {
 
 // Bloco DINÂMICO: muda a cada turno (RAG/memória/qualificação/perfil/hora). Vai DEPOIS
 // do bloco estável, como uma 2ª mensagem de sistema, para não invalidar o cache.
-function buildDynamicContext(cfg: PromptCfg, perfilRaw: string, knowledgeRaw: string, memoryRaw: string, qualif: string, vehicleRaw: string, firstNote: string, storeOpen: boolean | null, returning: string, sec?: { clientId: string; contactId: string; turnId: string }): string {
+function buildDynamicContext(cfg: PromptCfg, perfilRaw: string, knowledgeRaw: string, memoryRaw: string, qualif: string, vehicleRaw: string, firstNote: string, storeOpen: boolean | null, returning: string, sec?: { clientId: string; contactId: string; turnId: string }, perguntaPendente = ""): string {
   // C-08: teto por bloco. Em shadow os tetos NÃO são aplicados (byte-idêntico);
   // em enforce, cortam apenas o que passar de limites muito acima do uso real.
   const enforce = securityMode() === "enforce";
@@ -268,6 +268,7 @@ function buildDynamicContext(cfg: PromptCfg, perfilRaw: string, knowledgeRaw: st
   return [
     returning || "",
     firstNote || "",
+    perguntaPendente || "",
     vehicle ? `VEÍCULO DE INTERESSE (o lead entrou por ESTE anúncio):\n${vehicle}\nATENÇÃO: isto é só o carro do anúncio. Se o lead PERGUNTAR ou PEDIR outro modelo (nomear outro carro), responda sobre o carro que ELE pediu — busque com buscar_estoque e mande a foto DESSE (enviar_foto termo="modelo que o lead falou"). NUNCA mande este carro do anúncio no lugar do que o lead pediu.` : "",
     knowledge ? `CONHECIMENTO (única fonte para políticas/FAQ — não vá além disto):\n${knowledge}` : "",
     memory ? `MEMÓRIA DESTE LEAD (fatos já conhecidos, inclusive de conversas anteriores — use, não repita pergunta já respondida):\n${memory}` : "",
@@ -362,6 +363,40 @@ export async function runAgent(input: RunInput, opts: RunOpts = {}): Promise<Run
     ? await prisma.aiInteraction.count({ where: { clientId: input.clientId, contactId: input.contact.id } })
     : (opts.transcript ?? []).filter((m) => m.role === "assistant").length;
   const isFirst = turns === 0;
+
+  // ── A PERGUNTA QUE O LEAD TROUXE JUNTO COM O "OI" ──────────────────────────
+  // No 1º turno de quem tem saudação-que-pede-nome (JR), devolvemos a saudação e
+  // NEM chamamos o modelo. O que o lead escreveu junto fica só no registro.
+  //
+  // No 2º turno o modelo roda — mas segue o roteiro (nome → produto) e a pergunta
+  // se perde de vez. Caso real: a lead perguntou "quais são os modelos de
+  // churrasqueiras disponíveis?", recebeu "qual seu nome?", respondeu "Mariza" e
+  // ouviu "você procura churrasqueira, fogão ou lareira?".
+  //
+  // Medido no fim de semana de 31/10: 32 dos 68 leads receberam só a saudação e
+  // nunca mais voltaram. Isto não mexe na saudação — ela continua idêntica, com
+  // a apresentação e o aviso que a loja quer. Só impede a pergunta de evaporar.
+  let perguntaPendente = "";
+  if (mode === "live" && turns > 0) {
+    const anterior = await prisma.aiInteraction.findFirst({
+      where: { clientId: input.clientId, contactId: input.contact.id },
+      orderBy: { createdAt: "desc" },
+      select: { decision: true, inbound: true },
+    }).catch(() => null);
+    // Só quando o turno anterior foi a saudação CURTO-CIRCUITADA (o modelo não
+    // rodou). Se ele rodou, a pergunta já foi vista e repetir seria ruído.
+    const texto = (anterior?.decision === "saudacao" ? anterior.inbound ?? "" : "").trim();
+    // Um "oi" não é pergunta pendente. Nem o conteúdo que o WhatsApp não entregou.
+    const sóCumprimento = /^(oi+|ol[áa]|opa|e a[íi]|bom dia|boa tarde|boa noite|tudo bem\??)[\s!.,?]*$/i.test(texto);
+    const semConteudo = /^\[/.test(texto);
+    if (texto.length > 6 && !sóCumprimento && !semConteudo) {
+      perguntaPendente =
+        `O LEAD JÁ TINHA ESCRITO ISTO ANTES DA SAUDAÇÃO, E AINDA NÃO FOI RESPONDIDO:\n"${texto.slice(0, 400)}"\n` +
+        `RESPONDA ISSO AGORA, na mesma mensagem. NÃO pergunte de novo o que ele já respondeu ali ` +
+        `(se ele já disse o produto, o modelo ou a cidade, use — não torne a perguntar). ` +
+        `Se a mensagem dele já continha uma pergunta, ela vem PRIMEIRO; o resto do seu roteiro vem depois.`;
+    }
+  }
 
   // Saudação na 1ª mensagem: usa o texto fixo da loja (greetingMessage) se houver,
   // senão a saudação padrão. Vale em live e em teste (Console) para refletir o real.
@@ -648,7 +683,7 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   const messages: ChatMessage[] = [
     { role: "system", content: buildStablePrompt(promptCfg) },
-    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning, { clientId: input.clientId, contactId: input.contact.id, turnId }) },
+    { role: "system", content: buildDynamicContext(promptCfg, perfil, knowledge, memory, qualif, vehicle, firstNote, storeOpen, returning, { clientId: input.clientId, contactId: input.contact.id, turnId }, perguntaPendente) },
     ...(dnaBlock ? [{ role: "system", content: dnaBlock } as ChatMessage] : []),
     ...(opts.autoMode ? [{ role: "system", content: AUTO_MODE_NOTE } as ChatMessage] : []),
     ...(quoteGuidance ? [{ role: "system", content: quoteGuidance } as ChatMessage] : []),
