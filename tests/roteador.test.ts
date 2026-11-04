@@ -163,7 +163,10 @@ import { REGRAS_JR } from "../scripts/jr-roteador-regras";
 const JR = lerRegras({ roteador: REGRAS_JR });
 
 test("as regras da JR carregam todas", () => {
-  assert.deepEqual(JR.map((r) => r.id), ["fogao_ambiguo", "modelo_nomeado_sem_foto", "confirmou_catalogo", "popular_nao_aceita_lenha"]);
+  // "pediu_humano" vem PRIMEIRO de propósito: pedido de gente tem precedência
+  // sobre qualquer pergunta de qualificação. Medido em 31/10 — o lead escreveu
+  // só "Vendedor" e a IA perguntou o nome dele.
+  assert.deepEqual(JR.map((r) => r.id), ["pediu_humano", "fogao_ambiguo", "modelo_nomeado_sem_foto", "confirmou_catalogo", "popular_nao_aceita_lenha"]);
 });
 
 test("modelo nomeado sem foto → garante enviar_foto com o termo certo", () => {
