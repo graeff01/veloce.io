@@ -5,6 +5,25 @@
  */
 export const REGRAS_JR = [
   {
+    // PEDIU GENTE. Medido no fim de semana de 31/10: o lead escreveu só
+    // "Vendedor" e a IA perguntou o nome dele; dois turnos depois ele pediu "o
+    // link de pagamento" e ela desviou pedindo o modelo. Ele respondeu "Oi" e
+    // sumiu. Na mesma bateria, "Quero um vendedor" ESCALOU normalmente — ou
+    // seja, dependia de como ele formulava.
+    //
+    // Escalar é ação, não texto: por isso `garantirFerramenta`. O roteador
+    // confere DEPOIS se a ferramenta foi chamada e, se não foi, chama.
+    id: "pediu_humano",
+    quando: "\\b(vendedor|vendedora|atendente|humano|pessoa de verdade|falar com (alguem|voces|a loja)|me liga|whats do vendedor)\\b",
+    // Quem está ELOGIANDO o atendimento ou citando o vendedor de passagem não
+    // está pedindo transferência. Sem isto, "o vendedor me atendeu bem" escala.
+    // Sem \\b no FIM, de propósito: "obrigad\\b" não casa "obrigado" — a mesma
+    // armadilha que a regra do fogão já documenta logo abaixo.
+    excetoSe: "\\b(obrigad|valeu|otimo atendimento|me atendeu|ja falei com|ja conversei|foi muito|bem atendid|prefiro falar com ela|prefiro falar com ele)",
+    responder: "",
+    garantirFerramenta: "escalar_humano",
+  },
+  {
     id: "fogao_ambiguo",
     // Pede churrasqueira + fogão…
     quando: "(churrasqueir|prime|gourmet|tradicao|parrilla|popular)[^.!?]{0,60}(fogao|campeir)|(fogao|campeir)[^.!?]{0,60}churrasqueir",

@@ -277,6 +277,44 @@ export function ehRepeticaoDe(texto: string | null | undefined, anteriores: stri
   return false;
 }
 
+// ── Pergunta JÁ FEITA nesta conversa ─────────────────────────────────────────
+// O corte de frase repetida compara as ULTIMAS 6 respostas, e quando cortar
+// deixaria a resposta vazia uma trava devolve o original — aí a repeticao sai.
+// Foi assim que "voce ja esteve em nossa loja alguma vez ou e o primeiro contato
+// conosco?" saiu DUAS vezes para o mesmo lead no fim de semana de 31/10.
+//
+// Pergunta e diferente de frase solta: repetir uma afirmacao e feio, repetir uma
+// PERGUNTA faz o cliente achar que ninguem leu o que ele respondeu. Por isso
+// olha a conversa INTEIRA, nao uma janela.
+//
+// Devolve a pergunta repetida (para a telemetria dizer qual foi), ou null.
+export function perguntaJaFeita(texto: string | null | undefined, anteriores: string[]): string | null {
+  const normal = (q: string) => semAcento(q).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  const perguntas = (t: string) => emFrases(t).filter((f) => f.trim().endsWith("?"));
+  const feitas = new Set<string>();
+  for (const a of anteriores) for (const q of perguntas(a)) {
+    const k = normal(q);
+    // Pergunta curta ("Qual seu nome?") se repete legitimamente em contextos
+    // diferentes; so julgamos as que tem corpo suficiente para ser a MESMA.
+    if (k.split(" ").length >= 5) feitas.add(k);
+  }
+  if (!feitas.size) return null;
+  for (const q of perguntas(texto ?? "")) {
+    const k = normal(q);
+    if (k.split(" ").length < 5) continue;
+    if (feitas.has(k)) return q.trim();
+    // Quase igual tambem conta: o modelo reescreve a mesma pergunta com uma
+    // palavra a mais e ela escaparia da comparacao exata.
+    const pal = new Set(k.split(" "));
+    for (const f of feitas) {
+      const pb = new Set(f.split(" "));
+      let comuns = 0; for (const w of pal) if (pb.has(w)) comuns++;
+      if (comuns / (pal.size + pb.size - comuns) >= 0.8) return q.trim();
+    }
+  }
+  return null;
+}
+
 // Confirmação CURTA do que já foi enviado.
 //
 // Única parte do módulo que escreve texto em vez de só remover frase, e a

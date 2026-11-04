@@ -30,7 +30,7 @@ import { decidePolicy, securityMode, severityForProfile, actionForProfile } from
 import { ToolFirewall } from "./security/tool-firewall";
 import { scanEgress, scanThirdPartyPii } from "./security/egress";
 import { removerPromessaDeAlterar } from "./security/autoridade";
-import { polir, ehRepeticaoDe } from "./naturalidade";
+import { polir, ehRepeticaoDe, perguntaJaFeita} from "./naturalidade";
 import { lerRegras, decidir as decidirRota, suprimir as suprimirRota, garantir as garantirRota, acrescentar as acrescentarRota } from "./roteador";
 import { emitSecurityEventAsync } from "./security/events";
 import { clampText } from "./security/sanitize";
@@ -750,12 +750,16 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
   const artifacts: ToolArtifact[] = [];
   let final: string | null = null;
   let reTentouLeak = false; // tool-call vazado no texto ganha UMA segunda chance de executar
-  let reTentouRepetir = false; // resposta repetida ganha UMA segunda chance de avançar
+  let reTentouRepetir = false;
+  let reTentouPergunta = false;
+  let perguntaRepetidaVista = ""; // resposta repetida ganha UMA segunda chance de avançar
   // Respostas já enviadas nesta conversa — base da detecção de repetição.
-  const ditasNoTurno = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
+  const ditasTodas = (mode === "test" ? (opts.transcript ?? []) : priorMessages)
     .filter((m) => m.role === "assistant" && typeof m.content === "string")
-    .map((m) => String(m.content))
-    .slice(-6);
+    .map((m) => String(m.content));
+  // Janela de 6 para o CORTE de frase repetida (medida e calibrada assim).
+  // A conversa INTEIRA para PERGUNTA repetida — ver `perguntaJaFeita`.
+  const ditasNoTurno = ditasTodas.slice(-6);
   let status: RunOutput["status"] = "ok";
   let errorMsg: string | null = null;
 
@@ -854,6 +858,21 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
         final = null;
         continue;
       }
+      // Repetir uma PERGUNTA é pior que repetir uma afirmação: o cliente entende
+      // que ninguém leu o que ele respondeu. Visto no fim de semana de 31/10 —
+      // "você já esteve em nossa loja..." saiu duas vezes para o mesmo lead.
+      // Olha a conversa inteira, não a janela de 6 do corte de frase.
+      if (final && !reTentouPergunta) {
+        const repetida = perguntaJaFeita(final, ditasTodas);
+        if (repetida) {
+          reTentouPergunta = true;
+          perguntaRepetidaVista = repetida;
+          messages.push({ role: "assistant", content: final });
+          messages.push({ role: "system", content: `Você está perguntando DE NOVO algo que JÁ perguntou nesta conversa: "${repetida}" — o cliente já respondeu isso. Perguntar outra vez faz parecer que ninguém leu. USE a resposta que ele já deu e AVANCE para o próximo passo. Se precisar mesmo de algo, pergunte outra coisa.` });
+          final = null;
+          continue;
+        }
+      }
       if (final && !reTentouLeak && !toolLog.length && TOOL_CALL_LEAK_TEST.test(final)) {
         reTentouLeak = true;
         messages.push({ role: "assistant", content: final });
@@ -894,6 +913,9 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
 
   const guardrails: string[] = [];
   if (toolCallLeak) guardrails.push("sanitize:tool_call_leak");
+  // Sem marca, a correção acontece e ninguém fica sabendo — e é justamente
+  // esse tipo de defeito que só aparece quando alguém vai procurar.
+  if (perguntaRepetidaVista) guardrails.push(`naturalidade:pergunta_repetida:${perguntaRepetidaVista.slice(0, 60)}`);
   if (reTentouLeak) guardrails.push("sanitize:tool_call_leak:retry"); // houve 2ª chance de executar // telemetria: modelo vazou tool-call no texto
 
   // ── F1: anti-alucinação — grounding + verificação ────────────────────────────

@@ -47,7 +47,7 @@ const arg = (n: string, d: string) => { const i = process.argv.indexOf(`--${n}`)
 
   // 2. Turnos e erros
   const t = await prisma.aiInteraction.findMany({ where: { clientId: c!.id, createdAt: { gte: desde } },
-    select: { status: true, decision: true, contactId: true, tokensIn: true, latencyMs: true, error: true, guardrails: true } });
+    select: { status: true, decision: true, contactId: true, tokensIn: true, latencyMs: true, error: true, guardrails: true, createdAt: true } });
   const erros = t.filter((x) => x.status === "error");
   console.log(`\n  turnos: ${t.length} · erros: ${erros.length}`);
   if (erros.length) {
@@ -76,6 +76,41 @@ const arg = (n: string, d: string) => { const i = process.argv.indexOf(`--${n}`)
   }).catch(() => -1) : 0;
   console.log(`  leads novos desde o corte: ${idsNovos.length} · sem resposta: ${semResposta < 0 ? "(n/d)" : semResposta}`);
   if (semResposta > 0) alertas.push(`${semResposta} lead(s) novo(s) sem resposta`);
+
+  // 4b. ABANDONO por tipo de resposta.
+  //
+  // Os 47% de leads que sumiram na saudação, no fim de semana de 31/10, só
+  // apareceram porque alguém foi procurar. Nenhum guardrail marca "o cliente
+  // parou de responder" — todos avaliam a FRASE, nenhum avalia o RESULTADO.
+  //
+  // Aqui a conta é simples: para cada tipo de resposta da IA, em quantas vezes
+  // ela foi a ÚLTIMA coisa da conversa. Saudação liderando essa lista é sinal
+  // de que a porta de entrada está derrubando gente.
+  const porLead = new Map<string, { quando: number; decisao: string }[]>();
+  for (const x of t) {
+    const k = x.contactId ?? "?";
+    porLead.set(k, [...(porLead.get(k) ?? []), { quando: x.createdAt.getTime(), decisao: x.decision ?? "—" }]);
+  }
+  const SILENCIO_MS = 6 * 3600e3; // 6h sem voltar = abandonou
+  const mortas = new Map<string, number>(), totais = new Map<string, number>();
+  for (const [, arr] of porLead) {
+    arr.sort((a, b) => a.quando - b.quando);
+    const ult = arr[arr.length - 1];
+    totais.set(ult.decisao, (totais.get(ult.decisao) ?? 0) + 1);
+    if (Date.now() - ult.quando > SILENCIO_MS) mortas.set(ult.decisao, (mortas.get(ult.decisao) ?? 0) + 1);
+  }
+  const totalMortas = [...mortas.values()].reduce((a, b) => a + b, 0);
+  console.log(`\n  ── ABANDONO (última fala da IA e o lead não voltou em 6h) ──`);
+  console.log(`  ${totalMortas} de ${porLead.size} lead(s)` +
+    (porLead.size ? `  (${(100 * totalMortas / porLead.size).toFixed(0)}%)` : ""));
+  for (const [d, n] of [...mortas.entries()].sort((a, b) => b[1] - a[1])) {
+    const tot = totais.get(d) ?? n;
+    console.log(`     ${String(n).padStart(3)} de ${String(tot).padEnd(3)} terminaram em "${d}"`);
+  }
+  const saud = mortas.get("saudacao") ?? 0;
+  if (porLead.size >= 10 && saud / porLead.size > 0.25) {
+    alertas.push(`${(100 * saud / porLead.size).toFixed(0)}% dos leads sumiram na SAUDAÇÃO — porta de entrada derrubando gente`);
+  }
 
   // 5. Gasto
   const gasto = await prisma.aiUsage.aggregate({ where: { clientId: c!.id, createdAt: { gte: desde } }, _sum: { costUsd: true } });
