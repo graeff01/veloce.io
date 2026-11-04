@@ -655,7 +655,7 @@ export async function autoReplyStalled(): Promise<{ replied: number }> {
   // no where; aqui é intencionalmente cross-client, como reengage/catalog-sync/cost-alerts).
   const cfgs = await prismaUnscoped.aiAgentConfig.findMany({
     where: { enabled: true, paused: false, status: "live", answerMode: { in: ["always", "ads_in_hours"] } },
-    select: { clientId: true, businessHours: true, timezone: true, testMode: true, testNumbers: true },
+    select: { clientId: true, businessHours: true, timezone: true, testMode: true, testNumbers: true, atendeDesde: true },
   });
   const now = Date.now();
   let replied = 0;
@@ -674,7 +674,7 @@ export async function autoReplyStalled(): Promise<{ replied: number }> {
       if (!c.lastInboundAt) continue;
       if (c.lastOutboundAt && c.lastOutboundAt >= c.lastInboundAt) continue; // já respondido (humano ou IA)
       if (c.autoRepliedAt && c.autoRepliedAt >= c.lastInboundAt) continue;   // já tentou nesta mensagem
-      const contact = await prisma.waContact.findUnique({ where: { id: c.contactId }, select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } } });
+      const contact = await prisma.waContact.findUnique({ where: { id: c.contactId }, select: { id: true, name: true, waId: true, aiOptedOut: true, aiSilenced: true, createdAt: true, connection: { select: { id: true, clientId: true, phoneNumberId: true, accessToken: true } } } });
       if (!contact) continue;
       // CANÁRIO: cliente em testMode → auto-resposta SÓ pros números de teste (não vaza lead
       // real). Não marca autoRepliedAt aqui, pra quando o cliente for LIVE o lead ser atendido.
@@ -682,6 +682,12 @@ export async function autoReplyStalled(): Promise<{ replied: number }> {
       await prisma.waConversation.update({ where: { contactId: c.contactId }, data: { autoRepliedAt: new Date() } }).catch(() => {}); // marca ANTES (mesmo se skip)
       if (contact.aiOptedOut || contact.aiSilenced) continue;
       if (await isGloballyBlocked(contact.waId)) continue; // bloqueio global (dono/colaborador)
+      // CORTE POR DATA: esta rotina chama runAgent DIRETO, então não passa pelo
+      // portão de handleInbound — a guarda precisa existir aqui também.
+      // Medido em 03/11: dois leads antigos (de julho e de setembro) foram
+      // atendidos por aqui DEPOIS de a JR pedir "só os que chegarem de hoje".
+      // Foi o plantão que acusou; nada mais olhava.
+      if (cfg.atendeDesde && contact.createdAt < cfg.atendeDesde) continue;
       const last = await prisma.waMessage.findFirst({ where: { contactId: c.contactId, direction: "in" }, orderBy: { timestamp: "desc" }, select: { text: true } });
       const inboundText = last?.text?.trim();
       if (!inboundText) continue;
