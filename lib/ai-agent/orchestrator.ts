@@ -6,7 +6,7 @@ import { parseSpec, missingRequired, proibidoComoVocativo, type IntakeData } fro
 import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
-import { checkGrounding, extrairPrecosOficiais, medidasEmCm, medidasInventadas } from "./grounding";
+import { checkGrounding, extrairPrecosOficiais, extrairPrecosRevogados, precosRevogadosNaResposta, medidasEmCm, medidasInventadas } from "./grounding";
 import { lerTabelaMedidas, medidasErradasDoProduto } from "./medidas-produto";
 import { lerTabelaCapacidade, capacidadesErradas } from "./capacidade-produto";
 import { verifyReply } from "./verify";
@@ -980,6 +980,15 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     const capErradas = capacidadesErradas(final, lerTabelaCapacidade(_acervo));
     if (capErradas.length) {
       guardrails.push(`grounding:capacidade_do_produto:${capErradas.slice(0, 3).join(" | ").slice(0, 160)}`);
+      final = fallback;
+      decision = "abster";
+    }
+
+    // Preço de tabela que SAIU de vigor: barra sempre, como a medida do produto —
+    // não espera o groundingEnforce. Ver precosRevogadosNaResposta.
+    const revogados = precosRevogadosNaResposta(final, _pc ? extrairPrecosRevogados(_pc.rules) : new Set<string>(), _precos);
+    if (revogados.length) {
+      guardrails.push(`grounding:preco_revogado:${revogados.slice(0, 3).join(",")}`);
       final = fallback;
       decision = "abster";
     }

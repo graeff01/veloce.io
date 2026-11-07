@@ -110,6 +110,42 @@ export function extrairPrecosOficiais(regras: unknown): Set<string> {
   return out;
 }
 
+// PREÇO REVOGADO — o valor de uma tabela que já saiu de vigor.
+//
+// O grounding acima aceita qualquer número que esteja na CONVERSA, e isso é o
+// certo no dia a dia (eco do que o lead disse, valor que a própria IA já deu).
+// Mas quando a loja troca a tabela, a conversa vira a fonte do erro: o lead que
+// recebeu "R$ 1.447" na semana passada pergunta de novo, o número está no
+// histórico, e a IA repete o preço velho com o grounding aprovando.
+//
+// `rules.precosRevogados` é a lista fechada dos valores que saíram de vigor. Um
+// valor que também está na tabela ATUAL não é revogado — na troca de nov/2026 o
+// R$ 3.757 deixou de ser a Tradição e passou a ser a Parrilla 105 —, então a
+// tabela oficial sempre vence.
+export function extrairPrecosRevogados(regras: unknown): Set<string> {
+  const lista = (regras as { precosRevogados?: unknown } | null)?.precosRevogados;
+  const out = new Set<string>();
+  if (!Array.isArray(lista)) return out;
+  for (const v of lista) {
+    const n = typeof v === "number" ? v : Number(String(v).replace(/\./g, "").replace(",", "."));
+    if (isFinite(n) && n > 0) out.add(onlyDigits(String(Math.round(n))));
+  }
+  return out;
+}
+
+export function precosRevogadosNaResposta(reply: string, revogados: Set<string>, oficiais?: Set<string>): string[] {
+  if (!revogados.size) return [];
+  const out: string[] = [];
+  for (const m of reply.match(PRICE_RE) ?? []) {
+    // Só a parte inteira: "R$ 1.447,00" e "R$ 1447" são o mesmo preço.
+    const inteiro = onlyDigits(m.replace(/,\d{2}\s*$/, ""));
+    if (!inteiro || !revogados.has(inteiro)) continue;
+    if (oficiais?.has(inteiro)) continue;
+    out.push(m.trim());
+  }
+  return out;
+}
+
 // `sources` deve concatenar tudo que é fonte legítima: resultados de ferramentas,
 // conhecimento (RAG) e o texto da conversa (para não marcar eco do próprio lead).
 // `precosOficiais` entra como lista fechada — ver acima.
