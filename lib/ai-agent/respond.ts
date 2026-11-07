@@ -438,7 +438,11 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   if (sent.ok) {
     // escalou OU bloqueado pelo guardrail (bateu numa parede: negociação/parcelas/"vou chamar
     // vendedor") → o vendedor é acionado DE VERDADE na hora (ficha), em qualquer modo.
-    if (out.decision === "escalou" || out.status === "blocked") void handoffToOperators(conn, contact.id).catch(() => {});
+    // ABSTENÇÃO entra aqui também. A frase que sai ao lead ("já registrei aqui
+    // pra ele te dar os detalhes") é uma PROMESSA — e antes ninguém era avisado:
+    // o lead esperava um vendedor que não sabia que existia. Com as travas de
+    // preço/medida barrando sempre, abstenção virou o caminho comum do erro.
+    if (out.decision === "escalou" || out.decision === "abster" || out.status === "blocked") void handoffToOperators(conn, contact.id).catch(() => {});
     else if (cfg?.answerMode === "always" || cfg?.answerMode === "ads_in_hours") void handoffToOperators(conn, contact.id, { requireHot: true }).catch(() => {});
   }
 
@@ -473,13 +477,15 @@ export async function runAgentJob(input: RunnerInput): Promise<JobOutcome> {
   }).catch(() => {});
 
   // 9) Se a IA escalou ou foi bloqueada pelo guardrail, garante rastro no board.
-  if (out.decision === "escalou" || out.status === "blocked") {
+  if (out.decision === "escalou" || out.decision === "abster" || out.status === "blocked") {
     await createEscalationTask({
       clientId: conn.clientId, contactId: contact.id, contactName: contact.name, waId: contact.waId,
       reason: out.status === "blocked"
         ? "Uma resposta da IA foi bloqueada pelo guardrail (tentou tema proibido). Reveja e atenda."
-        : "A IA encaminhou este lead para atendimento humano.",
-      kind: "handoff",
+        : out.decision === "abster"
+          ? "A IA ia passar um dado que não confere com a tabela (preço ou medida) e foi barrada. O lead ouviu que um vendedor vai responder — responda com o valor certo."
+          : "A IA encaminhou este lead para atendimento humano.",
+      kind: out.decision === "abster" ? "failure" : "handoff",
     }).catch(() => {});
   }
   return "sent";
