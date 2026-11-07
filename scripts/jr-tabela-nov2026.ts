@@ -154,27 +154,40 @@ const CHUNKS_NOVOS: { title: string; content: string }[] = [
   },
 ];
 
-// Troca, num texto, cada "R$ <valor velho>" pelo novo — numa passada só, para
-// um valor trocado nunca ser trocado de novo (3757 → 3947, e não 3757 → 3947 → …).
-const PRECO_TXT = /R\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(,\d{2})?/g;
+// Troca, num texto, cada preço velho pelo novo — numa passada só, para um valor
+// trocado nunca ser trocado de novo (3757 → 3947, e não 3757 → 3947 → …).
+//
+// Pega "R$ 1.447", "R$1447,00" E o número solto com ponto de milhar ("Prime 9 +
+// Fogão 3 bocas 3.064") — o acervo dos conjuntos foi escrito assim, sem "R$", e
+// passaria batido. Solto, só com ponto de milhar e a partir de 1.000: "817" sem
+// "R$" pode ser qualquer coisa; "3.064" no acervo da JR só é preço (medida lá é
+// com vírgula: "2,29 m").
+const PRECO_TXT = /R\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(,\d{2})?|(?<![\d.,])(\d{1,2}\.\d{3})(,\d{2})?(?![\d.]|,\d)/g;
 function trocaNoTexto(txt: string): { txt: string; trocas: string[] } {
   const trocas: string[] = [];
-  const out = txt.replace(PRECO_TXT, (inteiro, num: string, cent: string | undefined) => {
+  const out = txt.replace(PRECO_TXT, (inteiro, numRs: string | undefined, centRs: string | undefined, numSolto: string | undefined, centSolto: string | undefined) => {
+    const num = numRs ?? numSolto!;
+    const cent = numRs ? centRs : centSolto;
     const v = Number(num.replace(/\./g, ""));
     const ms = VELHOS.get(v);
     if (!ms) return inteiro;
-    const novo = ms[0].novo; // todos os modelos de um mesmo valor velho vão para o mesmo novo (conferido abaixo)
-    const espaco = inteiro.startsWith("R$ ") ? " " : "";
+    const novo = ms[0].novo; // todos os modelos de um mesmo valor velho vão para o mesmo novo (conferido no início)
+    const prefixo = numRs ? (inteiro.startsWith("R$ ") ? "R$ " : "R$") : "";
     const corpo = num.includes(".") ? novo.toLocaleString("pt-BR") : String(novo);
-    const r = `R$${espaco}${corpo}${cent ?? ""}`;
+    const r = `${prefixo}${corpo}${cent ?? ""}`;
     trocas.push(`${inteiro} → ${r}`);
     return r;
   });
   return { txt: out, trocas };
 }
 
+// Trecho que JÁ foi escrito com a tabela nova (os deste script e o dos conjuntos)
+// não passa pela troca: ali "R$ 4.111" é o preço NOVO da Prime 7 + Napoli, e a
+// troca o leria como o velho da Prime 9 + Napoli.
+const JA_NOVO = /nov\/2026/i;
+
 function revogadosNoTexto(txt: string): number[] {
-  return [...txt.matchAll(PRECO_TXT)].map((m) => Number(m[1].replace(/\./g, ""))).filter((v) => REVOGADOS.includes(v));
+  return [...txt.matchAll(PRECO_TXT)].map((m) => Number((m[1] ?? m[3]).replace(/\./g, ""))).filter((v) => REVOGADOS.includes(v));
 }
 
 async function embed(text: string): Promise<number[]> {
@@ -204,8 +217,10 @@ type Item = { key?: string; label?: string; amount?: number; [k: string]: unknow
   if (!pc) { console.error("JR sem PricingConfig"); process.exit(1); }
   const rules = structuredClone((pc.rules ?? {}) as Record<string, unknown>);
   if (rules.tabelaPrecos === MARCA) {
-    console.error(`ABORTADO: a tabela ${MARCA} já foi aplicada. Rodar de novo trocaria preços NOVOS que coincidem com velhos (ex.: Parrilla 105).`);
-    process.exit(1);
+    // Sair com SUCESSO: "já aplicada" é o estado certo, e o jr-pendentes.sh segue.
+    console.log(`✅ A tabela ${MARCA} já foi aplicada — nada a fazer. (Rodar de novo trocaria preços NOVOS que coincidem com velhos, ex.: Parrilla 105.)\n`);
+    await prisma.$disconnect();
+    return;
   }
 
   const revisar: string[] = [];
@@ -255,6 +270,7 @@ type Item = { key?: string; label?: string; amount?: number; [k: string]: unknow
   const chunks = await prisma.knowledgeChunk.findMany({ where: { clientId: c.id }, select: { id: true, title: true, content: true } });
   const mudaChunks: { id: string; title: string | null; content: string }[] = [];
   for (const ch of chunks) {
+    if (JA_NOVO.test(`${ch.title ?? ""}\n${ch.content}`)) { console.log(`   · "${ch.title}"  (já na tabela nova)`); continue; }
     const { txt, trocas } = trocaNoTexto(ch.content);
     if (!trocas.length) continue;
     console.log(`   ✎ "${ch.title}"\n        ${trocas.join("\n        ")}`);

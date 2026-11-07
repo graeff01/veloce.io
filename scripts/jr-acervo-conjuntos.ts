@@ -2,7 +2,7 @@
  * Correções de 04/11/2026 — o erro do "forno Iglu" e o que a Maria mandou.
  *
  * O QUE ACONTECEU. A IA ofereceu a um lead um conjunto "com forno Iglu", somou
- * peças na mão chegando a R$ 5.201, e quando o lead apontou a contradição ("o 11
+ * peças na mão chegando a um valor sem fonte, e quando o lead apontou a contradição ("o 11
  * é mais barato que o 9?") inventou que o Iglu custa diferente do Napoli.
  *
  * A CAUSA, lida na conversa: o LEAD escreveu "iglu" primeiro. A IA ADOTOU o nome
@@ -17,6 +17,9 @@
  * Uso (DRY-RUN por padrão):
  *   railway run --service veloce.io bash -c 'railway run --service Postgres bash -c "
  *     export DATABASE_URL=\$DATABASE_PUBLIC_URL; npx tsx scripts/jr-acervo-conjuntos.ts"'
+ *
+ * PREÇOS: tabela de nov/2026. Rode pelo scripts/jr-pendentes.sh, que acerta a
+ * ordem com a troca de tabela (jr-tabela-nov2026.ts).
  */
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -40,6 +43,11 @@ const commit = process.argv.includes("--commit");
 //   Lareira de canto      1,55 × 1,35
 //   Lareira em L 60x60    1,65 × 1,55
 //
+// ATUALIZAÇÃO 07/11: o CATÁLOGO NOVO da Maria (nov/2026) traz Prime 16 2,50 m,
+// Tradição 2,50 m, Tradição Gourmet 2,60 m e Gourmet 2,60 m — os valores que JÁ
+// estão no acervo. As quatro churrasqueiras ficam como estão. As três lareiras
+// não estão nesse catálogo e seguem aguardando.
+//
 // Gravar as duas faria a IA ter duas respostas para a mesma pergunta — pior que
 // não ter nenhuma. Medida errada em churrasqueira pré-moldada é produto que não
 // entra no vão da pessoa.
@@ -55,14 +63,14 @@ const CHUNKS: { title: string; content: string }[] = [
       "'FORNO E FOGÃO 3 BOCAS' e 'FORNO E FOGÃO 4 BOCAS' são UM PRODUTO ÚNICO cada: uma peça só, com forno e fogão juntos. NÃO são 'um forno' mais 'um fogão', e esse forno NÃO tem nome próprio. Nunca separe o nome em duas coisas.",
       "O cliente pode MESCLAR como quiser: escolhe o tamanho da churrasqueira, e depois escolhe entre o Forno e Fogão (3 ou 4 bocas) OU o fogão separado mais o Forno Napoli.",
       "FORNO MINI PEPPE e FORNO GOURMET A GÁS existem, mas são ACESSÓRIOS à parte da linha Gourmet — não são o forno de um conjunto.",
-      "ERRO REAL (04/11/2026): o lead escreveu 'iglu' e a IA passou a oferecer 'forno Iglu' num orçamento de R$ 4.644. O produto verdadeiro era 'Prime 11 espetos + Forno e Fogão 4 bocas'.",
+      "ERRO REAL (04/11/2026): o lead escreveu 'iglu' e a IA passou a oferecer 'forno Iglu' num orçamento. O produto verdadeiro era 'Prime 11 espetos + Forno e Fogão 4 bocas'.",
     ].join("\n"),
   },
   {
     title: "TRIO / 3x1 — o conjunto padrão e como oferecer",
     content: [
       "SIM, EXISTE O 3x1 (também chamado TRIO LINHA PRIME). Quando o cliente perguntar por 'trio', '3x1' ou '3 em 1', é disto que ele fala — não diga que não temos.",
-      "O MAIS PADRÃO: Churrasqueira Linha Prime modelo 9 espetos (74 cm) + Forno e Fogão de 3 bocas. Valor R$ 4.004,00. Medidas externas do conjunto: 2,29 m de largura x 60 cm de profundidade x 2,30 m de altura.",
+      "O MAIS PADRÃO: Churrasqueira Linha Prime modelo 9 espetos (74 cm) + Forno e Fogão de 3 bocas. Valor R$ 4.204,00 (tabela nov/2026). Medidas externas do conjunto: 2,29 m de largura x 60 cm de profundidade x 2,30 m de altura.",
       "COMO RESPONDER, nesta ordem: (1) envie a FOTO e o VALOR desse conjunto padrão; (2) diga que o cliente pode alterar o tamanho da churrasqueira (temos 60 cm, 74 cm, 81 cm e 105 cm) e que também há um forno e fogão maior; (3) envie o CATÁLOGO COMPLETO para ele escolher.",
       "Não pergunte qual tamanho antes de mostrar: mostre o padrão primeiro e ofereça as variações depois.",
     ].join("\n"),
@@ -72,8 +80,12 @@ const CHUNKS: { title: string; content: string }[] = [
     content: [
       "CADA CONJUNTO TEM PREÇO PRÓPRIO NO SISTEMA, que NÃO é a soma das peças avulsas. NUNCA calcule o valor de um conjunto somando produtos — use gerar_orcamento.",
       "Se o cliente pedir uma combinação que NÃO está na lista abaixo, não invente um valor somando: diga que confirma com o vendedor.",
-      "CONJUNTOS QUE EXISTEM (preço do conjunto, sem frete): Prime 7 + Campeirinho 2.354; Prime 9 + Campeirinho 2.554; Prime 9 + Fogão 3 bocas 3.064; Prime 9 + Fogão 4 bocas 3.644; Prime 11 + Campeirinho 2.654; Prime 11 + Fogão 3 bocas 3.164; Prime 11 + Fogão 4 bocas 3.744; Prime 16 + Fogão 4 bocas 4.194; Prime 9 + Forno e Fogão 3 bocas 4.004 (o TRIO padrão); Prime 11 + Forno e Fogão 4 bocas 4.644; Prime 7 + Forno Napoli + Campeirinho 3.911; Prime 9 + Forno Napoli + Campeirinho 4.111; Prime 16 + Forno Napoli 3.104 (1,62m) ou 3.554 (1,86m); Prime 16 + Forno Napoli + Forno e Fogão 3 bocas 6.111; Tradição Gourmet + Forno Napoli 5.854; Gourmet + Forno Napoli 5.754; Gourmet + Forno e Fogão 3 bocas 6.754; Gourmet + Forno e Fogão 4 bocas 7.294.",
-      "ERRO REAL (04/11/2026): a IA somou peças na mão e disse R$ 5.201 para um conjunto fora dessa lista, e ainda ficou mais caro que um conjunto maior — o lead percebeu antes dela.",
+      // Tabela de nov/2026 (catálogo novo da Maria). A versão anterior deste
+      // trecho trazia os valores VELHOS e sem "R$" — o script de troca de tabela
+      // não os enxergaria. E chamava de "Prime 16" o conjunto com Napoli de
+      // 1,62 m, que é 11 espetos (81 + 81).
+      "CONJUNTOS QUE EXISTEM (preço do conjunto, sem frete — tabela nov/2026): Popular Lisa 55 + Campeirinho R$ 2.024; Popular Lisa 65 + Campeirinho R$ 2.144; Prime 7 + Campeirinho R$ 2.474; Prime 9 + Campeirinho R$ 2.684; Prime 9 + Fogão 3 bocas R$ 3.214; Prime 9 + Fogão 4 bocas R$ 3.824; Prime 11 + Campeirinho R$ 2.794; Prime 11 + Fogão 3 bocas R$ 3.324; Prime 11 + Fogão 4 bocas R$ 3.934; Prime 16 + Fogão 4 bocas R$ 4.404; Prime 9 + Forno e Fogão 3 bocas R$ 4.204 (o TRIO padrão); Prime 11 + Forno e Fogão 4 bocas R$ 4.884; Prime 7 + Forno Napoli + Campeirinho R$ 4.111; Prime 9 + Forno Napoli + Campeirinho R$ 4.321; Prime 11 + Forno Napoli (1,62 m) R$ 3.264; Prime 16 + Forno Napoli (1,86 m) R$ 3.734; Prime 16 + Forno Napoli + Forno e Fogão 3 bocas R$ 6.421; Tradição Gourmet + Forno Napoli R$ 6.154; Gourmet + Forno Napoli R$ 6.044; Gourmet + Campeirinho R$ 5.574; Gourmet + Fogão 3 bocas R$ 6.104; Gourmet + Fogão 4 bocas R$ 6.714; Gourmet + Forno e Fogão 3 bocas R$ 7.094; Gourmet + Forno e Fogão 4 bocas R$ 7.664.",
+      "ERRO REAL (04/11/2026): a IA somou peças na mão e deu um valor para um conjunto fora dessa lista, e ainda ficou mais caro que um conjunto maior — o lead percebeu antes dela.",
     ].join("\n"),
   },
   {
@@ -82,7 +94,7 @@ const CHUNKS: { title: string; content: string }[] = [
       "ANTES DE MANDAR DOIS PREÇOS JUNTOS, COMPARE: um conjunto com MAIS peças ou churrasqueira MAIOR não pode custar MENOS que um menor. Se os números que você ia dizer têm essa contradição, você errou em algum deles.",
       "NESSE CASO: NÃO invente explicação para a diferença (não diga que 'um forno custa diferente do outro'). PARE, diga que confirma o valor exato com o vendedor, e use escalar_humano.",
       "SE O CLIENTE APONTAR UMA CONTRADIÇÃO SUA, reconheça e corrija. Nunca mude de assunto nem peça dados pessoais para desviar.",
-      "ERRO REAL (04/11/2026): a IA disse 'Prime 11 = R$ 4.644' e 'Prime 9 + fogão + forno = R$ 5.201'; o lead perguntou 'mas você tá dizendo que o 11 é mais barato que o 9?' e ela inventou uma explicação e pediu CPF.",
+      "ERRO REAL (04/11/2026): a IA deu para a Prime 11 + Forno e Fogão um valor MENOR que o de um conjunto Prime 9 somado na mão; o lead perguntou 'mas você tá dizendo que o 11 é mais barato que o 9?' e ela inventou uma explicação e pediu CPF.",
     ].join("\n"),
   },
   {
@@ -93,7 +105,7 @@ const CHUNKS: { title: string; content: string }[] = [
       "NUNCA repita o nome inventado como se fosse nosso, nem coloque o produto real entre parênteses ao lado dele. Repetir ensina o cliente que o produto existe.",
       "VALE PARA NÚMEROS TAMBÉM: se o cliente disser capacidade, medida ou preço diferente do nosso, o NOSSO dado é que vale.",
       "ATENÇÃO — ESTES NOMES SÃO DE VERDADE e não devem ser corrigidos: '3x1', 'trio' e '3 em 1' (= Trio Linha Prime). Já 'forno Iglu' NÃO existe.",
-      "ERROS REAIS: 04/11 — o lead escreveu 'iglu' e a IA passou a oferecer 'forno Iglu' num orçamento de R$ 4.644; 22/09 — o lead disse '7 espetos' na Popular, que comporta 4, e ela concordou.",
+      "ERROS REAIS: 04/11 — o lead escreveu 'iglu' e a IA passou a oferecer 'forno Iglu' num orçamento; 22/09 — o lead disse '7 espetos' na Popular, que comporta 4, e ela concordou.",
     ].join("\n"),
   },
 ];
