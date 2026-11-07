@@ -9,6 +9,9 @@
 #
 # Todos são idempotentes: rodar de novo não estraga nada.
 #
+# ANTES: rode scripts/jr-trava-preco-medir.ts (só lê) e confira o que as travas
+# de preço barrariam nas conversas reais. O passo 5 liga o rigor máximo.
+#
 # PRÉ-REQUISITOS: (1) o deploy da master no ar — o roteador confere se produção
 # entende os campos das regras; (2) crédito na OpenAI — o acervo precisa de
 # embedding. Sem crédito, o script para no começo, antes de gravar qualquer coisa.
@@ -38,12 +41,14 @@ echo "   ✓ ok"
 
 passo() { echo; echo "════ $1"; shift; npx tsx "$@" $COMMIT; }
 
-passo "1/5  Tabela de preços nov/2026 (orçamento, cadastro, acervo e preços revogados)" scripts/jr-tabela-nov2026.ts
-passo "2/5  Acervo da Maria (03/11): taxonomia da Prime e medida de conjunto"          scripts/jr-acervo-maria-nov.ts
-passo "3/5  Acervo dos conjuntos (04/11): Iglu, Trio, preço próprio de conjunto"      scripts/jr-acervo-conjuntos.ts
-passo "4/5  Frete: Lomba do Pinheiro como zona própria (R\$ 250)"                    scripts/jr-frete-lomba.ts
+passo "1/6  Tabela de preços nov/2026 (orçamento, cadastro, acervo e preços revogados)" scripts/jr-tabela-nov2026.ts
+passo "2/6  Acervo da Maria (03/11): taxonomia da Prime e medida de conjunto"          scripts/jr-acervo-maria-nov.ts
+passo "3/6  Acervo dos conjuntos (04/11): Iglu, Trio, preço próprio de conjunto"      scripts/jr-acervo-conjuntos.ts
+passo "4/6  Frete: Lomba do Pinheiro como zona própria (R\$ 250)"                    scripts/jr-frete-lomba.ts
 
-echo; echo "════ 5/5  Regras do roteador (inclui \"pediu vendedor → escala\")"
+passo "5/6  Rigor máximo de preço: preço sem fonte passa a ser barrado"            scripts/jr-rigor-preco.ts
+
+echo; echo "════ 6/6  Regras do roteador (inclui \"pediu vendedor → escala\")"
 if [ "$COMMIT" = "--commit" ]; then
   git fetch -q origin master   # o script confere os campos contra origin/master
   mkdir -p "$HOME/Downloads"   # ele guarda ali um backup das rules antes de gravar

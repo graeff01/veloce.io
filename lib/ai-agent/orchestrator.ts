@@ -7,6 +7,7 @@ import { salesDnaBlock } from "./sales-dna";
 import { checkReply, resolveBlockRules } from "./guardrail";
 import { conhecimentoCompleto, retrieveKnowledge } from "./retrieval";
 import { checkGrounding, extrairPrecosOficiais, extrairPrecosRevogados, precosRevogadosNaResposta, medidasEmCm, medidasInventadas } from "./grounding";
+import { lerTabelaPrecos, precosErradosDoProduto } from "./preco-produto";
 import { lerTabelaMedidas, medidasErradasDoProduto } from "./medidas-produto";
 import { lerTabelaCapacidade, capacidadesErradas } from "./capacidade-produto";
 import { verifyReply } from "./verify";
@@ -989,6 +990,16 @@ Em qualquer caso você PODE terminar com UMA pergunta leve ("Ficou com alguma d�
     const revogados = precosRevogadosNaResposta(final, _pc ? extrairPrecosRevogados(_pc.rules) : new Set<string>(), _precos);
     if (revogados.length) {
       guardrails.push(`grounding:preco_revogado:${revogados.slice(0, 3).join(",")}`);
+      final = fallback;
+      decision = "abster";
+    }
+
+    // Preço REAL do produto ERRADO ("a Prime 9 sai R$ 1.627" — esse é o da
+    // Prime 11). O grounding aprova, porque o número existe na tabela. Barra
+    // sempre, como a medida do produto. Ver preco-produto.ts.
+    const precoErrado = _pc ? precosErradosDoProduto(final, lerTabelaPrecos(_pc.rules)) : [];
+    if (precoErrado.length) {
+      guardrails.push(`grounding:preco_do_produto:${precoErrado.slice(0, 3).map((e) => `${e.produto}: disse ${e.disse}, é ${e.esperado.join("/")}`).join(" | ").slice(0, 200)}`);
       final = fallback;
       decision = "abster";
     }
